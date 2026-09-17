@@ -1,6 +1,7 @@
 import { DEFAULT_LAYOUT, layoutTickets } from '../layout.js';
 import type { PositionedNode } from '../layout.js';
-import type { MapSnapshot, Ticket, TicketState, WayfinderMap } from '../types.js';
+import { TICKET_TYPES } from '../types.js';
+import type { MapSnapshot, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
 
 /* ---------- state channel: one hue each, always with an icon and a word ---------- */
 
@@ -25,12 +26,44 @@ const STATE_STYLE: Record<TicketState, StateStyle> = {
 
 const STATE_ORDER: TicketState[] = ['frontier', 'claimed', 'blocked', 'done'];
 
-const TYPE_GLYPH: Record<string, string> = {
-  research: 'R',
-  prototype: 'P',
-  grilling: 'G',
-  task: 'T',
+/* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
+
+interface TypeStyle {
+  label: string;
+  icon: string;
+}
+
+/** A magnifier: go and find out. */
+const LENS = '<circle cx="11" cy="11" r="6.4"/><path d="m20 20-4.4-4.4"/>';
+/** A beaker: build the small thing and see what happens. */
+const BEAKER =
+  '<path d="M9.5 3h5"/><path d="M10.8 3v6.4L5.5 17.9A2 2 0 0 0 7.2 21h9.6a2 2 0 0 0 1.7-3.1L13.2 9.4V3"/><path d="M7.8 15h8.4"/>';
+/** A kettle grill, heat and all: hold the idea over the flame. */
+const GRILL =
+  '<path d="M3.5 8.5h17"/><path d="M5 8.5a7 7 0 0 0 14 0"/><path d="m8.4 14.5-2.4 6.3"/><path d="m15.6 14.5 2.4 6.3"/><path d="M9.6 2.3c-1 1.1.6 1.7 0 2.9"/><path d="M14.4 2.3c-1 1.1.6 1.7 0 2.9"/>';
+/** A list: a known job, written down. */
+const LIST = '<path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/><path d="M8.5 6H20"/><path d="M8.5 12H20"/><path d="M8.5 18H20"/>';
+/** A circle with a bar through it: no wayfinder:<type> label on the issue. */
+const BLANK = '<circle cx="12" cy="12" r="7.4"/><path d="M8.6 12h6.8"/>';
+
+const TYPE_STYLE: Record<TicketType, TypeStyle> = {
+  research: { label: 'research', icon: LENS },
+  prototype: { label: 'prototype', icon: BEAKER },
+  grilling: { label: 'grilling', icon: GRILL },
+  task: { label: 'task', icon: LIST },
 };
+
+const UNTYPED: TypeStyle = { label: 'untyped', icon: BLANK };
+
+function typeStyle(type: TicketType | null): TypeStyle {
+  return type === null ? UNTYPED : TYPE_STYLE[type];
+}
+
+/** The square type badge that rides at the head of a node, a row and the detail panel. */
+function typeGlyph(type: TicketType | null): string {
+  const style = typeStyle(type);
+  return `<span class="glyph" title="${escapeHtml(style.label)}">${icon(style.icon)}</span>`;
+}
 
 function icon(path: string): string {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
@@ -147,12 +180,19 @@ function renderTabs(maps: readonly WayfinderMap[]): void {
 }
 
 function renderLegend(): void {
-  els.legend.innerHTML = STATE_ORDER.map((state) => {
+  const states = STATE_ORDER.map((state) => {
     const style = STATE_STYLE[state];
     return `<span class="legend-item" role="listitem" style="--accent: var(${style.variable})">
       <span style="color: var(${style.variable}); display:flex">${icon(style.icon)}</span>${escapeHtml(style.legend)}
     </span>`;
   }).join('');
+
+  const types = TICKET_TYPES.map((type) => {
+    const style = TYPE_STYLE[type];
+    return `<span class="legend-item is-type" role="listitem">${icon(style.icon)}${escapeHtml(style.label)}</span>`;
+  }).join('');
+
+  els.legend.innerHTML = `${states}<span class="legend-sep" role="none" aria-hidden="true"></span>${types}`;
 }
 
 function renderMapCard(): void {
@@ -194,7 +234,6 @@ function renderMapCard(): void {
 
 function nodeHtml(ticket: Ticket, position: PositionedNode): string {
   const style = STATE_STYLE[ticket.state];
-  const glyph = TYPE_GLYPH[ticket.type ?? ''] ?? '·';
   const meta =
     ticket.state === 'blocked'
       ? `blocked by ${ticket.openBlockers.map((n) => `#${String(n)}`).join(', ')}`
@@ -209,7 +248,7 @@ function nodeHtml(ticket: Ticket, position: PositionedNode): string {
     style="--accent: var(${style.variable}); left:${String(position.x)}px; top:${String(position.y)}px; width:${String(position.width)}px; height:${String(position.height)}px"
     aria-label="${escapeHtml(`#${String(ticket.number)} ${ticket.title}, ${style.label}`)}">
     <span class="node-top">
-      <span class="glyph" title="${escapeHtml(ticket.type ?? 'untyped')}">${glyph}</span>
+      ${typeGlyph(ticket.type)}
       <span class="num">#${String(ticket.number)}</span>
       <span class="chip">${icon(style.icon)}${escapeHtml(style.label)}</span>
     </span>
@@ -277,7 +316,7 @@ function renderTable(): void {
       const style = STATE_STYLE[ticket.state];
       return `<tr data-number="${String(ticket.number)}">
         <td class="num">#${String(ticket.number)}</td>
-        <td>${escapeHtml(ticket.type ?? '—')}</td>
+        <td><span class="typecell">${icon(typeStyle(ticket.type).icon)}${escapeHtml(typeStyle(ticket.type).label)}</span></td>
         <td>${escapeHtml(ticket.title)}</td>
         <td><span class="cellchip" style="--accent: var(${style.variable})">${icon(style.icon)}${escapeHtml(style.label)}</span></td>
         <td>${ticket.assignee === null ? '—' : escapeHtml(`@${ticket.assignee}`)}</td>
@@ -318,14 +357,14 @@ function renderDetail(): void {
 
   els.detail.innerHTML = `
     <div class="detail-head" style="--accent: var(${style.variable})">
-      <span class="glyph">${TYPE_GLYPH[ticket.type ?? ''] ?? '·'}</span>
+      ${typeGlyph(ticket.type)}
       <span class="num">#${String(ticket.number)}</span>
       <span class="chip">${icon(style.icon)}${escapeHtml(style.label)}</span>
       <button type="button" class="detail-close" id="detail-close" aria-label="Close">×</button>
     </div>
     <h2>${escapeHtml(ticket.title)}</h2>
     <dl class="facts">
-      <dt>Type</dt><dd>${escapeHtml(ticket.type ?? 'untyped')}</dd>
+      <dt>Type</dt><dd><span class="typecell">${icon(typeStyle(ticket.type).icon)}${escapeHtml(typeStyle(ticket.type).label)}</span></dd>
       <dt>Assignee</dt><dd>${ticket.assignee === null ? 'unclaimed' : escapeHtml(`@${ticket.assignee}`)}</dd>
       <dt>Blocked by</dt><dd>${blockers}</dd>
       <dt>Map</dt><dd>${escapeHtml(map.title)}</dd>

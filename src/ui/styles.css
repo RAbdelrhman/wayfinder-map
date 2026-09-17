@@ -321,6 +321,17 @@ a {
   height: 13px;
 }
 
+.legend-item.is-type {
+  color: var(--text-muted);
+}
+
+.legend-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--hairline);
+  margin: -2px 0;
+}
+
 .canvas-wrap {
   flex: 1 1 auto;
   overflow: auto;
@@ -410,9 +421,22 @@ a {
   place-items: center;
   border: 1px solid var(--baseline);
   border-radius: 5px;
-  font-size: 11px;
-  font-weight: 650;
   color: var(--text-secondary);
+}
+
+.glyph svg {
+  width: 12px;
+  height: 12px;
+}
+
+.detail-head .glyph {
+  width: 22px;
+  height: 22px;
+}
+
+.detail-head .glyph svg {
+  width: 14px;
+  height: 14px;
 }
 
 .num {
@@ -535,6 +559,21 @@ tbody tr:hover {
   width: 12px;
   height: 12px;
   color: var(--accent);
+}
+
+/* type, spelled out with its icon: table cells and the detail facts */
+.typecell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+
+.typecell svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  color: var(--text-muted);
 }
 
 /* ---------- detail ---------- */
