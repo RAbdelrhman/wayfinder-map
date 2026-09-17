@@ -15,9 +15,20 @@ Where the map is heading:
 What the ticket says:
 {{ticketBody}}
 
-Claim the ticket before you start, and close it the way the wayfinder flow does:
-answer in a comment, close it, then add the context pointer to the map's
-Decisions-so-far.
+Before you claim the ticket or change any files, create and enter a dedicated
+git worktree from the target repo's current HEAD:
+  Worktree: {{worktreeName}}
+  Branch:   {{branchName}}
+If the worktree cannot be created, stop and report the problem.
+Do not fall back to the primary checkout.
+
+Never run \`git stash\` in a shared checkout. If you need to check whether a
+failure predates your changes, create a throwaway worktree from HEAD and test
+there.
+
+Once you are in the dedicated worktree, claim the ticket before doing ticket
+work. Close it the way the wayfinder flow does: answer in a comment, close it,
+then add the context pointer to the map's Decisions-so-far.
 `;
 
 const STATE_WORDS: Record<Ticket['state'], string> = {
@@ -43,6 +54,18 @@ function indent(text: string, prefix = '  '): string {
     .join('\n');
 }
 
+function slugifyTitle(title: string): string {
+  const slug = title
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
+    .replace(/-+$/g, '');
+  return slug || 'ticket';
+}
+
 /** Fill the template. An unknown `{{name}}` is left alone rather than blanked. */
 export function renderTemplate(template: string, values: Readonly<Record<string, string>>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (whole, name: string) => values[name] ?? whole);
@@ -54,6 +77,7 @@ export function buildPrompt({ repo, map, ticket, template = DEFAULT_TEMPLATE }: 
     ticket.openBlockers.length > 0
       ? `\nBlocked by: ${ticket.openBlockers.map((number) => `#${number}`).join(', ')}`
       : '';
+  const ticketSlug = `${ticket.number}-${slugifyTitle(ticket.title)}`;
 
   return renderTemplate(template, {
     repo,
@@ -70,6 +94,9 @@ export function buildPrompt({ repo, map, ticket, template = DEFAULT_TEMPLATE }: 
     ticketState: STATE_WORDS[ticket.state],
     ticketUrl: ticket.url,
     ticketBody: indent(ticket.body),
+    ticketSlug,
+    worktreeName: `../wayfinder-${ticketSlug}`,
+    branchName: `wayfinder/${ticketSlug}`,
     blockedLine,
   }).trim();
 }

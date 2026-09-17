@@ -58,6 +58,46 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('Delete the route and its call sites.');
   });
 
+  it('directs the agent into a ticket-specific worktree before claiming', () => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket });
+    const worktree = 'Worktree: ../wayfinder-11-retire-api-agents-once-nothing-needs-it';
+    const branch = 'Branch:   wayfinder/11-retire-api-agents-once-nothing-needs-it';
+
+    expect(prompt).toContain(worktree);
+    expect(prompt).toContain(branch);
+    expect(prompt.indexOf(worktree)).toBeLessThan(prompt.indexOf('Once you are in the dedicated worktree'));
+    expect(prompt).toContain('If the worktree cannot be created, stop and report the problem.');
+    expect(prompt).toContain('Do not fall back to the primary checkout.');
+    expect(prompt).toContain('Never run `git stash` in a shared checkout.');
+    expect(prompt).toContain('create a throwaway worktree from HEAD');
+  });
+
+  it('makes derived worktree placeholders available to custom templates', () => {
+    const prompt = buildPrompt({
+      repo: 'owner/repo',
+      map,
+      ticket,
+      template: '{{ticketSlug}}\n{{worktreeName}}\n{{branchName}}',
+    });
+
+    expect(prompt).toBe(
+      '11-retire-api-agents-once-nothing-needs-it\n' +
+        '../wayfinder-11-retire-api-agents-once-nothing-needs-it\n' +
+        'wayfinder/11-retire-api-agents-once-nothing-needs-it',
+    );
+  });
+
+  it('uses a safe fallback when a title has no ASCII slug characters', () => {
+    const prompt = buildPrompt({
+      repo: 'owner/repo',
+      map,
+      ticket: { ...ticket, title: '日本語' },
+      template: '{{ticketSlug}}',
+    });
+
+    expect(prompt).toBe('11-ticket');
+  });
+
   it('calls out open blockers', () => {
     expect(buildPrompt({ repo: 'owner/repo', map, ticket })).toContain('Blocked by: #27');
   });

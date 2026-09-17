@@ -74,8 +74,9 @@ startup.
 ## Prompt template
 
 The default prompt names the repo, the map, the ticket, the map's destination and
-the ticket body, then asks the agent to claim the ticket and close it the way the
-wayfinder flow does. Replace it with your own:
+the ticket body. It directs the agent into a ticket-specific git worktree before
+claiming the ticket, then asks the agent to close it the way the wayfinder flow
+does. Replace it with your own:
 
 ```bash
 npx wayfinder-map --prompt ./my-prompt.txt
@@ -84,8 +85,9 @@ npx wayfinder-map --prompt ./my-prompt.txt
 Placeholders: `{{repo}}`, `{{mapNumber}}`, `{{mapTitle}}`, `{{mapUrl}}`,
 `{{destination}}`, `{{notes}}`, `{{decisions}}`, `{{fog}}`, `{{ticketNumber}}`,
 `{{ticketTitle}}`, `{{ticketType}}`, `{{ticketState}}`, `{{ticketUrl}}`,
-`{{ticketBody}}`, `{{blockedLine}}`. An unknown one is left in the text rather than
-silently blanked, so a typo is visible.
+`{{ticketBody}}`, `{{ticketSlug}}`, `{{worktreeName}}`, `{{branchName}}`,
+`{{blockedLine}}`. An unknown one is left in the text rather than silently blanked,
+so a typo is visible.
 
 ## Options
 
