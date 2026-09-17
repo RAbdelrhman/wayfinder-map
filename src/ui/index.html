@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>wayfinder map</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script>
+      // Stamp the saved theme before first paint so the page never flashes the wrong one.
+      (() => {
+        const saved = localStorage.getItem('wayfinder-map:theme');
+        if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+      })();
+    </script>
+  </head>
+  <body class="viz-root">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="wordmark">wayfinder</span>
+        <span class="repo" id="repo">loading…</span>
+      </div>
+      <nav class="maptabs" id="maptabs" aria-label="Maps"></nav>
+      <div class="topbar-right">
+        <div class="segmented" role="group" aria-label="View">
+          <button type="button" id="view-map" class="seg is-on" aria-pressed="true">Map</button>
+          <button type="button" id="view-table" class="seg" aria-pressed="false">Table</button>
+        </div>
+        <button type="button" id="refresh" class="ghost" title="Re-read the issues from GitHub">Refresh</button>
+        <button type="button" id="theme" class="ghost" title="Switch light and dark">Theme</button>
+      </div>
+    </header>
+
+    <div class="warnings" id="warnings" hidden></div>
+
+    <main class="shell">
+      <aside class="mapcard" id="mapcard" aria-label="Map summary"></aside>
+
+      <section class="stage" aria-label="Tickets">
+        <div class="legend" id="legend" role="list" aria-label="Ticket states"></div>
+
+        <div class="canvas-wrap" id="canvas-wrap">
+          <div class="canvas" id="canvas">
+            <svg class="edges" id="edges" aria-hidden="true"></svg>
+            <div class="nodes" id="nodes"></div>
+          </div>
+        </div>
+
+        <div class="tablewrap" id="tablewrap" hidden></div>
+
+        <div class="zoom" role="group" aria-label="Zoom">
+          <button type="button" id="zoom-out" class="ghost" aria-label="Zoom out">&minus;</button>
+          <button type="button" id="zoom-reset" class="ghost">Fit</button>
+          <button type="button" id="zoom-in" class="ghost" aria-label="Zoom in">+</button>
+        </div>
+      </section>
+
+      <aside class="detail" id="detail" aria-label="Ticket detail" hidden></aside>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
