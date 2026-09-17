@@ -19,12 +19,29 @@
     "start": "node dist/cli.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "prepare": "node scripts/build.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "esbuild": "^0.25.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RAbdelrhman/wayfinder-map.git"
+  },
+  "homepage": "https://github.com/RAbdelrhman/wayfinder-map#readme",
+  "bugs": {
+    "url": "https://github.com/RAbdelrhman/wayfinder-map/issues"
+  },
+  "keywords": [
+    "wayfinder",
+    "github-issues",
+    "t3-code",
+    "visualization",
+    "cli"
+  ],
+  "author": "Ramon Abdelrhman"
 }
