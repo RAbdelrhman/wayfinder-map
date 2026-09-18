@@ -80,6 +80,17 @@ describe('threadDefaults', () => {
     expect(threadDefaults(snapshot, null)?.modelSelection).toEqual({ model: 'p2-newest' });
   });
 
+  it('puts a picked model first, and T3 Code’s own default after the project’s', () => {
+    const snapshot: T3Snapshot = {
+      projects: [{ id: 'p1', workspaceRoot: '/r', defaultModelSelection: null, deletedAt: null }],
+      threads: [thread({})],
+    };
+    expect(threadDefaults(snapshot, 'p1', { chosen: { model: 'picked' }, globalDefault: { model: 'global' } })?.modelSelection).toEqual({
+      model: 'picked',
+    });
+    expect(threadDefaults(snapshot, 'p1', { globalDefault: { model: 'global' } })?.modelSelection).toEqual({ model: 'global' });
+  });
+
   it('has nothing to offer on a fresh install', () => {
     expect(threadDefaults({ projects: [], threads: [] }, null)).toBeNull();
   });

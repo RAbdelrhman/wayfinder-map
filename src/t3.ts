@@ -9,6 +9,8 @@ import { copyToClipboard } from './clipboard.js';
 import { appControlAddress, openWorkspace, stateDirFor } from './t3App.js';
 import { T3Api, samePath, serverCommand, threadCommands, threadDefaults } from './t3Api.js';
 import type { ServerCommand } from './t3Api.js';
+import { toCatalog, toModelSelection } from './models.js';
+import type { ModelCatalog, ModelChoice } from './models.js';
 import type { PreparedWorktree } from './prompt.js';
 
 const run = promisify(execFile);
@@ -113,6 +115,8 @@ export interface HandOffInput {
   workspaceRoot: string | null;
   /** The ticket's branch name, before any `-2` suffix. */
   branch: string;
+  /** The model picked in the UI, or null to let T3 Code's defaults decide. */
+  model: ModelChoice | null;
   prompt: (worktree: PreparedWorktree | null) => string;
 }
 
@@ -175,9 +179,15 @@ function reveal(command: ServerCommand | null, origin: string): void {
   void openExternal(origin).catch(() => undefined);
 }
 
+interface T3Config {
+  catalog: ModelCatalog;
+  defaultModelSelection: unknown;
+}
+
 /** The real ladder steps, bound to whatever T3 Code is running right now. */
 export class T3HandOff {
   private api: { key: string; api: T3Api; command: ServerCommand } | null = null;
+  private config: { key: string; at: number; value: Promise<T3Config> } | null = null;
 
   private async connect(runtime: T3Runtime): Promise<{ api: T3Api; command: ServerCommand; origin: string }> {
     if (runtime.origin === null || runtime.pid === null) throw new Error('T3 Code is not running');
@@ -191,6 +201,31 @@ export class T3HandOff {
     return { api: this.api.api, command: this.api.command, origin: runtime.origin };
   }
 
+  /** T3 Code's providers and settings, cached for a minute: the reply is large and rarely changes. */
+  private async t3Config(runtime: T3Runtime): Promise<T3Config> {
+    const { api } = await this.connect(runtime);
+    const key = this.api?.key ?? '';
+    if (this.config === null || this.config.key !== key || Date.now() - this.config.at > 60_000) {
+      const value = api.rpc('server.getConfig').then((raw) => {
+        const config = raw as { providers?: unknown; settings?: { defaultModelSelection?: unknown } };
+        return {
+          catalog: toCatalog(Array.isArray(config.providers) ? config.providers : []),
+          defaultModelSelection: config.settings?.defaultModelSelection ?? null,
+        };
+      });
+      value.catch(() => {
+        this.config = null;
+      });
+      this.config = { key, at: Date.now(), value };
+    }
+    return this.config.value;
+  }
+
+  /** The models T3 Code can run right now. */
+  async models(runtime: T3Runtime): Promise<ModelCatalog> {
+    return (await this.t3Config(runtime)).catalog;
+  }
+
   steps(runtime: T3Runtime): HandOffSteps {
     return {
       startThread: async (input) => {
@@ -200,7 +235,13 @@ export class T3HandOff {
           (candidate) => candidate.deletedAt === null && samePath(candidate.workspaceRoot, input.workspaceRoot),
         );
         let projectId = project?.id ?? null;
-        const defaults = threadDefaults(snapshot, projectId);
+        const globalDefault = await this.t3Config(runtime)
+          .then((config) => config.defaultModelSelection)
+          .catch(() => null);
+        const defaults = threadDefaults(snapshot, projectId, {
+          chosen: input.model === null ? null : toModelSelection(input.model),
+          globalDefault,
+        });
         if (defaults === null) throw new Error('no model to use yet; start one thread in T3 Code first');
 
         if (projectId === null) {

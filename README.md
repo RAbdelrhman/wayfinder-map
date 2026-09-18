@@ -81,6 +81,19 @@ in one line:
 **Copy prompt** always just copies. On Linux the clipboard goes through `wl-copy`,
 `xclip` or `xsel`, whichever is installed.
 
+### Picking the model
+
+**Models** in the top bar sets a default model and reasoning level for three task
+tiers: Simple, Mid and Hard. The list is whatever T3 Code can run right now, across
+every provider you have enabled (Codex, Claude, Grok, OpenCode, Antigravity, …),
+read live from T3 Code.
+
+In the ticket panel, **Run as** switches the ticket between tiers, and the model
+and reasoning below it can be changed for that one hand-off. Each ticket remembers
+its tier; new tickets start on Mid. A tier with no default, or a model T3 Code no
+longer offers, falls back to T3 Code's own default. The defaults live in the
+browser's local storage.
+
 ## Prompt template
 
 The default prompt names the repo, the map, the ticket, the map's destination and
@@ -147,7 +160,9 @@ src/mapBody.ts   the map body's sections, and the fallback parsers
 src/layout.ts    dependency depth to x/y
 src/prompt.ts    ticket to prompt
 src/t3.ts        the hand-off ladder
-src/t3Api.ts     T3 Code server: session token, snapshot, thread commands
+src/t3Api.ts     T3 Code server: session token, snapshot, thread commands, RPC
+src/models.ts    T3 Code models to the picker catalog
+src/ui/models.ts the model picker and tier defaults
 src/t3App.ts     the desktop app's control socket
 src/clipboard.ts clipboard per platform
 src/server.ts    routes

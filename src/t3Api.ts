@@ -144,6 +144,42 @@ export class T3Api {
     return this.request('/api/orchestration/dispatch', command);
   }
 
+  /**
+   * One call over T3 Code's WebSocket RPC, for what the HTTP API does not expose
+   * (the provider and model list lives only there). The socket authenticates with a
+   * short-lived ticket minted over HTTP, since a WebSocket cannot carry a bearer header.
+   */
+  async rpc(tag: string, payload: unknown = {}): Promise<unknown> {
+    const { ticket } = (await this.request('/api/auth/websocket-ticket', {})) as { ticket?: unknown };
+    if (typeof ticket !== 'string') throw new Error('T3 Code issued no WebSocket ticket');
+    const url = new URL('/ws', this.origin);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.searchParams.set('wsTicket', ticket);
+
+    return new Promise<unknown>((resolve, reject) => {
+      const socket = new WebSocket(url);
+      let settled = false;
+      const settle = (outcome: () => void): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        socket.close();
+        outcome();
+      };
+      const timer = setTimeout(() => settle(() => reject(new Error(`${tag} timed out`))), 20_000);
+
+      socket.onopen = () => socket.send(JSON.stringify({ _tag: 'Request', id: '1', tag, payload, headers: [] }));
+      socket.onmessage = (event) => {
+        const message = JSON.parse(String(event.data)) as { _tag?: string; requestId?: string; exit?: { _tag?: string; value?: unknown } };
+        if (message._tag === 'Ping') return socket.send(JSON.stringify({ _tag: 'Pong' }));
+        if (message._tag !== 'Exit' || message.requestId !== '1') return;
+        settle(() => (message.exit?._tag === 'Success' ? resolve(message.exit.value) : reject(new Error(`${tag} failed`))));
+      };
+      socket.onerror = () => settle(() => reject(new Error('T3 Code WebSocket failed')));
+      socket.onclose = () => settle(() => reject(new Error('T3 Code closed the WebSocket')));
+    });
+  }
+
   /** Revoke the session synchronously, so it also works from an exit handler. */
   revoke(): void {
     if (this.issuedId === null) return;
@@ -179,16 +215,22 @@ export interface ThreadDefaults {
 }
 
 /**
- * Which model and modes a new thread gets. The project's default if it has one,
- * otherwise whatever the newest thread used, in this project first, then anywhere.
+ * Which model and modes a new thread gets. A model picked in wayfinder-map wins, then
+ * the project's default, then T3 Code's own default, then whatever the newest thread
+ * used, in this project first, then anywhere. Modes follow the newest thread.
  */
-export function threadDefaults(snapshot: T3Snapshot, projectId: string | null): ThreadDefaults | null {
+export function threadDefaults(
+  snapshot: T3Snapshot,
+  projectId: string | null,
+  preferred: { chosen?: unknown; globalDefault?: unknown } = {},
+): ThreadDefaults | null {
   const live = snapshot.threads
     .filter((thread) => thread.deletedAt === null && thread.modelSelection !== null && thread.modelSelection !== undefined)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const newest = live.find((thread) => thread.projectId === projectId) ?? live[0];
   const project = snapshot.projects.find((candidate) => candidate.id === projectId);
-  const modelSelection = project?.defaultModelSelection ?? newest?.modelSelection;
+  const modelSelection =
+    preferred.chosen ?? project?.defaultModelSelection ?? preferred.globalDefault ?? newest?.modelSelection;
   if (modelSelection === null || modelSelection === undefined) return null;
   return {
     modelSelection,

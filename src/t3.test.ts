@@ -9,6 +9,7 @@ const input = (workspaceRoot: string | null): HandOffInput => ({
   title: '#1 Thing',
   workspaceRoot,
   branch: 'wayfinder/1-thing',
+  model: null,
   prompt: (worktree) => (worktree === null ? 'plain' : `ready on ${worktree.branch}`),
 });
 

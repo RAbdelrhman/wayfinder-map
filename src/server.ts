@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { fetchMaps } from './github.js';
+import { parseModelChoice } from './models.js';
 import { copyToClipboard } from './clipboard.js';
 import { DEFAULT_TEMPLATE, buildPrompt, ticketBranch } from './prompt.js';
 import { detectT3, handOff } from './t3.js';
@@ -133,8 +134,17 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
         return;
       }
 
+      if (path === '/api/models') {
+        try {
+          json(response, 200, await t3.models(await detectT3()));
+        } catch (error) {
+          json(response, 503, { error: `T3 Code models unavailable: ${(error as Error).message}` });
+        }
+        return;
+      }
+
       if (path === '/api/hand-off' && request.method === 'POST') {
-        const body = (await readBody(request)) as { map?: number; ticket?: number; copyOnly?: boolean };
+        const body = (await readBody(request)) as { map?: number; ticket?: number; copyOnly?: boolean; model?: unknown };
         await snapshotOnce(false);
         const found = find(Number(body.map), Number(body.ticket));
         if (!found) {
@@ -158,6 +168,7 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
             title: `#${String(ticket.number)} ${ticket.title}`,
             workspaceRoot,
             branch: ticketBranch(ticket),
+            model: parseModelChoice(body.model),
             prompt: (worktree) => buildPrompt({ repo, map, ticket, template, ...(worktree ? { worktree } : {}) }),
           },
           t3.steps(await detectT3()),

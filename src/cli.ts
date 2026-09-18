@@ -37,7 +37,7 @@ async function main(): Promise<number> {
 
   // The T3 Code session token is revoked on the way out rather than left to expire.
   process.once('exit', () => t3.close());
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => process.exit(0));
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.once(signal, () => process.exit(0));
 
   process.stdout.write(`wayfinder-map  ${repo}\n`);
   process.stdout.write(`  serving   ${url}\n`);

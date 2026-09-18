@@ -2,6 +2,23 @@ import { DEFAULT_LAYOUT, layoutTickets } from '../layout.js';
 import type { PositionedNode } from '../layout.js';
 import { TICKET_TYPES } from '../types.js';
 import type { MapSnapshot, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
+import {
+  TIERS,
+  TIER_HINT,
+  TIER_LABEL,
+  currentCatalog,
+  effortSelectHtml,
+  findModel,
+  liveChoice,
+  loadCatalog,
+  modelSelectHtml,
+  readChoice,
+  saveTicketTier,
+  saveTierDefault,
+  ticketTier,
+  tierDefaults,
+} from './models.js';
+import type { ModelChoice, Tier } from './models.js';
 
 /* ---------- state channel: one hue each, always with an icon and a word ---------- */
 
@@ -107,6 +124,8 @@ const els = {
   tableWrap: need('tablewrap'),
   detail: need('detail'),
   toast: need('toast'),
+  modelsDialog: need<HTMLDialogElement>('models-dialog'),
+  tierRows: need('tier-rows'),
   shell: document.querySelector<HTMLElement>('.shell'),
 };
 
@@ -376,6 +395,7 @@ function renderDetail(): void {
       <dt>Blocked by</dt><dd>${blockers}</dd>
       <dt>Map</dt><dd>${escapeHtml(map.title)}</dd>
     </dl>
+    ${startable === null ? `<div class="runwith" id="runwith">${runWithHtml(ticket.number)}</div>` : ''}
     <div class="actions">
       <button type="button" class="primary" id="start-thread"${startable === null ? '' : ` disabled title="${escapeHtml(startable)}"`}>Open in T3 Code</button>
       <button type="button" class="ghost" id="copy-prompt">Copy prompt</button>
@@ -385,6 +405,98 @@ function renderDetail(): void {
     <details class="section"><summary>Prompt this sends</summary><pre class="prompt" id="prompt-preview">…</pre></details>
     <div class="body-text">${escapeHtml(ticket.body.trim().length === 0 ? 'No description on the issue.' : ticket.body)}</div>
   `;
+}
+
+/* ---------- model picker ---------- */
+
+function repoName(): string {
+  return snapshot?.repo ?? '';
+}
+
+/** The ticket panel's "Run as" block: a tier switch, then the tier's model, editable for this one hand-off. */
+function runWithHtml(ticketNumber: number): string {
+  const tier = ticketTier(repoName(), ticketNumber);
+  const tiers = TIERS.map(
+    (candidate) =>
+      `<button type="button" class="seg${candidate === tier ? ' is-on' : ''}" data-tier="${candidate}" aria-pressed="${String(candidate === tier)}" title="${escapeHtml(TIER_HINT[candidate])}">${TIER_LABEL[candidate]}</button>`,
+  ).join('');
+  return `
+    <div class="runwith-row">
+      <span class="runwith-label">Run as</span>
+      <div class="segmented" role="group" aria-label="Task tier">${tiers}</div>
+      <button type="button" class="linkish" id="edit-tiers">Defaults</button>
+    </div>
+    <div class="runwith-row picker" id="ticket-picker">${ticketPickerHtml(tier)}</div>`;
+}
+
+function ticketPickerHtml(tier: Tier): string {
+  const state = currentCatalog();
+  if (state.status === 'loading') return '<span class="hint">Loading T3 Code models…</span>';
+  if (state.status === 'unavailable') return `<span class="hint">${escapeHtml(state.reason)} T3 Code will pick the model.</span>`;
+  const choice = liveChoice(state.catalog, tierDefaults()[tier]);
+  return (
+    modelSelectHtml(state.catalog, choice, 'id="ticket-model" aria-label="Model"') +
+    effortSelectHtml(findModel(state.catalog, choice), choice?.effort?.value, 'id="ticket-effort"')
+  );
+}
+
+/** The model the ticket panel is set to right now, or null for T3 Code's default. */
+function pickedModel(): ModelChoice | null {
+  const state = currentCatalog();
+  const modelSelect = document.getElementById('ticket-model');
+  if (state.status !== 'ready' || !(modelSelect instanceof HTMLSelectElement)) return null;
+  const effortSelect = document.getElementById('ticket-effort');
+  return readChoice(state.catalog, modelSelect, effortSelect instanceof HTMLSelectElement ? effortSelect : null);
+}
+
+/** Swap the effort select for the one the newly picked model takes, at that model's default. */
+function refreshEffort(modelSelect: HTMLSelectElement, effortId: string, attrs: string): void {
+  const state = currentCatalog();
+  if (state.status !== 'ready') return;
+  const [instanceId = '', ...rest] = modelSelect.value.split('::');
+  const model = findModel(state.catalog, { instanceId, model: rest.join('::') });
+  document.getElementById(effortId)?.remove();
+  modelSelect.insertAdjacentHTML('afterend', effortSelectHtml(model, undefined, attrs));
+}
+
+function renderTierRows(): void {
+  const state = currentCatalog();
+  if (state.status !== 'ready') {
+    els.tierRows.innerHTML = `<p class="hint">${state.status === 'loading' ? 'Loading T3 Code models…' : escapeHtml(state.reason)}</p>`;
+    return;
+  }
+  const saved = tierDefaults();
+  els.tierRows.innerHTML = TIERS.map((tier) => {
+    const choice = liveChoice(state.catalog, saved[tier]);
+    return `<div class="tier-row">
+      <div class="tier-name"><strong>${TIER_LABEL[tier]}</strong><span>${escapeHtml(TIER_HINT[tier])}</span></div>
+      <div class="picker">
+        ${modelSelectHtml(state.catalog, choice, `id="tier-model-${tier}" data-tier-model="${tier}" aria-label="${TIER_LABEL[tier]} model"`)}
+        ${effortSelectHtml(findModel(state.catalog, choice), choice?.effort?.value, `id="tier-effort-${tier}" data-tier-effort="${tier}"`)}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function saveTierRow(tier: Tier): void {
+  const state = currentCatalog();
+  const modelSelect = document.getElementById(`tier-model-${tier}`);
+  if (state.status !== 'ready' || !(modelSelect instanceof HTMLSelectElement)) return;
+  const effortSelect = document.getElementById(`tier-effort-${tier}`);
+  saveTierDefault(tier, readChoice(state.catalog, modelSelect, effortSelect instanceof HTMLSelectElement ? effortSelect : null));
+}
+
+function openModels(): void {
+  renderTierRows();
+  els.modelsDialog.showModal();
+  void loadCatalog(true).then(renderTierRows);
+}
+
+/** Put a fresh picker in the ticket panel once the catalog arrives or the defaults change. */
+function refreshTicketPicker(): void {
+  const picker = document.getElementById('ticket-picker');
+  if (picker === null || selected === null) return;
+  picker.innerHTML = ticketPickerHtml(ticketTier(repoName(), selected));
 }
 
 /* ---------- hand-off ---------- */
@@ -400,7 +512,7 @@ async function handOff(copyOnly: boolean): Promise<void> {
     const response = await fetch('/api/hand-off', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ map: map.number, ticket: selected, copyOnly }),
+      body: JSON.stringify({ map: map.number, ticket: selected, copyOnly, model: copyOnly ? null : pickedModel() }),
     });
     const body = (await response.json()) as {
       prompt?: string;
@@ -471,13 +583,41 @@ els.tableWrap.addEventListener('click', (event) => {
 els.detail.addEventListener('click', (event) => {
   const target = event.target as HTMLElement;
   if (target.closest('#detail-close') !== null) select(null);
+  if (target.closest('#edit-tiers') !== null) openModels();
+  const tierButton = target.closest<HTMLElement>('[data-tier]');
+  if (tierButton !== null && selected !== null) {
+    saveTicketTier(repoName(), selected, tierButton.dataset['tier'] as Tier);
+    const runWith = document.getElementById('runwith');
+    if (runWith !== null) runWith.innerHTML = runWithHtml(selected);
+  }
   if (target.closest('#start-thread') !== null) void handOff(false);
   if (target.closest('#copy-prompt') !== null) void handOff(true);
 });
 
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') select(null);
+els.detail.addEventListener('change', (event) => {
+  const target = event.target;
+  if (target instanceof HTMLSelectElement && target.id === 'ticket-model') refreshEffort(target, 'ticket-effort', 'id="ticket-effort"');
 });
+
+els.tierRows.addEventListener('change', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) return;
+  const tier = (target.dataset['tierModel'] ?? target.dataset['tierEffort']) as Tier | undefined;
+  if (tier === undefined) return;
+  if (target.dataset['tierModel'] !== undefined) {
+    refreshEffort(target, `tier-effort-${tier}`, `id="tier-effort-${tier}" data-tier-effort="${tier}"`);
+  }
+  saveTierRow(tier);
+});
+
+els.modelsDialog.addEventListener('close', refreshTicketPicker);
+need('models').addEventListener('click', openModels);
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !els.modelsDialog.open) select(null);
+});
+
+void loadCatalog().then(refreshTicketPicker);
 
 need('refresh').addEventListener('click', () => void load(true));
 

@@ -15,7 +15,7 @@ await esbuild.build({
   outfile: join(dist, 'cli.js'),
   bundle: true,
   platform: 'node',
-  target: 'node20',
+  target: 'node22',
   format: 'esm',
   logLevel: 'info',
 });
