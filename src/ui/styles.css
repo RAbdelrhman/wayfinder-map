@@ -657,6 +657,16 @@ tbody tr:hover {
   cursor: progress;
 }
 
+.primary[title]:disabled {
+  cursor: not-allowed;
+}
+
+.hint {
+  margin: -6px 0 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .body-text {
   border-top: 1px solid var(--gridline);
   padding-top: 12px;

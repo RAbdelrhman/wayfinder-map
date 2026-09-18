@@ -355,6 +355,13 @@ function renderDetail(): void {
           })
           .join(', ');
 
+  const startable =
+    ticket.state === 'done'
+      ? 'This ticket is closed.'
+      : ticket.state === 'blocked'
+        ? `Waiting on ${ticket.openBlockers.map((n) => `#${String(n)}`).join(', ')}.`
+        : null;
+
   els.detail.innerHTML = `
     <div class="detail-head" style="--accent: var(${style.variable})">
       ${typeGlyph(ticket.type)}
@@ -370,10 +377,11 @@ function renderDetail(): void {
       <dt>Map</dt><dd>${escapeHtml(map.title)}</dd>
     </dl>
     <div class="actions">
-      <button type="button" class="primary" id="start-thread">Start T3 Code thread</button>
+      <button type="button" class="primary" id="start-thread"${startable === null ? '' : ` disabled title="${escapeHtml(startable)}"`}>Open in T3 Code</button>
       <button type="button" class="ghost" id="copy-prompt">Copy prompt</button>
       <a class="ghost" href="${escapeHtml(ticket.url)}" target="_blank" rel="noreferrer" style="text-decoration:none">GitHub</a>
     </div>
+    ${startable === null ? '' : `<p class="hint">${escapeHtml(startable)}</p>`}
     <details class="section"><summary>Prompt this sends</summary><pre class="prompt" id="prompt-preview">…</pre></details>
     <div class="body-text">${escapeHtml(ticket.body.trim().length === 0 ? 'No description on the issue.' : ticket.body)}</div>
   `;
@@ -396,8 +404,9 @@ async function handOff(copyOnly: boolean): Promise<void> {
     });
     const body = (await response.json()) as {
       prompt?: string;
+      rung?: 'thread' | 'app' | 'clipboard' | null;
       copied?: boolean;
-      opened?: string | null;
+      notice?: string | null;
       error?: string | null;
     };
 
@@ -409,17 +418,19 @@ async function handOff(copyOnly: boolean): Promise<void> {
     const preview = document.getElementById('prompt-preview');
     if (preview !== null && typeof body.prompt === 'string') preview.textContent = body.prompt;
 
-    if (body.error !== null && body.error !== undefined) {
+    if (typeof body.error === 'string') {
       toast(body.error, 9000);
       return;
     }
-
-    toast(
-      copyOnly
-        ? 'Prompt copied. Paste it into a new T3 Code thread.'
-        : 'Prompt copied and T3 Code is up front. Open a new thread and paste (Ctrl+V).',
-      6000,
-    );
+    if (copyOnly) {
+      toast('Prompt copied.', 4000);
+      return;
+    }
+    if (body.rung === 'thread') {
+      toast('Started in T3 Code.', 3000);
+      return;
+    }
+    toast(`${body.notice ?? ''}${body.rung === 'app' ? '' : ' Prompt copied.'}`.trim(), 9000);
   } catch (error) {
     toast((error as Error).message, 9000);
   } finally {

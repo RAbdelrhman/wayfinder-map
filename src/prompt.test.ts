@@ -72,6 +72,19 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('create a throwaway worktree from HEAD');
   });
 
+  it('says the worktree is ready when T3 Code already made it', () => {
+    const prompt = buildPrompt({
+      repo: 'owner/repo',
+      map,
+      ticket,
+      worktree: { branch: 'wayfinder/11-retire-2', baseBranch: 'main' },
+    });
+
+    expect(prompt).toContain('already in a dedicated git worktree on branch wayfinder/11-retire-2');
+    expect(prompt).toContain('made\nfrom main.');
+    expect(prompt).not.toContain('create and enter a dedicated');
+  });
+
   it('makes derived worktree placeholders available to custom templates', () => {
     const prompt = buildPrompt({
       repo: 'owner/repo',
