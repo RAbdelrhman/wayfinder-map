@@ -19,6 +19,7 @@ import {
   tierDefaults,
 } from './models.js';
 import type { ModelChoice, Tier } from './models.js';
+import { AutoRefresh } from './autoRefresh.js';
 
 /* ---------- state channel: one hue each, always with an icon and a word ---------- */
 
@@ -142,6 +143,7 @@ function currentMap(): WayfinderMap | null {
 }
 
 let toastTimer: number | undefined;
+let loadInFlight: Promise<boolean> | null = null;
 
 function toast(message: string, ms = 4200): void {
   els.toast.textContent = message;
@@ -154,19 +156,39 @@ function toast(message: string, ms = 4200): void {
 
 /* ---------- data ---------- */
 
-async function load(force: boolean): Promise<void> {
-  els.repo.textContent = force ? 're-reading GitHub…' : 'reading GitHub…';
-  const response = await fetch(`/api/snapshot${force ? '?refresh=1' : ''}`);
-  const body: unknown = await response.json();
-  if (!response.ok) {
-    const message = (body as { error?: string }).error ?? 'Could not read the maps.';
-    els.repo.textContent = 'failed';
-    toast(message, 12000);
-    return;
-  }
-  snapshot = body as MapSnapshot;
-  activeMap = Math.min(activeMap, Math.max(0, snapshot.maps.length - 1));
-  render();
+async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean> {
+  if (loadInFlight !== null) return loadInFlight;
+  const force = mode !== 'initial';
+  if (mode === 'manual') els.repo.textContent = 're-reading GitHub…';
+  if (mode === 'initial') els.repo.textContent = 'reading GitHub…';
+
+  loadInFlight = (async () => {
+    try {
+      const response = await fetch(`/api/snapshot${force ? '?refresh=1' : ''}`);
+      const body: unknown = await response.json();
+      if (!response.ok) {
+        const message = (body as { error?: string }).error ?? 'Could not read the maps.';
+        if (mode !== 'background' || snapshot === null) {
+          els.repo.textContent = 'failed';
+          toast(message, 12000);
+        }
+        return false;
+      }
+      snapshot = body as MapSnapshot;
+      activeMap = Math.min(activeMap, Math.max(0, snapshot.maps.length - 1));
+      render();
+      return true;
+    } catch (error) {
+      if (mode !== 'background' || snapshot === null) {
+        els.repo.textContent = 'failed';
+        toast((error as Error).message || 'Could not read the maps.', 12000);
+      }
+      return false;
+    } finally {
+      loadInFlight = null;
+    }
+  })();
+  return loadInFlight;
 }
 
 /* ---------- render ---------- */
@@ -619,7 +641,7 @@ document.addEventListener('keydown', (event) => {
 
 void loadCatalog().then(refreshTicketPicker);
 
-need('refresh').addEventListener('click', () => void load(true));
+need('refresh').addEventListener('click', () => void load('manual'));
 
 need('theme').addEventListener('click', () => {
   const dark = getComputedStyle(document.body).getPropertyValue('color-scheme').trim() === 'dark';
@@ -699,4 +721,15 @@ for (const type of ['pointerup', 'pointercancel'] as const) {
   });
 }
 
-void load(false);
+const autoRefresh = new AutoRefresh({
+  refresh: () => load('background'),
+  isVisible: () => document.visibilityState === 'visible',
+});
+
+document.addEventListener('visibilitychange', () => autoRefresh.visibilityChanged());
+window.addEventListener('pagehide', () => autoRefresh.stop());
+
+void load('initial').then((successful) => {
+  if (successful) autoRefresh.markSuccessfulSnapshot();
+  autoRefresh.start();
+});
