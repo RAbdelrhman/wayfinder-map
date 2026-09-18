@@ -51,17 +51,18 @@ const PROGRESS_ORDER: TicketState[] = ['done', 'claimed', 'frontier', 'blocked']
 
 interface TypeStyle {
   label: string;
+  blurb: string;
   icon: string;
 }
 
 const TYPE_STYLE: Record<TicketType, TypeStyle> = {
-  research: { label: 'research', icon: icons.LENS },
-  prototype: { label: 'prototype', icon: icons.BEAKER },
-  grilling: { label: 'grilling', icon: icons.GRILL },
-  task: { label: 'task', icon: icons.LIST },
+  research: { label: 'research', blurb: 'Find something out from docs or code', icon: icons.LENS },
+  prototype: { label: 'prototype', blurb: 'Build a throwaway to try an idea; needs you', icon: icons.BEAKER },
+  grilling: { label: 'grilling', blurb: 'Talk a decision through; needs you', icon: icons.GRILL },
+  task: { label: 'task', blurb: 'A known job, ready to build', icon: icons.LIST },
 };
 
-const UNTYPED: TypeStyle = { label: 'untyped', icon: icons.BLANK };
+const UNTYPED: TypeStyle = { label: 'untyped', blurb: 'No wayfinder:<type> label on the issue', icon: icons.BLANK };
 
 function typeStyle(type: TicketType | null): TypeStyle {
   return type === null ? UNTYPED : TYPE_STYLE[type];
@@ -101,7 +102,6 @@ const els = {
   repo: need('repo'),
   mapSwitch: need<HTMLButtonElement>('mapswitch'),
   mapMenu: need('mapmenu'),
-  progress: need('progress'),
   synced: need('synced'),
   inspectorToggle: need('inspector-toggle'),
   warnings: need('warnings'),
@@ -217,13 +217,6 @@ function countStates(map: WayfinderMap): Record<TicketState, number> {
   return counts;
 }
 
-function progressBar(counts: Record<TicketState, number>): string {
-  const segments = PROGRESS_ORDER.filter((state) => counts[state] > 0)
-    .map((state) => `<span style="flex:${String(counts[state])}; background: var(${STATE_STYLE[state].variable})"></span>`)
-    .join('');
-  return `<div class="pbar" aria-hidden="true">${segments}</div>`;
-}
-
 /** The brief's progress ring: one arc per state, in progress order, with a small gap between arcs. */
 function progressRing(counts: Record<TicketState, number>, total: number): string {
   const size = 76;
@@ -307,13 +300,10 @@ function renderHead(): void {
   if (map === null) {
     els.mapSwitch.disabled = true;
     els.mapSwitch.innerHTML = '<span class="t">No maps yet</span>';
-    els.progress.innerHTML = '';
   } else {
     const open = map.tickets.filter((ticket) => ticket.open).length;
     els.mapSwitch.disabled = false;
     els.mapSwitch.innerHTML = `<span class="t">${escapeHtml(map.title)}</span><span class="badge">${String(open)} open</span>${icon(icons.CHEVRON)}`;
-    const counts = countStates(map);
-    els.progress.innerHTML = `<span><b>${String(counts.done)}</b> of ${String(map.tickets.length)} done</span>${progressBar(counts)}`;
   }
 
   els.mapMenu.innerHTML = `<div class="menu-label eyebrow">Maps in ${escapeHtml(snapshot.repo)}</div>${snapshot.maps
@@ -363,7 +353,10 @@ function renderKey(): void {
     const style = STATE_STYLE[state];
     return `<div class="keyrow"><span style="color: var(${style.variable}); display: flex">${icon(style.icon)}</span><b>${escapeHtml(style.long)}</b>${escapeHtml(style.blurb)}</div>`;
   }).join('');
-  const types = TICKET_TYPES.map((type) => `<div class="keyrow is-type">${icon(TYPE_STYLE[type].icon)}${escapeHtml(TYPE_STYLE[type].label)}</div>`).join('');
+  const types = TICKET_TYPES.map((type) => {
+    const style = TYPE_STYLE[type];
+    return `<div class="keyrow is-type">${icon(style.icon)}<b>${escapeHtml(style.label)}</b>${escapeHtml(style.blurb)}</div>`;
+  }).join('');
   els.keyMenu.innerHTML = `${states}<div class="menu-sep"></div>${types}<div class="menu-sep"></div>
     <div class="keyrow">A yellow line is a blocker that is still open.</div>`;
 }

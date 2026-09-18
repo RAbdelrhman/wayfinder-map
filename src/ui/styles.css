@@ -291,7 +291,7 @@ code {
   top: auto;
   bottom: calc(100% + 8px);
   padding: 10px 12px;
-  min-width: 300px;
+  min-width: 380px;
 }
 
 .menu-label {
@@ -358,28 +358,17 @@ code {
 }
 
 .keyrow b {
-  width: 64px;
+  flex: none;
+  width: 76px;
   font-weight: 500;
   color: var(--text-primary);
 }
 
-.keyrow.is-type {
+.keyrow.is-type .i {
   color: var(--text-secondary);
 }
 
-/* progress bar */
-.pbar {
-  display: flex;
-  gap: 2px;
-  height: 6px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: var(--wash);
-}
 
-.pbar span {
-  display: block;
-}
 
 /* ---------- layout ---------- */
 
@@ -524,27 +513,11 @@ code {
   color: var(--text-muted);
 }
 
-.progress {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
 
-.progress b {
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
 
-.progress .pbar {
-  width: 140px;
-}
 
 .synced {
-  margin: 0 6px 0 8px;
+  margin: 0 6px 0 auto;
   font-size: 12px;
   color: var(--text-muted);
   white-space: nowrap;
@@ -1557,7 +1530,6 @@ tbody tr.is-selected {
 }
 
 @media (max-width: 1100px) {
-  .progress .pbar,
   .synced {
     display: none;
   }
