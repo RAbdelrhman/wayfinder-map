@@ -83,7 +83,7 @@ in one line:
 
 ### Picking the model
 
-**Models** in the top bar sets a default model and reasoning level for three task
+**Models** (the sliders icon in the left rail) sets a default model and reasoning level for three task
 tiers: Simple, Mid and Hard. The list is whatever T3 Code can run right now, across
 every provider you have enabled (Codex, Claude, Grok, OpenCode, Antigravity, …),
 read live from T3 Code.

@@ -1,7 +1,7 @@
 import { DEFAULT_LAYOUT, layoutTickets } from '../layout.js';
 import type { PositionedNode } from '../layout.js';
 import { TICKET_TYPES } from '../types.js';
-import type { MapSnapshot, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
+import type { MapSections, MapSnapshot, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
 import {
   TIERS,
   TIER_HINT,
@@ -20,89 +20,74 @@ import {
 } from './models.js';
 import type { ModelChoice, Tier } from './models.js';
 import { AutoRefresh } from './autoRefresh.js';
+import { lineage, matchesFilter, matchesQuery, onLineage, syncedLabel } from './focus.js';
+import type { Lineage, TicketFilter } from './focus.js';
+import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
+import * as icons from './icons.js';
+import { icon } from './icons.js';
 
 /* ---------- state channel: one hue each, always with an icon and a word ---------- */
 
 interface StateStyle {
   label: string;
-  legend: string;
+  long: string;
+  blurb: string;
   variable: string;
   icon: string;
 }
 
-const CHECK = '<path d="M20 6 9 17l-5-5"/>';
-const LOCK = '<rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>';
-const PERSON = '<path d="M20 21a8 8 0 1 0-16 0"/><circle cx="12" cy="7" r="4"/>';
-const ARROW = '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>';
-
 const STATE_STYLE: Record<TicketState, StateStyle> = {
-  frontier: { label: 'next', legend: 'Next up: open, unblocked, unclaimed', variable: '--state-frontier', icon: ARROW },
-  claimed: { label: 'claimed', legend: 'Claimed: someone is on it', variable: '--state-claimed', icon: PERSON },
-  blocked: { label: 'blocked', legend: 'Blocked: waiting on another ticket', variable: '--state-blocked', icon: LOCK },
-  done: { label: 'done', legend: 'Done: the issue is closed', variable: '--state-done', icon: CHECK },
+  frontier: { label: 'next', long: 'Next up', blurb: 'Open, unblocked, unclaimed', variable: '--state-frontier', icon: icons.ARROW },
+  claimed: { label: 'claimed', long: 'Claimed', blurb: 'Someone is on it', variable: '--state-claimed', icon: icons.PERSON },
+  blocked: { label: 'blocked', long: 'Blocked', blurb: 'Waiting on another ticket', variable: '--state-blocked', icon: icons.LOCK },
+  done: { label: 'done', long: 'Done', blurb: 'The issue is closed', variable: '--state-done', icon: icons.CHECK },
 };
 
 const STATE_ORDER: TicketState[] = ['frontier', 'claimed', 'blocked', 'done'];
+/** Progress reads left to right: finished, in hand, ready, waiting. */
+const PROGRESS_ORDER: TicketState[] = ['done', 'claimed', 'frontier', 'blocked'];
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
 interface TypeStyle {
   label: string;
+  blurb: string;
   icon: string;
 }
 
-/** A magnifier: go and find out. */
-const LENS = '<circle cx="11" cy="11" r="6.4"/><path d="m20 20-4.4-4.4"/>';
-/** A beaker: build the small thing and see what happens. */
-const BEAKER =
-  '<path d="M9.5 3h5"/><path d="M10.8 3v6.4L5.5 17.9A2 2 0 0 0 7.2 21h9.6a2 2 0 0 0 1.7-3.1L13.2 9.4V3"/><path d="M7.8 15h8.4"/>';
-/** A kettle grill, heat and all: hold the idea over the flame. */
-const GRILL =
-  '<path d="M3.5 8.5h17"/><path d="M5 8.5a7 7 0 0 0 14 0"/><path d="m8.4 14.5-2.4 6.3"/><path d="m15.6 14.5 2.4 6.3"/><path d="M9.6 2.3c-1 1.1.6 1.7 0 2.9"/><path d="M14.4 2.3c-1 1.1.6 1.7 0 2.9"/>';
-/** A list: a known job, written down. */
-const LIST = '<path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/><path d="M8.5 6H20"/><path d="M8.5 12H20"/><path d="M8.5 18H20"/>';
-/** A circle with a bar through it: no wayfinder:<type> label on the issue. */
-const BLANK = '<circle cx="12" cy="12" r="7.4"/><path d="M8.6 12h6.8"/>';
-
 const TYPE_STYLE: Record<TicketType, TypeStyle> = {
-  research: { label: 'research', icon: LENS },
-  prototype: { label: 'prototype', icon: BEAKER },
-  grilling: { label: 'grilling', icon: GRILL },
-  task: { label: 'task', icon: LIST },
+  research: { label: 'research', blurb: 'Find something out from docs or code', icon: icons.LENS },
+  prototype: { label: 'prototype', blurb: 'Build a throwaway to try an idea; needs you', icon: icons.BEAKER },
+  grilling: { label: 'grilling', blurb: 'Talk a decision through; needs you', icon: icons.GRILL },
+  task: { label: 'task', blurb: 'A known job, ready to build', icon: icons.LIST },
 };
 
-const UNTYPED: TypeStyle = { label: 'untyped', icon: BLANK };
+const UNTYPED: TypeStyle = { label: 'untyped', blurb: 'No wayfinder:<type> label on the issue', icon: icons.BLANK };
 
 function typeStyle(type: TicketType | null): TypeStyle {
   return type === null ? UNTYPED : TYPE_STYLE[type];
 }
 
-/** The square type badge that rides at the head of a node, a row and the detail panel. */
+/** The square type badge that rides at the head of a node, the hover card and the ticket panel. */
 function typeGlyph(type: TicketType | null): string {
   const style = typeStyle(type);
   return `<span class="glyph" title="${escapeHtml(style.label)}">${icon(style.icon)}</span>`;
 }
 
-function icon(path: string): string {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+function stateChip(state: TicketState): string {
+  const style = STATE_STYLE[state];
+  return `<span class="chip" style="--accent: var(${style.variable})">${icon(style.icon)}${escapeHtml(style.label)}</span>`;
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => {
-    switch (char) {
-      case '&':
-        return '&amp;';
-      case '<':
-        return '&lt;';
-      case '>':
-        return '&gt;';
-      case '"':
-        return '&quot;';
-      default:
-        return '&#39;';
-    }
-  });
-}
+/* ---------- map brief sections, in the order the brief tabs show them ---------- */
+
+const SECTIONS: ReadonlyArray<readonly [keyof MapSections, string]> = [
+  ['destination', 'Destination'],
+  ['fog', 'Not yet specified'],
+  ['decisions', 'Decided'],
+  ['notes', 'Notes'],
+  ['outOfScope', 'Out of scope'],
+];
 
 /* ---------- element handles ---------- */
 
@@ -113,30 +98,61 @@ function need<T extends HTMLElement>(id: string): T {
 }
 
 const els = {
+  app: need('app'),
   repo: need('repo'),
-  tabs: need('maptabs'),
+  mapSwitch: need<HTMLButtonElement>('mapswitch'),
+  mapMenu: need('mapmenu'),
+  synced: need('synced'),
+  search: need<HTMLInputElement>('search'),
   warnings: need('warnings'),
-  mapcard: need('mapcard'),
-  legend: need('legend'),
+  filters: need('filters'),
   canvasWrap: need('canvas-wrap'),
   canvas: need('canvas'),
   edges: need<HTMLElement>('edges') as unknown as SVGSVGElement,
   nodes: need('nodes'),
   tableWrap: need('tablewrap'),
-  detail: need('detail'),
+  keyButton: need('key'),
+  keyMenu: need('keymenu'),
+  zoomReset: need('zoom-reset'),
+  inspector: need('inspector'),
+  hovercard: need('hovercard'),
   toast: need('toast'),
   modelsDialog: need<HTMLDialogElement>('models-dialog'),
   tierRows: need('tier-rows'),
-  shell: document.querySelector<HTMLElement>('.shell'),
+  refresh: need('refresh'),
 };
+
+const STATIC_ICONS: Record<string, string> = {
+  compass: icons.COMPASS,
+  graph: icons.GRAPH,
+  table: icons.TABLE,
+  sliders: icons.SLIDERS,
+  refresh: icons.REFRESH,
+  moon: icons.MOON,
+  lens: icons.LENS,
+  info: icons.INFO,
+  minus: icons.MINUS,
+  plus: icons.PLUS,
+};
+
+for (const element of document.querySelectorAll<HTMLElement>('[data-icon]')) {
+  const path = STATIC_ICONS[element.dataset['icon'] ?? ''];
+  if (path !== undefined) element.innerHTML = icon(path);
+}
 
 /* ---------- app state ---------- */
 
 let snapshot: MapSnapshot | null = null;
 let activeMap = 0;
 let selected: number | null = null;
+let hovered: number | null = null;
+let filter: TicketFilter | null = null;
 let view: 'map' | 'table' = 'map';
 let zoom = 1;
+let inspectorTab: 'brief' | 'ticket' = 'brief';
+let briefSection: keyof MapSections = 'destination';
+
+let query = '';
 
 function currentMap(): WayfinderMap | null {
   return snapshot?.maps[activeMap] ?? null;
@@ -159,8 +175,8 @@ function toast(message: string, ms = 4200): void {
 async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean> {
   if (loadInFlight !== null) return loadInFlight;
   const force = mode !== 'initial';
-  if (mode === 'manual') els.repo.textContent = 're-reading GitHub…';
   if (mode === 'initial') els.repo.textContent = 'reading GitHub…';
+  if (mode === 'manual') els.refresh.classList.add('is-busy');
 
   loadInFlight = (async () => {
     try {
@@ -169,7 +185,7 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       if (!response.ok) {
         const message = (body as { error?: string }).error ?? 'Could not read the maps.';
         if (mode !== 'background' || snapshot === null) {
-          els.repo.textContent = 'failed';
+          if (snapshot === null) els.repo.textContent = 'failed';
           toast(message, 12000);
         }
         return false;
@@ -180,97 +196,167 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       return true;
     } catch (error) {
       if (mode !== 'background' || snapshot === null) {
-        els.repo.textContent = 'failed';
+        if (snapshot === null) els.repo.textContent = 'failed';
         toast((error as Error).message || 'Could not read the maps.', 12000);
       }
       return false;
     } finally {
       loadInFlight = null;
+      els.refresh.classList.remove('is-busy');
     }
   })();
   return loadInFlight;
+}
+
+/* ---------- small builders ---------- */
+
+function countStates(map: WayfinderMap): Record<TicketState, number> {
+  const counts: Record<TicketState, number> = { frontier: 0, claimed: 0, blocked: 0, done: 0 };
+  for (const ticket of map.tickets) counts[ticket.state] += 1;
+  return counts;
+}
+
+/** The brief's progress ring: one arc per state, in progress order, with a small gap between arcs. */
+function progressRing(counts: Record<TicketState, number>, total: number): string {
+  const size = 76;
+  const stroke = 7;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const center = String(size / 2);
+  let offset = 0;
+  const arcs =
+    total === 0
+      ? `<circle cx="${center}" cy="${center}" r="${String(radius)}" fill="none" stroke="var(--wash)" stroke-width="${String(stroke)}"/>`
+      : PROGRESS_ORDER.filter((state) => counts[state] > 0)
+          .map((state) => {
+            const length = (counts[state] / total) * circumference;
+            const gap = counts[state] === total ? 0 : 3;
+            const arc = `<circle cx="${center}" cy="${center}" r="${String(radius)}" fill="none" stroke="var(${STATE_STYLE[state].variable})" stroke-width="${String(stroke)}" stroke-dasharray="${String(Math.max(0, length - gap))} ${String(circumference)}" stroke-dashoffset="${String(-offset)}"/>`;
+            offset += length;
+            return arc;
+          })
+          .join('');
+  return `<svg viewBox="0 0 ${String(size)} ${String(size)}" aria-hidden="true">${arcs}</svg>`;
+}
+
+function miniRing(done: number, total: number): string {
+  const radius = 7;
+  const circumference = 2 * Math.PI * radius;
+  const share = total === 0 ? 0 : done / total;
+  return `<svg class="miniring" viewBox="0 0 18 18" aria-hidden="true">
+    <circle cx="9" cy="9" r="${String(radius)}" fill="none" stroke="var(--baseline)" stroke-width="2.4"/>
+    <circle cx="9" cy="9" r="${String(radius)}" fill="none" stroke="var(--state-frontier)" stroke-width="2.4" stroke-dasharray="${String(share * circumference)} ${String(circumference)}"/>
+  </svg>`;
+}
+
+/** Linked ticket numbers, coloured by their state when they sit on this map. Clicking one opens it. */
+function ticketPills(map: WayfinderMap, numbers: readonly number[], withTitles = false): string {
+  if (numbers.length === 0) return '<span class="none">—</span>';
+  return numbers
+    .map((number) => {
+      const other = map.tickets.find((ticket) => ticket.number === number);
+      const accent = other === undefined ? '--text-muted' : STATE_STYLE[other.state].variable;
+      const title = withTitles && other !== undefined ? ` ${other.title}` : '';
+      const label = `<span class="pill-text">${escapeHtml(`#${String(number)}${title}`)}</span>`;
+      return other === undefined
+        ? `<span class="pill" style="--accent: var(${accent})" title="Not on this map">${label}</span>`
+        : `<button type="button" class="pill" style="--accent: var(${accent})" data-jump="${String(number)}" title="${escapeHtml(other.title)}">${label}</button>`;
+    })
+    .join('');
+}
+
+function dependents(map: WayfinderMap, number: number): number[] {
+  return map.tickets.filter((ticket) => ticket.blockedBy.includes(number)).map((ticket) => ticket.number);
 }
 
 /* ---------- render ---------- */
 
 function render(): void {
   if (snapshot === null) return;
-  els.repo.textContent = snapshot.repo;
   document.title = `${snapshot.repo} · wayfinder map`;
 
   els.warnings.hidden = snapshot.warnings.length === 0;
   els.warnings.textContent = snapshot.warnings.join('  ·  ');
 
-  renderTabs(snapshot.maps);
-  renderLegend();
-  renderMapCard();
+  const map = currentMap();
+  if (selected !== null && map?.tickets.some((ticket) => ticket.number === selected) !== true) selected = null;
+
+  renderHead();
+  renderFilters();
+  renderKey();
   if (view === 'map') renderGraph();
   else renderTable();
-  renderDetail();
+  renderInspector();
 }
 
-function renderTabs(maps: readonly WayfinderMap[]): void {
-  els.tabs.innerHTML = maps
-    .map((map, index) => {
-      const open = map.tickets.filter((ticket) => ticket.open).length;
-      return `<button type="button" class="maptab${index === activeMap ? ' is-on' : ''}" data-index="${String(index)}">
-        ${escapeHtml(map.title)} <span class="num">${String(open)} open</span>
-      </button>`;
-    })
-    .join('');
-}
+function renderHead(): void {
+  if (snapshot === null) return;
+  const [owner, name] = snapshot.repo.includes('/') ? snapshot.repo.split('/', 2) : ['', snapshot.repo];
+  els.repo.innerHTML = `${owner ? `<span>${escapeHtml(owner)}</span><span class="crumb-sep">/</span>` : ''}<span class="is-repo">${escapeHtml(name ?? '')}</span><span class="crumb-sep">/</span>`;
 
-function renderLegend(): void {
-  const states = STATE_ORDER.map((state) => {
-    const style = STATE_STYLE[state];
-    return `<span class="legend-item" role="listitem" style="--accent: var(${style.variable})">
-      <span style="color: var(${style.variable}); display:flex">${icon(style.icon)}</span>${escapeHtml(style.legend)}
-    </span>`;
-  }).join('');
-
-  const types = TICKET_TYPES.map((type) => {
-    const style = TYPE_STYLE[type];
-    return `<span class="legend-item is-type" role="listitem">${icon(style.icon)}${escapeHtml(style.label)}</span>`;
-  }).join('');
-
-  els.legend.innerHTML = `${states}<span class="legend-sep" role="none" aria-hidden="true"></span>${types}`;
-}
-
-function renderMapCard(): void {
   const map = currentMap();
+  els.mapSwitch.hidden = false;
   if (map === null) {
-    els.mapcard.innerHTML = '';
-    return;
+    els.mapSwitch.disabled = true;
+    els.mapSwitch.innerHTML = '<span class="t">No maps yet</span>';
+  } else {
+    const open = map.tickets.filter((ticket) => ticket.open).length;
+    els.mapSwitch.disabled = false;
+    els.mapSwitch.innerHTML = `<span class="t">${escapeHtml(map.title)}</span><span class="badge">${String(open)} open</span>${icon(icons.CHEVRON)}`;
   }
 
-  const counts = new Map<TicketState, number>();
-  for (const ticket of map.tickets) counts.set(ticket.state, (counts.get(ticket.state) ?? 0) + 1);
-
-  const tally = STATE_ORDER.filter((state) => (counts.get(state) ?? 0) > 0)
-    .map((state) => {
-      const style = STATE_STYLE[state];
-      return `<span class="tally-item" style="--accent: var(${style.variable})">
-        <span style="color: var(${style.variable}); display:flex; width:13px">${icon(style.icon)}</span>
-        <b>${String(counts.get(state) ?? 0)}</b> ${escapeHtml(style.label)}
-      </span>`;
+  els.mapMenu.innerHTML = `<div class="menu-label eyebrow">Maps in ${escapeHtml(snapshot.repo)}</div>${snapshot.maps
+    .map((candidate, index) => {
+      const open = candidate.tickets.filter((ticket) => ticket.open).length;
+      const total = candidate.tickets.length;
+      return `<button type="button" role="menuitem" class="menu-item${index === activeMap ? ' is-on' : ''}" data-index="${String(index)}">
+        ${miniRing(total - open, total)}<span class="grow">${escapeHtml(candidate.title)}</span>
+        <span class="badge">${open === 0 ? 'done' : `${String(open)} open`}</span>
+      </button>`;
     })
-    .join('');
+    .join('')}`;
 
-  const section = (title: string, text: string, open: boolean): string =>
-    text.trim().length === 0
-      ? ''
-      : `<details class="section"${open ? ' open' : ''}><summary>${title}</summary><div class="prose">${escapeHtml(text)}</div></details>`;
+  renderSynced();
+}
 
-  els.mapcard.innerHTML = `
-    <h1>${escapeHtml(map.title)}</h1>
-    <a class="issuelink" href="${escapeHtml(map.url)}" target="_blank" rel="noreferrer">#${String(map.number)} on GitHub</a>
-    <div class="tally">${tally}</div>
-    ${section('Destination', map.sections.destination, true)}
-    ${section('Not yet specified', map.sections.fog, true)}
-    ${section('Notes', map.sections.notes, false)}
-    ${section('Decisions so far', map.sections.decisions, false)}
-    ${section('Out of scope', map.sections.outOfScope, false)}
-  `;
+function renderSynced(): void {
+  if (snapshot === null) return;
+  const fetched = Date.parse(snapshot.fetchedAt);
+  els.synced.textContent = Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched);
+}
+
+function renderFilters(): void {
+  const map = currentMap();
+  if (map === null) {
+    els.filters.innerHTML = '';
+    return;
+  }
+  const chip = (key: TicketFilter | null, label: string, path: string | null, count: number, variable: string | null): string =>
+    `<button type="button" class="fchip${filter === key ? ' is-on' : ''}" data-filter="${key ?? ''}" aria-pressed="${String(filter === key)}"${
+      variable === null ? '' : ` style="--accent: var(${variable})"`
+    }${count === 0 && filter !== key ? ' disabled' : ''}>${path === null ? '' : icon(path)}${escapeHtml(label)} <b>${String(count)}</b></button>`;
+
+  const counts = countStates(map);
+  const states = STATE_ORDER.map((state) => chip(state, STATE_STYLE[state].long, STATE_STYLE[state].icon, counts[state], STATE_STYLE[state].variable));
+  const types = TICKET_TYPES.map((type) =>
+    chip(type, TYPE_STYLE[type].label, TYPE_STYLE[type].icon, map.tickets.filter((ticket) => ticket.type === type).length, null),
+  );
+  const untyped = map.tickets.filter((ticket) => ticket.type === null).length;
+  if (untyped > 0) types.push(chip('untyped', UNTYPED.label, UNTYPED.icon, untyped, null));
+
+  els.filters.innerHTML = `${chip(null, 'All', null, map.tickets.length, null)}${states.join('')}<span class="filter-sep" role="none"></span>${types.join('')}`;
+}
+
+function renderKey(): void {
+  const states = STATE_ORDER.map((state) => {
+    const style = STATE_STYLE[state];
+    return `<div class="keyrow"><span style="color: var(${style.variable}); display: flex">${icon(style.icon)}</span><b>${escapeHtml(style.long)}</b>${escapeHtml(style.blurb)}</div>`;
+  }).join('');
+  const types = TICKET_TYPES.map((type) => {
+    const style = TYPE_STYLE[type];
+    return `<div class="keyrow is-type">${icon(style.icon)}<b>${escapeHtml(style.label)}</b>${escapeHtml(style.blurb)}</div>`;
+  }).join('');
+  els.keyMenu.innerHTML = `${states}<div class="menu-sep"></div>${types}`;
 }
 
 function nodeHtml(ticket: Ticket, position: PositionedNode): string {
@@ -282,16 +368,14 @@ function nodeHtml(ticket: Ticket, position: PositionedNode): string {
         ? `@${ticket.assignee}`
         : (ticket.type ?? 'untyped');
 
-  return `<button type="button" class="node${ticket.state === 'done' ? ' is-done' : ''}${
-    selected === ticket.number ? ' is-selected' : ''
-  }"
+  return `<button type="button" class="node${ticket.state === 'done' ? ' is-done' : ''}"
     data-number="${String(ticket.number)}"
     style="--accent: var(${style.variable}); left:${String(position.x)}px; top:${String(position.y)}px; width:${String(position.width)}px; height:${String(position.height)}px"
     aria-label="${escapeHtml(`#${String(ticket.number)} ${ticket.title}, ${style.label}`)}">
     <span class="node-top">
       ${typeGlyph(ticket.type)}
       <span class="num">#${String(ticket.number)}</span>
-      <span class="chip">${icon(style.icon)}${escapeHtml(style.label)}</span>
+      ${stateChip(ticket.state)}
     </span>
     <span class="title">${escapeHtml(ticket.title)}</span>
     <span class="meta">${escapeHtml(meta)}</span>
@@ -301,6 +385,7 @@ function nodeHtml(ticket: Ticket, position: PositionedNode): string {
 function renderGraph(): void {
   els.canvasWrap.hidden = false;
   els.tableWrap.hidden = true;
+  hideCard();
 
   const map = currentMap();
   if (map === null || map.tickets.length === 0) {
@@ -337,14 +422,17 @@ function renderGraph(): void {
       const y2 = to.y + to.height / 2;
       const bend = Math.max(28, (x2 - x1) / 2);
       const live = byNumber.get(edge.to)?.openBlockers.includes(edge.from) === true;
-      return `<path class="${live ? 'is-live' : ''}" d="M${String(x1)},${String(y1)} C${String(x1 + bend)},${String(y1)} ${String(x2 - bend)},${String(y2)} ${String(x2)},${String(y2)}" />`;
+      return `<path class="${live ? 'is-live' : ''}" data-from="${String(edge.from)}" data-to="${String(edge.to)}" d="M${String(x1)},${String(y1)} C${String(x1 + bend)},${String(y1)} ${String(x2 - bend)},${String(y2)} ${String(x2)},${String(y2)}" />`;
     })
     .join('');
+
+  syncHighlights();
 }
 
 function renderTable(): void {
   els.canvasWrap.hidden = true;
   els.tableWrap.hidden = false;
+  hideCard();
 
   const map = currentMap();
   if (map === null) {
@@ -372,61 +460,201 @@ function renderTable(): void {
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+
+  syncHighlights();
 }
 
-function renderDetail(): void {
+/**
+ * Selection, hover and filter only flip classes, so a hover never rebuilds the canvas
+ * and the pan position survives. Hovering a ticket fades everything off its chain.
+ */
+function syncHighlights(): void {
   const map = currentMap();
-  const ticket = map?.tickets.find((candidate) => candidate.number === selected) ?? null;
+  if (map === null) return;
+  const byNumber = new Map(map.tickets.map((ticket) => [ticket.number, ticket]));
+  const shown = (number: number): boolean => {
+    const ticket = byNumber.get(number);
+    return ticket !== undefined && matchesFilter(ticket, filter) && matchesQuery(ticket, query);
+  };
+  const chain: Lineage | null = hovered === null ? null : lineage(map.tickets, hovered);
+  const related = (number: number): boolean =>
+    chain === null || number === hovered || chain.upstream.has(number) || chain.downstream.has(number);
 
-  els.detail.hidden = ticket === null;
-  els.shell?.classList.toggle('has-detail', ticket !== null);
-  if (ticket === null || map === null) {
-    els.detail.innerHTML = '';
+  for (const node of els.nodes.querySelectorAll<HTMLElement>('.node')) {
+    const number = Number(node.dataset['number']);
+    node.classList.toggle('is-selected', number === selected);
+    node.classList.toggle('is-dim', !related(number) || !shown(number));
+  }
+
+  for (const path of els.edges.querySelectorAll<SVGPathElement>('path')) {
+    const edge = { from: Number(path.dataset['from']), to: Number(path.dataset['to']) };
+    const onPath = chain !== null && hovered !== null && onLineage(edge, hovered, chain);
+    path.classList.toggle('is-path', onPath);
+    path.classList.toggle('is-dim', chain === null ? !(shown(edge.from) && shown(edge.to)) : !onPath);
+  }
+
+  for (const row of els.tableWrap.querySelectorAll<HTMLElement>('tr[data-number]')) {
+    const number = Number(row.dataset['number']);
+    row.hidden = !shown(number);
+    row.classList.toggle('is-selected', number === selected);
+  }
+}
+
+/* ---------- hover card ---------- */
+
+let cardTimer: number | undefined;
+
+function showCard(node: HTMLElement, ticket: Ticket, map: WayfinderMap): void {
+  const style = STATE_STYLE[ticket.state];
+  const excerpt = ticket.body.replace(/[#*`>_[\]]/g, '').replace(/\s+/g, ' ').trim();
+  els.hovercard.style.setProperty('--accent', `var(${style.variable})`);
+  els.hovercard.innerHTML = `
+    <div class="node-top">${typeGlyph(ticket.type)}<span class="num">#${String(ticket.number)}</span>${stateChip(ticket.state)}</div>
+    <div class="htitle">${escapeHtml(ticket.title)}</div>
+    ${excerpt.length === 0 ? '' : `<div class="hbody">${escapeHtml(excerpt.slice(0, 280))}</div>`}
+    <dl class="relations">
+      <dt>Needs</dt><dd>${ticketPills(map, ticket.blockedBy, true)}</dd>
+      <dt>Unlocks</dt><dd>${ticketPills(map, dependents(map, ticket.number), true)}</dd>
+    </dl>
+    <div class="hint-row">Click to open${ticket.state === 'frontier' ? ' · ready to start' : ''}</div>`;
+
+  const rect = node.getBoundingClientRect();
+  const width = 320;
+  let left = rect.right + 14;
+  if (left + width > window.innerWidth - 12) left = rect.left - width - 14;
+  els.hovercard.style.left = `${String(Math.max(12, left))}px`;
+  els.hovercard.style.top = '0px';
+  const top = Math.min(Math.max(12, rect.top - 4), window.innerHeight - els.hovercard.offsetHeight - 12);
+  els.hovercard.style.top = `${String(top)}px`;
+  els.hovercard.classList.add('is-on');
+}
+
+function hideCard(): void {
+  window.clearTimeout(cardTimer);
+  els.hovercard.classList.remove('is-on');
+}
+
+function setHovered(node: HTMLElement | null): void {
+  const number = node === null ? null : Number(node.dataset['number']);
+  if (number === hovered) return;
+  hovered = number;
+  syncHighlights();
+  hideCard();
+  const map = currentMap();
+  const ticket = map?.tickets.find((candidate) => candidate.number === number);
+  if (node === null || map === null || ticket === undefined || panFrom !== null) return;
+  cardTimer = window.setTimeout(() => showCard(node, ticket, map), 220);
+}
+
+/* ---------- inspector: the map brief and the open ticket, one tab each ---------- */
+
+function renderInspector(): void {
+  const map = currentMap();
+  if (map === null) {
+    els.inspector.innerHTML = '';
     return;
   }
 
-  const style = STATE_STYLE[ticket.state];
-  const blockers =
-    ticket.blockedBy.length === 0
-      ? '—'
-      : ticket.blockedBy
-          .map((number) => {
-            const still = ticket.openBlockers.includes(number);
-            return `<a href="${escapeHtml(map.url.replace(/\/\d+$/, `/${String(number)}`))}" target="_blank" rel="noreferrer">#${String(number)}</a>${still ? '' : ' (closed)'}`;
-          })
-          .join(', ');
+  const ticket = map.tickets.find((candidate) => candidate.number === selected) ?? null;
+  const tab = ticket === null ? 'brief' : inspectorTab;
+  const previous = els.inspector.querySelector('.insp-panel');
+  const scrollTop = previous?.getAttribute('data-tab') === `${tab}:${String(selected)}` ? previous.scrollTop : 0;
 
+  els.inspector.innerHTML = `
+    <div class="insp-tabs">
+      <div class="segmented" role="tablist" aria-label="Panel">
+        <button type="button" role="tab" class="seg${tab === 'brief' ? ' is-on' : ''}" data-panel="brief" aria-selected="${String(tab === 'brief')}">Brief</button>
+        <button type="button" role="tab" class="seg${tab === 'ticket' ? ' is-on' : ''}" data-panel="ticket" aria-selected="${String(tab === 'ticket')}"${ticket === null ? ' disabled' : ''}>${
+          ticket === null ? 'Ticket' : `Ticket #${String(ticket.number)}`
+        }</button>
+      </div>
+    </div>
+    <div class="insp-panel" data-tab="${tab}:${String(selected)}">${tab === 'ticket' && ticket !== null ? ticketHtml(map, ticket) : briefHtml(map)}</div>`;
+
+  const panel = els.inspector.querySelector('.insp-panel');
+  if (panel !== null) panel.scrollTop = scrollTop;
+}
+
+function briefHtml(map: WayfinderMap): string {
+  const counts = countStates(map);
+  const total = map.tickets.length;
+  const rows = STATE_ORDER.map((state) => {
+    const style = STATE_STYLE[state];
+    const on = filter === state;
+    return `<button type="button" class="srow${on ? ' is-on' : ''}" data-filter="${state}" aria-pressed="${String(on)}" style="--accent: var(${style.variable})"${
+      counts[state] === 0 && !on ? ' disabled' : ''
+    }>${icon(style.icon)}${escapeHtml(style.long)}<b>${String(counts[state])}</b></button>`;
+  }).join('');
+
+  const sections = SECTIONS.filter(([key]) => map.sections[key].trim().length > 0);
+  if (!sections.some(([key]) => key === briefSection)) briefSection = sections[0]?.[0] ?? 'destination';
+  const tabs = sections
+    .map(([key, label]) => {
+      const count = key === 'destination' ? 0 : listItemCount(map.sections[key]);
+      return `<button type="button" class="tab${key === briefSection ? ' is-on' : ''}" data-section="${key}">${escapeHtml(label)}${
+        count > 0 ? ` <span class="badge">${String(count)}</span>` : ''
+      }</button>`;
+    })
+    .join('');
+
+  return `<div class="brief">
+    <span class="eyebrow"><a href="${escapeHtml(map.url)}" target="_blank" rel="noreferrer">Map · #${String(map.number)} ↗</a></span>
+    <h1>${escapeHtml(map.title)}</h1>
+    <div class="summary">
+      <div class="ring">${progressRing(counts, total)}<div class="lbl"><b>${String(counts.done)}/${String(total)}</b><span>done</span></div></div>
+      <div class="status-rows">${rows}</div>
+    </div>
+    ${
+      sections.length === 0
+        ? '<p class="hint">This map has no brief yet.</p>'
+        : `<div class="tabs" role="tablist" aria-label="Brief sections">${tabs}</div><div class="prose">${renderMarkdown(map.sections[briefSection])}</div>`
+    }
+  </div>`;
+}
+
+function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
+  const style = STATE_STYLE[ticket.state];
+  const waitingOn = ticket.openBlockers.map((n) => `#${String(n)}`);
   const startable =
     ticket.state === 'done'
       ? 'This ticket is closed.'
       : ticket.state === 'blocked'
-        ? `Waiting on ${ticket.openBlockers.map((n) => `#${String(n)}`).join(', ')}.`
+        ? `Waiting on ${waitingOn.join(', ')}.`
         : null;
 
-  els.detail.innerHTML = `
-    <div class="detail-head" style="--accent: var(${style.variable})">
+  const banner =
+    ticket.state === 'blocked'
+      ? `Waiting on <b>${escapeHtml(waitingOn.join(' and '))}</b>. Copy the prompt now; starting unlocks when ${waitingOn.length === 1 ? 'it closes' : 'they close'}.`
+      : ticket.state === 'done'
+        ? 'This ticket is closed.'
+        : ticket.state === 'claimed' && ticket.assignee !== null
+          ? `<b>@${escapeHtml(ticket.assignee)}</b> is on it.`
+          : null;
+
+  return `
+    <div class="dhead">
       ${typeGlyph(ticket.type)}
       <span class="num">#${String(ticket.number)}</span>
-      <span class="chip">${icon(style.icon)}${escapeHtml(style.label)}</span>
-      <button type="button" class="detail-close" id="detail-close" aria-label="Close">×</button>
+      ${stateChip(ticket.state)}
+      <a class="iconbtn" href="${escapeHtml(ticket.url)}" target="_blank" rel="noreferrer" title="Open on GitHub" aria-label="Open on GitHub">${icon(icons.EXTERNAL)}</a>
     </div>
-    <h2>${escapeHtml(ticket.title)}</h2>
+    <h2 class="dtitle">${escapeHtml(ticket.title)}</h2>
+    ${banner === null ? '' : `<div class="banner" style="--accent: var(${style.variable})">${icon(style.icon)}<span>${banner}</span></div>`}
     <dl class="facts">
-      <dt>Type</dt><dd><span class="typecell">${icon(typeStyle(ticket.type).icon)}${escapeHtml(typeStyle(ticket.type).label)}</span></dd>
-      <dt>Assignee</dt><dd>${ticket.assignee === null ? 'unclaimed' : escapeHtml(`@${ticket.assignee}`)}</dd>
-      <dt>Blocked by</dt><dd>${blockers}</dd>
-      <dt>Map</dt><dd>${escapeHtml(map.title)}</dd>
+      <dt>Type</dt><dd>${icon(typeStyle(ticket.type).icon)}${escapeHtml(typeStyle(ticket.type).label)}</dd>
+      <dt>Assignee</dt><dd>${ticket.assignee === null ? '<span class="none">unclaimed</span>' : escapeHtml(`@${ticket.assignee}`)}</dd>
+      <dt>Needs</dt><dd>${ticketPills(map, ticket.blockedBy)}</dd>
+      <dt>Unlocks</dt><dd>${ticketPills(map, dependents(map, ticket.number))}</dd>
     </dl>
-    ${startable === null ? `<div class="runwith" id="runwith">${runWithHtml(ticket.number)}</div>` : ''}
-    <div class="actions">
-      <button type="button" class="primary" id="start-thread"${startable === null ? '' : ` disabled title="${escapeHtml(startable)}"`}>Open in T3 Code</button>
-      <button type="button" class="ghost" id="copy-prompt">Copy prompt</button>
-      <a class="ghost" href="${escapeHtml(ticket.url)}" target="_blank" rel="noreferrer" style="text-decoration:none">GitHub</a>
+    <div class="launch">
+      ${startable === null ? `<div class="runwith" id="runwith">${runWithHtml(ticket.number)}</div>` : ''}
+      <div class="launch-actions">
+        <button type="button" class="primary" id="start-thread"${startable === null ? '' : ` disabled title="${escapeHtml(startable)}"`}>${icon(icons.PLAY)}Open in T3 Code</button>
+        <button type="button" class="ghost" id="copy-prompt">${icon(icons.COPY)}Copy prompt</button>
+      </div>
     </div>
-    ${startable === null ? '' : `<p class="hint">${escapeHtml(startable)}</p>`}
-    <details class="section"><summary>Prompt this sends</summary><pre class="prompt" id="prompt-preview">…</pre></details>
-    <div class="body-text">${escapeHtml(ticket.body.trim().length === 0 ? 'No description on the issue.' : ticket.body)}</div>
-  `;
+    <details class="sec"><summary>Prompt this sends</summary><pre class="prompt" id="prompt-preview">…</pre></details>
+    <div class="body-text prose">${ticket.body.trim().length === 0 ? '<p class="none">No description on the issue.</p>' : renderMarkdown(ticket.body)}</div>`;
 }
 
 /* ---------- model picker ---------- */
@@ -568,7 +796,8 @@ async function handOff(copyOnly: boolean): Promise<void> {
   } catch (error) {
     toast((error as Error).message, 9000);
   } finally {
-    if (button instanceof HTMLButtonElement) button.disabled = false;
+    // A blocked or closed ticket's button stays disabled; only undo what this call did.
+    if (button instanceof HTMLButtonElement && !button.hasAttribute('title')) button.disabled = false;
   }
 }
 
@@ -576,18 +805,79 @@ async function handOff(copyOnly: boolean): Promise<void> {
 
 function select(number: number | null): void {
   selected = number;
-  if (view === 'map') renderGraph();
-  renderDetail();
+  inspectorTab = number === null ? 'brief' : 'ticket';
+  hideCard();
+  syncHighlights();
+  renderInspector();
 }
 
-els.tabs.addEventListener('click', (event) => {
-  const tab = (event.target as HTMLElement).closest<HTMLElement>('.maptab');
-  if (tab === null) return;
-  activeMap = Number(tab.dataset['index']);
+function setFilter(next: TicketFilter | null): void {
+  filter = filter === next ? null : next;
+  renderFilters();
+  syncHighlights();
+  if (inspectorTab === 'brief' || selected === null) renderInspector();
+}
+
+/** Open the first ticket the search and filter leave showing, and bring it into view. */
+function jumpToFirstMatch(): void {
+  const hit = currentMap()?.tickets.find((ticket) => matchesFilter(ticket, filter) && matchesQuery(ticket, query));
+  if (hit === undefined) {
+    toast('No ticket matches.', 2400);
+    return;
+  }
+  select(hit.number);
+  els.nodes.querySelector(`.node[data-number="${String(hit.number)}"]`)?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+}
+
+type Menu = { button: HTMLElement; menu: HTMLElement };
+const MENUS: Menu[] = [
+  { button: els.mapSwitch, menu: els.mapMenu },
+  { button: els.keyButton, menu: els.keyMenu },
+];
+
+function closeMenus(except: Menu | null = null): void {
+  for (const entry of MENUS) {
+    if (entry === except) continue;
+    entry.menu.hidden = true;
+    entry.button.setAttribute('aria-expanded', 'false');
+  }
+}
+
+for (const entry of MENUS) {
+  entry.button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    closeMenus(entry);
+    entry.menu.hidden = !entry.menu.hidden;
+    entry.button.setAttribute('aria-expanded', String(!entry.menu.hidden));
+  });
+}
+
+document.addEventListener('click', (event) => {
+  const target = event.target as HTMLElement;
+  if (!MENUS.some((entry) => entry.menu.contains(target))) closeMenus();
+});
+
+els.mapMenu.addEventListener('click', (event) => {
+  const item = (event.target as HTMLElement).closest<HTMLElement>('[data-index]');
+  if (item === null) return;
+  closeMenus();
+  activeMap = Number(item.dataset['index']);
   selected = null;
-  zoom = 1;
-  applyZoom();
+  hovered = null;
+  filter = null;
+  query = '';
+  els.search.value = '';
+  inspectorTab = 'brief';
+  briefSection = 'destination';
+  setZoom(1);
+  els.canvasWrap.scrollTo(0, 0);
   render();
+});
+
+els.filters.addEventListener('click', (event) => {
+  const chip = (event.target as HTMLElement).closest<HTMLElement>('[data-filter]');
+  if (chip === null) return;
+  setFilter((chip.dataset['filter'] || null) as TicketFilter | null);
 });
 
 els.nodes.addEventListener('click', (event) => {
@@ -596,15 +886,70 @@ els.nodes.addEventListener('click', (event) => {
   select(Number(node.dataset['number']));
 });
 
+els.nodes.addEventListener('pointerover', (event) => {
+  setHovered((event.target as HTMLElement).closest<HTMLElement>('.node'));
+});
+
+els.nodes.addEventListener('pointerout', (event) => {
+  const next = event.relatedTarget instanceof HTMLElement ? event.relatedTarget.closest<HTMLElement>('.node') : null;
+  if (next === null) setHovered(null);
+});
+
+els.nodes.addEventListener('focusin', (event) => {
+  setHovered((event.target as HTMLElement).closest<HTMLElement>('.node'));
+});
+
+els.nodes.addEventListener('focusout', () => setHovered(null));
+
 els.tableWrap.addEventListener('click', (event) => {
   const row = (event.target as HTMLElement).closest<HTMLElement>('tr[data-number]');
   if (row === null) return;
   select(Number(row.dataset['number']));
 });
 
-els.detail.addEventListener('click', (event) => {
+els.search.addEventListener('input', () => {
+  query = els.search.value;
+  syncHighlights();
+});
+
+els.search.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') jumpToFirstMatch();
+  if (event.key !== 'Escape') return;
+  event.stopPropagation();
+  els.search.value = '';
+  query = '';
+  syncHighlights();
+  els.search.blur();
+});
+
+els.inspector.addEventListener('click', (event) => {
   const target = event.target as HTMLElement;
-  if (target.closest('#detail-close') !== null) select(null);
+  const panelTab = target.closest<HTMLElement>('[data-panel]');
+  if (panelTab !== null) {
+    inspectorTab = panelTab.dataset['panel'] === 'ticket' ? 'ticket' : 'brief';
+    renderInspector();
+    return;
+  }
+
+  const section = target.closest<HTMLElement>('[data-section]');
+  if (section !== null) {
+    briefSection = section.dataset['section'] as keyof MapSections;
+    renderInspector();
+    return;
+  }
+
+  const statusRow = target.closest<HTMLElement>('[data-filter]');
+  if (statusRow !== null) {
+    setFilter((statusRow.dataset['filter'] || null) as TicketFilter | null);
+    return;
+  }
+
+  const jump = target.closest<HTMLElement>('[data-jump]');
+  if (jump !== null) {
+    select(Number(jump.dataset['jump']));
+    return;
+  }
+
   if (target.closest('#edit-tiers') !== null) openModels();
   const tierButton = target.closest<HTMLElement>('[data-tier]');
   if (tierButton !== null && selected !== null) {
@@ -616,7 +961,7 @@ els.detail.addEventListener('click', (event) => {
   if (target.closest('#copy-prompt') !== null) void handOff(true);
 });
 
-els.detail.addEventListener('change', (event) => {
+els.inspector.addEventListener('change', (event) => {
   const target = event.target;
   if (target instanceof HTMLSelectElement && target.id === 'ticket-model') refreshEffort(target, 'ticket-effort', 'id="ticket-effort"');
 });
@@ -636,12 +981,23 @@ els.modelsDialog.addEventListener('close', refreshTicketPicker);
 need('models').addEventListener('click', openModels);
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !els.modelsDialog.open) select(null);
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    els.search.focus();
+    els.search.select();
+    return;
+  }
+  if (event.key !== 'Escape' || els.modelsDialog.open) return;
+  if (MENUS.some((entry) => !entry.menu.hidden)) {
+    closeMenus();
+    return;
+  }
+  select(null);
 });
 
 void loadCatalog().then(refreshTicketPicker);
 
-need('refresh').addEventListener('click', () => void load('manual'));
+els.refresh.addEventListener('click', () => void load('manual'));
 
 need('theme').addEventListener('click', () => {
   const dark = getComputedStyle(document.body).getPropertyValue('color-scheme').trim() === 'dark';
@@ -668,31 +1024,28 @@ need('view-table').addEventListener('click', () => setView('table'));
 
 /* zoom and pan */
 
-function applyZoom(): void {
+function setZoom(next: number): void {
+  zoom = Math.min(1.6, Math.max(0.4, Math.round(next * 100) / 100));
   els.canvas.style.transform = `scale(${String(zoom)})`;
+  els.zoomReset.textContent = `${String(Math.round(zoom * 100))}%`;
+  hideCard();
 }
 
-function nudgeZoom(delta: number): void {
-  zoom = Math.min(1.6, Math.max(0.4, Math.round((zoom + delta) * 100) / 100));
-  applyZoom();
-}
-
-need('zoom-in').addEventListener('click', () => nudgeZoom(0.1));
-need('zoom-out').addEventListener('click', () => nudgeZoom(-0.1));
-need('zoom-reset').addEventListener('click', () => {
-  zoom = 1;
-  applyZoom();
-});
+need('zoom-in').addEventListener('click', () => setZoom(zoom + 0.1));
+need('zoom-out').addEventListener('click', () => setZoom(zoom - 0.1));
+els.zoomReset.addEventListener('click', () => setZoom(1));
 
 els.canvasWrap.addEventListener(
   'wheel',
   (event) => {
     if (!event.ctrlKey) return;
     event.preventDefault();
-    nudgeZoom(event.deltaY > 0 ? -0.1 : 0.1);
+    setZoom(zoom + (event.deltaY > 0 ? -0.1 : 0.1));
   },
   { passive: false },
 );
+
+els.canvasWrap.addEventListener('scroll', hideCard, { passive: true });
 
 let panFrom: { x: number; y: number; left: number; top: number } | null = null;
 
@@ -728,7 +1081,9 @@ const autoRefresh = new AutoRefresh({
 
 document.addEventListener('visibilitychange', () => autoRefresh.visibilityChanged());
 window.addEventListener('pagehide', () => autoRefresh.stop());
+window.setInterval(renderSynced, 15_000);
 
+renderInspector();
 void load('initial').then((successful) => {
   if (successful) autoRefresh.markSuccessfulSnapshot();
   autoRefresh.start();
