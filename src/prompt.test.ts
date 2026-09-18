@@ -44,6 +44,23 @@ describe('renderTemplate', () => {
 });
 
 describe('buildPrompt', () => {
+  it('tells the agent to grill the user on human-in-the-loop tickets', () => {
+    for (const type of ['grilling', 'prototype'] as const) {
+      const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type } });
+      expect(prompt).toContain('This is a human-in-the-loop ticket');
+      expect(prompt).toContain('Never treat\nthis session as unattended');
+      expect(prompt.indexOf('human-in-the-loop')).toBeLessThan(prompt.indexOf('Close it the way'));
+    }
+  });
+
+  it('leaves AFK tickets without the human-in-the-loop instructions', () => {
+    for (const type of ['research', 'task', null] as const) {
+      const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type } });
+      expect(prompt).not.toContain('human-in-the-loop');
+      expect(prompt).not.toMatch(/\n\n\n/);
+    }
+  });
+
   it('names the repo, the map and the ticket', () => {
     const prompt = buildPrompt({ repo: 'owner/repo', map, ticket });
     expect(prompt).toContain('owner/repo');

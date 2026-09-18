@@ -1,4 +1,4 @@
-import type { Ticket, WayfinderMap } from './types.js';
+import type { Ticket, TicketType, WayfinderMap } from './types.js';
 
 export const DEFAULT_TEMPLATE = `Pick up wayfinder ticket #{{ticketNumber}} on the "{{mapTitle}}" map.
 
@@ -16,7 +16,7 @@ What the ticket says:
 {{ticketBody}}
 
 {{worktreeSteps}}
-
+{{typeSteps}}
 Never run \`git stash\` in a shared checkout. If you need to check whether a
 failure predates your changes, create a throwaway worktree from HEAD and test
 there.
@@ -57,6 +57,19 @@ Do not fall back to the primary checkout.`;
 const PREPARED_WORKTREE_STEPS = `You are already in a dedicated git worktree on branch {{branchName}}, made
 from {{baseBranch}}. Do all ticket work here. Do not switch to the primary
 checkout.`;
+
+const HUMAN_IN_THE_LOOP_STEPS = `This is a human-in-the-loop ticket, and the user is in this thread. They
+decide the answer, you don't. Grill them: ask one question at a time, with
+your recommended answer, and wait for their reply before going on. Never treat
+this session as unattended, and never answer, close or record a decision the
+user hasn't agreed to. If you can't reach the user, stop and say so.`;
+
+/** Extra instructions for ticket types that need the user, keyed by type. */
+const TYPE_STEPS: Partial<Record<TicketType, string>> = {
+  grilling: HUMAN_IN_THE_LOOP_STEPS,
+  prototype: `${HUMAN_IN_THE_LOOP_STEPS}
+Show them the prototype and let them react before settling anything.`,
+};
 
 function indent(text: string, prefix = '  '): string {
   const trimmed = text.trim();
@@ -126,6 +139,7 @@ export function buildPrompt({ repo, map, ticket, template = DEFAULT_TEMPLATE, wo
     ticketSlug: slug,
     ...worktreeValues,
     worktreeSteps: renderTemplate(worktree ? PREPARED_WORKTREE_STEPS : WORKTREE_STEPS, worktreeValues),
+    typeSteps: ticket.type && TYPE_STEPS[ticket.type] ? `\n${TYPE_STEPS[ticket.type]}\n` : '',
     blockedLine,
   }).trim();
 }

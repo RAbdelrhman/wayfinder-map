@@ -109,8 +109,11 @@ Placeholders: `{{repo}}`, `{{mapNumber}}`, `{{mapTitle}}`, `{{mapUrl}}`,
 `{{destination}}`, `{{notes}}`, `{{decisions}}`, `{{fog}}`, `{{ticketNumber}}`,
 `{{ticketTitle}}`, `{{ticketType}}`, `{{ticketState}}`, `{{ticketUrl}}`,
 `{{ticketBody}}`, `{{ticketSlug}}`, `{{worktreeName}}`, `{{branchName}}`,
-`{{baseBranch}}`, `{{worktreeSteps}}`, `{{blockedLine}}`. `{{worktreeSteps}}` asks
-the agent to make its worktree, or tells it that T3 Code already did. An unknown one is left in the text rather than silently blanked,
+`{{baseBranch}}`, `{{worktreeSteps}}`, `{{typeSteps}}`, `{{blockedLine}}`.
+`{{worktreeSteps}}` asks the agent to make its worktree, or tells it that T3 Code
+already did. `{{typeSteps}}` tells the agent that grilling and prototype tickets are
+human-in-the-loop: grill the user one question at a time and decide nothing without
+them. It is empty for other types. An unknown one is left in the text rather than silently blanked,
 so a typo is visible.
 
 ## Options
