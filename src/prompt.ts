@@ -15,12 +15,7 @@ Where the map is heading:
 What the ticket says:
 {{ticketBody}}
 
-Before you claim the ticket or change any files, create and enter a dedicated
-git worktree from the target repo's current HEAD:
-  Worktree: {{worktreeName}}
-  Branch:   {{branchName}}
-If the worktree cannot be created, stop and report the problem.
-Do not fall back to the primary checkout.
+{{worktreeSteps}}
 
 Never run \`git stash\` in a shared checkout. If you need to check whether a
 failure predates your changes, create a throwaway worktree from HEAD and test
@@ -38,12 +33,30 @@ const STATE_WORDS: Record<Ticket['state'], string> = {
   frontier: 'open, unblocked, unclaimed',
 };
 
+/** A worktree T3 Code already made for the thread, so the prompt should not ask for another. */
+export interface PreparedWorktree {
+  branch: string;
+  baseBranch: string;
+}
+
 export interface PromptInput {
   repo: string;
   map: WayfinderMap;
   ticket: Ticket;
   template?: string;
+  worktree?: PreparedWorktree;
 }
+
+const WORKTREE_STEPS = `Before you claim the ticket or change any files, create and enter a dedicated
+git worktree from the target repo's current HEAD:
+  Worktree: {{worktreeName}}
+  Branch:   {{branchName}}
+If the worktree cannot be created, stop and report the problem.
+Do not fall back to the primary checkout.`;
+
+const PREPARED_WORKTREE_STEPS = `You are already in a dedicated git worktree on branch {{branchName}}, made
+from {{baseBranch}}. Do all ticket work here. Do not switch to the primary
+checkout.`;
 
 function indent(text: string, prefix = '  '): string {
   const trimmed = text.trim();
@@ -52,6 +65,16 @@ function indent(text: string, prefix = '  '): string {
     .split(/\r?\n/)
     .map((line) => (line.length === 0 ? line : prefix + line))
     .join('\n');
+}
+
+/** `12-some-title`, the stem of the ticket's worktree and branch names. */
+export function ticketSlug(ticket: Pick<Ticket, 'number' | 'title'>): string {
+  return `${String(ticket.number)}-${slugifyTitle(ticket.title)}`;
+}
+
+/** The branch a ticket's work lands on. */
+export function ticketBranch(ticket: Pick<Ticket, 'number' | 'title'>): string {
+  return `wayfinder/${ticketSlug(ticket)}`;
 }
 
 function slugifyTitle(title: string): string {
@@ -72,12 +95,18 @@ export function renderTemplate(template: string, values: Readonly<Record<string,
 }
 
 /** The prompt a click on a ticket hands to T3 Code. */
-export function buildPrompt({ repo, map, ticket, template = DEFAULT_TEMPLATE }: PromptInput): string {
+export function buildPrompt({ repo, map, ticket, template = DEFAULT_TEMPLATE, worktree }: PromptInput): string {
   const blockedLine =
     ticket.openBlockers.length > 0
       ? `\nBlocked by: ${ticket.openBlockers.map((number) => `#${number}`).join(', ')}`
       : '';
-  const ticketSlug = `${ticket.number}-${slugifyTitle(ticket.title)}`;
+  const slug = ticketSlug(ticket);
+  const branchName = worktree?.branch ?? ticketBranch(ticket);
+  const worktreeValues = {
+    worktreeName: `../wayfinder-${slug}`,
+    branchName,
+    baseBranch: worktree?.baseBranch ?? 'HEAD',
+  };
 
   return renderTemplate(template, {
     repo,
@@ -94,9 +123,9 @@ export function buildPrompt({ repo, map, ticket, template = DEFAULT_TEMPLATE }: 
     ticketState: STATE_WORDS[ticket.state],
     ticketUrl: ticket.url,
     ticketBody: indent(ticket.body),
-    ticketSlug,
-    worktreeName: `../wayfinder-${ticketSlug}`,
-    branchName: `wayfinder/${ticketSlug}`,
+    ticketSlug: slug,
+    ...worktreeValues,
+    worktreeSteps: renderTemplate(worktree ? PREPARED_WORKTREE_STEPS : WORKTREE_STEPS, worktreeValues),
     blockedLine,
   }).trim();
 }

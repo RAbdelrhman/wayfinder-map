@@ -1,64 +1,59 @@
 import { execFile, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+
+import { copyToClipboard } from './clipboard.js';
+import { appControlAddress, openWorkspace, stateDirFor } from './t3App.js';
+import { T3Api, samePath, serverCommand, threadCommands, threadDefaults } from './t3Api.js';
+import type { ServerCommand } from './t3Api.js';
+import { toCatalog, toModelSelection } from './models.js';
+import type { ModelCatalog, ModelChoice } from './models.js';
+import type { PreparedWorktree } from './prompt.js';
 
 const run = promisify(execFile);
 
 export interface T3Runtime {
   /** Origin of the local T3 Code server, e.g. http://127.0.0.1:3773. */
   origin: string | null;
-  /** True when the desktop app has a registered t3code:// handler. */
-  hasDesktopApp: boolean;
+  /** The server's process id, used to find the binary that can run T3 Code's CLI. */
+  pid: number | null;
+  /** `<T3CODE_HOME or ~/.t3>/userdata`, which also names the desktop app's control socket. */
+  stateDir: string;
 }
 
-const RUNTIME_FILE = join(homedir(), '.t3', 'userdata', 'server-runtime.json');
+function t3Home(): string {
+  const configured = process.env['T3CODE_HOME']?.trim();
+  if (!configured) return join(homedir(), '.t3');
+  return resolve(configured.replace(/^~(?=$|[\\/])/, homedir()));
+}
 
 /**
- * Where T3 Code is reachable on this machine. The app writes its port to
- * ~/.t3/userdata/server-runtime.json on every start, so this survives a port change.
+ * Where T3 Code is reachable on this machine. The server writes its port and pid to
+ * <state>/server-runtime.json on every start, so this survives a port change.
  */
 export async function detectT3(): Promise<T3Runtime> {
+  const stateDir = stateDirFor(t3Home(), process.platform);
   let origin: string | null = null;
+  let pid: number | null = null;
   try {
-    const raw = JSON.parse(await readFile(RUNTIME_FILE, 'utf8')) as { origin?: unknown; port?: unknown };
+    const raw = JSON.parse(await readFile(join(stateDir, 'server-runtime.json'), 'utf8')) as {
+      origin?: unknown;
+      port?: unknown;
+      pid?: unknown;
+    };
     if (typeof raw.origin === 'string') origin = raw.origin;
-    else if (typeof raw.port === 'number') origin = `http://127.0.0.1:${raw.port}`;
+    else if (typeof raw.port === 'number') origin = `http://127.0.0.1:${String(raw.port)}`;
+    if (typeof raw.pid === 'number') pid = raw.pid;
   } catch {
     // Not running, or never installed. The clipboard path still works.
   }
-  return { origin, hasDesktopApp: await hasProtocolHandler() };
+  return { origin, pid, stateDir };
 }
 
-async function hasProtocolHandler(): Promise<boolean> {
-  if (process.platform !== 'win32') return false;
-  try {
-    await run('reg', ['query', 'HKCU\\Software\\Classes\\t3code\\shell\\open\\command'], { windowsHide: true });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Put `text` on the system clipboard using whatever the platform ships with. */
-export async function copyToClipboard(text: string): Promise<void> {
-  const [command, args] =
-    process.platform === 'win32'
-      ? (['powershell', ['-NoProfile', '-NonInteractive', '-Command', '$input | Set-Clipboard']] as const)
-      : process.platform === 'darwin'
-        ? (['pbcopy', []] as const)
-        : (['wl-copy', []] as const);
-
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, [...args], { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true });
-    child.on('error', reject);
-    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`${command} exited ${String(code)}`))));
-    child.stdin.end(text, 'utf8');
-  });
-}
-
-/** Hand a URL to the OS: the desktop app for t3code://, the browser for http(s). */
+/** Hand a URL to the OS: the browser for http(s). */
 export async function openExternal(target: string): Promise<void> {
   if (process.platform === 'win32') {
     await run('cmd', ['/c', 'start', '', target], { windowsHide: true });
@@ -67,40 +62,239 @@ export async function openExternal(target: string): Promise<void> {
   await run(process.platform === 'darwin' ? 'open' : 'xdg-open', [target]);
 }
 
+async function git(cwd: string, args: string[]): Promise<string> {
+  const { stdout } = await run('git', args, { cwd, windowsHide: true });
+  return stdout.trim();
+}
+
+/** The checkout T3 Code should work in: the launch directory's repo root, if it is a clone of `repo`. */
+export async function resolveWorkspace(cwd: string, repo: string, repoOfCwd: () => Promise<string>): Promise<string | null> {
+  try {
+    const root = resolve(await git(cwd, ['rev-parse', '--show-toplevel']));
+    return (await repoOfCwd()).toLowerCase() === repo.toLowerCase() ? root : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Where T3 Code keeps its own worktrees: `<T3 home>/worktrees/<repo dir>/<branch, slashes as dashes>`. */
+export function worktreePathFor(t3Home: string, workspaceRoot: string, branch: string): string {
+  return join(t3Home, 'worktrees', basename(workspaceRoot), branch.replace(/\//g, '-'));
+}
+
+/** `wayfinder/12-x`, or `wayfinder/12-x-2` and up when an earlier attempt already took the name. */
+async function freeBranch(root: string, branch: string): Promise<string> {
+  for (let attempt = 1; ; attempt += 1) {
+    const candidate = attempt === 1 ? branch : `${branch}-${String(attempt)}`;
+    try {
+      await git(root, ['rev-parse', '--verify', '--quiet', `refs/heads/${candidate}`]);
+    } catch {
+      return candidate;
+    }
+  }
+}
+
+export type HandOffRung = 'thread' | 'app' | 'clipboard';
+
 export interface HandOffResult {
+  /** How far the hand-off got: a running thread, a new empty thread, or the clipboard alone. */
+  rung: HandOffRung | null;
   copied: boolean;
-  opened: string | null;
-  /** Filled when the clipboard or the launch failed, so the UI can say what went wrong. */
+  threadId: string | null;
+  /** The prompt that went out, which differs when T3 Code made the worktree. */
+  prompt: string;
+  /** One line on why it fell short of starting the thread, for the UI to show. */
+  notice: string | null;
+  /** Filled when even the clipboard failed. */
   error: string | null;
 }
 
+export interface HandOffInput {
+  title: string;
+  /** Null when the launch directory is not a checkout of the repo. */
+  workspaceRoot: string | null;
+  /** The ticket's branch name, before any `-2` suffix. */
+  branch: string;
+  /** The model picked in the UI, or null to let T3 Code's defaults decide. */
+  model: ModelChoice | null;
+  prompt: (worktree: PreparedWorktree | null) => string;
+}
+
+/** Each rung of the ladder, injectable so the fallback order can be tested without T3 Code. */
+export interface HandOffSteps {
+  startThread: (input: HandOffInput & { workspaceRoot: string }) => Promise<{ threadId: string; prompt: string }>;
+  openApp: (workspaceRoot: string) => Promise<void>;
+  copy: (text: string) => Promise<void>;
+}
+
 /**
- * Put the prompt on the clipboard and bring T3 Code forward, so the thread is one
- * paste away. T3 Code's thread-creation API is DPoP-authenticated and internal to a
- * nightly build, so driving it directly would break on the next update.
+ * Try the best hand-off first and fall back one rung at a time:
+ * start a running thread, else open a fresh thread with the prompt on the clipboard,
+ * else just the clipboard.
  */
-export async function handOffToT3(prompt: string, runtime: T3Runtime): Promise<HandOffResult> {
-  const result: HandOffResult = { copied: false, opened: null, error: null };
+export async function handOff(input: HandOffInput, steps: HandOffSteps): Promise<HandOffResult> {
+  const plain = input.prompt(null);
+  let notice: string | null = null;
 
+  if (input.workspaceRoot === null) {
+    notice = 'Run wayfinder-map inside a clone of this repo to start threads directly.';
+  } else {
+    try {
+      const { threadId, prompt } = await steps.startThread({ ...input, workspaceRoot: input.workspaceRoot });
+      return { rung: 'thread', copied: false, threadId, prompt, notice: null, error: null };
+    } catch (error) {
+      notice = `Could not start the thread (${(error as Error).message}).`;
+    }
+  }
+
+  let copied = false;
+  let error: string | null = null;
   try {
-    await copyToClipboard(prompt);
-    result.copied = true;
-  } catch (error) {
-    result.error = `Clipboard: ${(error as Error).message}`;
+    await steps.copy(plain);
+    copied = true;
+  } catch (copyError) {
+    error = `Clipboard: ${(copyError as Error).message}`;
   }
 
-  const target = runtime.hasDesktopApp ? 't3code://app' : runtime.origin;
-  if (target === null) {
-    result.error ??= 'T3 Code is not running and no desktop app is registered.';
-    return result;
+  if (input.workspaceRoot !== null) {
+    try {
+      await steps.openApp(input.workspaceRoot);
+      return { rung: 'app', copied, threadId: null, prompt: plain, notice: `${notice} Opened a new thread; paste the prompt.`, error };
+    } catch {
+      // Desktop app not running or too old for the control socket. The clipboard still has it.
+    }
   }
 
-  try {
-    await openExternal(target);
-    result.opened = target;
-  } catch (error) {
-    result.error ??= `Launch: ${(error as Error).message}`;
+  return { rung: copied ? 'clipboard' : null, copied, threadId: null, prompt: plain, notice, error };
+}
+
+/** Bring T3 Code forward. A second launch of the desktop app just focuses the first. */
+function reveal(command: ServerCommand | null, origin: string): void {
+  if (command !== null && /server\.asar/.test(command.script)) {
+    const env = { ...process.env };
+    delete env['ELECTRON_RUN_AS_NODE'];
+    spawn(command.exe, [], { detached: true, stdio: 'ignore', env, windowsHide: false }).unref();
+    return;
+  }
+  void openExternal(origin).catch(() => undefined);
+}
+
+interface T3Config {
+  catalog: ModelCatalog;
+  defaultModelSelection: unknown;
+}
+
+/** The real ladder steps, bound to whatever T3 Code is running right now. */
+export class T3HandOff {
+  private api: { key: string; api: T3Api; command: ServerCommand } | null = null;
+  private config: { key: string; at: number; value: Promise<T3Config> } | null = null;
+
+  private async connect(runtime: T3Runtime): Promise<{ api: T3Api; command: ServerCommand; origin: string }> {
+    if (runtime.origin === null || runtime.pid === null) throw new Error('T3 Code is not running');
+    const key = `${runtime.origin}#${String(runtime.pid)}`;
+    if (this.api?.key !== key) {
+      this.api?.api.revoke();
+      const command = await serverCommand(runtime.pid);
+      if (command === null) throw new Error('could not find the T3 Code binary');
+      this.api = { key, api: new T3Api(runtime.origin, command), command };
+    }
+    return { api: this.api.api, command: this.api.command, origin: runtime.origin };
   }
 
-  return result;
+  /** T3 Code's providers and settings, cached for a minute: the reply is large and rarely changes. */
+  private async t3Config(runtime: T3Runtime): Promise<T3Config> {
+    const { api } = await this.connect(runtime);
+    const key = this.api?.key ?? '';
+    if (this.config === null || this.config.key !== key || Date.now() - this.config.at > 60_000) {
+      const value = api.rpc('server.getConfig').then((raw) => {
+        const config = raw as { providers?: unknown; settings?: { defaultModelSelection?: unknown } };
+        return {
+          catalog: toCatalog(Array.isArray(config.providers) ? config.providers : []),
+          defaultModelSelection: config.settings?.defaultModelSelection ?? null,
+        };
+      });
+      value.catch(() => {
+        this.config = null;
+      });
+      this.config = { key, at: Date.now(), value };
+    }
+    return this.config.value;
+  }
+
+  /** The models T3 Code can run right now. */
+  async models(runtime: T3Runtime): Promise<ModelCatalog> {
+    return (await this.t3Config(runtime)).catalog;
+  }
+
+  steps(runtime: T3Runtime): HandOffSteps {
+    return {
+      startThread: async (input) => {
+        const { api, command, origin } = await this.connect(runtime);
+        const snapshot = await api.snapshot();
+        const project = snapshot.projects.find(
+          (candidate) => candidate.deletedAt === null && samePath(candidate.workspaceRoot, input.workspaceRoot),
+        );
+        let projectId = project?.id ?? null;
+        const globalDefault = await this.t3Config(runtime)
+          .then((config) => config.defaultModelSelection)
+          .catch(() => null);
+        const defaults = threadDefaults(snapshot, projectId, {
+          chosen: input.model === null ? null : toModelSelection(input.model),
+          globalDefault,
+        });
+        if (defaults === null) throw new Error('no model to use yet; start one thread in T3 Code first');
+
+        if (projectId === null) {
+          projectId = randomUUID();
+          await api.dispatch({
+            type: 'project.create',
+            commandId: randomUUID(),
+            projectId,
+            title: basename(input.workspaceRoot),
+            workspaceRoot: input.workspaceRoot,
+            createdAt: new Date().toISOString(),
+          });
+        }
+
+        let worktree: (PreparedWorktree & { path: string }) | null = null;
+        const baseBranch = await git(input.workspaceRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => 'HEAD');
+        if (baseBranch !== 'HEAD') {
+          const branch = await freeBranch(input.workspaceRoot, input.branch);
+          const path = worktreePathFor(dirname(runtime.stateDir), input.workspaceRoot, branch);
+          await git(input.workspaceRoot, ['worktree', 'add', '-b', branch, path, baseBranch]);
+          worktree = { branch, baseBranch, path };
+        }
+
+        const prompt = input.prompt(worktree);
+        const { threadId, create, start } = threadCommands({ projectId, title: input.title, prompt, defaults, worktree });
+        try {
+          await api.dispatch(create);
+          await api.dispatch(start);
+        } catch (error) {
+          // Leave nothing half-made behind for the fallback rung to trip over.
+          await api.dispatch({ type: 'thread.delete', commandId: randomUUID(), threadId }).catch(() => undefined);
+          if (worktree !== null) {
+            await git(input.workspaceRoot, ['worktree', 'remove', '--force', worktree.path]).catch(() => undefined);
+            await git(input.workspaceRoot, ['branch', '-D', worktree.branch]).catch(() => undefined);
+          }
+          throw error;
+        }
+        reveal(command, origin);
+        return { threadId, prompt };
+      },
+      openApp: (workspaceRoot) =>
+        openWorkspace(
+          appControlAddress({ platform: process.platform, stateDir: runtime.stateDir, tempDir: tmpdir(), uid: process.getuid?.() }),
+          workspaceRoot,
+          process.platform,
+        ).then(() => undefined),
+      copy: copyToClipboard,
+    };
+  }
+
+  /** Revoke the session token. Called on exit. */
+  close(): void {
+    this.api?.api.revoke();
+    this.api = null;
+  }
 }

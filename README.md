@@ -1,8 +1,7 @@
 # wayfinder-map
 
 An interactive map of a repo's wayfinder maps, served on localhost. Click a ticket
-and the prompt for it lands on your clipboard with T3 Code up front, ready to paste
-into a new thread.
+and T3 Code starts a thread on it, in its own worktree, already working.
 
 Works against any repo that keeps its wayfinder maps in GitHub Issues. Nothing about
 it is specific to one project.
@@ -60,16 +59,40 @@ rather read rows than a graph, and for screen readers.
 
 ## Starting a thread
 
-Click a ticket, then **Start T3 Code thread**. The server builds the prompt, copies
-it to your clipboard, and brings T3 Code forward. Paste and hit enter.
+Run the tool inside a clone of the repo, click a ticket, then **Open in T3 Code**.
+T3 Code gets a new thread on its own worktree and branch (`wayfinder/<n>-<title>`,
+under `~/.t3/worktrees`), and the agent is already reading the ticket. Done and
+blocked tickets have the button disabled, with the reason.
 
-It stops one step short of sending because T3 Code's thread-creation API is internal
-and DPoP-authenticated against a nightly build. Driving it directly would mint
-credentials this tool has no business holding, and would break the next time T3
-ships. A clipboard hand-off is one keystroke worse and does not rot.
+Under the hood it talks to the T3 Code server on this machine the way T3 Code's own
+composer does. It gets a session token from T3 Code's own CLI
+(`t3 auth session issue`), keeps it in memory, and revokes it when the tool exits.
+Nothing leaves the machine.
 
-If T3 Code is not installed, **Copy prompt** still works and the tool says so on
-startup.
+When that is not possible it steps down one rung at a time, and the page says why
+in one line:
+
+1. **Running thread.** Needs T3 Code running and the tool started in a clone of the
+   repo.
+2. **New empty thread, prompt on the clipboard.** Uses the desktop app's control
+   socket, the same one `t3 app <path>` uses. Paste and hit enter.
+3. **Prompt on the clipboard.** Works with no T3 Code at all.
+
+**Copy prompt** always just copies. On Linux the clipboard goes through `wl-copy`,
+`xclip` or `xsel`, whichever is installed.
+
+### Picking the model
+
+**Models** in the top bar sets a default model and reasoning level for three task
+tiers: Simple, Mid and Hard. The list is whatever T3 Code can run right now, across
+every provider you have enabled (Codex, Claude, Grok, OpenCode, Antigravity, …),
+read live from T3 Code.
+
+In the ticket panel, **Run as** switches the ticket between tiers, and the model
+and reasoning below it can be changed for that one hand-off. Each ticket remembers
+its tier; new tickets start on Mid. A tier with no default, or a model T3 Code no
+longer offers, falls back to T3 Code's own default. The defaults live in the
+browser's local storage.
 
 ## Prompt template
 
@@ -86,7 +109,8 @@ Placeholders: `{{repo}}`, `{{mapNumber}}`, `{{mapTitle}}`, `{{mapUrl}}`,
 `{{destination}}`, `{{notes}}`, `{{decisions}}`, `{{fog}}`, `{{ticketNumber}}`,
 `{{ticketTitle}}`, `{{ticketType}}`, `{{ticketState}}`, `{{ticketUrl}}`,
 `{{ticketBody}}`, `{{ticketSlug}}`, `{{worktreeName}}`, `{{branchName}}`,
-`{{blockedLine}}`. An unknown one is left in the text rather than silently blanked,
+`{{baseBranch}}`, `{{worktreeSteps}}`, `{{blockedLine}}`. `{{worktreeSteps}}` asks
+the agent to make its worktree, or tells it that T3 Code already did. An unknown one is left in the text rather than silently blanked,
 so a typo is visible.
 
 ## Options
@@ -127,14 +151,20 @@ Zero runtime dependencies. A Node HTTP server reads GitHub through `gh`, and the
 page is plain TypeScript bundled by esbuild.
 
 The server binds to loopback only and refuses any request carrying a foreign
-`Origin`, because it shells out to `gh` and writes your clipboard.
+`Origin`, because it shells out to `gh`, writes your clipboard and starts T3 Code
+threads.
 
 ```
 src/github.ts    gh calls to maps, tickets, blockers
 src/mapBody.ts   the map body's sections, and the fallback parsers
 src/layout.ts    dependency depth to x/y
 src/prompt.ts    ticket to prompt
-src/t3.ts        clipboard and launching T3 Code
+src/t3.ts        the hand-off ladder
+src/t3Api.ts     T3 Code server: session token, snapshot, thread commands, RPC
+src/models.ts    T3 Code models to the picker catalog
+src/ui/models.ts the model picker and tier defaults
+src/t3App.ts     the desktop app's control socket
+src/clipboard.ts clipboard per platform
 src/server.ts    routes
 src/ui/          the page
 ```

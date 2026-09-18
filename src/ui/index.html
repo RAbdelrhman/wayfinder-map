@@ -25,6 +25,7 @@
           <button type="button" id="view-map" class="seg is-on" aria-pressed="true">Map</button>
           <button type="button" id="view-table" class="seg" aria-pressed="false">Table</button>
         </div>
+        <button type="button" id="models" class="ghost" title="Pick a T3 Code model for each task tier">Models</button>
         <button type="button" id="refresh" class="ghost" title="Re-read the issues from GitHub">Refresh</button>
         <button type="button" id="theme" class="ghost" title="Switch light and dark">Theme</button>
       </div>
@@ -56,6 +57,17 @@
 
       <aside class="detail" id="detail" aria-label="Ticket detail" hidden></aside>
     </main>
+
+    <dialog class="dialog" id="models-dialog" aria-labelledby="models-title">
+      <form method="dialog">
+        <div class="dialog-head">
+          <h2 id="models-title">Model defaults</h2>
+          <button class="detail-close" value="close" aria-label="Close">×</button>
+        </div>
+        <p class="hint">Tickets run as Mid unless you switch them in the ticket panel. Changes save as you go.</p>
+        <div id="tier-rows"></div>
+      </form>
+    </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 

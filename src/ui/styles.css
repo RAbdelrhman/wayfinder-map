@@ -657,6 +657,133 @@ tbody tr:hover {
   cursor: progress;
 }
 
+.primary[title]:disabled {
+  cursor: not-allowed;
+}
+
+.hint {
+  margin: -6px 0 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ---------- model picker ---------- */
+
+.runwith {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.runwith-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.runwith-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  width: 48px;
+  flex: 0 0 auto;
+}
+
+.runwith .seg {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.runwith .hint {
+  margin: 0;
+}
+
+.linkish {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  padding: 2px 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.linkish:hover {
+  color: var(--text-primary);
+}
+
+.picker {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.picker select {
+  min-width: 0;
+  flex: 1 1 auto;
+  background: var(--plane);
+  color: var(--text-primary);
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  padding: 5px 6px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.picker select + select {
+  flex: 0 1 auto;
+}
+
+.dialog {
+  width: min(560px, calc(100vw - 32px));
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  padding: 16px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+}
+
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.dialog-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.dialog-head h2 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.dialog .hint {
+  margin: 0 0 14px;
+}
+
+.tier-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--gridline);
+}
+
+.tier-name {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.tier-name span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .body-text {
   border-top: 1px solid var(--gridline);
   padding-top: 12px;

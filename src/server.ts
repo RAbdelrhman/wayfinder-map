@@ -5,8 +5,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { fetchMaps } from './github.js';
-import { DEFAULT_TEMPLATE, buildPrompt } from './prompt.js';
-import { detectT3, handOffToT3 } from './t3.js';
+import { parseModelChoice } from './models.js';
+import { copyToClipboard } from './clipboard.js';
+import { DEFAULT_TEMPLATE, buildPrompt, ticketBranch } from './prompt.js';
+import { detectT3, handOff } from './t3.js';
+import type { T3HandOff } from './t3.js';
 import type { Config } from './config.js';
 import type { MapSnapshot, WayfinderMap } from './types.js';
 
@@ -24,6 +27,9 @@ interface ServeOptions {
   config: Config;
   repo: string;
   template: string;
+  /** The checkout T3 Code threads run in, or null when the launch directory is not one. */
+  workspaceRoot: string | null;
+  t3: T3HandOff;
 }
 
 export interface RunningServer {
@@ -72,7 +78,7 @@ function originAllowed(request: IncomingMessage, port: number): boolean {
 
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
-export async function startServer({ config, repo, template }: ServeOptions): Promise<RunningServer> {
+export async function startServer({ config, repo, template, workspaceRoot, t3 }: ServeOptions): Promise<RunningServer> {
   let snapshot: MapSnapshot | null = null;
   let inFlight: Promise<MapSnapshot> | null = null;
 
@@ -128,8 +134,17 @@ export async function startServer({ config, repo, template }: ServeOptions): Pro
         return;
       }
 
+      if (path === '/api/models') {
+        try {
+          json(response, 200, await t3.models(await detectT3()));
+        } catch (error) {
+          json(response, 503, { error: `T3 Code models unavailable: ${(error as Error).message}` });
+        }
+        return;
+      }
+
       if (path === '/api/hand-off' && request.method === 'POST') {
-        const body = (await readBody(request)) as { map?: number; ticket?: number; copyOnly?: boolean };
+        const body = (await readBody(request)) as { map?: number; ticket?: number; copyOnly?: boolean; model?: unknown };
         await snapshotOnce(false);
         const found = find(Number(body.map), Number(body.ticket));
         if (!found) {
@@ -137,13 +152,28 @@ export async function startServer({ config, repo, template }: ServeOptions): Pro
           return;
         }
 
-        const prompt = buildPrompt({ repo, map: found.map, ticket: found.ticket, template });
-        const runtime = await detectT3();
-        const result =
-          body.copyOnly === true
-            ? { ...(await copyOnly(prompt)), origin: runtime.origin }
-            : { ...(await handOffToT3(prompt, runtime)), origin: runtime.origin };
-        json(response, 200, { prompt, ...result });
+        const { map, ticket } = found;
+        const prompt = buildPrompt({ repo, map, ticket, template });
+        if (body.copyOnly === true) {
+          json(response, 200, { prompt, ...(await copyOnly(prompt)) });
+          return;
+        }
+        if (ticket.state === 'done' || ticket.state === 'blocked') {
+          json(response, 409, { error: `#${String(ticket.number)} is ${ticket.state}, so there is nothing to start.` });
+          return;
+        }
+
+        const result = await handOff(
+          {
+            title: `#${String(ticket.number)} ${ticket.title}`,
+            workspaceRoot,
+            branch: ticketBranch(ticket),
+            model: parseModelChoice(body.model),
+            prompt: (worktree) => buildPrompt({ repo, map, ticket, template, ...(worktree ? { worktree } : {}) }),
+          },
+          t3.steps(await detectT3()),
+        );
+        json(response, 200, result);
         return;
       }
 
@@ -181,13 +211,12 @@ export async function startServer({ config, repo, template }: ServeOptions): Pro
 
 type MapTicket = WayfinderMap['tickets'][number];
 
-async function copyOnly(prompt: string): Promise<{ copied: boolean; opened: string | null; error: string | null }> {
-  const { copyToClipboard } = await import('./t3.js');
+async function copyOnly(prompt: string): Promise<{ copied: boolean; error: string | null }> {
   try {
     await copyToClipboard(prompt);
-    return { copied: true, opened: null, error: null };
+    return { copied: true, error: null };
   } catch (error) {
-    return { copied: false, opened: null, error: (error as Error).message };
+    return { copied: false, error: (error as Error).message };
   }
 }
 
