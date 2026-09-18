@@ -32,8 +32,6 @@ export const SLIDERS = '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle
 export const REFRESH = '<path d="M20 11a8 8 0 0 0-14.9-3.5L3 10"/><path d="M3 4v6h6"/><path d="M4 13a8 8 0 0 0 14.9 3.5L21 14"/><path d="M21 20v-6h-6"/>';
 export const MOON = '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>';
 export const CHEVRON = '<path d="m6 9 6 6 6-6"/>';
-export const CLOSE = '<path d="M18 6 6 18M6 6l12 12"/>';
-export const PANEL_RIGHT = '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>';
 export const EXTERNAL = '<path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>';
 export const PLAY = '<path d="M7 4v16l13-8z" fill="currentColor"/>';
 export const COPY = '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>';

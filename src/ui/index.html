@@ -32,8 +32,12 @@
             <button type="button" class="mapswitch" id="mapswitch" aria-haspopup="menu" aria-expanded="false" hidden></button>
             <div class="menu" id="mapmenu" role="menu" hidden></div>
           </div>
+          <label class="search">
+            <span data-icon="lens"></span>
+            <input id="search" type="search" placeholder="Jump to a ticket…" autocomplete="off" spellcheck="false" aria-label="Jump to a ticket" />
+            <kbd>Ctrl K</kbd>
+          </label>
           <span class="synced" id="synced"></span>
-          <button type="button" class="iconbtn" id="inspector-toggle" aria-pressed="true" aria-label="Brief and ticket panel" title="Show or hide the brief and ticket panel" data-icon="panel"></button>
         </header>
 
         <div class="warnings" id="warnings" hidden></div>

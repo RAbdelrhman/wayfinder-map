@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Ticket } from '../types.js';
-import { lineage, matchesFilter, onLineage, syncedLabel } from './focus.js';
+import { lineage, matchesFilter, matchesQuery, onLineage, syncedLabel } from './focus.js';
 
 function ticket(number: number, blockedBy: number[] = [], extra: Partial<Ticket> = {}): Ticket {
   return {
@@ -73,6 +73,25 @@ describe('matchesFilter', () => {
     expect(matchesFilter(ticket(1), 'task')).toBe(true);
     expect(matchesFilter(ticket(1, [], { type: null }), 'untyped')).toBe(true);
     expect(matchesFilter(ticket(1), 'untyped')).toBe(false);
+  });
+});
+
+describe('matchesQuery', () => {
+  const home = ticket(18, [], { title: 'What does the home page look like?' });
+
+  it('matches everything when empty', () => {
+    expect(matchesQuery(home, '  ')).toBe(true);
+  });
+
+  it('matches numbers by prefix, with or without a hash', () => {
+    expect(matchesQuery(home, '1')).toBe(true);
+    expect(matchesQuery(home, '#18')).toBe(true);
+    expect(matchesQuery(home, '8')).toBe(false);
+  });
+
+  it('matches words in the title, ignoring case', () => {
+    expect(matchesQuery(home, 'Home Page')).toBe(true);
+    expect(matchesQuery(home, 'server')).toBe(false);
   });
 });
 

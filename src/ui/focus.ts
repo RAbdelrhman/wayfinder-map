@@ -7,6 +7,14 @@ export function matchesFilter(ticket: Ticket, filter: TicketFilter | null): bool
   return filter === null || ticket.state === filter || (ticket.type ?? 'untyped') === filter;
 }
 
+/** The jump box: a number (with or without `#`) matches by prefix, anything else by title. */
+export function matchesQuery(ticket: Ticket, query: string): boolean {
+  const needle = query.trim().toLowerCase().replace(/^#/, '');
+  if (needle.length === 0) return true;
+  if (/^\d+$/.test(needle)) return String(ticket.number).startsWith(needle);
+  return ticket.title.toLowerCase().includes(needle);
+}
+
 export interface Lineage {
   /** Every ticket on this map the focused one waits on, directly or through others. */
   upstream: Set<number>;

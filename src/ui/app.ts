@@ -20,7 +20,7 @@ import {
 } from './models.js';
 import type { ModelChoice, Tier } from './models.js';
 import { AutoRefresh } from './autoRefresh.js';
-import { lineage, matchesFilter, onLineage, syncedLabel } from './focus.js';
+import { lineage, matchesFilter, matchesQuery, onLineage, syncedLabel } from './focus.js';
 import type { Lineage, TicketFilter } from './focus.js';
 import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
@@ -103,7 +103,7 @@ const els = {
   mapSwitch: need<HTMLButtonElement>('mapswitch'),
   mapMenu: need('mapmenu'),
   synced: need('synced'),
-  inspectorToggle: need('inspector-toggle'),
+  search: need<HTMLInputElement>('search'),
   warnings: need('warnings'),
   filters: need('filters'),
   canvasWrap: need('canvas-wrap'),
@@ -129,7 +129,7 @@ const STATIC_ICONS: Record<string, string> = {
   sliders: icons.SLIDERS,
   refresh: icons.REFRESH,
   moon: icons.MOON,
-  panel: icons.PANEL_RIGHT,
+  lens: icons.LENS,
   info: icons.INFO,
   minus: icons.MINUS,
   plus: icons.PLUS,
@@ -152,8 +152,7 @@ let zoom = 1;
 let inspectorTab: 'brief' | 'ticket' = 'brief';
 let briefSection: keyof MapSections = 'destination';
 
-const INSPECTOR_KEY = 'wayfinder-map:inspector';
-let inspectorOpen = localStorage.getItem(INSPECTOR_KEY) !== 'closed';
+let query = '';
 
 function currentMap(): WayfinderMap | null {
   return snapshot?.maps[activeMap] ?? null;
@@ -357,8 +356,7 @@ function renderKey(): void {
     const style = TYPE_STYLE[type];
     return `<div class="keyrow is-type">${icon(style.icon)}<b>${escapeHtml(style.label)}</b>${escapeHtml(style.blurb)}</div>`;
   }).join('');
-  els.keyMenu.innerHTML = `${states}<div class="menu-sep"></div>${types}<div class="menu-sep"></div>
-    <div class="keyrow">A yellow line is a blocker that is still open.</div>`;
+  els.keyMenu.innerHTML = `${states}<div class="menu-sep"></div>${types}`;
 }
 
 function nodeHtml(ticket: Ticket, position: PositionedNode): string {
@@ -476,7 +474,7 @@ function syncHighlights(): void {
   const byNumber = new Map(map.tickets.map((ticket) => [ticket.number, ticket]));
   const shown = (number: number): boolean => {
     const ticket = byNumber.get(number);
-    return ticket !== undefined && matchesFilter(ticket, filter);
+    return ticket !== undefined && matchesFilter(ticket, filter) && matchesQuery(ticket, query);
   };
   const chain: Lineage | null = hovered === null ? null : lineage(map.tickets, hovered);
   const related = (number: number): boolean =>
@@ -551,8 +549,6 @@ function setHovered(node: HTMLElement | null): void {
 /* ---------- inspector: the map brief and the open ticket, one tab each ---------- */
 
 function renderInspector(): void {
-  els.app.classList.toggle('inspector-closed', !inspectorOpen);
-  els.inspectorToggle.setAttribute('aria-pressed', String(inspectorOpen));
   const map = currentMap();
   if (map === null) {
     els.inspector.innerHTML = '';
@@ -572,7 +568,6 @@ function renderInspector(): void {
           ticket === null ? 'Ticket' : `Ticket #${String(ticket.number)}`
         }</button>
       </div>
-      ${ticket === null ? '' : `<button type="button" class="iconbtn" id="detail-close" aria-label="Close ticket" title="Close ticket">${icon(icons.CLOSE)}</button>`}
     </div>
     <div class="insp-panel" data-tab="${tab}:${String(selected)}">${tab === 'ticket' && ticket !== null ? ticketHtml(map, ticket) : briefHtml(map)}</div>`;
 
@@ -811,7 +806,6 @@ async function handOff(copyOnly: boolean): Promise<void> {
 function select(number: number | null): void {
   selected = number;
   inspectorTab = number === null ? 'brief' : 'ticket';
-  if (number !== null && !inspectorOpen) setInspectorOpen(true);
   hideCard();
   syncHighlights();
   renderInspector();
@@ -824,10 +818,15 @@ function setFilter(next: TicketFilter | null): void {
   if (inspectorTab === 'brief' || selected === null) renderInspector();
 }
 
-function setInspectorOpen(open: boolean): void {
-  inspectorOpen = open;
-  localStorage.setItem(INSPECTOR_KEY, open ? 'open' : 'closed');
-  renderInspector();
+/** Open the first ticket the search and filter leave showing, and bring it into view. */
+function jumpToFirstMatch(): void {
+  const hit = currentMap()?.tickets.find((ticket) => matchesFilter(ticket, filter) && matchesQuery(ticket, query));
+  if (hit === undefined) {
+    toast('No ticket matches.', 2400);
+    return;
+  }
+  select(hit.number);
+  els.nodes.querySelector(`.node[data-number="${String(hit.number)}"]`)?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
 }
 
 type Menu = { button: HTMLElement; menu: HTMLElement };
@@ -866,6 +865,8 @@ els.mapMenu.addEventListener('click', (event) => {
   selected = null;
   hovered = null;
   filter = null;
+  query = '';
+  els.search.value = '';
   inspectorTab = 'brief';
   briefSection = 'destination';
   setZoom(1);
@@ -906,15 +907,23 @@ els.tableWrap.addEventListener('click', (event) => {
   select(Number(row.dataset['number']));
 });
 
-els.inspectorToggle.addEventListener('click', () => setInspectorOpen(!inspectorOpen));
+els.search.addEventListener('input', () => {
+  query = els.search.value;
+  syncHighlights();
+});
+
+els.search.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') jumpToFirstMatch();
+  if (event.key !== 'Escape') return;
+  event.stopPropagation();
+  els.search.value = '';
+  query = '';
+  syncHighlights();
+  els.search.blur();
+});
 
 els.inspector.addEventListener('click', (event) => {
   const target = event.target as HTMLElement;
-  if (target.closest('#detail-close') !== null) {
-    select(null);
-    return;
-  }
-
   const panelTab = target.closest<HTMLElement>('[data-panel]');
   if (panelTab !== null) {
     inspectorTab = panelTab.dataset['panel'] === 'ticket' ? 'ticket' : 'brief';
@@ -972,6 +981,12 @@ els.modelsDialog.addEventListener('close', refreshTicketPicker);
 need('models').addEventListener('click', openModels);
 
 document.addEventListener('keydown', (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    els.search.focus();
+    els.search.select();
+    return;
+  }
   if (event.key !== 'Escape' || els.modelsDialog.open) return;
   if (MENUS.some((entry) => !entry.menu.hidden)) {
     closeMenus();
