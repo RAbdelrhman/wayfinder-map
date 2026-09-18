@@ -14,49 +14,61 @@
     </script>
   </head>
   <body class="viz-root">
-    <header class="topbar">
-      <div class="topbar-left">
-        <span class="wordmark">wayfinder</span>
-        <span class="repo" id="repo">loading…</span>
-      </div>
-      <nav class="maptabs" id="maptabs" aria-label="Maps"></nav>
-      <div class="topbar-right">
-        <div class="segmented" role="group" aria-label="View">
-          <button type="button" id="view-map" class="seg is-on" aria-pressed="true">Map</button>
-          <button type="button" id="view-table" class="seg" aria-pressed="false">Table</button>
-        </div>
-        <button type="button" id="models" class="ghost" title="Pick a T3 Code model for each task tier">Models</button>
-        <button type="button" id="refresh" class="ghost" title="Re-read the issues from GitHub">Refresh</button>
-        <button type="button" id="theme" class="ghost" title="Switch light and dark">Theme</button>
-      </div>
-    </header>
+    <div class="app" id="app">
+      <nav class="rail" aria-label="App">
+        <span class="logo" data-icon="compass" title="wayfinder"></span>
+        <button type="button" id="view-map" class="rail-btn is-on" aria-pressed="true" aria-label="Map view" title="Map" data-icon="graph"></button>
+        <button type="button" id="view-table" class="rail-btn" aria-pressed="false" aria-label="Table view" title="Table" data-icon="table"></button>
+        <span class="rail-spacer"></span>
+        <button type="button" id="models" class="rail-btn" aria-label="Model defaults" title="Pick a T3 Code model for each task tier" data-icon="sliders"></button>
+        <button type="button" id="refresh" class="rail-btn" aria-label="Refresh" title="Re-read the issues from GitHub" data-icon="refresh"></button>
+        <button type="button" id="theme" class="rail-btn" aria-label="Theme" title="Switch light and dark" data-icon="moon"></button>
+      </nav>
 
-    <div class="warnings" id="warnings" hidden></div>
-
-    <main class="shell">
-      <aside class="mapcard" id="mapcard" aria-label="Map summary"></aside>
-
-      <section class="stage" aria-label="Tickets">
-        <div class="legend" id="legend" role="list" aria-label="Ticket states and types"></div>
-
-        <div class="canvas-wrap" id="canvas-wrap">
-          <div class="canvas" id="canvas">
-            <svg class="edges" id="edges" aria-hidden="true"></svg>
-            <div class="nodes" id="nodes"></div>
+      <div class="main">
+        <header class="topbar">
+          <span class="crumbs" id="repo">loading…</span>
+          <div class="menu-anchor">
+            <button type="button" class="mapswitch" id="mapswitch" aria-haspopup="menu" aria-expanded="false" hidden></button>
+            <div class="menu" id="mapmenu" role="menu" hidden></div>
           </div>
+          <div class="progress" id="progress"></div>
+          <span class="synced" id="synced"></span>
+          <button type="button" class="iconbtn" id="inspector-toggle" aria-pressed="true" aria-label="Brief and ticket panel" title="Show or hide the brief and ticket panel" data-icon="panel"></button>
+        </header>
+
+        <div class="warnings" id="warnings" hidden></div>
+        <div class="filters" id="filters" role="toolbar" aria-label="Filter tickets"></div>
+
+        <div class="body">
+          <section class="stage" aria-label="Tickets">
+            <div class="canvas-wrap" id="canvas-wrap">
+              <div class="canvas" id="canvas">
+                <svg class="edges" id="edges" aria-hidden="true"></svg>
+                <div class="nodes" id="nodes"></div>
+              </div>
+            </div>
+
+            <div class="tablewrap" id="tablewrap" hidden></div>
+
+            <div class="keybox menu-anchor">
+              <button type="button" class="floatbox keybtn" id="key" aria-expanded="false"><span data-icon="info"></span>Key</button>
+              <div class="menu is-up" id="keymenu" hidden></div>
+            </div>
+
+            <div class="zoom floatbox" role="group" aria-label="Zoom">
+              <button type="button" id="zoom-out" class="iconbtn" aria-label="Zoom out" data-icon="minus"></button>
+              <button type="button" id="zoom-reset" class="iconbtn pct" title="Reset zoom">100%</button>
+              <button type="button" id="zoom-in" class="iconbtn" aria-label="Zoom in" data-icon="plus"></button>
+            </div>
+          </section>
+
+          <aside class="inspector" id="inspector" aria-label="Brief and ticket"></aside>
         </div>
+      </div>
+    </div>
 
-        <div class="tablewrap" id="tablewrap" hidden></div>
-
-        <div class="zoom" role="group" aria-label="Zoom">
-          <button type="button" id="zoom-out" class="ghost" aria-label="Zoom out">&minus;</button>
-          <button type="button" id="zoom-reset" class="ghost">Fit</button>
-          <button type="button" id="zoom-in" class="ghost" aria-label="Zoom in">+</button>
-        </div>
-      </section>
-
-      <aside class="detail" id="detail" aria-label="Ticket detail" hidden></aside>
-    </main>
+    <div class="hovercard" id="hovercard" aria-hidden="true"></div>
 
     <dialog class="dialog" id="models-dialog" aria-labelledby="models-title">
       <form method="dialog">
