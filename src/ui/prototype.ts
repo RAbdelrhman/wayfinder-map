@@ -1,5 +1,11 @@
-import { createMapPrompt, prototypeHash, prototypeStepFromHash } from './prototypeRoutes.js';
-import type { PrototypeStep } from './prototypeRoutes.js';
+import {
+  createMapPrompt,
+  desktopHash,
+  desktopStateFromHash,
+  prototypeHash,
+  prototypeStepFromHash,
+} from './prototypeRoutes.js';
+import type { DesktopState, PrototypeStep } from './prototypeRoutes.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 
@@ -79,6 +85,7 @@ function rail(step: PrototypeStep): string {
     <div class="rail-links">
       ${link('recent', `${icon(icons.GRAPH)}<span class="sr-only">Home</span>`, `rail-link${step === 'recent' || step === 'browse' || step === 'repository' || step === 'map' ? ' is-on' : ''}`)}
       ${link('create', `${icon(icons.PLUS)}<span class="sr-only">Start a new map</span>`, `rail-link${step === 'create' ? ' is-on' : ''}`)}
+      ${link('desktop', `${icon(icons.PLAY)}<span class="sr-only">Desktop launch states</span>`, `rail-link${step === 'desktop' ? ' is-on' : ''}`)}
       ${link('help', `${icon(icons.INFO)}<span class="sr-only">How to use</span>`, `rail-link${step === 'help' ? ' is-on' : ''}`)}
     </div>
     <div class="rail-bottom"><button class="rail-link" type="button" title="Settings">${icon(icons.SLIDERS)}<span class="sr-only">Settings</span></button><span class="avatar" title="GitHub account settings">R</span></div>
@@ -86,7 +93,7 @@ function rail(step: PrototypeStep): string {
 }
 
 function header(step: PrototypeStep): string {
-  const selected = step === 'recent' ? 'Recent' : step === 'browse' ? 'Browse repositories' : step === 'create' ? 'Start a new map' : step === 'help' ? 'How to use' : selectedRepository.name;
+  const selected = step === 'recent' ? 'Recent' : step === 'browse' ? 'Browse repositories' : step === 'create' ? 'Start a new map' : step === 'desktop' ? 'Desktop launch states' : step === 'help' ? 'How to use' : selectedRepository.name;
   const mapSwitch = step === 'map' ? `<button class="map-switch" type="button">${escapeHtml(selectedMap.title)} ${icon(icons.CHEVRON)}</button>` : '';
   const homeTarget = step === 'repository' || step === 'map' ? `${link('recent', escapeHtml(selectedRepository.name), 'home-crumb')}<i>/</i>` : '<span>Home</span><i>/</i>';
   return `<header class="prototype-topbar"><div class="where">${homeTarget}<strong>${escapeHtml(selected)}</strong>${mapSwitch}</div><label class="prototype-search">${icon(icons.LENS)}<input type="search" placeholder="Search repositories and maps" aria-label="Search repositories and maps" /><kbd>Ctrl K</kbd></label></header>`;
@@ -125,6 +132,52 @@ function createMap(): string {
   return `<main class="prototype-main create-main"><div class="page-heading"><p class="eyebrow">T3 Code hand-off</p><h1>What do you want to accomplish?</h1><p>Give T3 the destination. It will ask any follow-up questions and create the map in GitHub.</p></div><form class="create-card" id="create-map-form"><label><span>Repository</span><select id="create-repository" name="repository">${REPOSITORIES.map((repository) => `<option>${escapeHtml(repository.name)}</option>`).join('')}</select></label><label><span>Prompt</span><textarea id="create-prompt" name="prompt" rows="7" placeholder="Describe the outcome you want, the constraints that matter, and anything T3 should know." required></textarea></label><div class="create-actions"><button class="primary-action" type="submit">${icon(icons.PLAY)}Start in T3 Code</button><button class="secondary-action" id="copy-create-prompt" type="button">${icon(icons.COPY)}Copy prompt</button>${link('recent', 'Cancel', 'cancel-action')}</div><p class="create-status" id="create-status" role="status" aria-live="polite"></p></form></main>`;
 }
 
+function desktopLink(state: DesktopState, label: string, className = ''): string {
+  return `<a href="${desktopHash(state)}" class="${className}">${label}</a>`;
+}
+
+function desktopScenario(state: DesktopState, title: string, description: string): string {
+  return desktopLink(state, `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span>${icon(icons.ARROW)}`, 'scenario-card');
+}
+
+function desktopMenu(): string {
+  return `<main class="prototype-main desktop-main"><div class="page-heading"><p class="eyebrow">Clickable flow</p><h1>Desktop launch and recovery states</h1><p>Try the moments the installed app has to handle before the map appears.</p></div><section class="scenario-grid" aria-label="Desktop scenarios"><a href="#recent" class="scenario-card"><strong>Normal launch</strong><span>Start the local server, then open Home.</span>${icon(icons.ARROW)}</a>${desktopScenario('loading', 'Starting up', 'Show progress while the loopback server becomes ready.')}${desktopScenario('restored', 'Second launch or tray restore', 'Focus the existing window on its last page and keep its UI state.')}${desktopScenario('missing-gh', 'GitHub CLI is missing', 'Keep Home visible and explain how to recover.')}${desktopScenario('signed-out', 'GitHub is signed out', 'Offer the gh web sign-in flow without hiding Home.')}${desktopScenario('error', 'Startup failed', 'Show a useful error, retry, and copyable details.')}${desktopScenario('quit-confirm', 'Quit Wayfinder', 'Stop the server and revoke the T3 session explicitly.')}</section></main>`;
+}
+
+function trayMenu(): string {
+  return `<div class="tray-menu" aria-label="Wayfinder tray menu"><strong>Wayfinder</strong><a href="#map">Open Wayfinder</a><a href="#recent">Home</a><a href="#create">Start a new map</a>${desktopLink('quit-confirm', 'Quit')}</div>`;
+}
+
+function desktopStateView(state: DesktopState): string {
+  if (state === 'menu') return desktopMenu();
+
+  if (state === 'loading') {
+    return `<main class="prototype-main desktop-main state-main"><section class="state-card centered"><div class="loading-mark" aria-hidden="true"></div><p class="eyebrow">Starting Wayfinder</p><h1>Preparing your Home</h1><p>Starting the local server and checking GitHub access. This window stays responsive while Wayfinder gets ready.</p><div class="state-actions"><a href="#recent" class="primary-action">Continue to Home</a>${desktopLink('menu', 'Back to scenarios', 'secondary-action')}</div></section></main>`;
+  }
+
+  if (state === 'restored') {
+    return `<main class="prototype-main desktop-main state-main"><section class="state-card"><p class="eyebrow">Already running</p><h1>Your existing window was restored</h1><p>Wayfinder returned to Map #3 with the same filters and selection. A second launch focuses this window instead of starting another server.</p><div class="restored-preview"><div><span class="status-dot"></span>Running in the tray</div><strong>Last page</strong><span>RAbdelrhman/wayfinder-map · Map #3</span></div><div class="tray-demo"><p>Tray menu</p>${trayMenu()}</div><div class="state-actions"><a href="#map" class="primary-action">Open restored map</a>${desktopLink('menu', 'Back to scenarios', 'secondary-action')}</div></section></main>`;
+  }
+
+  if (state === 'missing-gh') {
+    return `<main class="prototype-main desktop-main state-main"><section class="state-card recovery-card"><p class="eyebrow">GitHub needs attention</p><h1>Install GitHub CLI to load your maps</h1><p>Home remains available, but Wayfinder uses <code>gh</code> for GitHub access and cannot discover repositories until it is installed.</p><div class="state-actions"><button class="primary-action" type="button" data-prototype-message="Wayfinder would open the GitHub CLI installation guide in your system browser.">${icon(icons.EXTERNAL)}Open installation guide</button><button class="secondary-action" type="button" data-prototype-message="Wayfinder checked again. GitHub CLI is still missing.">${icon(icons.REFRESH)}Check again</button>${link('recent', 'Continue to Home', 'cancel-action')}</div><p class="desktop-status" id="desktop-status" role="status" aria-live="polite"></p></section></main>`;
+  }
+
+  if (state === 'signed-out') {
+    return `<main class="prototype-main desktop-main state-main"><section class="state-card recovery-card"><p class="eyebrow">GitHub needs attention</p><h1>Sign in with GitHub CLI</h1><p>Wayfinder found <code>gh</code>, but there is no active account. Sign-in opens GitHub's web flow and returns here when it finishes.</p><div class="state-actions"><button class="primary-action" type="button" data-prototype-message="Wayfinder would run gh auth login --web and show the one-time code here.">${icon(icons.EXTERNAL)}Sign in with GitHub</button><button class="secondary-action" type="button" data-prototype-message="Wayfinder checked again. No active GitHub account was found.">${icon(icons.REFRESH)}Check again</button>${link('recent', 'Continue to Home', 'cancel-action')}</div><p class="desktop-status" id="desktop-status" role="status" aria-live="polite"></p></section></main>`;
+  }
+
+  if (state === 'error') {
+    return `<main class="prototype-main desktop-main state-main"><section class="state-card recovery-card error-card"><p class="eyebrow">Wayfinder did not start</p><h1>The local server stopped before Home was ready</h1><p>Nothing was published and no second process is running. Retry first; the details below are safe to copy into a bug report.</p><pre class="error-details">Startup stage: server\nCause: The loopback address could not be opened.\nSession cleanup: complete</pre><div class="state-actions">${desktopLink('loading', `${icon(icons.REFRESH)}Retry startup`, 'primary-action')}<button class="secondary-action" type="button" data-copy="Startup stage: server\nCause: The loopback address could not be opened.\nSession cleanup: complete">${icon(icons.COPY)}Copy details</button>${desktopLink('menu', 'Back to scenarios', 'cancel-action')}</div><p class="desktop-status" id="desktop-status" role="status" aria-live="polite"></p></section></main>`;
+  }
+
+  if (state === 'quit-confirm') {
+    return `<main class="prototype-main desktop-main state-main"><section class="state-card quit-card"><p class="eyebrow">Quit Wayfinder</p><h1>Stop Wayfinder completely?</h1><p>Closing the window only hides it. Quit stops the local server, revokes the T3 session, and removes the tray icon.</p><div class="state-actions">${desktopLink('stopped', 'Quit Wayfinder', 'danger-action')}<a href="#map" class="secondary-action">Cancel</a></div></section></main>`;
+  }
+
+  return `<main class="prototype-main desktop-main state-main"><section class="state-card centered"><div class="stopped-mark">W</div><p class="eyebrow">Wayfinder is closed</p><h1>The server and T3 session are stopped</h1><p>Launch Wayfinder again when you are ready. It will create a fresh loopback session and open Home.</p><div class="state-actions">${desktopLink('loading', `${icon(icons.PLAY)}Launch Wayfinder`, 'primary-action')}${desktopLink('menu', 'Back to scenarios', 'secondary-action')}</div></section></main>`;
+}
+
 function setupCreateMap(): void {
   const form = document.querySelector<HTMLFormElement>('#create-map-form');
   if (form === null) return;
@@ -150,11 +203,31 @@ function setupCreateMap(): void {
   });
 }
 
+function setupDesktopActions(): void {
+  const status = document.querySelector<HTMLElement>('#desktop-status');
+
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-prototype-message]')) {
+    button.addEventListener('click', () => {
+      if (status !== null) status.textContent = button.dataset['prototypeMessage'] ?? '';
+    });
+  }
+
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy]')) {
+    button.addEventListener('click', () => {
+      void navigator.clipboard.writeText(button.dataset['copy'] ?? '').then(
+        () => { if (status !== null) status.textContent = 'Startup details copied.'; },
+        () => { if (status !== null) status.textContent = 'Copy was unavailable. Select the details and copy them manually.'; },
+      );
+    });
+  }
+}
+
 function render(): void {
   const step = prototypeStepFromHash(window.location.hash);
-  const content = step === 'recent' ? recent() : step === 'browse' ? browse() : step === 'repository' ? repository() : step === 'map' ? map() : step === 'create' ? createMap() : help();
+  const content = step === 'recent' ? recent() : step === 'browse' ? browse() : step === 'repository' ? repository() : step === 'map' ? map() : step === 'create' ? createMap() : step === 'desktop' ? desktopStateView(desktopStateFromHash(window.location.hash)) : help();
   app.innerHTML = `${rail(step)}<div class="prototype-page">${header(step)}${content}</div>`;
   setupCreateMap();
+  setupDesktopActions();
 }
 
 window.addEventListener('hashchange', render);
