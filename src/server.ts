@@ -23,13 +23,15 @@ const MIME: Record<string, string> = {
   '.svg': 'image/svg+xml',
 };
 
-interface ServeOptions {
+export type ServerT3 = Pick<T3HandOff, 'models' | 'steps'>;
+
+export interface ServeOptions {
   config: Config;
   repo: string;
   template: string;
   /** The checkout T3 Code threads run in, or null when the launch directory is not one. */
   workspaceRoot: string | null;
-  t3: T3HandOff;
+  t3: ServerT3;
 }
 
 export interface RunningServer {
@@ -106,7 +108,8 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
     return map && ticket ? { map, ticket } : null;
   };
 
-  const url = `http://${config.host}:${String(config.port)}`;
+  let port = config.port;
+  let url = `http://${config.host}:${String(port)}`;
 
   const server = createServer((request, response) => {
     void handle(request, response).catch((error: unknown) => {
@@ -119,7 +122,7 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
     const path = requestUrl.pathname;
 
     if (path.startsWith('/api/')) {
-      if (!originAllowed(request, config.port)) {
+      if (!originAllowed(request, port)) {
         json(response, 403, { error: 'Cross-origin requests are not accepted.' });
         return;
       }
@@ -202,9 +205,21 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
   }
 
   await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(config.port, config.host, resolve);
+    const onError = (error: Error): void => reject(error);
+    server.once('error', onError);
+    server.listen(config.port, config.host, () => {
+      server.off('error', onError);
+      resolve();
+    });
   });
+
+  const address = server.address();
+  if (address === null || typeof address === 'string') {
+    server.close();
+    throw new Error('Wayfinder server did not report a TCP port');
+  }
+  port = address.port;
+  url = `http://${config.host}:${String(port)}`;
 
   return { server, url };
 }
