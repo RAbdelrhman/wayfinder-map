@@ -1590,6 +1590,7 @@ tbody tr.is-selected {
 
 /* ---------- prototypes view ---------- */
 
+.app.is-prototypes .filters,
 .app.is-prototypes .keybox,
 .app.is-prototypes .zoom {
   display: none;
