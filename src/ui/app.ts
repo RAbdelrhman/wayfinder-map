@@ -1,7 +1,9 @@
 import { DEFAULT_LAYOUT, layoutTickets } from '../layout.js';
 import type { PositionedNode } from '../layout.js';
+import { prototypeBranch } from '../prompt.js';
+import { isViewable, prototypeFileUrl } from '../prototypes.js';
 import { TICKET_TYPES } from '../types.js';
-import type { MapSections, MapSnapshot, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
+import type { MapSections, MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
 import {
   TIERS,
   TIER_HINT,
@@ -111,6 +113,7 @@ const els = {
   edges: need<HTMLElement>('edges') as unknown as SVGSVGElement,
   nodes: need('nodes'),
   tableWrap: need('tablewrap'),
+  protoWrap: need('protowrap'),
   keyButton: need('key'),
   keyMenu: need('keymenu'),
   zoomReset: need('zoom-reset'),
@@ -126,6 +129,7 @@ const STATIC_ICONS: Record<string, string> = {
   compass: icons.COMPASS,
   graph: icons.GRAPH,
   table: icons.TABLE,
+  beaker: icons.BEAKER,
   sliders: icons.SLIDERS,
   refresh: icons.REFRESH,
   moon: icons.MOON,
@@ -147,7 +151,8 @@ let activeMap = 0;
 let selected: number | null = null;
 let hovered: number | null = null;
 let filter: TicketFilter | null = null;
-let view: 'map' | 'table' = 'map';
+type View = 'map' | 'table' | 'prototypes';
+let view: View = 'map';
 let zoom = 1;
 let inspectorTab: 'brief' | 'ticket' = 'brief';
 let briefSection: keyof MapSections = 'destination';
@@ -285,7 +290,8 @@ function render(): void {
   renderFilters();
   renderKey();
   if (view === 'map') renderGraph();
-  else renderTable();
+  else if (view === 'table') renderTable();
+  else renderPrototypes();
   renderInspector();
 }
 
@@ -385,6 +391,7 @@ function nodeHtml(ticket: Ticket, position: PositionedNode): string {
 function renderGraph(): void {
   els.canvasWrap.hidden = false;
   els.tableWrap.hidden = true;
+  els.protoWrap.hidden = true;
   hideCard();
 
   const map = currentMap();
@@ -432,6 +439,7 @@ function renderGraph(): void {
 function renderTable(): void {
   els.canvasWrap.hidden = true;
   els.tableWrap.hidden = false;
+  els.protoWrap.hidden = true;
   hideCard();
 
   const map = currentMap();
@@ -462,6 +470,153 @@ function renderTable(): void {
   </table>`;
 
   syncHighlights();
+}
+
+/* ---------- prototypes: fetched per map on demand, since each one costs GitHub calls ---------- */
+
+type PrototypeLoad = { status: 'loading' } | { status: 'ready'; list: Prototype[] } | { status: 'failed'; error: string };
+
+const prototypeLoads = new Map<number, PrototypeLoad>();
+
+function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
+  const existing = prototypeLoads.get(map.number);
+  if (existing !== undefined && !force) return existing;
+  const loading: PrototypeLoad = { status: 'loading' };
+  prototypeLoads.set(map.number, loading);
+  void (async () => {
+    let next: PrototypeLoad;
+    try {
+      const response = await fetch(`/api/prototypes?map=${String(map.number)}${force ? '&refresh=1' : ''}`);
+      const body: unknown = await response.json();
+      next = response.ok
+        ? { status: 'ready', list: body as Prototype[] }
+        : { status: 'failed', error: (body as { error?: string }).error ?? 'Could not read the prototypes.' };
+    } catch (error) {
+      next = { status: 'failed', error: (error as Error).message };
+    }
+    if (prototypeLoads.get(map.number) !== loading) return;
+    prototypeLoads.set(map.number, next);
+    if (currentMap()?.number !== map.number) return;
+    if (view === 'prototypes') renderPrototypes();
+    renderTicketPrototype();
+  })();
+  return loading;
+}
+
+function fileName(file: string): string {
+  return file.slice(file.lastIndexOf('/') + 1);
+}
+
+function dateLabel(iso: string | null): string {
+  if (iso === null) return '';
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/** Open buttons for the HTML files, a link to the branch, and the full file list. */
+function prototypeBodyHtml(prototype: Prototype, ticket: Ticket | undefined): string {
+  const viewable = prototype.files.filter(isViewable);
+  const opens = viewable
+    .map(
+      (file, index) =>
+        `<a class="${index === 0 ? 'primary' : 'ghost'}" href="${escapeHtml(prototypeFileUrl(prototype.branch, file))}" target="_blank" rel="noreferrer" title="${escapeHtml(file)}">${icon(icons.PLAY)}Open ${escapeHtml(fileName(file))}</a>`,
+    )
+    .join('');
+  const verdict =
+    prototype.verdict !== null
+      ? `<div class="proto-verdict"><span class="eyebrow">Verdict</span><div class="prose">${renderMarkdown(prototype.verdict)}</div></div>`
+      : ticket?.open === false
+        ? ''
+        : '<p class="hint">Still open, so there is no verdict yet.</p>';
+  return `${verdict}
+    <div class="proto-actions">
+      ${opens}
+      <a class="ghost" href="${escapeHtml(prototype.url)}" target="_blank" rel="noreferrer">${icon(icons.EXTERNAL)}Branch on GitHub</a>
+    </div>
+    ${
+      viewable.length === 0
+        ? `<p class="hint">No HTML file to open here. It runs inside the app: check out <code>${escapeHtml(prototype.branch)}</code> and start it.</p>`
+        : ''
+    }
+    <details class="sec"><summary>${String(prototype.files.length)} ${prototype.files.length === 1 ? 'file' : 'files'} on <code>${escapeHtml(prototype.branch)}</code></summary>
+      <ul class="proto-files">${prototype.files.map((file) => `<li>${escapeHtml(file)}</li>`).join('')}</ul>
+    </details>`;
+}
+
+function renderPrototypes(): void {
+  els.canvasWrap.hidden = true;
+  els.tableWrap.hidden = true;
+  els.protoWrap.hidden = false;
+  hideCard();
+
+  const map = currentMap();
+  if (map === null) {
+    els.protoWrap.innerHTML = '';
+    return;
+  }
+
+  const load = prototypesFor(map);
+  if (load.status !== 'ready') {
+    els.protoWrap.innerHTML = `<p class="empty">${
+      load.status === 'loading' ? 'Looking for prototype branches…' : escapeHtml(`Could not read the prototypes: ${load.error}`)
+    }</p>`;
+    return;
+  }
+
+  if (load.list.length === 0) {
+    els.protoWrap.innerHTML =
+      '<p class="empty">No prototypes on this map yet.<br />A prototype ticket keeps its prototype on a <code>prototype/&lt;ticket&gt;-&lt;slug&gt;</code> branch, and it shows up here once pushed.</p>';
+    return;
+  }
+
+  const cards = load.list
+    .map((prototype) => {
+      const ticket = map.tickets.find((candidate) => candidate.number === prototype.ticketNumber);
+      const updated = dateLabel(prototype.updatedAt);
+      return `<article class="proto">
+        <header class="proto-head">
+          ${typeGlyph(ticket?.type ?? null)}
+          <button type="button" class="proto-title" data-jump="${String(prototype.ticketNumber)}" title="Open the ticket">
+            <span class="num">#${String(prototype.ticketNumber)}</span>${escapeHtml(ticket?.title ?? prototype.branch)}
+          </button>
+          ${ticket === undefined ? '' : stateChip(ticket.state)}
+          ${updated === '' ? '' : `<span class="proto-date">${escapeHtml(updated)}</span>`}
+        </header>
+        ${prototypeBodyHtml(prototype, ticket)}
+      </article>`;
+    })
+    .join('');
+
+  els.protoWrap.innerHTML = `<div class="protolist">
+    <p class="eyebrow">${String(load.list.length)} ${load.list.length === 1 ? 'prototype' : 'prototypes'} on ${escapeHtml(map.title)}</p>
+    ${cards}
+  </div>`;
+}
+
+/** The ticket panel's prototype block, filled in place once the list arrives. */
+function ticketPrototypeHtml(map: WayfinderMap, ticket: Ticket): string {
+  const load = prototypeLoads.get(map.number);
+  const mine = load?.status === 'ready' ? load.list.filter((prototype) => prototype.ticketNumber === ticket.number) : [];
+  if (ticket.type !== 'prototype' && mine.length === 0) return '';
+  const body =
+    load === undefined || load.status === 'loading'
+      ? '<p class="hint">Looking for its prototype…</p>'
+      : load.status === 'failed'
+        ? `<p class="hint">${escapeHtml(`Could not read the prototypes: ${load.error}`)}</p>`
+        : mine.length === 0
+          ? `<p class="hint">No prototype yet. It will be kept on <code>${escapeHtml(prototypeBranch(ticket))}</code>.</p>`
+          : mine.map((prototype) => prototypeBodyHtml(prototype, ticket)).join('');
+  return `<section class="ticket-proto"><span class="eyebrow">Prototype</span>${body}</section>`;
+}
+
+function renderTicketPrototype(): void {
+  const slot = document.getElementById('ticket-proto');
+  const map = currentMap();
+  const ticket = map?.tickets.find((candidate) => candidate.number === selected);
+  if (slot === null || map === null || ticket === undefined) return;
+  slot.innerHTML = ticketPrototypeHtml(map, ticket);
 }
 
 /**
@@ -613,6 +768,7 @@ function briefHtml(map: WayfinderMap): string {
 }
 
 function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
+  if (ticket.type === 'prototype') prototypesFor(map);
   const style = STATE_STYLE[ticket.state];
   const waitingOn = ticket.openBlockers.map((n) => `#${String(n)}`);
   const startable =
@@ -646,6 +802,7 @@ function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
       <dt>Needs</dt><dd>${ticketPills(map, ticket.blockedBy)}</dd>
       <dt>Unlocks</dt><dd>${ticketPills(map, dependents(map, ticket.number))}</dd>
     </dl>
+    <div id="ticket-proto">${ticketPrototypeHtml(map, ticket)}</div>
     <div class="launch">
       ${startable === null ? `<div class="runwith" id="runwith">${runWithHtml(ticket.number)}</div>` : ''}
       <div class="launch-actions">
@@ -901,6 +1058,11 @@ els.nodes.addEventListener('focusin', (event) => {
 
 els.nodes.addEventListener('focusout', () => setHovered(null));
 
+els.protoWrap.addEventListener('click', (event) => {
+  const jump = (event.target as HTMLElement).closest<HTMLElement>('[data-jump]');
+  if (jump !== null) select(Number(jump.dataset['jump']));
+});
+
 els.tableWrap.addEventListener('click', (event) => {
   const row = (event.target as HTMLElement).closest<HTMLElement>('tr[data-number]');
   if (row === null) return;
@@ -997,7 +1159,18 @@ document.addEventListener('keydown', (event) => {
 
 void loadCatalog().then(refreshTicketPicker);
 
-els.refresh.addEventListener('click', () => void load('manual'));
+els.refresh.addEventListener('click', () => {
+  void load('manual').then(() => {
+    const map = currentMap();
+    prototypeLoads.clear();
+    if (map === null) return;
+    if (view === 'prototypes' || map.tickets.find((ticket) => ticket.number === selected)?.type === 'prototype') {
+      prototypesFor(map, true);
+      if (view === 'prototypes') renderPrototypes();
+      renderTicketPrototype();
+    }
+  });
+});
 
 need('theme').addEventListener('click', () => {
   const dark = getComputedStyle(document.body).getPropertyValue('color-scheme').trim() === 'dark';
@@ -1006,11 +1179,13 @@ need('theme').addEventListener('click', () => {
   localStorage.setItem('wayfinder-map:theme', next);
 });
 
-function setView(next: 'map' | 'table'): void {
+function setView(next: View): void {
   view = next;
+  els.app.classList.toggle('is-prototypes', next === 'prototypes');
   for (const [id, on] of [
     ['view-map', next === 'map'],
     ['view-table', next === 'table'],
+    ['view-prototypes', next === 'prototypes'],
   ] as const) {
     const button = need(id);
     button.classList.toggle('is-on', on);
@@ -1021,6 +1196,7 @@ function setView(next: 'map' | 'table'): void {
 
 need('view-map').addEventListener('click', () => setView('map'));
 need('view-table').addEventListener('click', () => setView('table'));
+need('view-prototypes').addEventListener('click', () => setView('prototypes'));
 
 /* zoom and pan */
 

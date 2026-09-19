@@ -1587,3 +1587,120 @@ tbody tr.is-selected {
     border-top: 1px solid var(--hairline);
   }
 }
+
+/* ---------- prototypes view ---------- */
+
+.app.is-prototypes .keybox,
+.app.is-prototypes .zoom {
+  display: none;
+}
+
+.protowrap {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  background: var(--surface-1);
+}
+
+.protowrap .empty code {
+  font-size: 11px;
+}
+
+.protolist {
+  display: grid;
+  gap: 12px;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 20px 24px 40px;
+}
+
+.protolist > .eyebrow {
+  margin: 0;
+}
+
+.proto {
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 14px 16px 4px;
+  background: var(--surface-1);
+}
+
+.proto-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.proto-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-weight: 600;
+}
+
+.proto-title:hover {
+  color: var(--state-claimed);
+}
+
+.proto-date {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.proto-verdict {
+  margin: 4px 0 10px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--state-done);
+  background: var(--wash);
+  border-radius: 0 8px 8px 0;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.proto-verdict .prose {
+  margin-top: 4px;
+}
+
+.proto-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.proto-actions .primary {
+  text-decoration: none;
+}
+
+.proto .sec code,
+.ticket-proto .sec code {
+  font-size: 11px;
+}
+
+.proto-files {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font: 12px ui-monospace, 'Cascadia Code', Consolas, monospace;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.ticket-proto {
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+}
+
+.ticket-proto .sec {
+  padding-bottom: 0;
+}

@@ -1,0 +1,45 @@
+import { describe, expect, it } from 'vitest';
+
+import { isViewable, parsePrototypeFilePath, prototypeFileUrl, prototypeTicketNumber } from './prototypes.js';
+
+describe('prototypeTicketNumber', () => {
+  it('reads the ticket number off a conventional branch', () => {
+    expect(prototypeTicketNumber('prototype/8-home-page')).toBe(8);
+    expect(prototypeTicketNumber('prototype/17')).toBe(17);
+  });
+
+  it('ignores branches off the convention', () => {
+    expect(prototypeTicketNumber('prototype/home-page')).toBeNull();
+    expect(prototypeTicketNumber('prototype/8x-home')).toBeNull();
+    expect(prototypeTicketNumber('wayfinder/8-home-page')).toBeNull();
+  });
+});
+
+describe('isViewable', () => {
+  it('opens HTML files and nothing else', () => {
+    expect(isViewable('docs/proto/flow.html')).toBe(true);
+    expect(isViewable('INDEX.HTM')).toBe(true);
+    expect(isViewable('src/app.ts')).toBe(false);
+  });
+});
+
+describe('prototype file paths', () => {
+  it('round-trips a branch and nested file through the URL', () => {
+    const url = prototypeFileUrl('prototype/8-home page', 'docs/a b/index.html');
+    expect(url).toBe('/proto/prototype%2F8-home%20page/docs/a%20b/index.html');
+    expect(parsePrototypeFilePath(url)).toEqual({ branch: 'prototype/8-home page', file: 'docs/a b/index.html' });
+  });
+
+  it('refuses branches outside prototype/', () => {
+    expect(parsePrototypeFilePath('/proto/main/index.html')).toBeNull();
+    expect(parsePrototypeFilePath('/proto/wayfinder%2F8-x/index.html')).toBeNull();
+  });
+
+  it('refuses paths that climb out or name no file', () => {
+    expect(parsePrototypeFilePath('/proto/prototype%2F8-x/../secret')).toBeNull();
+    expect(parsePrototypeFilePath('/proto/prototype%2F8-x/%2E%2E/secret')).toBeNull();
+    expect(parsePrototypeFilePath('/proto/prototype%2F8-x')).toBeNull();
+    expect(parsePrototypeFilePath('/proto/prototype%2F8-x/')).toBeNull();
+    expect(parsePrototypeFilePath('/proto/prototype%2F%E0/x.html')).toBeNull();
+  });
+});

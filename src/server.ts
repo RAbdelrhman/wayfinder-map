@@ -4,14 +4,15 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { fetchMaps } from './github.js';
+import { fetchBranchFile, fetchMaps, fetchPrototypes } from './github.js';
 import { parseModelChoice } from './models.js';
 import { copyToClipboard } from './clipboard.js';
 import { DEFAULT_TEMPLATE, buildPrompt, ticketBranch } from './prompt.js';
+import { parsePrototypeFilePath } from './prototypes.js';
 import { detectT3, handOff } from './t3.js';
 import type { T3HandOff } from './t3.js';
 import type { Config } from './config.js';
-import type { MapSnapshot, WayfinderMap } from './types.js';
+import type { MapSnapshot, Prototype, WayfinderMap } from './types.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = join(here, 'ui');
@@ -21,7 +22,27 @@ const MIME: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.htm': 'text/html; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/plain; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
 };
+
+/** How long a map's prototype list is reused before GitHub is asked again. */
+const PROTOTYPE_TTL_MS = 60_000;
+
+/**
+ * Prototype files are repo code, so they run sandboxed: an opaque origin cannot read
+ * this server's API or drive a hand-off, since its requests carry `Origin: null`.
+ */
+const PROTOTYPE_CSP = 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads';
 
 interface ServeOptions {
   config: Config;
@@ -78,6 +99,20 @@ function originAllowed(request: IncomingMessage, port: number): boolean {
 
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
+/** A Host header naming this machine, so a rebound DNS name cannot read repo files through the page. */
+function hostAllowed(request: IncomingMessage): boolean {
+  try {
+    return LOOPBACK.has(new URL(`http://${request.headers.host ?? ''}`).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function extensionOf(file: string): string {
+  const dot = file.lastIndexOf('.');
+  return dot === -1 ? '' : file.slice(dot).toLowerCase();
+}
+
 export async function startServer({ config, repo, template, workspaceRoot, t3 }: ServeOptions): Promise<RunningServer> {
   let snapshot: MapSnapshot | null = null;
   let inFlight: Promise<MapSnapshot> | null = null;
@@ -98,6 +133,19 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
       inFlight = null;
     });
     return inFlight;
+  };
+
+  const prototypeCache = new Map<number, { at: number; list: Promise<Prototype[]> }>();
+
+  const prototypesOf = async (mapNumber: number, force: boolean): Promise<Prototype[] | null> => {
+    const map = (await snapshotOnce(false)).maps.find((candidate) => candidate.number === mapNumber);
+    if (map === undefined) return null;
+    const cached = prototypeCache.get(mapNumber);
+    if (!force && cached !== undefined && Date.now() - cached.at < PROTOTYPE_TTL_MS) return cached.list;
+    const list = fetchPrototypes(repo, map);
+    prototypeCache.set(mapNumber, { at: Date.now(), list });
+    list.catch(() => prototypeCache.delete(mapNumber));
+    return list;
   };
 
   const find = (mapNumber: number, ticketNumber: number): { map: WayfinderMap; ticket: MapTicket } | null => {
@@ -128,6 +176,17 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
         const force = requestUrl.searchParams.get('refresh') === '1';
         try {
           json(response, 200, await snapshotOnce(force));
+        } catch (error) {
+          json(response, 502, { error: (error as Error).message });
+        }
+        return;
+      }
+
+      if (path === '/api/prototypes') {
+        try {
+          const list = await prototypesOf(Number(requestUrl.searchParams.get('map')), requestUrl.searchParams.get('refresh') === '1');
+          if (list === null) json(response, 404, { error: 'No such map.' });
+          else json(response, 200, list);
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
@@ -178,6 +237,29 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
       }
 
       json(response, 404, { error: `No route for ${path}` });
+      return;
+    }
+
+    const prototypeFile = parsePrototypeFilePath(path);
+    if (prototypeFile !== null) {
+      if (!hostAllowed(request)) {
+        response.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end('Forbidden');
+        return;
+      }
+      try {
+        const bytes = await fetchBranchFile(repo, prototypeFile.branch, prototypeFile.file);
+        response.writeHead(200, {
+          'content-type': MIME[extensionOf(prototypeFile.file)] ?? 'application/octet-stream',
+          'content-security-policy': PROTOTYPE_CSP,
+          'x-content-type-options': 'nosniff',
+          'cache-control': 'no-store',
+        });
+        response.end(bytes);
+      } catch (error) {
+        response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end(`Not on ${prototypeFile.branch}: ${prototypeFile.file}\n\n${(error as Error).message}`);
+      }
       return;
     }
 

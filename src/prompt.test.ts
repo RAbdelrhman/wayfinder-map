@@ -53,6 +53,18 @@ describe('buildPrompt', () => {
     }
   });
 
+  it('sends prototype tickets to their prototype/<n>-<slug> branch', () => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
+    expect(prompt).toContain('commit it to the branch prototype/11-retire-api-agents-once-nothing-needs-it');
+    expect(prompt).not.toContain('{{prototypeBranch}}');
+  });
+
+  it('only names a prototype branch on prototype tickets', () => {
+    for (const type of ['grilling', 'research', 'task', null] as const) {
+      expect(buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type } })).not.toContain('prototype/');
+    }
+  });
+
   it('leaves AFK tickets without the human-in-the-loop instructions', () => {
     for (const type of ['research', 'task', null] as const) {
       const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type } });
