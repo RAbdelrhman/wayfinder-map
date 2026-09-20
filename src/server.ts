@@ -181,7 +181,7 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
       return;
     }
 
-    const file = path === '/' ? 'index.html' : path === '/prototype' ? 'prototype.html' : path.replace(/^\/+/, '');
+    const file = path === '/' ? 'index.html' : path.replace(/^\/+/, '');
     if (file.includes('..')) {
       json(response, 400, { error: 'Bad path' });
       return;
