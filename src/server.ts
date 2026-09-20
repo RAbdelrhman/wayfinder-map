@@ -4,7 +4,6 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { fetchBranchFile, fetchMaps, fetchPrototypes } from './github.js';
 import { parseModelChoice } from './models.js';
 import { copyToClipboard } from './clipboard.js';
 import { DEFAULT_TEMPLATE, buildPrompt, ticketBranch } from './prompt.js';
@@ -13,6 +12,14 @@ import { detectT3, handOff } from './t3.js';
 import type { T3HandOff } from './t3.js';
 import type { Config } from './config.js';
 import type { MapSnapshot, Prototype, WayfinderMap } from './types.js';
+import { loadHomeState, readAccount } from './home.js';
+import type { HomeState } from './home.js';
+import { fetchBranchFile, fetchPrototypes, gh } from './github.js';
+import { AuthFlow } from './authFlow.js';
+import { parseRepoPagePath } from './repoRoutes.js';
+import type { ScopedApiAction } from './repoRoutes.js';
+import { RepositoryStore } from './repositoryStore.js';
+import type { RepositoryFetcher } from './repositoryStore.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = join(here, 'ui');
@@ -44,13 +51,17 @@ const PROTOTYPE_TTL_MS = 60_000;
  */
 const PROTOTYPE_CSP = 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads';
 
-interface ServeOptions {
+export type ServerT3 = Pick<T3HandOff, 'models' | 'steps'> & { close?: () => void };
+
+export interface ServeOptions {
   config: Config;
-  repo: string;
+  repo: string | null;
   template: string;
   /** The checkout T3 Code threads run in, or null when the launch directory is not one. */
   workspaceRoot: string | null;
-  t3: T3HandOff;
+  t3: ServerT3;
+  fetcher?: RepositoryFetcher;
+  homeLoader?: (labels: readonly string[]) => Promise<HomeState>;
 }
 
 export interface RunningServer {
@@ -113,48 +124,39 @@ function extensionOf(file: string): string {
   return dot === -1 ? '' : file.slice(dot).toLowerCase();
 }
 
-export async function startServer({ config, repo, template, workspaceRoot, t3 }: ServeOptions): Promise<RunningServer> {
-  let snapshot: MapSnapshot | null = null;
-  let inFlight: Promise<MapSnapshot> | null = null;
+export async function startServer({ config, repo, template, workspaceRoot, t3, fetcher, homeLoader }: ServeOptions): Promise<RunningServer> {
+  const repositories = new RepositoryStore({
+    mapLabel: config.mapLabel,
+    typePrefix: config.typePrefix,
+    ...(fetcher === undefined ? {} : { fetcher }),
+  });
+  const loadHome = homeLoader ?? ((labels: readonly string[]) => loadHomeState(labels));
+  let homeState: HomeState | null = null;
+  const authFlow = new AuthFlow();
 
-  const load = async (): Promise<MapSnapshot> => {
-    const { maps, warnings } = await fetchMaps({
-      repo,
-      mapLabel: config.mapLabel,
-      typePrefix: config.typePrefix,
-    });
-    snapshot = { repo, fetchedAt: new Date().toISOString(), maps, warnings };
-    return snapshot;
-  };
+  /** One entry per repository and map, since every prototype list costs GitHub calls. */
+  const prototypeCache = new Map<string, { at: number; list: Promise<Prototype[]> }>();
 
-  const snapshotOnce = async (force: boolean): Promise<MapSnapshot> => {
-    if (!force && snapshot !== null) return snapshot;
-    inFlight ??= load().finally(() => {
-      inFlight = null;
-    });
-    return inFlight;
-  };
-
-  const prototypeCache = new Map<number, { at: number; list: Promise<Prototype[]> }>();
-
-  const prototypesOf = async (mapNumber: number, force: boolean): Promise<Prototype[] | null> => {
-    const map = (await snapshotOnce(false)).maps.find((candidate) => candidate.number === mapNumber);
+  const prototypesOf = async (forRepo: string, mapNumber: number, force: boolean): Promise<Prototype[] | null> => {
+    const map = (await repositories.snapshot(forRepo, false)).maps.find((candidate) => candidate.number === mapNumber);
     if (map === undefined) return null;
-    const cached = prototypeCache.get(mapNumber);
+    const key = `${forRepo}#${String(mapNumber)}`;
+    const cached = prototypeCache.get(key);
     if (!force && cached !== undefined && Date.now() - cached.at < PROTOTYPE_TTL_MS) return cached.list;
-    const list = fetchPrototypes(repo, map);
-    prototypeCache.set(mapNumber, { at: Date.now(), list });
-    list.catch(() => prototypeCache.delete(mapNumber));
+    const list = fetchPrototypes(forRepo, map);
+    prototypeCache.set(key, { at: Date.now(), list });
+    list.catch(() => prototypeCache.delete(key));
     return list;
   };
 
-  const find = (mapNumber: number, ticketNumber: number): { map: WayfinderMap; ticket: MapTicket } | null => {
-    const map = snapshot?.maps.find((candidate) => candidate.number === mapNumber);
+  const find = (snapshot: MapSnapshot, mapNumber: number, ticketNumber: number): { map: WayfinderMap; ticket: MapTicket } | null => {
+    const map = snapshot.maps.find((candidate) => candidate.number === mapNumber);
     const ticket = map?.tickets.find((candidate) => candidate.number === ticketNumber);
     return map && ticket ? { map, ticket } : null;
   };
 
-  const url = `http://${config.host}:${String(config.port)}`;
+  let port = config.port;
+  let url = `http://${config.host}:${String(port)}`;
 
   const server = createServer((request, response) => {
     void handle(request, response).catch((error: unknown) => {
@@ -167,29 +169,82 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
     const path = requestUrl.pathname;
 
     if (path.startsWith('/api/')) {
-      if (!originAllowed(request, config.port)) {
+      if (!originAllowed(request, port)) {
         json(response, 403, { error: 'Cross-origin requests are not accepted.' });
         return;
       }
 
       if (path === '/api/snapshot') {
+        if (repo === null) {
+          json(response, 404, { error: 'Choose a repository from Home first.' });
+          return;
+        }
         const force = requestUrl.searchParams.get('refresh') === '1';
         try {
-          json(response, 200, await snapshotOnce(force));
+          json(response, 200, await repositories.snapshot(repo, force));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
         return;
       }
 
-      if (path === '/api/prototypes') {
-        try {
-          const list = await prototypesOf(Number(requestUrl.searchParams.get('map')), requestUrl.searchParams.get('refresh') === '1');
-          if (list === null) json(response, 404, { error: 'No such map.' });
-          else json(response, 200, list);
-        } catch (error) {
-          json(response, 502, { error: (error as Error).message });
+      if (path === '/api/home') {
+        const force = requestUrl.searchParams.get('refresh') === '1';
+        if (force || homeState === null) {
+          const labels = config.mapLabel === 'wayfinder:map' ? [config.mapLabel] : ['wayfinder:map', config.mapLabel];
+          homeState = await loadHome(labels);
         }
+        json(response, 200, homeState);
+        return;
+      }
+
+      if (path === '/api/auth/status') {
+        const account = await readAccount();
+        if (account.status === 'ready') homeState = null;
+        json(response, 200, account);
+        return;
+      }
+
+      if (path === '/api/auth/flow') {
+        json(response, 200, authFlow.snapshot());
+        return;
+      }
+
+      if (path === '/api/auth/login' && request.method === 'POST') {
+        json(response, 202, authFlow.start(['auth', 'login', '--web', '--hostname', 'github.com', '--git-protocol', 'https', '--skip-ssh-key']));
+        return;
+      }
+
+      if (path === '/api/auth/refresh' && request.method === 'POST') {
+        const account = await readAccount();
+        if (account.login === null || account.missingScopes.length === 0) {
+          json(response, 409, { error: 'There are no missing scopes to grant.' });
+          return;
+        }
+        json(response, 202, authFlow.start(['auth', 'refresh', '-h', account.host, '-s', account.missingScopes.join(',')]));
+        return;
+      }
+
+      if (path === '/api/auth/switch' && request.method === 'POST') {
+        const body = (await readBody(request)) as { login?: unknown };
+        const login = typeof body.login === 'string' ? body.login : '';
+        const account = await readAccount();
+        if (!account.accounts.includes(login)) {
+          json(response, 400, { error: 'That account is not available in GitHub CLI.' });
+          return;
+        }
+        await gh(['auth', 'switch', '-h', account.host, '-u', login]);
+        homeState = null;
+        repositories.clear();
+        json(response, 200, await readAccount());
+        return;
+      }
+
+      if (path === '/api/shutdown' && request.method === 'POST') {
+        json(response, 200, { stopped: true });
+        authFlow.cancel();
+        t3.close?.();
+        setImmediate(() => server.close());
         return;
       }
 
@@ -202,17 +257,41 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
         return;
       }
 
-      if (path === '/api/hand-off' && request.method === 'POST') {
+      const scoped = parseScopedApiPath(path);
+      const requestedRepo = scoped?.repo ?? (path === '/api/hand-off' || path === '/api/prototypes' ? repo : null);
+
+      if (requestedRepo !== null && (scoped?.action === 'prototypes' || path === '/api/prototypes')) {
+        try {
+          const list = await prototypesOf(requestedRepo, Number(requestUrl.searchParams.get('map')), requestUrl.searchParams.get('refresh') === '1');
+          if (list === null) json(response, 404, { error: 'No such map.' });
+          else json(response, 200, list);
+        } catch (error) {
+          json(response, 502, { error: (error as Error).message });
+        }
+        return;
+      }
+
+      if (requestedRepo !== null && (scoped?.action === 'snapshot' || path === '/api/snapshot')) {
+        const force = requestUrl.searchParams.get('refresh') === '1';
+        try {
+          json(response, 200, await repositories.snapshot(requestedRepo, force));
+        } catch (error) {
+          json(response, 502, { error: (error as Error).message });
+        }
+        return;
+      }
+
+      if (requestedRepo !== null && (scoped?.action === 'hand-off' || path === '/api/hand-off') && request.method === 'POST') {
         const body = (await readBody(request)) as { map?: number; ticket?: number; copyOnly?: boolean; model?: unknown };
-        await snapshotOnce(false);
-        const found = find(Number(body.map), Number(body.ticket));
+        const snapshot = await repositories.snapshot(requestedRepo, false);
+        const found = find(snapshot, Number(body.map), Number(body.ticket));
         if (!found) {
           json(response, 404, { error: 'No such ticket on that map.' });
           return;
         }
 
         const { map, ticket } = found;
-        const prompt = buildPrompt({ repo, map, ticket, template });
+        const prompt = buildPrompt({ repo: requestedRepo, map, ticket, template });
         if (body.copyOnly === true) {
           json(response, 200, { prompt, ...(await copyOnly(prompt)) });
           return;
@@ -225,10 +304,10 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
         const result = await handOff(
           {
             title: `#${String(ticket.number)} ${ticket.title}`,
-            workspaceRoot,
+            workspaceRoot: requestedRepo === repo ? workspaceRoot : null,
             branch: ticketBranch(ticket),
             model: parseModelChoice(body.model),
-            prompt: (worktree) => buildPrompt({ repo, map, ticket, template, ...(worktree ? { worktree } : {}) }),
+            prompt: (worktree) => buildPrompt({ repo: requestedRepo, map, ticket, template, ...(worktree ? { worktree } : {}) }),
           },
           t3.steps(await detectT3()),
         );
@@ -248,7 +327,7 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
         return;
       }
       try {
-        const bytes = await fetchBranchFile(repo, prototypeFile.branch, prototypeFile.file);
+        const bytes = await fetchBranchFile(prototypeFile.repo, prototypeFile.branch, prototypeFile.file);
         response.writeHead(200, {
           'content-type': MIME[extensionOf(prototypeFile.file)] ?? 'application/octet-stream',
           'content-security-policy': PROTOTYPE_CSP,
@@ -258,12 +337,20 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
         response.end(bytes);
       } catch (error) {
         response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-        response.end(`Not on ${prototypeFile.branch}: ${prototypeFile.file}\n\n${(error as Error).message}`);
+        response.end(`Not on ${prototypeFile.branch}: ${prototypeFile.file}
+
+${(error as Error).message}`);
       }
       return;
     }
 
-    const file = path === '/' ? 'index.html' : path.replace(/^\/+/, '');
+    const pageRoute = parseRepoPagePath(path);
+    const file =
+      path === '/' || path === '/new-map' || pageRoute?.mapNumber === null
+        ? 'home.html'
+        : pageRoute !== null
+          ? 'index.html'
+          : path.replace(/^\/+/, '');
     if (file.includes('..')) {
       json(response, 400, { error: 'Bad path' });
       return;
@@ -284,11 +371,32 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
   }
 
   await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(config.port, config.host, resolve);
+    const onError = (error: Error): void => reject(error);
+    server.once('error', onError);
+    server.listen(config.port, config.host, () => {
+      server.off('error', onError);
+      resolve();
+    });
   });
 
+  const address = server.address();
+  if (address === null || typeof address === 'string') {
+    server.close();
+    throw new Error('Wayfinder server did not report a TCP port');
+  }
+  port = address.port;
+  url = `http://${config.host}:${String(port)}`;
+  server.once('close', () => authFlow.cancel());
+
   return { server, url };
+}
+
+function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|prototypes)$/.exec(path);
+  if (match?.[1] === undefined || match[2] === undefined) return null;
+  const route = parseRepoPagePath(match[1]);
+  if (route === null || route.mapNumber !== null) return null;
+  return { repo: route.repo, action: match[2] as ScopedApiAction };
 }
 
 type MapTicket = WayfinderMap['tickets'][number];

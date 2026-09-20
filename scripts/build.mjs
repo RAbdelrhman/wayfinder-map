@@ -30,7 +30,17 @@ await esbuild.build({
   logLevel: 'info',
 });
 
-for (const file of ['index.html', 'styles.css']) {
+await esbuild.build({
+  entryPoints: [join(root, 'src', 'ui', 'home.ts')],
+  outfile: join(dist, 'ui', 'home.js'),
+  bundle: true,
+  platform: 'browser',
+  target: 'es2022',
+  format: 'esm',
+  logLevel: 'info',
+});
+
+for (const file of ['index.html', 'styles.css', 'home.html']) {
   await cp(join(root, 'src', 'ui', file), join(dist, 'ui', file));
 }
 

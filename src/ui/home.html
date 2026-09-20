@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wayfinder</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script>
+      // Stamp the saved theme before first paint so the page never flashes the wrong one.
+      (() => {
+        const saved = localStorage.getItem('wayfinder-map:theme');
+        if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+      })();
+    </script>
+  </head>
+  <body class="viz-root">
+    <div class="app">
+      <nav class="rail" aria-label="App">
+        <a class="logo" href="/" data-icon="compass" title="Wayfinder Home" aria-label="Wayfinder Home"></a>
+        <a class="rail-btn" id="nav-home" href="/" data-icon="home" title="Home" aria-label="Home"></a>
+        <a class="rail-btn" id="nav-new" href="/new-map" data-icon="plus" title="Start a new map" aria-label="Start a new map"></a>
+        <span class="rail-spacer"></span>
+        <button type="button" id="refresh" class="rail-btn" aria-label="Refresh" title="Re-read from GitHub" data-icon="refresh"></button>
+        <button type="button" id="theme" class="rail-btn" aria-label="Theme" title="Switch light and dark" data-icon="moon"></button>
+        <span class="rail-mark" id="account-mark" title="GitHub account">…</span>
+      </nav>
+
+      <div class="main">
+        <header class="topbar">
+          <span class="crumbs" id="crumbs"><a href="/">Home</a></span>
+          <span class="topbar-spacer"></span>
+          <span class="synced" id="synced"></span>
+          <a class="primary" id="new-map-link" href="/new-map"><span data-icon="plus"></span>Start a new map</a>
+        </header>
+
+        <main class="page" id="main" tabindex="-1">
+          <div class="sheet"><p class="loading">Reading GitHub…</p></div>
+        </main>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script type="module" src="/home.js"></script>
+  </body>
+</html>
