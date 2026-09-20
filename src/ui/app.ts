@@ -173,6 +173,8 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       }
       activeMap = routedMap >= 0 ? routedMap : Math.min(activeMap, Math.max(0, snapshot.maps.length - 1));
       render();
+      // The repository is only known once the snapshot lands, and the clone lookup is keyed to it.
+      if (!workspaceAsked) void loadWorkspace().then(refreshLaunch);
       return true;
     } catch (error) {
       if (mode !== 'background' || snapshot === null) {
@@ -717,12 +719,7 @@ function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
   if (ticket.type === 'prototype') prototypesFor(map);
   const style = STATE_STYLE[ticket.state];
   const waitingOn = ticket.openBlockers.map((n) => `#${String(n)}`);
-  const startable =
-    ticket.state === 'done'
-      ? 'This ticket is closed.'
-      : ticket.state === 'blocked'
-        ? `Waiting on ${waitingOn.join(', ')}.`
-        : null;
+  const startable = startableReason(ticket);
 
   const banner =
     ticket.state === 'blocked'
@@ -751,10 +748,7 @@ function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
     <div id="ticket-proto">${ticketPrototypeHtml(map, ticket)}</div>
     <div class="launch">
       ${startable === null ? `<div class="runwith" id="runwith">${runWithHtml(ticket.number)}</div>` : ''}
-      <div class="launch-actions">
-        <button type="button" class="primary" id="start-thread"${startable === null ? '' : ` disabled title="${escapeHtml(startable)}"`}>${icon(icons.PLAY)}Open in T3 Code</button>
-        <button type="button" class="ghost" id="copy-prompt">${icon(icons.COPY)}Copy prompt</button>
-      </div>
+      <div id="launch-slot">${launchHtml(ticket)}</div>
     </div>
     <details class="sec"><summary>Prompt this sends</summary><pre class="prompt" id="prompt-preview">…</pre></details>
     <div class="body-text prose">${ticket.body.trim().length === 0 ? '<p class="none">No description on the issue.</p>' : renderMarkdown(ticket.body)}</div>`;
@@ -850,6 +844,104 @@ function refreshTicketPicker(): void {
   const picker = document.getElementById('ticket-picker');
   if (picker === null || selected === null) return;
   picker.innerHTML = ticketPickerHtml(ticketTier(repoName(), selected));
+}
+
+/* ---------- local clone ---------- */
+
+/** What the server says about the checkout T3 Code would run this repo's threads in. */
+type WorkspaceView =
+  | { status: 'ready'; path: string; canChoose: boolean }
+  | { status: 'choose'; candidates: string[]; canChoose: boolean };
+
+let workspace: WorkspaceView | null = null;
+let workspaceAsked = false;
+
+async function loadWorkspace(): Promise<void> {
+  workspaceAsked = true;
+  try {
+    const response = await fetch(scopedApiPath(repoName(), 'workspace'));
+    workspace = response.ok ? ((await response.json()) as WorkspaceView) : null;
+  } catch {
+    // Leave it unknown: the hand-off still answers with its own fallback.
+    workspace = null;
+  }
+}
+
+function startableReason(ticket: Ticket): string | null {
+  if (ticket.state === 'done') return 'This ticket is closed.';
+  if (ticket.state === 'blocked') return `Waiting on ${ticket.openBlockers.map((n) => `#${String(n)}`).join(', ')}.`;
+  return null;
+}
+
+function selectedTicket(): Ticket | null {
+  const map = currentMap();
+  if (map === null || selected === null) return null;
+  return map.tickets.find((ticket) => ticket.number === selected) ?? null;
+}
+
+/**
+ * The hand-off actions. T3 Code needs a checkout on disk, so when none is verified yet the
+ * primary action becomes picking one and `Copy prompt` carries the ticket in the meantime.
+ */
+function launchHtml(ticket: Ticket): string {
+  const startable = startableReason(ticket);
+  const copy = `<button type="button" class="ghost" id="copy-prompt">${icon(icons.COPY)}Copy prompt</button>`;
+  const start = (attrs = ''): string =>
+    `<button type="button" class="primary" id="start-thread"${attrs}>${icon(icons.PLAY)}Open in T3 Code</button>`;
+
+  if (startable !== null) return `<div class="launch-actions">${start(` disabled title="${escapeHtml(startable)}"`)}${copy}</div>`;
+  // Still looking, or T3 Code has a verified clone: hand off straight away.
+  if (workspace === null || workspace.status === 'ready') return `<div class="launch-actions">${start()}${copy}</div>`;
+
+  const choosable = workspace.candidates.length > 0 || workspace.canChoose;
+  const hint = choosable
+    ? `T3 Code needs a local clone of ${escapeHtml(repoName())}. Choose one to start a thread. The prompt is ready to copy.`
+    : `T3 Code needs a local clone of ${escapeHtml(repoName())}. Run wayfinder-map inside one, or pick a folder in the desktop app. The prompt is ready to copy.`;
+  const options = workspace.candidates.map((path) => `<option value="${escapeHtml(path)}">${escapeHtml(path)}</option>`).join('');
+  const chooser = workspace.canChoose
+    ? `<button type="button" class="${workspace.candidates.length === 0 ? 'primary' : 'ghost'}" id="choose-clone">${icon(icons.FOLDER)}Choose local clone</button>`
+    : '';
+
+  return `
+    <p class="hint clone-hint">${hint}</p>
+    ${
+      workspace.candidates.length === 0
+        ? ''
+        : `<div class="clone-row">
+            <select id="clone-path" aria-label="Local clone">${options}</select>
+            <button type="button" class="primary" id="use-clone">Use this clone</button>
+          </div>`
+    }
+    <div class="launch-actions">${chooser}${copy}</div>`;
+}
+
+function refreshLaunch(): void {
+  const slot = document.getElementById('launch-slot');
+  const ticket = selectedTicket();
+  if (slot !== null && ticket !== null) slot.innerHTML = launchHtml(ticket);
+}
+
+/** Take a clone for this repository: one the user typed in the list, or one they pick in a folder dialog. */
+async function setClone(body: { choose: true } | { path: string }): Promise<void> {
+  for (const id of ['choose-clone', 'use-clone']) {
+    const button = document.getElementById(id);
+    if (button instanceof HTMLButtonElement) button.disabled = true;
+  }
+  try {
+    const response = await fetch(scopedApiPath(repoName(), 'workspace'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const result = (await response.json()) as Partial<WorkspaceView> & { error?: string; cancelled?: boolean };
+    if (result.status !== undefined) workspace = result as WorkspaceView;
+    refreshLaunch();
+    if (typeof result.error === 'string') toast(result.error, 9000);
+    else if (result.cancelled !== true && result.status === 'ready') toast(`Threads will run in ${result.path}.`, 5000);
+  } catch (error) {
+    refreshLaunch();
+    toast((error as Error).message, 9000);
+  }
 }
 
 /* ---------- hand-off ---------- */
@@ -1078,6 +1170,11 @@ els.inspector.addEventListener('click', (event) => {
   }
   if (target.closest('#start-thread') !== null) void handOff(false);
   if (target.closest('#copy-prompt') !== null) void handOff(true);
+  if (target.closest('#choose-clone') !== null) void setClone({ choose: true });
+  if (target.closest('#use-clone') !== null) {
+    const clone = document.getElementById('clone-path');
+    if (clone instanceof HTMLSelectElement) void setClone({ path: clone.value });
+  }
 });
 
 els.inspector.addEventListener('change', (event) => {

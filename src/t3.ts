@@ -137,7 +137,7 @@ export async function handOff(input: HandOffInput, steps: HandOffSteps): Promise
   let notice: string | null = null;
 
   if (input.workspaceRoot === null) {
-    notice = 'Run wayfinder-map inside a clone of this repo to start threads directly.';
+    notice = 'T3 Code needs a local clone of this repo to start a thread.';
   } else {
     try {
       const { threadId, prompt } = await steps.startThread({ ...input, workspaceRoot: input.workspaceRoot });
@@ -224,6 +224,15 @@ export class T3HandOff {
   /** The models T3 Code can run right now. */
   async models(runtime: T3Runtime): Promise<ModelCatalog> {
     return (await this.t3Config(runtime)).catalog;
+  }
+
+  /** The workspace roots T3 Code already holds projects for: every clone it knows about. */
+  async projects(runtime: T3Runtime): Promise<string[]> {
+    const { api } = await this.connect(runtime);
+    const snapshot = await api.snapshot();
+    return snapshot.projects
+      .filter((project) => project.deletedAt === null && typeof project.workspaceRoot === 'string' && project.workspaceRoot.length > 0)
+      .map((project) => project.workspaceRoot);
   }
 
   steps(runtime: T3Runtime): HandOffSteps {

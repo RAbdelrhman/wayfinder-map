@@ -103,10 +103,17 @@ it.
 
 ## Starting a thread
 
-Run the tool inside a clone of the repo, click a ticket, then **Open in T3 Code**.
-T3 Code gets a new thread on its own worktree and branch (`wayfinder/<n>-<title>`,
-under `~/.t3/worktrees`), and the agent is already reading the ticket. Done and
-blocked tickets have the button disabled, with the reason.
+Click a ticket, then **Open in T3 Code**. T3 Code gets a new thread on its own
+worktree and branch (`wayfinder/<n>-<title>`, under `~/.t3/worktrees`), and the agent
+is already reading the ticket. Done and blocked tickets have the button disabled,
+with the reason.
+
+A thread needs a checkout of the repo on disk, which Wayfinder finds rather than
+assumes: the clone the CLI was launched in, then the clone you last picked for this
+repository, then T3 Code's own projects. A candidate only counts once its remotes
+resolve to the repository you are looking at. If none does, the ticket offers
+**Choose local clone** (a folder picker, desktop app only) and the choice is
+remembered in `~/.wayfinder-map/clones.json`, re-checked before every hand-off.
 
 Under the hood it talks to the T3 Code server on this machine the way T3 Code's own
 composer does. It gets a session token from T3 Code's own CLI
@@ -116,8 +123,7 @@ Nothing leaves the machine.
 When that is not possible it steps down one rung at a time, and the page says why
 in one line:
 
-1. **Running thread.** Needs T3 Code running and the tool started in a clone of the
-   repo.
+1. **Running thread.** Needs T3 Code running and a verified clone of the repo.
 2. **New empty thread, prompt on the clipboard.** Uses the desktop app's control
    socket, the same one `t3 app <path>` uses. Paste and hit enter.
 3. **Prompt on the clipboard.** Works with no T3 Code at all.

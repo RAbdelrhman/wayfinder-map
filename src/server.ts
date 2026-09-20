@@ -19,6 +19,8 @@ import { parseRepoPagePath } from './repoRoutes.js';
 import type { ScopedApiAction } from './repoRoutes.js';
 import { RepositoryStore } from './repositoryStore.js';
 import type { RepositoryFetcher } from './repositoryStore.js';
+import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './workspaces.js';
+import type { WorkspaceState } from './workspaces.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -47,7 +49,7 @@ const PROTOTYPE_TTL_MS = 60_000;
  */
 const PROTOTYPE_CSP = 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads';
 
-export type ServerT3 = Pick<T3HandOff, 'models' | 'steps'> & { close?: () => void };
+export type ServerT3 = Pick<T3HandOff, 'models' | 'steps' | 'projects'> & { close?: () => void };
 
 export interface ServeOptions {
   config: Config;
@@ -56,6 +58,13 @@ export interface ServeOptions {
   /** The checkout T3 Code threads run in, or null when the launch directory is not one. */
   workspaceRoot: string | null;
   t3: ServerT3;
+  /**
+   * Ask the user for a folder, for the repositories no verified clone was found for.
+   * Only the desktop shell can raise a native picker, so the CLI leaves this out.
+   */
+  chooseDirectory?: () => Promise<string | null>;
+  /** Replaces the clone lookup in tests, which must not touch T3 Code or the home directory. */
+  workspaces?: WorkspaceResolver;
   fetcher?: RepositoryFetcher;
   homeLoader?: (labels: readonly string[]) => Promise<HomeState>;
   onShutdown?: () => void;
@@ -132,6 +141,8 @@ export async function startServer({
   template,
   workspaceRoot,
   t3,
+  chooseDirectory,
+  workspaces,
   fetcher,
   homeLoader,
   onShutdown,
@@ -148,6 +159,23 @@ export async function startServer({
 
   /** One entry per repository and map, since every prototype list costs GitHub calls. */
   const prototypeCache = new Map<string, { at: number; list: Promise<Prototype[]> }>();
+
+  const clones =
+    workspaces ??
+    new WorkspaceResolver(
+      {
+        knownProjects: async () => t3.projects(await detectT3()),
+        verify: verifyCheckout,
+        ...fileStore(clonesFile()),
+      },
+      { repo, root: workspaceRoot },
+    );
+
+  /** The clone state plus whether this entry point can raise a folder picker. */
+  const workspaceView = async (forRepo: string): Promise<WorkspaceState & { canChoose: boolean }> => ({
+    ...(await clones.state(forRepo)),
+    canChoose: chooseDirectory !== undefined,
+  });
 
   /** `mapNumber` null asks for the whole repository, which the repository page wants in one read. */
   const prototypesOf = async (forRepo: string, mapNumber: number | null, force: boolean): Promise<Prototype[] | null> => {
@@ -332,6 +360,40 @@ export async function startServer({
         return;
       }
 
+      if (requestedRepo !== null && scoped?.action === 'workspace') {
+        if (request.method === 'GET') {
+          json(response, 200, await workspaceView(requestedRepo));
+          return;
+        }
+        if (request.method === 'POST') {
+          const body = (await readBody(request)) as { path?: unknown; choose?: unknown };
+          let picked = typeof body.path === 'string' && body.path.trim().length > 0 ? body.path.trim() : null;
+          if (picked === null && body.choose === true) {
+            if (chooseDirectory === undefined) {
+              json(response, 409, { error: 'This window cannot open a folder picker.', ...(await workspaceView(requestedRepo)) });
+              return;
+            }
+            picked = await chooseDirectory();
+            if (picked === null) {
+              json(response, 200, { cancelled: true, ...(await workspaceView(requestedRepo)) });
+              return;
+            }
+          }
+          if (picked === null) {
+            json(response, 400, { error: 'No folder was given.' });
+            return;
+          }
+          try {
+            await clones.choose(requestedRepo, picked);
+          } catch (error) {
+            json(response, 400, { error: (error as Error).message, ...(await workspaceView(requestedRepo)) });
+            return;
+          }
+          json(response, 200, await workspaceView(requestedRepo));
+          return;
+        }
+      }
+
       if (requestedRepo !== null && (scoped?.action === 'hand-off' || path === '/api/hand-off') && request.method === 'POST') {
         const body = (await readBody(request)) as {
           map?: number;
@@ -351,7 +413,7 @@ export async function startServer({
           const result = await handOff(
             {
               title: `New map: ${goal.replace(/[\r\n]+/g, ' ').slice(0, 48)}`,
-              workspaceRoot: requestedRepo === repo ? workspaceRoot : null,
+              workspaceRoot: await clones.resolve(requestedRepo),
               branch: 'wayfinder/new-map',
               model: parseModelChoice(body.model),
               prompt: () => prompt,
@@ -407,7 +469,7 @@ export async function startServer({
         const result = await handOff(
           {
             title: `#${String(ticket.number)} ${ticket.title}`,
-            workspaceRoot: requestedRepo === repo ? workspaceRoot : null,
+            workspaceRoot: await clones.resolve(requestedRepo),
             branch: ticketBranch(ticket),
             model: parseModelChoice(body.model),
             prompt: (worktree) =>
@@ -502,7 +564,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|prototypes|ticket)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|prototypes|ticket|workspace)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;
