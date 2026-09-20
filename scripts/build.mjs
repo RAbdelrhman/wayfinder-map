@@ -40,7 +40,7 @@ await esbuild.build({
   logLevel: 'info',
 });
 
-for (const file of ['index.html', 'styles.css', 'home.html', 'home.css']) {
+for (const file of ['index.html', 'styles.css', 'home.html']) {
   await cp(join(root, 'src', 'ui', file), join(dist, 'ui', file));
 }
 

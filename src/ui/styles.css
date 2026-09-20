@@ -1705,3 +1705,370 @@ tbody tr.is-selected {
 .ticket-proto .sec {
   padding-bottom: 0;
 }
+
+/* ---------- home and repository pages ---------- */
+
+/*
+  Home borrows the map page's shell: the same 56px rail, the same 56px top bar, the same
+  surfaces and hairlines. Only the middle scrolls, so the chrome stays put exactly as it
+  does on a map.
+*/
+
+.rail-btn.is-on[href] {
+  color: var(--text-primary);
+}
+
+.rail-mark {
+  width: 30px;
+  height: 30px;
+  margin-top: 6px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--state-claimed);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+
+.topbar-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.topbar .primary {
+  flex: none;
+  margin-right: 8px;
+  text-decoration: none;
+}
+
+.crumbs a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.crumbs a:hover {
+  color: var(--text-primary);
+}
+
+.page {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.sheet {
+  width: min(940px, 100%);
+  margin: 0 auto;
+  padding: 30px 28px 80px;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 26px;
+}
+
+.page-head .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-head h1 {
+  margin: 7px 0 0;
+  font-size: 25px;
+  line-height: 1.22;
+  letter-spacing: -0.02em;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.page-head p {
+  margin: 8px 0 0;
+  max-width: 64ch;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.section {
+  margin-top: 30px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.section-head h2 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.section-head .grow {
+  flex: 1;
+}
+
+.card {
+  display: block;
+  padding: 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+a.card:hover {
+  border-color: var(--state-claimed);
+}
+
+.panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 13px 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.panel .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel strong {
+  font-weight: 600;
+}
+
+.panel p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.panel.is-warning {
+  border-color: color-mix(in srgb, var(--state-blocked) 50%, transparent);
+  background: color-mix(in srgb, var(--state-blocked) 10%, var(--surface-1));
+}
+
+.panel.is-block {
+  display: block;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--state-claimed);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.repo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: 8px;
+}
+
+.repo-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
+.repo-card .i {
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+}
+
+.repo-card .grow {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.repo-card .go {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+}
+
+a.repo-card:hover .go {
+  color: var(--state-claimed);
+}
+
+.map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 12px;
+}
+
+.map-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+}
+
+.map-card h2 {
+  margin: 6px 0 0;
+  font-size: 17px;
+  line-height: 1.32;
+  letter-spacing: -0.012em;
+  font-weight: 600;
+}
+
+.map-card .dest {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.map-card .summary {
+  margin-top: auto;
+}
+
+/* forms: the same hairline-and-focus-ring language as the top bar's search */
+
+.field {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.field > label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.field .row {
+  display: flex;
+  gap: 8px;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  background: var(--plane);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+textarea.input {
+  height: auto;
+  padding: 9px 10px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.input:focus {
+  outline: 0;
+  border-color: var(--state-claimed);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-claimed) 25%, transparent);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.select {
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--plane);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+.page .empty {
+  padding: 44px 20px;
+  border: 1px dashed var(--gridline);
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.page .empty strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.page .empty p {
+  margin: 0 0 12px;
+  line-height: 1.55;
+}
+
+.loading {
+  padding: 44px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.failure {
+  color: #e5484d;
+}
+
+@media (max-width: 720px) {
+  .sheet {
+    padding: 22px 16px 64px;
+  }
+
+  .topbar .primary span {
+    display: none;
+  }
+
+  .page-head {
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+
+.page-form {
+  max-width: 620px;
+}
