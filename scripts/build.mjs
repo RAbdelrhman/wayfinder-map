@@ -21,6 +21,17 @@ await esbuild.build({
 });
 
 await esbuild.build({
+  entryPoints: [join(root, 'src', 'desktop', 'main.ts')],
+  outfile: join(dist, 'desktop.js'),
+  bundle: true,
+  platform: 'node',
+  target: 'node22',
+  format: 'esm',
+  external: ['electron'],
+  logLevel: 'info',
+});
+
+await esbuild.build({
   entryPoints: [join(root, 'src', 'ui', 'app.ts')],
   outfile: join(dist, 'ui', 'app.js'),
   bundle: true,
@@ -37,6 +48,16 @@ await esbuild.build({
   platform: 'browser',
   target: 'es2022',
   format: 'esm',
+  logLevel: 'info',
+});
+
+await esbuild.build({
+  entryPoints: [join(root, 'src', 'ui', 'theme.ts')],
+  outfile: join(dist, 'ui', 'theme.js'),
+  bundle: true,
+  platform: 'browser',
+  target: 'es2022',
+  format: 'iife',
   logLevel: 'info',
 });
 

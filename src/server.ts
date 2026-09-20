@@ -62,6 +62,7 @@ export interface ServeOptions {
   t3: ServerT3;
   fetcher?: RepositoryFetcher;
   homeLoader?: (labels: readonly string[]) => Promise<HomeState>;
+  onShutdown?: () => void;
 }
 
 export interface RunningServer {
@@ -124,7 +125,16 @@ function extensionOf(file: string): string {
   return dot === -1 ? '' : file.slice(dot).toLowerCase();
 }
 
-export async function startServer({ config, repo, template, workspaceRoot, t3, fetcher, homeLoader }: ServeOptions): Promise<RunningServer> {
+export async function startServer({
+  config,
+  repo,
+  template,
+  workspaceRoot,
+  t3,
+  fetcher,
+  homeLoader,
+  onShutdown,
+}: ServeOptions): Promise<RunningServer> {
   const repositories = new RepositoryStore({
     mapLabel: config.mapLabel,
     typePrefix: config.typePrefix,
@@ -244,7 +254,7 @@ export async function startServer({ config, repo, template, workspaceRoot, t3, f
         json(response, 200, { stopped: true });
         authFlow.cancel();
         t3.close?.();
-        setImmediate(() => server.close());
+        setImmediate(() => (onShutdown === undefined ? server.close() : onShutdown()));
         return;
       }
 
@@ -362,6 +372,8 @@ ${(error as Error).message}`);
       response.writeHead(200, {
         'content-type': MIME[extension] ?? 'application/octet-stream',
         'cache-control': 'no-store',
+        'content-security-policy':
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'self'",
       });
       response.end(bytes);
     } catch {
