@@ -1,0 +1,97 @@
+- generic [ref=e2]:
+  - navigation "App" [ref=e3]:
+    - generic "wayfinder" [ref=e4]
+    - button "Map view" [ref=e8] [cursor=pointer]
+    - button "Table view" [ref=e13] [cursor=pointer]
+    - button "Prototypes view" [active] [pressed] [ref=e17] [cursor=pointer]
+    - button "Model defaults" [ref=e20] [cursor=pointer]
+    - button "Refresh" [ref=e26] [cursor=pointer]
+    - button "Theme" [ref=e32] [cursor=pointer]
+  - generic [ref=e35]:
+    - banner [ref=e36]:
+      - generic [ref=e37]:
+        - generic [ref=e243]: RAbdelrhman
+        - generic [ref=e244]: /
+        - generic [ref=e245]: wayfinder-map
+        - generic [ref=e246]: /
+      - 'button "Home page: connect GitHub, pick a repo, pick a map 1 open" [ref=e43] [cursor=pointer]':
+        - generic [ref=e247]: "Home page: connect GitHub, pick a repo, pick a map"
+        - generic [ref=e248]: 1 open
+      - generic [ref=e48]:
+        - searchbox "Jump to a ticket" [ref=e53]
+        - generic [ref=e54]: Ctrl K
+      - generic [ref=e55]: Synced just now
+    - toolbar "Filter tickets" [ref=e56]:
+      - button "All 6" [pressed] [ref=e251] [cursor=pointer]:
+        - text: All
+        - generic [ref=e252]: "6"
+      - button "Next up 0" [disabled] [ref=e253]:
+        - text: Next up
+        - generic [ref=e256]: "0"
+      - button "Claimed 1" [ref=e257] [cursor=pointer]:
+        - text: Claimed
+        - generic [ref=e261]: "1"
+      - button "Blocked 0" [disabled] [ref=e262]:
+        - text: Blocked
+        - generic [ref=e266]: "0"
+      - button "Done 5" [ref=e267] [cursor=pointer]:
+        - text: Done
+        - generic [ref=e270]: "5"
+      - button "research 1" [ref=e271] [cursor=pointer]:
+        - text: research
+        - generic [ref=e275]: "1"
+      - button "prototype 1" [ref=e276] [cursor=pointer]:
+        - text: prototype
+        - generic [ref=e279]: "1"
+      - button "grilling 3" [ref=e280] [cursor=pointer]:
+        - text: grilling
+        - generic [ref=e287]: "3"
+      - button "task 1" [ref=e288] [cursor=pointer]:
+        - text: task
+        - generic [ref=e290]: "1"
+    - generic [ref=e97]:
+      - region "Tickets" [ref=e98]:
+        - paragraph [ref=e292]:
+          - text: No prototypes on this map yet.A prototype ticket keeps its prototype on a
+          - code [ref=e293]: prototype/<ticket>-<slug>
+          - text: branch, and it shows up here once pushed.
+      - complementary "Brief and ticket" [ref=e194]:
+        - tablist "Panel" [ref=e295]:
+          - tab "Brief" [selected] [ref=e296] [cursor=pointer]
+          - tab "Ticket" [disabled] [ref=e297]
+        - generic [ref=e299]:
+          - 'link "Map · #3 ↗" [ref=e301] [cursor=pointer]':
+            - /url: https://github.com/RAbdelrhman/wayfinder-map/issues/3
+          - 'heading "Home page: connect GitHub, pick a repo, pick a map" [level=1] [ref=e302]'
+          - generic [ref=e303]:
+            - generic [ref=e308]:
+              - generic [ref=e309]: 5/6
+              - generic [ref=e310]: done
+            - generic [ref=e311]:
+              - button "Next up 0" [disabled] [ref=e312]:
+                - text: Next up
+                - generic [ref=e315]: "0"
+              - button "Claimed 1" [ref=e316] [cursor=pointer]:
+                - text: Claimed
+                - generic [ref=e320]: "1"
+              - button "Blocked 0" [disabled] [ref=e321]:
+                - text: Blocked
+                - generic [ref=e325]: "0"
+              - button "Done 5" [ref=e326] [cursor=pointer]:
+                - text: Done
+                - generic [ref=e329]: "5"
+          - tablist "Brief sections" [ref=e330]:
+            - button "Destination" [ref=e331] [cursor=pointer]
+            - button "Not yet specified 4" [ref=e332] [cursor=pointer]:
+              - text: Not yet specified
+              - generic [ref=e333]: "4"
+            - button "Decided 4" [ref=e334] [cursor=pointer]:
+              - text: Decided
+              - generic [ref=e335]: "4"
+            - button "Notes 5" [ref=e336] [cursor=pointer]:
+              - text: Notes
+              - generic [ref=e337]: "5"
+            - button "Out of scope 1" [ref=e338] [cursor=pointer]:
+              - text: Out of scope
+              - generic [ref=e339]: "1"
+          - paragraph [ref=e341]: "A decided spec for a home page at the tool's root: see and connect the GitHub account, pick a repo, pick one of its maps, then land in the existing map view. Precise enough to hand to an implementation session with nothing left to decide."

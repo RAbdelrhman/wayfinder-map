@@ -1,0 +1,142 @@
+- generic [ref=f1e2]:
+  - navigation "App" [ref=f1e3]:
+    - generic "wayfinder" [ref=f1e4]
+    - button "Map view" [ref=f1e8] [cursor=pointer]
+    - button "Table view" [ref=f1e13] [cursor=pointer]
+    - button "Prototypes view" [active] [pressed] [ref=f1e17] [cursor=pointer]
+    - button "Model defaults" [ref=f1e20] [cursor=pointer]
+    - button "Refresh" [ref=f1e26] [cursor=pointer]
+    - button "Theme" [ref=f1e32] [cursor=pointer]
+  - generic [ref=f1e35]:
+    - banner [ref=f1e36]:
+      - generic [ref=f1e37]:
+        - generic [ref=f1e243]: RAbdelrhman
+        - generic [ref=f1e244]: /
+        - generic [ref=f1e245]: wayfinder-map
+        - generic [ref=f1e246]: /
+      - 'button "Home page: connect GitHub, pick a repo, pick a map 1 open" [ref=f1e43] [cursor=pointer]':
+        - generic [ref=f1e247]: "Home page: connect GitHub, pick a repo, pick a map"
+        - generic [ref=f1e248]: 1 open
+      - generic [ref=f1e48]:
+        - searchbox "Jump to a ticket" [ref=f1e53]
+        - generic [ref=f1e54]: Ctrl K
+      - generic [ref=f1e55]: Synced 1m ago
+    - toolbar "Filter tickets" [ref=f1e56]:
+      - button "All 6" [pressed] [ref=f1e251] [cursor=pointer]:
+        - text: All
+        - generic [ref=f1e252]: "6"
+      - button "Next up 0" [disabled] [ref=f1e253]:
+        - text: Next up
+        - generic [ref=f1e256]: "0"
+      - button "Claimed 1" [ref=f1e257] [cursor=pointer]:
+        - text: Claimed
+        - generic [ref=f1e261]: "1"
+      - button "Blocked 0" [disabled] [ref=f1e262]:
+        - text: Blocked
+        - generic [ref=f1e266]: "0"
+      - button "Done 5" [ref=f1e267] [cursor=pointer]:
+        - text: Done
+        - generic [ref=f1e270]: "5"
+      - button "research 1" [ref=f1e271] [cursor=pointer]:
+        - text: research
+        - generic [ref=f1e275]: "1"
+      - button "prototype 1" [ref=f1e276] [cursor=pointer]:
+        - text: prototype
+        - generic [ref=f1e279]: "1"
+      - button "grilling 3" [ref=f1e280] [cursor=pointer]:
+        - text: grilling
+        - generic [ref=f1e287]: "3"
+      - button "task 1" [ref=f1e288] [cursor=pointer]:
+        - text: task
+        - generic [ref=f1e290]: "1"
+    - generic [ref=f1e97]:
+      - region "Tickets" [ref=f1e98]:
+        - generic [ref=f1e292]:
+          - paragraph [ref=f1e293]: "2 prototypes on Home page: connect GitHub, pick a repo, pick a map"
+          - article [ref=f1e294]:
+            - generic [ref=f1e295]:
+              - generic "prototype" [ref=f1e296]
+              - button "#8 What does the home page look like, and how does it lead into the map?" [ref=f1e299] [cursor=pointer]:
+                - generic [ref=f1e300]: "#8"
+                - text: What does the home page look like, and how does it lead into the map?
+              - generic [ref=f1e301]: claimed
+              - generic [ref=f1e305]: Sep 18, 2026
+            - generic [ref=f1e306]:
+              - text: Verdict
+              - generic [ref=f1e307]:
+                - paragraph [ref=f1e308]:
+                  - strong [ref=f1e309]: Variant B wins.
+                  - text: One page, three stacked sections.
+                - list [ref=f1e310]:
+                  - listitem [ref=f1e311]:
+                    - text: Bookmarkable
+                    - code [ref=f1e312]: /owner/name/maps/3
+            - generic [ref=f1e313]:
+              - link "Open index.html" [ref=f1e314] [cursor=pointer]:
+                - /url: /proto/prototype%2F8-home-page/prototypes/home/index.html
+              - link "Open variants.html" [ref=f1e317] [cursor=pointer]:
+                - /url: /proto/prototype%2F8-home-page/prototypes/home/variants.html
+              - link "Branch on GitHub" [ref=f1e320] [cursor=pointer]:
+                - /url: https://github.com/RAbdelrhman/wayfinder-map/tree/prototype/8-home-page
+            - group [ref=f1e325]:
+              - generic [ref=f1e326] [cursor=pointer]:
+                - text: 3 files on
+                - code [ref=f1e327]: prototype/8-home-page
+          - article [ref=f1e328]:
+            - generic [ref=f1e329]:
+              - generic "untyped" [ref=f1e330]
+              - button "#17 prototype/17-desktop-launch" [ref=f1e333] [cursor=pointer]:
+                - generic [ref=f1e334]: "#17"
+                - text: prototype/17-desktop-launch
+              - generic [ref=f1e335]: Sep 10, 2026
+            - paragraph [ref=f1e336]: Still open, so there is no verdict yet.
+            - link "Branch on GitHub" [ref=f1e338] [cursor=pointer]:
+              - /url: https://github.com/RAbdelrhman/wayfinder-map/tree/prototype/17-desktop-launch
+            - paragraph [ref=f1e343]:
+              - text: "No HTML file to open here. It runs inside the app: check out"
+              - code [ref=f1e344]: prototype/17-desktop-launch
+              - text: and start it.
+            - group [ref=f1e345]:
+              - generic [ref=f1e346] [cursor=pointer]:
+                - text: 1 file on
+                - code [ref=f1e347]: prototype/17-desktop-launch
+      - complementary "Brief and ticket" [ref=f1e194]:
+        - tablist "Panel" [ref=f1e349]:
+          - tab "Brief" [selected] [ref=f1e350] [cursor=pointer]
+          - tab "Ticket" [disabled] [ref=f1e351]
+        - generic [ref=f1e353]:
+          - 'link "Map · #3 ↗" [ref=f1e355] [cursor=pointer]':
+            - /url: https://github.com/RAbdelrhman/wayfinder-map/issues/3
+          - 'heading "Home page: connect GitHub, pick a repo, pick a map" [level=1] [ref=f1e356]'
+          - generic [ref=f1e357]:
+            - generic [ref=f1e362]:
+              - generic [ref=f1e363]: 5/6
+              - generic [ref=f1e364]: done
+            - generic [ref=f1e365]:
+              - button "Next up 0" [disabled] [ref=f1e366]:
+                - text: Next up
+                - generic [ref=f1e369]: "0"
+              - button "Claimed 1" [ref=f1e370] [cursor=pointer]:
+                - text: Claimed
+                - generic [ref=f1e374]: "1"
+              - button "Blocked 0" [disabled] [ref=f1e375]:
+                - text: Blocked
+                - generic [ref=f1e379]: "0"
+              - button "Done 5" [ref=f1e380] [cursor=pointer]:
+                - text: Done
+                - generic [ref=f1e383]: "5"
+          - tablist "Brief sections" [ref=f1e384]:
+            - button "Destination" [ref=f1e385] [cursor=pointer]
+            - button "Not yet specified 4" [ref=f1e386] [cursor=pointer]:
+              - text: Not yet specified
+              - generic [ref=f1e387]: "4"
+            - button "Decided 4" [ref=f1e388] [cursor=pointer]:
+              - text: Decided
+              - generic [ref=f1e389]: "4"
+            - button "Notes 5" [ref=f1e390] [cursor=pointer]:
+              - text: Notes
+              - generic [ref=f1e391]: "5"
+            - button "Out of scope 1" [ref=f1e392] [cursor=pointer]:
+              - text: Out of scope
+              - generic [ref=f1e393]: "1"
+          - paragraph [ref=f1e395]: "A decided spec for a home page at the tool's root: see and connect the GitHub account, pick a repo, pick one of its maps, then land in the existing map view. Precise enough to hand to an implementation session with nothing left to decide."

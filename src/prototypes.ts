@@ -14,9 +14,18 @@ export function prototypeTicketNumber(branch: string): number | null {
   return match === null ? null : Number(match[1]);
 }
 
-/** Files the page can open live. Anything else needs its app running, so it only gets a link. */
-export function isViewable(file: string): boolean {
+/** HTML is the only thing worth opening live. Whether it *can* be is `isSelfContained`. */
+export function isHtml(file: string): boolean {
   return /\.html?$/i.test(file);
+}
+
+/**
+ * A page the server can serve on its own. A UI prototype that lives inside the real app
+ * pulls its assets from the app's root (`src="/app.js"`), and those are built, not on the
+ * branch: serving it would draw a broken page, so it gets a branch link instead.
+ */
+export function isSelfContained(html: string): boolean {
+  return !/<(?:script|link|img)\s[^>]*(?:src|href)\s*=\s*["']\//i.test(html);
 }
 
 /** The local URL for one file on a prototype branch. The branch is one encoded segment, so relative links resolve under it. */

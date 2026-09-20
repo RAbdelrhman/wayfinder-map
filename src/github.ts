@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { parseBlockedByLine, parseChildNumbers, parseMapBody } from './mapBody.js';
-import { PROTOTYPE_BRANCH_PREFIX, prototypeTicketNumber } from './prototypes.js';
+import { PROTOTYPE_BRANCH_PREFIX, isHtml, isSelfContained, prototypeTicketNumber } from './prototypes.js';
 import { TICKET_TYPES } from './types.js';
 import type { Prototype, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
 
@@ -255,6 +255,27 @@ interface RawCompare {
   commits?: Array<{ commit: { committer?: { date?: string } | null } }>;
 }
 
+interface RawCommit {
+  commit?: { committer?: { date?: string } | null } | null;
+  files?: Array<{ filename: string }>;
+}
+
+/**
+ * What the branch holds. Normally that is its diff against the default branch, but a
+ * prototype whose commits have landed on the default branch compares to nothing, so fall
+ * back to its tip commit: behind or merged, the branch still holds the prototype.
+ */
+export function branchFacts(
+  compare: { files?: readonly { filename: string }[]; commits?: readonly { commit: { committer?: { date?: string } | null } }[] } | null,
+  tip: { commit?: { committer?: { date?: string } | null } | null; files?: readonly { filename: string }[] } | null,
+): { updatedAt: string | null; files: string[] } {
+  const compared = (compare?.files ?? []).map((file) => file.filename);
+  return {
+    updatedAt: compare?.commits?.at(-1)?.commit.committer?.date ?? tip?.commit?.committer?.date ?? null,
+    files: compared.length > 0 ? compared : (tip?.files ?? []).map((file) => file.filename),
+  };
+}
+
 interface RawComment {
   body?: string | null;
 }
@@ -297,17 +318,36 @@ export async function fetchPrototypes(repo: string, map: WayfinderMap): Promise<
         ? ghJson<RawComment[]>(['api', `repos/${repo}/issues/${String(ticketNumber)}/comments?per_page=100`]).catch(() => [])
         : Promise.resolve([]),
     ]);
+    const tip =
+      (compare?.files ?? []).length > 0
+        ? null
+        : await ghJson<RawCommit>(['api', `repos/${repo}/commits/${encodeURIComponent(branch)}`]).catch(() => null);
+    const { updatedAt, files } = branchFacts(compare, tip);
     return {
       branch,
       ticketNumber,
       url: `https://github.com/${repo}/tree/${branch}`,
-      updatedAt: compare?.commits?.at(-1)?.commit.committer?.date ?? null,
-      files: (compare?.files ?? []).map((file) => file.filename),
+      updatedAt,
+      files,
+      openable: await openableFiles(repo, branch, files),
       verdict: comments.at(-1)?.body?.trim() || null,
     };
   });
 
   return sortPrototypes(prototypes);
+}
+
+/** Of a branch's HTML files, the ones that stand alone well enough for the page to serve them. */
+async function openableFiles(repo: string, branch: string, files: readonly string[]): Promise<string[]> {
+  const html = files.filter(isHtml);
+  const checked = await pool(html, 4, async (file) => {
+    try {
+      return isSelfContained((await fetchBranchFile(repo, branch, file)).toString('utf8'));
+    } catch {
+      return false;
+    }
+  });
+  return html.filter((_, index) => checked[index] === true);
 }
 
 /** One file off a branch, as raw bytes. */

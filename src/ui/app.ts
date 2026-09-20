@@ -1,7 +1,7 @@
 import { DEFAULT_LAYOUT, layoutTickets } from '../layout.js';
 import type { PositionedNode } from '../layout.js';
 import { prototypeBranch } from '../prompt.js';
-import { isViewable, prototypeFileUrl } from '../prototypes.js';
+import { prototypeFileUrl } from '../prototypes.js';
 import { TICKET_TYPES } from '../types.js';
 import type { MapSections, MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
 import {
@@ -517,7 +517,7 @@ function dateLabel(iso: string | null): string {
 
 /** Open buttons for the HTML files, a link to the branch, and the full file list. */
 function prototypeBodyHtml(prototype: Prototype, ticket: Ticket | undefined): string {
-  const viewable = prototype.files.filter(isViewable);
+  const viewable = prototype.openable;
   const opens = viewable
     .map(
       (file, index) =>
@@ -537,7 +537,7 @@ function prototypeBodyHtml(prototype: Prototype, ticket: Ticket | undefined): st
     </div>
     ${
       viewable.length === 0
-        ? `<p class="hint">No HTML file to open here. It runs inside the app: check out <code>${escapeHtml(prototype.branch)}</code> and start it.</p>`
+        ? `<p class="hint">Nothing to open on its own: it runs inside the app. Check out <code>${escapeHtml(prototype.branch)}</code> and start it.</p>`
         : ''
     }
     <details class="sec"><summary>${String(prototype.files.length)} ${prototype.files.length === 1 ? 'file' : 'files'} on <code>${escapeHtml(prototype.branch)}</code></summary>

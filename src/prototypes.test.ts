@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isViewable, parsePrototypeFilePath, prototypeFileUrl, prototypeTicketNumber } from './prototypes.js';
+import { isHtml, isSelfContained, parsePrototypeFilePath, prototypeFileUrl, prototypeTicketNumber } from './prototypes.js';
 
 describe('prototypeTicketNumber', () => {
   it('reads the ticket number off a conventional branch', () => {
@@ -15,11 +15,26 @@ describe('prototypeTicketNumber', () => {
   });
 });
 
-describe('isViewable', () => {
-  it('opens HTML files and nothing else', () => {
-    expect(isViewable('docs/proto/flow.html')).toBe(true);
-    expect(isViewable('INDEX.HTM')).toBe(true);
-    expect(isViewable('src/app.ts')).toBe(false);
+describe('isHtml', () => {
+  it('picks out HTML files and nothing else', () => {
+    expect(isHtml('docs/proto/flow.html')).toBe(true);
+    expect(isHtml('INDEX.HTM')).toBe(true);
+    expect(isHtml('src/app.ts')).toBe(false);
+  });
+});
+
+describe('isSelfContained', () => {
+  it('accepts a page that carries its own script and styles', () => {
+    expect(isSelfContained('<html><style>b{}</style><script>go()</script></html>')).toBe(true);
+  });
+
+  it('accepts relative assets, which resolve under the branch', () => {
+    expect(isSelfContained('<script type="module" src="./flow.js"></script>')).toBe(true);
+  });
+
+  it('rejects a page pulling assets from the app root, which are not on the branch', () => {
+    expect(isSelfContained('<script type="module" src="/prototype.js"></script>')).toBe(false);
+    expect(isSelfContained('<link rel="stylesheet" href="/styles.css" />')).toBe(false);
   });
 });
 

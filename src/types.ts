@@ -56,6 +56,8 @@ export interface Prototype {
   updatedAt: string | null;
   /** Files the branch adds or changes against the default branch. */
   files: string[];
+  /** Of those, the HTML files the page can serve and open live. */
+  openable: string[];
   /** The closed ticket's last comment, which the wayfinder flow writes as its answer. Null while open. */
   verdict: string | null;
 }
