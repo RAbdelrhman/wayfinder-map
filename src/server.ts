@@ -1,8 +1,7 @@
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 import { parseModelChoice } from './models.js';
 import { copyToClipboard } from './clipboard.js';
@@ -20,9 +19,6 @@ import { parseRepoPagePath } from './repoRoutes.js';
 import type { ScopedApiAction } from './repoRoutes.js';
 import { RepositoryStore } from './repositoryStore.js';
 import type { RepositoryFetcher } from './repositoryStore.js';
-
-const here = dirname(fileURLToPath(import.meta.url));
-const UI_DIR = join(here, 'ui');
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -62,6 +58,12 @@ export interface ServeOptions {
   t3: ServerT3;
   fetcher?: RepositoryFetcher;
   homeLoader?: (labels: readonly string[]) => Promise<HomeState>;
+  onShutdown?: () => void;
+  /**
+   * Where the page's files live. Every entry point names it: the packaged app and the
+   * ESM CLI resolve it differently, and deriving it here would tie the server to one of them.
+   */
+  uiDir?: string;
 }
 
 export interface RunningServer {
@@ -124,7 +126,17 @@ function extensionOf(file: string): string {
   return dot === -1 ? '' : file.slice(dot).toLowerCase();
 }
 
-export async function startServer({ config, repo, template, workspaceRoot, t3, fetcher, homeLoader }: ServeOptions): Promise<RunningServer> {
+export async function startServer({
+  config,
+  repo,
+  template,
+  workspaceRoot,
+  t3,
+  fetcher,
+  homeLoader,
+  onShutdown,
+  uiDir = join(process.cwd(), 'src', 'ui'),
+}: ServeOptions): Promise<RunningServer> {
   const repositories = new RepositoryStore({
     mapLabel: config.mapLabel,
     typePrefix: config.typePrefix,
@@ -244,7 +256,7 @@ export async function startServer({ config, repo, template, workspaceRoot, t3, f
         json(response, 200, { stopped: true });
         authFlow.cancel();
         t3.close?.();
-        setImmediate(() => server.close());
+        setImmediate(() => (onShutdown === undefined ? server.close() : onShutdown()));
         return;
       }
 
@@ -357,11 +369,13 @@ ${(error as Error).message}`);
     }
 
     try {
-      const bytes = await readFile(join(UI_DIR, file));
+      const bytes = await readFile(join(uiDir, file));
       const extension = file.slice(file.lastIndexOf('.'));
       response.writeHead(200, {
         'content-type': MIME[extension] ?? 'application/octet-stream',
         'cache-control': 'no-store',
+        'content-security-policy':
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'self'",
       });
       response.end(bytes);
     } catch {

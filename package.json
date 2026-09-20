@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Interactive map of a repo's wayfinder maps, with one-click ticket hand-off to T3 Code",
   "type": "module",
+  "main": "dist/desktop.cjs",
   "license": "MIT",
   "bin": {
     "wayfinder-map": "dist/cli.js"
@@ -17,6 +18,9 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "start": "node dist/cli.js",
+    "desktop": "node scripts/desktop.mjs",
+    "icons": "node scripts/create-icons.mjs",
+    "package:win": "node scripts/package-win.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "tsc --noEmit",
@@ -24,7 +28,10 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "electron": "44.4.3",
+    "electron-builder": "26.16.1",
     "esbuild": "^0.25.0",
+    "sharp": "0.35.4",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   },
@@ -43,5 +50,8 @@
     "visualization",
     "cli"
   ],
-  "author": "Ramon Abdelrhman"
+  "author": "Ramon Abdelrhman",
+  "dependencies": {
+    "electron-updater": "6.8.9"
+  }
 }

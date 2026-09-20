@@ -38,6 +38,29 @@ bun run build
 node dist/cli.js --repo owner/name
 ```
 
+To run the desktop shell from a built checkout:
+
+```bash
+bun run desktop
+```
+
+Closing its window keeps Wayfinder in the system tray. The tray can reopen the
+current page, go Home, start a new map, or quit. Quit stops the loopback server
+and revokes the in-memory T3 Code session.
+
+### Windows installer
+
+Unsigned owner-test installers can be built for Windows x64 or ARM64:
+
+```powershell
+bun run package:win -- x64
+bun run package:win -- arm64
+```
+
+The first public release targets Windows 10 and Windows 11. Stable installers must
+be signed; architecture-specific installed-flow gates are documented in
+[`docs/release-windows.md`](docs/release-windows.md).
+
 ## What you see
 
 Tickets are laid out left to right by dependency depth, so a ticket sits one column

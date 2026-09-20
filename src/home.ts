@@ -1,4 +1,5 @@
 import { GhError, gh } from './github.js';
+import { WAYFINDER_VERSION } from './version.js';
 
 const REQUIRED_SCOPES = ['repo', 'read:org'] as const;
 
@@ -15,6 +16,7 @@ export interface HomeAccount {
 }
 
 export interface HomeState {
+  version: string;
   account: HomeAccount;
   repositories: string[];
   skippedOrganizations: string[];
@@ -149,14 +151,15 @@ export async function discoverRepositories(
 export async function loadHomeState(mapLabels: readonly string[], runGh: HomeGh = gh): Promise<HomeState> {
   const account = await readAccount(runGh);
   if (account.status !== 'ready') {
-    return { account, repositories: [], skippedOrganizations: [], warning: null };
+    return { version: WAYFINDER_VERSION, account, repositories: [], skippedOrganizations: [], warning: null };
   }
 
   try {
-    return { account, ...(await discoverRepositories(account, mapLabels, runGh)), warning: null };
+    return { version: WAYFINDER_VERSION, account, ...(await discoverRepositories(account, mapLabels, runGh)), warning: null };
   } catch (error) {
     const message = error instanceof GhError ? error.message : messageOf(error);
     return {
+      version: WAYFINDER_VERSION,
       account,
       repositories: [],
       skippedOrganizations: [],

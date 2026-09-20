@@ -191,7 +191,8 @@ async function renderHome(refresh: boolean): Promise<void> {
           ? '<div class="empty"><strong>No discovered repositories with maps</strong><p>Type an owner/name above to open one directly.</p></div>'
           : `<div class="repo-grid">${discovered.map(repositoryLink).join('')}</div>`
       }
-    </section>`);
+    </section>
+    <footer class="version">Wayfinder v${escapeHtml(state.version)}</footer>`);
 
   const form = need<HTMLFormElement>('repo-entry');
   form.addEventListener('submit', (event) => {
