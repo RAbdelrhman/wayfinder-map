@@ -43,7 +43,7 @@ async function main(): Promise<number> {
     `  T3 Code   ${runtime.t3Origin ?? 'not detected (clipboard still works)'}\n`,
   );
   process.stdout.write(
-    `  threads   ${runtime.workspaceRoot ?? (runtime.repo === null ? 'choose a repository and attach a local clone' : `run inside a clone of ${runtime.repo} to start threads directly`)}\n`,
+    `  threads   ${runtime.workspaceRoot ?? 'in a verified clone, found per repository or chosen in the app'}\n`,
   );
 
   if (config.open) await openExternal(runtime.url).catch(() => undefined);

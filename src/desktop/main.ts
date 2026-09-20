@@ -137,6 +137,17 @@ function createTray(): Tray {
   return appTray;
 }
 
+/** The native folder picker behind "Choose local clone". Cancelling answers null. */
+async function chooseDirectory(): Promise<string | null> {
+  const options: Electron.OpenDialogOptions = {
+    title: 'Choose a local clone',
+    buttonLabel: 'Use this clone',
+    properties: ['openDirectory'],
+  };
+  const picked = mainWindow === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(mainWindow, options);
+  return picked.canceled ? null : (picked.filePaths[0] ?? null);
+}
+
 async function startRuntime(): Promise<void> {
   if (startupPromise !== null) return startupPromise;
   startupPromise = (async () => {
@@ -147,7 +158,10 @@ async function startRuntime(): Promise<void> {
     try {
       runtime = await startWayfinder(
         config,
-        { startServer: (options) => startServer({ ...options, onShutdown: () => void quitApplication() }) },
+        {
+          startServer: (options) =>
+            startServer({ ...options, chooseDirectory, onShutdown: () => void quitApplication() }),
+        },
         { resolveCurrentRepository: false, uiDir: join(app.getAppPath(), 'dist', 'ui') },
       );
       runtimeOrigin = new URL(runtime.url).origin;

@@ -5,6 +5,8 @@ import type { HomeState } from './home.js';
 import { DEFAULT_TEMPLATE, startServer } from './server.js';
 import type { ServerT3 } from './server.js';
 import type { RepositoryFetcher } from './repositoryStore.js';
+import { WorkspaceResolver } from './workspaces.js';
+import type { WorkspaceDependencies } from './workspaces.js';
 import type { Ticket, WayfinderMap } from './types.js';
 
 const config: Config = {
@@ -20,6 +22,7 @@ const config: Config = {
 
 const t3: ServerT3 = {
   models: async () => ({ providers: [] }),
+  projects: async () => [],
   steps: () => ({
     startThread: async () => ({ threadId: 'thread', prompt: 'prompt' }),
     openApp: async () => undefined,
@@ -256,6 +259,121 @@ describe('repository-scoped server', () => {
       });
       expect(response.status).toBe(200);
       await vi.waitFor(() => expect(onShutdown).toHaveBeenCalledTimes(1));
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+});
+
+describe('local clone for a hand-off', () => {
+  /** A resolver that knows the given checkouts and remembers in memory, never touching disk. */
+  function resolver(clones: Record<string, string>, projects: string[]): WorkspaceResolver {
+    const remembered: Record<string, string> = {};
+    const dependencies: WorkspaceDependencies = {
+      knownProjects: async () => projects,
+      verify: async (path, repo) => (repo === 'octo/one' ? (clones[path] ?? null) : null),
+      readRemembered: async () => ({ ...remembered }),
+      writeRemembered: async (all) => {
+        Object.assign(remembered, all);
+      },
+    };
+    return new WorkspaceResolver(dependencies);
+  }
+
+  async function serve(options: Partial<Parameters<typeof startServer>[0]> = {}) {
+    return startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      fetcher: async () => ({ maps: [sampleMap], warnings: [] }),
+      homeLoader: async () => home,
+      ...options,
+    });
+  }
+
+  it('reports the clone T3 Code already has a project for', async () => {
+    const running = await serve({ workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+
+    try {
+      const response = await fetch(`${running.url}/api/repos/octo/one/workspace`);
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ status: 'ready', path: '/clone', canChoose: false });
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('offers a folder picker when nothing verifies, and takes what it answers', async () => {
+    const chooseDirectory = vi.fn(async () => '/picked');
+    const running = await serve({ workspaces: resolver({ '/picked': '/picked' }, []), chooseDirectory });
+
+    try {
+      const before = await fetch(`${running.url}/api/repos/octo/one/workspace`);
+      await expect(before.json()).resolves.toEqual({ status: 'choose', candidates: [], canChoose: true });
+
+      const picked = await fetch(`${running.url}/api/repos/octo/one/workspace`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ choose: true }),
+      });
+      expect(picked.status).toBe(200);
+      await expect(picked.json()).resolves.toEqual({ status: 'ready', path: '/picked', canChoose: true });
+      expect(chooseDirectory).toHaveBeenCalledTimes(1);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('leaves the state alone when the picker is cancelled', async () => {
+    const running = await serve({ workspaces: resolver({}, []), chooseDirectory: async () => null });
+
+    try {
+      const response = await fetch(`${running.url}/api/repos/octo/one/workspace`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ choose: true }),
+      });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ cancelled: true, status: 'choose' });
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('refuses a folder that is not a checkout of the repository', async () => {
+    const running = await serve({ workspaces: resolver({ '/clone': '/clone' }, []) });
+
+    try {
+      const response = await fetch(`${running.url}/api/repos/octo/one/workspace`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ path: '/downloads' }),
+      });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: 'That folder is not a checkout of octo/one.', status: 'choose' });
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('starts the thread in the verified clone rather than the launch directory', async () => {
+    const startThread = vi.fn(async () => ({ threadId: 'thread', prompt: 'prompt' }));
+    const running = await serve({
+      t3: { ...t3, steps: () => ({ startThread, openApp: async () => undefined, copy: async () => undefined }) },
+      workspaces: resolver({ '/clone': '/clone' }, ['/clone']),
+    });
+
+    try {
+      const response = await fetch(`${running.url}/api/repos/octo/one/hand-off`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ ticket: 11 }),
+      });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ rung: 'thread' });
+      expect(startThread).toHaveBeenCalledWith(expect.objectContaining({ workspaceRoot: '/clone' }));
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }

@@ -23,6 +23,7 @@ const config = (overrides: Partial<Config> = {}): Config => ({
 function fakeT3(close = vi.fn()): ManagedT3 {
   return {
     models: async () => ({ providers: [] }),
+  projects: async () => [],
     steps: () => ({
       startThread: async () => ({ threadId: 'thread', prompt: 'prompt' }),
       openApp: async () => undefined,

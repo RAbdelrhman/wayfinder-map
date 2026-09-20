@@ -55,6 +55,7 @@ const config: Config = {
 
 const t3: ServerT3 = {
   models: async () => ({ providers: [] }),
+  projects: async () => [],
   steps: () => ({
     startThread: async () => ({ threadId: 'thread', prompt: 'prompt' }),
     openApp: async () => undefined,
