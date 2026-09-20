@@ -1,3 +1,5 @@
+import { normalizeRepo } from './repoRoutes.js';
+
 /**
  * Prototypes live on `prototype/<ticket>-<slug>` branches, one per prototype ticket. The
  * hand-off prompt tells agents to push there, and the page finds them by that prefix.
@@ -28,21 +30,29 @@ export function isSelfContained(html: string): boolean {
   return !/<(?:script|link|img)\s[^>]*(?:src|href)\s*=\s*["']\//i.test(html);
 }
 
-/** The local URL for one file on a prototype branch. The branch is one encoded segment, so relative links resolve under it. */
-export function prototypeFileUrl(branch: string, file: string): string {
-  return `${PROTOTYPE_ROUTE}${encodeURIComponent(branch)}/${file.split('/').map(encodeURIComponent).join('/')}`;
+/**
+ * The local URL for one file on a prototype branch. The repository is named in the path
+ * because a page can be looking at any repository, not only the one Wayfinder launched in.
+ * Owner, name and branch are one encoded segment each, so relative links resolve under them.
+ */
+export function prototypeFileUrl(repo: string, branch: string, file: string): string {
+  const [owner = '', name = ''] = repo.split('/', 2);
+  const prefix = `${PROTOTYPE_ROUTE}${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+  return `${prefix}/${encodeURIComponent(branch)}/${file.split('/').map(encodeURIComponent).join('/')}`;
 }
 
-/** The branch and file a `/proto/...` path asks for, or null for anything off a prototype branch or climbing out of it. */
-export function parsePrototypeFilePath(pathname: string): { branch: string; file: string } | null {
+/** What a `/proto/...` path asks for, or null for anything off a prototype branch or climbing out of it. */
+export function parsePrototypeFilePath(pathname: string): { repo: string; branch: string; file: string } | null {
   if (!pathname.startsWith(PROTOTYPE_ROUTE)) return null;
-  const [rawBranch, ...rawFile] = pathname.slice(PROTOTYPE_ROUTE.length).split('/');
+  const [rawOwner, rawName, rawBranch, ...rawFile] = pathname.slice(PROTOTYPE_ROUTE.length).split('/');
   try {
+    const repo = normalizeRepo(`${decodeURIComponent(rawOwner ?? '')}/${decodeURIComponent(rawName ?? '')}`);
     const branch = decodeURIComponent(rawBranch ?? '');
     const parts = rawFile.map(decodeURIComponent);
+    if (repo === null) return null;
     if (!branch.startsWith(PROTOTYPE_BRANCH_PREFIX) || branch.includes('..')) return null;
     if (parts.length === 0 || parts.some((part) => part === '' || part === '.' || part === '..')) return null;
-    return { branch, file: parts.join('/') };
+    return { repo, branch, file: parts.join('/') };
   } catch {
     return null;
   }

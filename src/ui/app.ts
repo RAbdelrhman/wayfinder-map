@@ -27,6 +27,7 @@ import type { Lineage, TicketFilter } from './focus.js';
 import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
+import { mapPath, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 
 /* ---------- state channel: one hue each, always with an icon and a word ---------- */
 
@@ -148,6 +149,8 @@ for (const element of document.querySelectorAll<HTMLElement>('[data-icon]')) {
 
 let snapshot: MapSnapshot | null = null;
 let activeMap = 0;
+const pageRoute = parseRepoPagePath(window.location.pathname);
+if (pageRoute === null || pageRoute.mapNumber === null) window.location.replace('/');
 let selected: number | null = null;
 let hovered: number | null = null;
 let filter: TicketFilter | null = null;
@@ -185,7 +188,8 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
 
   loadInFlight = (async () => {
     try {
-      const response = await fetch(`/api/snapshot${force ? '?refresh=1' : ''}`);
+      const endpoint = pageRoute === null ? '/api/snapshot' : scopedApiPath(pageRoute.repo, 'snapshot');
+      const response = await fetch(`${endpoint}${force ? '?refresh=1' : ''}`);
       const body: unknown = await response.json();
       if (!response.ok) {
         const message = (body as { error?: string }).error ?? 'Could not read the maps.';
@@ -196,7 +200,15 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
         return false;
       }
       snapshot = body as MapSnapshot;
-      activeMap = Math.min(activeMap, Math.max(0, snapshot.maps.length - 1));
+      const currentRoute = parseRepoPagePath(window.location.pathname);
+      const routedMap = currentRoute?.mapNumber === null
+        ? -1
+        : snapshot.maps.findIndex((candidate) => candidate.number === currentRoute?.mapNumber);
+      if (currentRoute?.mapNumber !== null && currentRoute?.mapNumber !== undefined && routedMap < 0) {
+        window.location.replace(repoPath(snapshot.repo));
+        return true;
+      }
+      activeMap = routedMap >= 0 ? routedMap : Math.min(activeMap, Math.max(0, snapshot.maps.length - 1));
       render();
       return true;
     } catch (error) {
@@ -298,7 +310,7 @@ function render(): void {
 function renderHead(): void {
   if (snapshot === null) return;
   const [owner, name] = snapshot.repo.includes('/') ? snapshot.repo.split('/', 2) : ['', snapshot.repo];
-  els.repo.innerHTML = `${owner ? `<span>${escapeHtml(owner)}</span><span class="crumb-sep">/</span>` : ''}<span class="is-repo">${escapeHtml(name ?? '')}</span><span class="crumb-sep">/</span>`;
+  els.repo.innerHTML = `<a href="/">Home</a><span class="crumb-sep">/</span><a class="is-repo" href="${repoPath(snapshot.repo)}">${owner ? `${escapeHtml(owner)}/${escapeHtml(name ?? '')}` : escapeHtml(name ?? '')}</a><span class="crumb-sep">/</span>`;
 
   const map = currentMap();
   els.mapSwitch.hidden = false;
@@ -320,7 +332,7 @@ function renderHead(): void {
         <span class="badge">${open === 0 ? 'done' : `${String(open)} open`}</span>
       </button>`;
     })
-    .join('')}`;
+    .join('')}<a class="menu-item" href="${repoPath(snapshot.repo)}"><span class="grow">All maps</span></a>`;
 
   renderSynced();
 }
@@ -486,7 +498,7 @@ function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
   void (async () => {
     let next: PrototypeLoad;
     try {
-      const response = await fetch(`/api/prototypes?map=${String(map.number)}${force ? '&refresh=1' : ''}`);
+      const response = await fetch(`${scopedApiPath(repoName(), 'prototypes')}?map=${String(map.number)}${force ? '&refresh=1' : ''}`);
       const body: unknown = await response.json();
       next = response.ok
         ? { status: 'ready', list: body as Prototype[] }
@@ -521,7 +533,7 @@ function prototypeBodyHtml(prototype: Prototype, ticket: Ticket | undefined): st
   const opens = viewable
     .map(
       (file, index) =>
-        `<a class="${index === 0 ? 'primary' : 'ghost'}" href="${escapeHtml(prototypeFileUrl(prototype.branch, file))}" target="_blank" rel="noreferrer" title="${escapeHtml(file)}">${icon(icons.PLAY)}Open ${escapeHtml(fileName(file))}</a>`,
+        `<a class="${index === 0 ? 'primary' : 'ghost'}" href="${escapeHtml(prototypeFileUrl(repoName(), prototype.branch, file))}" target="_blank" rel="noreferrer" title="${escapeHtml(file)}">${icon(icons.PLAY)}Open ${escapeHtml(fileName(file))}</a>`,
     )
     .join('');
   const verdict =
@@ -916,7 +928,7 @@ async function handOff(copyOnly: boolean): Promise<void> {
   if (button instanceof HTMLButtonElement && !copyOnly) button.disabled = true;
 
   try {
-    const response = await fetch('/api/hand-off', {
+    const response = await fetch(scopedApiPath(repoName(), 'hand-off'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ map: map.number, ticket: selected, copyOnly, model: copyOnly ? null : pickedModel() }),
@@ -1019,6 +1031,8 @@ els.mapMenu.addEventListener('click', (event) => {
   if (item === null) return;
   closeMenus();
   activeMap = Number(item.dataset['index']);
+  const nextMap = currentMap();
+  if (snapshot !== null && nextMap !== null) history.pushState(null, '', mapPath(snapshot.repo, nextMap.number));
   selected = null;
   hovered = null;
   filter = null;
@@ -1028,6 +1042,15 @@ els.mapMenu.addEventListener('click', (event) => {
   briefSection = 'destination';
   setZoom(1);
   els.canvasWrap.scrollTo(0, 0);
+  render();
+});
+
+window.addEventListener('popstate', () => {
+  const route = parseRepoPagePath(window.location.pathname);
+  const index = snapshot?.maps.findIndex((map) => map.number === route?.mapNumber) ?? -1;
+  if (index < 0) return;
+  activeMap = index;
+  selected = null;
   render();
 });
 

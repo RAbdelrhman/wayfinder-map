@@ -39,22 +39,31 @@ describe('isSelfContained', () => {
 });
 
 describe('prototype file paths', () => {
-  it('round-trips a branch and nested file through the URL', () => {
-    const url = prototypeFileUrl('prototype/8-home page', 'docs/a b/index.html');
-    expect(url).toBe('/proto/prototype%2F8-home%20page/docs/a%20b/index.html');
-    expect(parsePrototypeFilePath(url)).toEqual({ branch: 'prototype/8-home page', file: 'docs/a b/index.html' });
+  it('round-trips a repository, branch and nested file through the URL', () => {
+    const url = prototypeFileUrl('RAbdelrhman/wayfinder-map', 'prototype/8-home page', 'docs/a b/index.html');
+    expect(url).toBe('/proto/RAbdelrhman/wayfinder-map/prototype%2F8-home%20page/docs/a%20b/index.html');
+    expect(parsePrototypeFilePath(url)).toEqual({
+      repo: 'RAbdelrhman/wayfinder-map',
+      branch: 'prototype/8-home page',
+      file: 'docs/a b/index.html',
+    });
   });
 
   it('refuses branches outside prototype/', () => {
-    expect(parsePrototypeFilePath('/proto/main/index.html')).toBeNull();
-    expect(parsePrototypeFilePath('/proto/wayfinder%2F8-x/index.html')).toBeNull();
+    expect(parsePrototypeFilePath('/proto/owner/repo/main/index.html')).toBeNull();
+    expect(parsePrototypeFilePath('/proto/owner/repo/wayfinder%2F8-x/index.html')).toBeNull();
+  });
+
+  it('refuses a path that names no repository', () => {
+    expect(parsePrototypeFilePath('/proto/prototype%2F8-x/index.html')).toBeNull();
+    expect(parsePrototypeFilePath('/proto/owner/..%2Frepo/prototype%2F8-x/index.html')).toBeNull();
   });
 
   it('refuses paths that climb out or name no file', () => {
-    expect(parsePrototypeFilePath('/proto/prototype%2F8-x/../secret')).toBeNull();
-    expect(parsePrototypeFilePath('/proto/prototype%2F8-x/%2E%2E/secret')).toBeNull();
-    expect(parsePrototypeFilePath('/proto/prototype%2F8-x')).toBeNull();
-    expect(parsePrototypeFilePath('/proto/prototype%2F8-x/')).toBeNull();
-    expect(parsePrototypeFilePath('/proto/prototype%2F%E0/x.html')).toBeNull();
+    expect(parsePrototypeFilePath('/proto/owner/repo/prototype%2F8-x/../secret')).toBeNull();
+    expect(parsePrototypeFilePath('/proto/owner/repo/prototype%2F8-x/%2E%2E/secret')).toBeNull();
+    expect(parsePrototypeFilePath('/proto/owner/repo/prototype%2F8-x')).toBeNull();
+    expect(parsePrototypeFilePath('/proto/owner/repo/prototype%2F8-x/')).toBeNull();
+    expect(parsePrototypeFilePath('/proto/owner/repo/prototype%2F%E0/x.html')).toBeNull();
   });
 });

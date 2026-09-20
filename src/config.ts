@@ -28,7 +28,7 @@ Usage
   wayfinder-map [options]
 
 Options
-  --repo <owner/name>   Repo to read. Defaults to the one gh resolves in --cwd.
+  --repo <owner/name>   Repository to open. Uses the one in --cwd, or Home when none.
   --cwd <path>          Directory used to resolve the repo. Defaults to the shell's.
   --port <number>       Port to serve on. Default ${String(DEFAULTS.port)}.
   --map-label <label>   Label that marks a map issue. Default ${DEFAULTS.mapLabel}.

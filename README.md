@@ -19,12 +19,16 @@ This tool reads that structure and draws it.
 ## Run it
 
 ```bash
-npx wayfinder-map            # inside a git checkout, reads the repo gh resolves
-npx wayfinder-map --repo owner/name
+npx wayfinder-map            # opens Home; inside a checkout, opens that repository
+npx wayfinder-map --repo owner/name  # opens that repository's map list
 ```
 
 Needs [`gh`](https://cli.github.com) on your PATH and logged in. That is the only
 credential involved: no token to paste, no GitHub App, no config.
+
+Home shows the active `gh` account and discovers repositories that contain maps.
+You can always enter `owner/name` when discovery misses one. Repository and map
+pages have bookmarkable URLs, and snapshots are isolated per repository in memory.
 
 From a clone:
 
@@ -136,7 +140,7 @@ so a typo is visible.
 ## Options
 
 ```
---repo <owner/name>   Repo to read. Defaults to the one gh resolves in --cwd.
+--repo <owner/name>   Repository to open. Defaults to the one gh resolves in --cwd.
 --cwd <path>          Directory used to resolve the repo.
 --port <number>       Port to serve on. Default 4478.
 --map-label <label>   Label that marks a map issue. Default wayfinder:map.
@@ -187,7 +191,8 @@ src/ui/models.ts the model picker and tier defaults
 src/t3App.ts     the desktop app's control socket
 src/clipboard.ts clipboard per platform
 src/server.ts    routes
-src/ui/          the page
+src/home.ts      gh account state and scoped repository discovery
+src/ui/          Home, repository list and map pages
 ```
 
 ```bash
