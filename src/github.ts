@@ -298,18 +298,37 @@ export function sortPrototypes(prototypes: Prototype[]): Prototype[] {
   );
 }
 
+/** Each map paired with the prototype branches belonging to its tickets, maps without any dropped. */
+export function branchesByMap(
+  refs: readonly string[],
+  maps: readonly WayfinderMap[],
+): Array<{ map: WayfinderMap; branches: string[] }> {
+  return maps
+    .map((map) => ({ map, branches: mapPrototypeBranches(refs, map) }))
+    .filter((entry) => entry.branches.length > 0);
+}
+
 /** Every prototype branch on `map`, with its files, last commit and, for closed tickets, the verdict. */
 export async function fetchPrototypes(repo: string, map: WayfinderMap): Promise<Prototype[]> {
+  return fetchMapPrototypes(repo, [map]);
+}
+
+/** The same, across every map in the repository, so one read answers the whole repository page. */
+export async function fetchAllPrototypes(repo: string, maps: readonly WayfinderMap[]): Promise<Prototype[]> {
+  return fetchMapPrototypes(repo, maps);
+}
+
+async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): Promise<Prototype[]> {
   const refs = await ghJson<RawRef[]>(['api', `repos/${repo}/git/matching-refs/heads/${PROTOTYPE_BRANCH_PREFIX}`]);
-  const branches = mapPrototypeBranches(
+  const work = branchesByMap(
     refs.map((ref) => ref.ref),
-    map,
-  );
-  if (branches.length === 0) return [];
+    maps,
+  ).flatMap((entry) => entry.branches.map((branch) => ({ map: entry.map, branch })));
+  if (work.length === 0) return [];
 
   const base = (await gh(['api', `repos/${repo}`, '-q', '.default_branch'])).trim();
 
-  const prototypes = await pool(branches, 6, async (branch): Promise<Prototype> => {
+  const prototypes = await pool(work, 6, async ({ map, branch }): Promise<Prototype> => {
     const ticketNumber = prototypeTicketNumber(branch) ?? 0;
     const ticket = map.tickets.find((candidate) => candidate.number === ticketNumber);
     const [compare, comments] = await Promise.all([
@@ -326,6 +345,7 @@ export async function fetchPrototypes(repo: string, map: WayfinderMap): Promise<
     return {
       branch,
       ticketNumber,
+      mapNumber: map.number,
       url: `https://github.com/${repo}/tree/${branch}`,
       updatedAt,
       files,

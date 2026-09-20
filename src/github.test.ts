@@ -47,6 +47,7 @@ describe('sortPrototypes', () => {
   const proto = (ticketNumber: number, updatedAt: string | null): Prototype => ({
     branch: `prototype/${String(ticketNumber)}`,
     ticketNumber,
+    mapNumber: 3,
     url: '',
     updatedAt,
     files: [],

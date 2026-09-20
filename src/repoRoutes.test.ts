@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { mapPath, normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from './repoRoutes.js';
+import { mapPath, normalizeRepo, parseRepoPagePath, prototypesPath, repoPath, scopedApiPath } from './repoRoutes.js';
 
 describe('repository routes', () => {
   it('round-trips repository and map routes', () => {
@@ -22,5 +22,18 @@ describe('repository routes', () => {
 
   it('rejects malformed URL encoding', () => {
     expect(parseRepoPagePath('/repos/%/repo')).toBeNull();
+  });
+});
+
+describe('the repository prototypes page', () => {
+  it('has a path of its own, under the repository', () => {
+    expect(prototypesPath('octo/one')).toBe('/repos/octo/one/prototypes');
+    expect(parseRepoPagePath('/repos/octo/one/prototypes')).toEqual({ repo: 'octo/one', mapNumber: null, prototypes: true });
+  });
+
+  it('leaves the repository and map pages alone', () => {
+    expect(parseRepoPagePath('/repos/octo/one')).toEqual({ repo: 'octo/one', mapNumber: null });
+    expect(parseRepoPagePath('/repos/octo/one/maps/3')).toEqual({ repo: 'octo/one', mapNumber: 3 });
+    expect(parseRepoPagePath('/repos/octo/one/whatever')).toBeNull();
   });
 });

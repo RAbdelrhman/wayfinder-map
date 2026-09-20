@@ -50,6 +50,8 @@ export interface WayfinderMap {
 export interface Prototype {
   branch: string;
   ticketNumber: number;
+  /** The map whose ticket this prototype answers. */
+  mapNumber: number;
   /** The branch on GitHub. */
   url: string;
   /** When the branch last got a commit, or null if GitHub could not compare it. */
