@@ -2073,6 +2073,13 @@ textarea.input {
   max-width: 620px;
 }
 
+.version {
+  margin-top: 44px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 /* ---------- prototypes on Home's repository pages ---------- */
 
 .proto-badge {

@@ -1,7 +1,11 @@
 #!/usr/bin/env node
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { USAGE, resolveConfig } from './config.js';
 import { WayfinderStartupError, startWayfinder } from './runtime.js';
 import { openExternal } from './t3.js';
+import { WAYFINDER_VERSION } from './version.js';
 
 async function main(): Promise<number> {
   const config = await resolveConfig(process.argv.slice(2));
@@ -12,7 +16,7 @@ async function main(): Promise<number> {
 
   let runtime;
   try {
-    runtime = await startWayfinder(config);
+    runtime = await startWayfinder(config, {}, { uiDir: join(dirname(fileURLToPath(import.meta.url)), 'ui') });
   } catch (error) {
     if (!(error instanceof WayfinderStartupError)) throw error;
     process.stderr.write(`${error.message}\n`);

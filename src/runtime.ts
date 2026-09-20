@@ -43,6 +43,12 @@ export interface RuntimeDependencies {
   detectT3: () => Promise<T3Runtime>;
 }
 
+export interface RuntimeStartOptions {
+  resolveCurrentRepository?: boolean;
+  /** Where the page's files live, named by the entry point rather than derived here. */
+  uiDir?: string;
+}
+
 const DEFAULT_DEPENDENCIES: RuntimeDependencies = {
   currentRepo,
   readTextFile: (path) => readFile(path, 'utf8'),
@@ -68,6 +74,7 @@ function startupError(stage: StartupStage, message: string, cause: unknown): Way
 export async function startWayfinder(
   config: Config,
   overrides: Partial<RuntimeDependencies> = {},
+  options: RuntimeStartOptions = {},
 ): Promise<WayfinderRuntime> {
   const dependencies: RuntimeDependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
 
@@ -75,7 +82,7 @@ export async function startWayfinder(
   if (config.repo !== null && repo === null) {
     throw startupError('repository', `Invalid repository "${config.repo}". Use owner/name.`, new Error('Invalid repository'));
   }
-  if (repo === null) {
+  if (repo === null && options.resolveCurrentRepository !== false) {
     try {
       repo = normalizeRepo(await dependencies.currentRepo(config.cwd));
     } catch {
@@ -104,7 +111,14 @@ export async function startWayfinder(
   const t3 = dependencies.createT3();
   let running: RunningServer;
   try {
-    running = await dependencies.startServer({ config, repo, template, workspaceRoot, t3 });
+    running = await dependencies.startServer({
+      config,
+      repo,
+      template,
+      workspaceRoot,
+      t3,
+      ...(options.uiDir === undefined ? {} : { uiDir: options.uiDir }),
+    });
   } catch (error) {
     t3.close();
     throw startupError('server', `Could not start Wayfinder on ${config.host}:${String(config.port)}.`, error);

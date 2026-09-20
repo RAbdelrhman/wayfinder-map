@@ -1,8 +1,7 @@
 node_modules/
 dist/
+release/
+.generated/
 *.log
 snap.json
 .claude/worktrees/
-
-# Scratch output from browser automation
-.playwright-cli/
