@@ -1,4 +1,4 @@
-export const PROTOTYPE_STEPS = ['recent', 'browse', 'repository', 'map', 'create', 'help'] as const;
+export const PROTOTYPE_STEPS = ['recent', 'browse', 'repository', 'map', 'help'] as const;
 
 export type PrototypeStep = (typeof PROTOTYPE_STEPS)[number];
 
@@ -10,8 +10,4 @@ export function prototypeStepFromHash(hash: string): PrototypeStep {
 
 export function prototypeHash(step: PrototypeStep): string {
   return `#${step}`;
-}
-
-export function createMapPrompt(repository: string, goal: string): string {
-  return `Repository: ${repository}\n\nWhat I want to accomplish:\n${goal.trim()}`;
 }

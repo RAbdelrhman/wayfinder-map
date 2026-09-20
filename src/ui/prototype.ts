@@ -1,4 +1,4 @@
-import { createMapPrompt, prototypeHash, prototypeStepFromHash } from './prototypeRoutes.js';
+import { prototypeHash, prototypeStepFromHash } from './prototypeRoutes.js';
 import type { PrototypeStep } from './prototypeRoutes.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
@@ -78,7 +78,6 @@ function rail(step: PrototypeStep): string {
     ${link('recent', `${icon(icons.COMPASS)}<span class="sr-only">Wayfinder home</span>`, 'rail-logo-link')}
     <div class="rail-links">
       ${link('recent', `${icon(icons.GRAPH)}<span class="sr-only">Home</span>`, `rail-link${step === 'recent' || step === 'browse' || step === 'repository' || step === 'map' ? ' is-on' : ''}`)}
-      ${link('create', `${icon(icons.PLUS)}<span class="sr-only">Start a new map</span>`, `rail-link${step === 'create' ? ' is-on' : ''}`)}
       ${link('help', `${icon(icons.INFO)}<span class="sr-only">How to use</span>`, `rail-link${step === 'help' ? ' is-on' : ''}`)}
     </div>
     <div class="rail-bottom"><button class="rail-link" type="button" title="Settings">${icon(icons.SLIDERS)}<span class="sr-only">Settings</span></button><span class="avatar" title="GitHub account settings">R</span></div>
@@ -86,7 +85,7 @@ function rail(step: PrototypeStep): string {
 }
 
 function header(step: PrototypeStep): string {
-  const selected = step === 'recent' ? 'Recent' : step === 'browse' ? 'Browse repositories' : step === 'create' ? 'Start a new map' : step === 'help' ? 'How to use' : selectedRepository.name;
+  const selected = step === 'recent' ? 'Recent' : step === 'browse' ? 'Browse repositories' : step === 'help' ? 'How to use' : selectedRepository.name;
   const mapSwitch = step === 'map' ? `<button class="map-switch" type="button">${escapeHtml(selectedMap.title)} ${icon(icons.CHEVRON)}</button>` : '';
   const homeTarget = step === 'repository' || step === 'map' ? `${link('recent', escapeHtml(selectedRepository.name), 'home-crumb')}<i>/</i>` : '<span>Home</span><i>/</i>';
   return `<header class="prototype-topbar"><div class="where">${homeTarget}<strong>${escapeHtml(selected)}</strong>${mapSwitch}</div><label class="prototype-search">${icon(icons.LENS)}<input type="search" placeholder="Search repositories and maps" aria-label="Search repositories and maps" /><kbd>Ctrl K</kbd></label></header>`;
@@ -102,7 +101,7 @@ function homeTabs(active: 'recent' | 'browse'): string {
 
 function recent(): string {
   const items = REPOSITORIES.slice(1).flatMap((repository) => repository.maps.slice(0, 1).map((map) => ({ repository, map })));
-  return `<main class="prototype-main home-main">${homeTabs('recent')}<div class="page-heading with-action"><div><h1>Pick up where you left off</h1><p>Pins stay above the repositories you opened most recently.</p></div>${link('create', `${icon(icons.PLUS)}Start a new map`, 'primary-action')}</div><section class="home-section" aria-labelledby="pinned-heading"><h2 id="pinned-heading">Pinned</h2><div class="recent-list">${recentMapCard(selectedRepository, selectedMap)}</div></section><section class="home-section" aria-labelledby="recent-heading"><h2 id="recent-heading">Recent</h2><div class="recent-list">${items.map(({ repository, map }) => recentMapCard(repository, map)).join('')}</div></section></main>`;
+  return `<main class="prototype-main home-main">${homeTabs('recent')}<div class="page-heading"><h1>Pick up where you left off</h1><p>Pins stay above the repositories you opened most recently.</p></div><section class="home-section" aria-labelledby="pinned-heading"><h2 id="pinned-heading">Pinned</h2><div class="recent-list">${recentMapCard(selectedRepository, selectedMap)}</div></section><section class="home-section" aria-labelledby="recent-heading"><h2 id="recent-heading">Recent</h2><div class="recent-list">${items.map(({ repository, map }) => recentMapCard(repository, map)).join('')}</div></section></main>`;
 }
 
 function browse(): string {
@@ -121,40 +120,10 @@ function help(): string {
   return `<main class="prototype-main help-main"><div class="page-heading"><h1>How Wayfinder works</h1><p>One short path back to the work.</p></div><ol class="how-list"><li><span>1</span><div><strong>Open a recent repository</strong><p>Or search for any repository or map you have access to.</p></div></li><li><span>2</span><div><strong>Pick a map</strong><p>Each card shows what is open, next, and done before you open it.</p></div></li><li><span>3</span><div><strong>Start a ticket</strong><p>The map view keeps the existing filters, detail panel, and T3 Code hand-off.</p></div></li></ol></main>`;
 }
 
-function createMap(): string {
-  return `<main class="prototype-main create-main"><div class="page-heading"><p class="eyebrow">T3 Code hand-off</p><h1>What do you want to accomplish?</h1><p>Give T3 the destination. It will ask any follow-up questions and create the map in GitHub.</p></div><form class="create-card" id="create-map-form"><label><span>Repository</span><select id="create-repository" name="repository">${REPOSITORIES.map((repository) => `<option>${escapeHtml(repository.name)}</option>`).join('')}</select></label><label><span>Prompt</span><textarea id="create-prompt" name="prompt" rows="7" placeholder="Describe the outcome you want, the constraints that matter, and anything T3 should know." required></textarea></label><div class="create-actions"><button class="primary-action" type="submit">${icon(icons.PLAY)}Start in T3 Code</button><button class="secondary-action" id="copy-create-prompt" type="button">${icon(icons.COPY)}Copy prompt</button>${link('recent', 'Cancel', 'cancel-action')}</div><p class="create-status" id="create-status" role="status" aria-live="polite"></p></form></main>`;
-}
-
-function setupCreateMap(): void {
-  const form = document.querySelector<HTMLFormElement>('#create-map-form');
-  if (form === null) return;
-
-  const repository = form.querySelector<HTMLSelectElement>('#create-repository');
-  const prompt = form.querySelector<HTMLTextAreaElement>('#create-prompt');
-  const status = form.querySelector<HTMLElement>('#create-status');
-  const copy = form.querySelector<HTMLButtonElement>('#copy-create-prompt');
-  if (repository === null || prompt === null || status === null || copy === null) return;
-
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    if (!form.reportValidity()) return;
-    status.textContent = 'Prototype: T3 Code would open with this prompt and guide you through creating the map.';
-  });
-
-  copy.addEventListener('click', () => {
-    if (!form.reportValidity()) return;
-    void navigator.clipboard.writeText(createMapPrompt(repository.value, prompt.value)).then(
-      () => { status.textContent = 'Prompt copied.'; },
-      () => { status.textContent = 'Copy was unavailable. Select the prompt and copy it manually.'; },
-    );
-  });
-}
-
 function render(): void {
   const step = prototypeStepFromHash(window.location.hash);
-  const content = step === 'recent' ? recent() : step === 'browse' ? browse() : step === 'repository' ? repository() : step === 'map' ? map() : step === 'create' ? createMap() : help();
+  const content = step === 'recent' ? recent() : step === 'browse' ? browse() : step === 'repository' ? repository() : step === 'map' ? map() : help();
   app.innerHTML = `${rail(step)}<div class="prototype-page">${header(step)}${content}</div>`;
-  setupCreateMap();
 }
 
 window.addEventListener('hashchange', render);
