@@ -38,6 +38,16 @@ bun run build
 node dist/cli.js --repo owner/name
 ```
 
+To run the desktop shell from a built checkout:
+
+```bash
+bun run desktop
+```
+
+Closing its window keeps Wayfinder in the system tray. The tray can reopen the
+current page, go Home, start a new map, or quit. Quit stops the loopback server
+and revokes the in-memory T3 Code session.
+
 ## What you see
 
 Tickets are laid out left to right by dependency depth, so a ticket sits one column

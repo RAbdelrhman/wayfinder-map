@@ -150,6 +150,22 @@ describe('startWayfinder', () => {
     });
     expect(createT3).not.toHaveBeenCalled();
   });
+
+  it('can pin desktop startup to Home without resolving its process directory', async () => {
+    const server = await listen();
+    const currentRepo = vi.fn(async () => 'owner/repo');
+    const runtime = await startWayfinder(
+      config({ repo: null }),
+      dependencies({
+        currentRepo,
+        startServer: async () => ({ server, url: 'http://127.0.0.1:49152' }),
+      }),
+      { resolveCurrentRepository: false },
+    );
+    expect(runtime).toMatchObject({ repo: null, url: 'http://127.0.0.1:49152', workspaceRoot: null });
+    expect(currentRepo).not.toHaveBeenCalled();
+    await runtime.close();
+  });
 });
 
 describe('startServer port selection', () => {

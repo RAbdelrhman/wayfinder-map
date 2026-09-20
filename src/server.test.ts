@@ -112,4 +112,28 @@ describe('repository-scoped server', () => {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }
   });
+
+  it('hands an explicit shutdown to the desktop owner after responding', async () => {
+    const onShutdown = vi.fn();
+    const running = await startServer({
+      config,
+      repo: null,
+      template: 'prompt',
+      workspaceRoot: null,
+      t3,
+      homeLoader: async () => home,
+      onShutdown,
+    });
+
+    try {
+      const response = await fetch(`${running.url}/api/shutdown`, {
+        method: 'POST',
+        headers: { origin: running.url },
+      });
+      expect(response.status).toBe(200);
+      await vi.waitFor(() => expect(onShutdown).toHaveBeenCalledTimes(1));
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
 });

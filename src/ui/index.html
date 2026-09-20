@@ -5,13 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>wayfinder map</title>
     <link rel="stylesheet" href="/styles.css" />
-    <script>
-      // Stamp the saved theme before first paint so the page never flashes the wrong one.
-      (() => {
-        const saved = localStorage.getItem('wayfinder-map:theme');
-        if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
-      })();
-    </script>
+    <script src="/theme.js"></script>
   </head>
   <body class="viz-root">
     <div class="app" id="app">
