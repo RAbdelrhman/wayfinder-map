@@ -5,3 +5,7 @@ release/
 *.log
 snap.json
 .claude/worktrees/
+
+# Scratch output from browser automation and screenshots
+.playwright-cli/
+.shots/
