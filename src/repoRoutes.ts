@@ -50,7 +50,7 @@ export function mapPath(repo: string, mapNumber: number): string {
 }
 
 /** The repository-scoped API calls the page makes, so a page can name a repo other than the launch one. */
-export type ScopedApiAction = 'snapshot' | 'hand-off' | 'prototypes';
+export type ScopedApiAction = 'snapshot' | 'hand-off' | 'prototypes' | 'ticket';
 
 export function scopedApiPath(repo: string, action: ScopedApiAction): string {
   return `/api${repoPath(repo)}/${action}`;
