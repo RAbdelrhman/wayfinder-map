@@ -2,8 +2,10 @@ import type { HomeState } from '../home.js';
 import type { AuthFlowState } from '../authFlow.js';
 import { mapPath, normalizeRepo, parseRepoPagePath, prototypesPath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { prototypeFileUrl } from '../prototypes.js';
-import type { MapSnapshot, Prototype, WayfinderMap } from '../types.js';
-import { STATE_ORDER, STATE_STYLE, bindTheme, countStates, paintIcons, progressRing } from './chrome.js';
+import type { MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
+import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, countStates, paintIcons, progressRing } from './chrome.js';
+import * as icons from './icons.js';
+import { currentCatalog, loadCatalog, modelSelectHtml, readChoice, tierDefaults } from './models.js';
 import { syncedLabel } from './focus.js';
 import { icon } from './icons.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
@@ -402,24 +404,500 @@ async function renderRepository(repo: string, refresh: boolean): Promise<void> {
   void paintPrototypeBadges(repo, refresh);
 }
 
+const TYPE_ICONS: Record<string, string> = {
+  research: icons.LENS,
+  prototype: icons.BEAKER,
+  grilling: icons.GRILL,
+  task: icons.LIST,
+};
+
+function typeGlyph(type: TicketType | null): string {
+  const iconPath = (type && TYPE_ICONS[type]) || icons.LIST;
+  return `<span class="glyph" title="${escapeHtml(type ?? 'task')}">${icon(iconPath)}</span>`;
+}
+
+function stateChip(state: TicketState): string {
+  const look = STATE_LOOKS[state];
+  return `<span class="chip" style="--accent: var(${look.variable})">${icon(look.icon)}${escapeHtml(look.label)}</span>`;
+}
+
 async function renderNewMap(): Promise<void> {
   crumbs(['Start a new map']);
   els.synced.textContent = '';
   const account = await getJson<HomeState['account']>('/api/auth/status');
   els.accountMark.textContent = account.login?.slice(0, 1).toUpperCase() ?? '!';
-  paint(`<div class="page-head">
-      <div class="grow">
-        <p class="eyebrow">New map</p>
-        <h1>Start with the destination</h1>
-        <p>Give T3 Code one clear goal. It interviews you, then writes the map.</p>
+
+  let homeState: HomeState | null = null;
+  try {
+    homeState = await getJson<HomeState>('/api/home');
+  } catch {
+    // ignore
+  }
+
+  const recents = recentRepositories();
+  const allRepos = Array.from(new Set([...recents, ...(homeState?.repositories ?? [])]));
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const repoFromQuery = searchParams.get('repo');
+  const initialRepo = (repoFromQuery && normalizeRepo(repoFromQuery)) || recents[0] || allRepos[0] || '';
+
+  const catalogState = await loadCatalog();
+  const catalog = catalogState.status === 'ready' ? catalogState.catalog : null;
+  const defaultModelChoice = catalog ? tierDefaults()['mid'] ?? null : null;
+
+  const repoOptionsHtml = allRepos.map((r) => `<option value="${escapeHtml(r)}"></option>`).join('');
+  const recentPillsHtml = recents
+    .slice(0, 4)
+    .map((r) => `<button type="button" class="repo-pill" data-repo="${escapeHtml(r)}">${escapeHtml(r)}</button>`)
+    .join('');
+
+  const ticketModelSelectHtml = catalog
+    ? modelSelectHtml(catalog, defaultModelChoice, 'class="select" id="ticket-model-select"')
+    : '<select class="select" id="ticket-model-select" disabled><option>Models unavailable</option></select>';
+  const mapModelSelectHtml = catalog
+    ? modelSelectHtml(catalog, defaultModelChoice, 'class="select" id="map-model-select"')
+    : '<select class="select" id="map-model-select" disabled><option>Models unavailable</option></select>';
+
+  paint(`
+    <div class="add-new-shell">
+      <div class="page-head">
+        <div class="grow">
+          <p class="eyebrow">Start New Work</p>
+          <h1>Open a singular ticket or start a map</h1>
+          <p>Hand off a singular GitHub issue directly to T3 Code, or start a new destination map through an interactive planning interview.</p>
+        </div>
+      </div>
+
+      <div class="add-new-repo-bar">
+        <label for="new-repo-input"><span data-icon="repo"></span> Repository</label>
+        <div class="repo-input-wrap">
+          <input class="input" id="new-repo-input" list="add-new-repo-list" placeholder="owner/name" value="${escapeHtml(initialRepo)}" autocomplete="off" spellcheck="false" />
+          <datalist id="add-new-repo-list">${repoOptionsHtml}</datalist>
+        </div>
+        ${recentPillsHtml ? `<div class="recent-repos-hint"><span>Recent:</span>${recentPillsHtml}</div>` : ''}
+      </div>
+
+      <div class="add-new-grid">
+        <!-- Column 1: Singular Ticket -->
+        <div class="add-new-card" id="card-singular-ticket">
+          <div class="add-new-card-head">
+            <div class="add-new-icon-box"><span data-icon="ticket"></span></div>
+            <div class="add-new-card-titles">
+              <p class="eyebrow">Singular Ticket</p>
+              <h2>Work on an Issue</h2>
+              <p class="card-blurb">Pick up any GitHub ticket in this repo without needing an existing map. T3 Code will create a dedicated branch and worktree.</p>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="new-ticket-input">Ticket number or issue URL</label>
+            <input class="input" id="new-ticket-input" placeholder="#42 or https://github.com/owner/name/issues/42" autocomplete="off" spellcheck="false" />
+          </div>
+
+          <div class="ticket-preview-box is-empty" id="ticket-preview-box">
+            Enter a ticket number or paste an issue link above to inspect it.
+          </div>
+
+          <div class="model-row">
+            <label for="ticket-model-select">Model</label>
+            <div class="model-row-controls">
+              ${ticketModelSelectHtml}
+            </div>
+          </div>
+
+          <div class="add-new-actions">
+            <button type="button" class="primary" id="ticket-start-btn" disabled>
+              <span data-icon="play"></span>Start in T3 Code
+            </button>
+            <button type="button" class="ghost" id="ticket-copy-btn" disabled>
+              <span data-icon="copy"></span>Copy prompt
+            </button>
+          </div>
+
+          <details class="prompt-details" id="ticket-prompt-details" hidden>
+            <summary><span data-icon="chevron"></span>View generated prompt</summary>
+            <pre class="prompt-pre"><code id="ticket-prompt-code"></code></pre>
+          </details>
+        </div>
+
+        <!-- Column 2: Wayfinder Map -->
+        <div class="add-new-card" id="card-wayfinder-map">
+          <div class="add-new-card-head">
+            <div class="add-new-icon-box"><span data-icon="compass"></span></div>
+            <div class="add-new-card-titles">
+              <p class="eyebrow">Wayfinder Map</p>
+              <h2>Start a New Map</h2>
+              <p class="card-blurb">Describe your destination. T3 Code will interview you, clarify scope and decisions, and propose a full dependency map.</p>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="new-map-goal">What do you want to accomplish?</label>
+            <textarea class="input" id="new-map-goal" rows="5" placeholder="e.g. Build an offline-first draft mode with local indexedDB storage and automatic background sync..."></textarea>
+          </div>
+
+          <div class="model-row">
+            <label for="map-model-select">Model</label>
+            <div class="model-row-controls">
+              ${mapModelSelectHtml}
+            </div>
+          </div>
+
+          <div class="add-new-actions">
+            <button type="button" class="primary" id="map-start-btn" disabled>
+              <span data-icon="play"></span>Start Interview in T3 Code
+            </button>
+            <button type="button" class="ghost" id="map-copy-btn" disabled>
+              <span data-icon="copy"></span>Copy prompt
+            </button>
+          </div>
+
+          <details class="prompt-details" id="map-prompt-details" hidden>
+            <summary><span data-icon="chevron"></span>View interview prompt</summary>
+            <pre class="prompt-pre"><code id="map-prompt-code"></code></pre>
+          </details>
+
+          <div class="existing-maps-hint" id="existing-maps-hint" hidden>
+            <p>Existing maps in this repository:</p>
+            <div id="existing-maps-list"></div>
+          </div>
+        </div>
       </div>
     </div>
-    <form class="page-form">
-      <div class="field"><label for="new-repo">Repository</label><div class="row"><input class="input" id="new-repo" name="repo" placeholder="owner/name" autocomplete="off" spellcheck="false" required /></div></div>
-      <div class="field"><label for="new-goal">What do you want to accomplish?</label><textarea class="input" id="new-goal" name="goal" rows="7" required></textarea></div>
-      <button class="primary" type="submit" disabled>Start in T3 Code — coming next</button>
-      <p class="hint">The hand-off is tracked in the next implementation ticket.</p>
-    </form>`);
+  `);
+
+  const repoInput = need<HTMLInputElement>('new-repo-input');
+  const ticketInput = need<HTMLInputElement>('new-ticket-input');
+  const ticketPreviewBox = need<HTMLDivElement>('ticket-preview-box');
+  const ticketModelSelect = need<HTMLSelectElement>('ticket-model-select');
+  const ticketStartBtn = need<HTMLButtonElement>('ticket-start-btn');
+  const ticketCopyBtn = need<HTMLButtonElement>('ticket-copy-btn');
+  const ticketPromptDetails = need<HTMLDetailsElement>('ticket-prompt-details');
+  const ticketPromptCode = need<HTMLElement>('ticket-prompt-code');
+
+  const mapGoal = need<HTMLTextAreaElement>('new-map-goal');
+  const mapModelSelect = need<HTMLSelectElement>('map-model-select');
+  const mapStartBtn = need<HTMLButtonElement>('map-start-btn');
+  const mapCopyBtn = need<HTMLButtonElement>('map-copy-btn');
+  const mapPromptDetails = need<HTMLDetailsElement>('map-prompt-details');
+  const mapPromptCode = need<HTMLElement>('map-prompt-code');
+  const existingMapsHint = need<HTMLDivElement>('existing-maps-hint');
+  const existingMapsList = need<HTMLDivElement>('existing-maps-list');
+
+  let activeResolvedTicket: { ticket: Ticket; map: { number: number; title: string } | null } | null = null;
+  let activeTicketPrompt: string | null = null;
+  let activeMapPrompt: string | null = null;
+
+  async function loadExistingMaps(repo: string): Promise<void> {
+    const normalized = normalizeRepo(repo);
+    if (!normalized) {
+      existingMapsHint.hidden = true;
+      return;
+    }
+    try {
+      const snap = await getJson<MapSnapshot>(scopedApiPath(normalized, 'snapshot'));
+      if (snap.maps.length > 0) {
+        existingMapsHint.hidden = false;
+        existingMapsList.innerHTML = snap.maps
+          .map((m) => `<a class="mini-map-pill" href="${mapPath(normalized, m.number)}"><span data-icon="compass"></span>#${String(m.number)} ${escapeHtml(m.title)}</a>`)
+          .join('');
+        paintIcons(existingMapsList);
+      } else {
+        existingMapsHint.hidden = true;
+      }
+    } catch {
+      existingMapsHint.hidden = true;
+    }
+  }
+
+  async function inspectTicket(ticketNum: number): Promise<void> {
+    const repo = normalizeRepo(repoInput.value.trim());
+    if (!repo) {
+      ticketPreviewBox.className = 'ticket-preview-box is-error';
+      ticketPreviewBox.textContent = 'Please enter a valid repository (owner/name) above first.';
+      activeResolvedTicket = null;
+      activeTicketPrompt = null;
+      ticketStartBtn.disabled = true;
+      ticketCopyBtn.disabled = true;
+      ticketPromptDetails.hidden = true;
+      return;
+    }
+
+    ticketPreviewBox.className = 'ticket-preview-box is-loading';
+    ticketPreviewBox.textContent = `Fetching ticket #${String(ticketNum)} from ${repo}...`;
+
+    try {
+      const data = await getJson<{ ticket: Ticket; map: { number: number; title: string } | null }>(
+        `${scopedApiPath(repo, 'ticket')}?number=${String(ticketNum)}`
+      );
+      activeResolvedTicket = data;
+      const t = data.ticket;
+      const metaItems = [
+        `<span>${escapeHtml(t.assignee ? `@${t.assignee}` : 'Unassigned')}</span>`,
+        `<a href="${escapeHtml(t.url)}" target="_blank" rel="noreferrer"><span data-icon="external"></span>GitHub #${String(t.number)}</a>`,
+      ];
+
+      const mapBadge = data.map
+        ? `<a class="ticket-map-badge" href="${mapPath(repo, data.map.number)}"><span data-icon="compass"></span>Part of Map #${String(data.map.number)}: ${escapeHtml(data.map.title)}</a>`
+        : '';
+
+      ticketPreviewBox.className = 'ticket-preview-box';
+      ticketPreviewBox.innerHTML = `
+        <div class="ticket-preview-header">
+          ${typeGlyph(t.type)}
+          <span class="ticket-preview-num">#${String(t.number)}</span>
+          ${stateChip(t.state)}
+        </div>
+        <h3 class="ticket-preview-title">${escapeHtml(t.title)}</h3>
+        ${mapBadge}
+        <div class="ticket-preview-meta">${metaItems.join('')}</div>
+      `;
+      paintIcons(ticketPreviewBox);
+
+      // Preload ticket prompt
+      const modelChoice = catalog ? readChoice(catalog, ticketModelSelect, null) : null;
+      const handOffPreview = await postJson<{ prompt: string }>(
+        scopedApiPath(repo, 'hand-off'),
+        {
+          ticket: t.number,
+          copyOnly: true,
+          ...(data.map ? { map: data.map.number } : {}),
+          ...(modelChoice ? { model: modelChoice } : {}),
+        }
+      );
+      activeTicketPrompt = handOffPreview.prompt;
+      ticketPromptCode.textContent = activeTicketPrompt;
+      ticketPromptDetails.hidden = false;
+
+      const canStart = t.state !== 'done' && t.state !== 'blocked';
+      ticketStartBtn.disabled = !canStart;
+      ticketStartBtn.title = canStart ? '' : `Ticket is ${t.state}`;
+      ticketCopyBtn.disabled = false;
+    } catch (err) {
+      activeResolvedTicket = null;
+      activeTicketPrompt = null;
+      ticketPreviewBox.className = 'ticket-preview-box is-error';
+      ticketPreviewBox.textContent = (err as Error).message || `Ticket #${String(ticketNum)} not found in ${repo}.`;
+      ticketStartBtn.disabled = true;
+      ticketCopyBtn.disabled = true;
+      ticketPromptDetails.hidden = true;
+    }
+  }
+
+  let ticketDebounce = 0;
+  function handleTicketInput(): void {
+    const trimmed = ticketInput.value.trim();
+    if (!trimmed) {
+      ticketPreviewBox.className = 'ticket-preview-box is-empty';
+      ticketPreviewBox.textContent = 'Enter a ticket number or paste an issue link above to inspect it.';
+      ticketStartBtn.disabled = true;
+      ticketCopyBtn.disabled = true;
+      ticketPromptDetails.hidden = true;
+      activeResolvedTicket = null;
+      activeTicketPrompt = null;
+      return;
+    }
+
+    // Match GitHub URL
+    const urlMatch = /github\.com\/([^/]+\/[^/]+)\/issues\/(\d+)/i.exec(trimmed);
+    if (urlMatch && urlMatch[1] && urlMatch[2]) {
+      const parsedRepo = normalizeRepo(urlMatch[1]);
+      const parsedNum = Number(urlMatch[2]);
+      if (parsedRepo) {
+        repoInput.value = parsedRepo;
+        remember(parsedRepo);
+        void loadExistingMaps(parsedRepo);
+      }
+      ticketInput.value = `#${String(parsedNum)}`;
+      void inspectTicket(parsedNum);
+      return;
+    }
+
+    const numMatch = /^#?(\d+)$/.exec(trimmed);
+    if (numMatch && numMatch[1]) {
+      window.clearTimeout(ticketDebounce);
+      ticketDebounce = window.setTimeout(() => {
+        void inspectTicket(Number(numMatch[1]));
+      }, 300);
+    }
+  }
+
+  ticketInput.addEventListener('input', handleTicketInput);
+  ticketInput.addEventListener('paste', () => setTimeout(handleTicketInput, 20));
+
+  repoInput.addEventListener('change', () => {
+    const normalized = normalizeRepo(repoInput.value.trim());
+    if (normalized) {
+      remember(normalized);
+      void loadExistingMaps(normalized);
+      const numMatch = /^#?(\d+)$/.exec(ticketInput.value.trim());
+      if (numMatch && numMatch[1]) {
+        void inspectTicket(Number(numMatch[1]));
+      }
+    }
+  });
+
+  for (const pill of els.main.querySelectorAll<HTMLButtonElement>('.repo-pill')) {
+    pill.addEventListener('click', () => {
+      const targetRepo = pill.dataset['repo'];
+      if (targetRepo) {
+        repoInput.value = targetRepo;
+        remember(targetRepo);
+        void loadExistingMaps(targetRepo);
+        const numMatch = /^#?(\d+)$/.exec(ticketInput.value.trim());
+        if (numMatch && numMatch[1]) {
+          void inspectTicket(Number(numMatch[1]));
+        }
+      }
+    });
+  }
+
+  ticketStartBtn.addEventListener('click', async () => {
+    if (!activeResolvedTicket) return;
+    const repo = normalizeRepo(repoInput.value.trim());
+    if (!repo) return;
+    const originalText = ticketStartBtn.innerHTML;
+    ticketStartBtn.disabled = true;
+    ticketStartBtn.textContent = 'Starting in T3 Code...';
+
+    try {
+      const modelChoice = catalog ? readChoice(catalog, ticketModelSelect, null) : null;
+      const res = await postJson<{ threadId?: string; copied?: boolean }>(
+        scopedApiPath(repo, 'hand-off'),
+        {
+          ticket: activeResolvedTicket.ticket.number,
+          ...(activeResolvedTicket.map ? { map: activeResolvedTicket.map.number } : {}),
+          ...(modelChoice ? { model: modelChoice } : {}),
+        }
+      );
+      if (res.copied) {
+        toast('Copied prompt to clipboard! Paste it into T3 Code.');
+      } else {
+        toast(`Started thread in T3 Code for #${String(activeResolvedTicket.ticket.number)}!`);
+      }
+    } catch (err) {
+      toast((err as Error).message);
+    } finally {
+      ticketStartBtn.disabled = false;
+      ticketStartBtn.innerHTML = originalText;
+      paintIcons(ticketStartBtn);
+    }
+  });
+
+  ticketCopyBtn.addEventListener('click', async () => {
+    if (!activeResolvedTicket) return;
+    const repo = normalizeRepo(repoInput.value.trim());
+    if (!repo) return;
+    try {
+      const modelChoice = catalog ? readChoice(catalog, ticketModelSelect, null) : null;
+      const res = await postJson<{ prompt: string; copied: boolean }>(
+        scopedApiPath(repo, 'hand-off'),
+        {
+          ticket: activeResolvedTicket.ticket.number,
+          copyOnly: true,
+          ...(activeResolvedTicket.map ? { map: activeResolvedTicket.map.number } : {}),
+          ...(modelChoice ? { model: modelChoice } : {}),
+        }
+      );
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(res.prompt);
+      }
+      toast('Copied prompt to clipboard!');
+    } catch (err) {
+      toast((err as Error).message);
+    }
+  });
+
+  let mapGoalTimer = 0;
+  mapGoal.addEventListener('input', () => {
+    const text = mapGoal.value.trim();
+    if (text.length > 0) {
+      mapStartBtn.disabled = false;
+      mapCopyBtn.disabled = false;
+      window.clearTimeout(mapGoalTimer);
+      mapGoalTimer = window.setTimeout(async () => {
+        const repo = normalizeRepo(repoInput.value.trim());
+        if (!repo) return;
+        try {
+          const res = await postJson<{ prompt: string }>(
+            scopedApiPath(repo, 'hand-off'),
+            { goal: text, copyOnly: true }
+          );
+          activeMapPrompt = res.prompt;
+          mapPromptCode.textContent = res.prompt;
+          mapPromptDetails.hidden = false;
+        } catch {
+          // ignore
+        }
+      }, 350);
+    } else {
+      mapStartBtn.disabled = true;
+      mapCopyBtn.disabled = true;
+      mapPromptDetails.hidden = true;
+      activeMapPrompt = null;
+    }
+  });
+
+  mapStartBtn.addEventListener('click', async () => {
+    const text = mapGoal.value.trim();
+    if (!text) return;
+    const repo = normalizeRepo(repoInput.value.trim());
+    if (!repo) {
+      toast('Please enter a valid repository (owner/name) above first.');
+      return;
+    }
+    const originalText = mapStartBtn.innerHTML;
+    mapStartBtn.disabled = true;
+    mapStartBtn.textContent = 'Starting interview...';
+
+    try {
+      const modelChoice = catalog ? readChoice(catalog, mapModelSelect, null) : null;
+      const res = await postJson<{ threadId?: string; copied?: boolean }>(
+        scopedApiPath(repo, 'hand-off'),
+        {
+          goal: text,
+          ...(modelChoice ? { model: modelChoice } : {}),
+        }
+      );
+      if (res.copied) {
+        toast('Copied interview prompt to clipboard! Paste it into T3 Code.');
+      } else {
+        toast('Started new map planning interview in T3 Code!');
+      }
+    } catch (err) {
+      toast((err as Error).message);
+    } finally {
+      mapStartBtn.disabled = false;
+      mapStartBtn.innerHTML = originalText;
+      paintIcons(mapStartBtn);
+    }
+  });
+
+  mapCopyBtn.addEventListener('click', async () => {
+    const text = mapGoal.value.trim();
+    if (!text) return;
+    const repo = normalizeRepo(repoInput.value.trim());
+    if (!repo) {
+      toast('Please enter a valid repository (owner/name) above first.');
+      return;
+    }
+    try {
+      const res = await postJson<{ prompt: string }>(
+        scopedApiPath(repo, 'hand-off'),
+        { goal: text, copyOnly: true }
+      );
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(res.prompt);
+      }
+      toast('Copied interview prompt to clipboard!');
+    } catch (err) {
+      toast((err as Error).message);
+    }
+  });
+
+  if (initialRepo) {
+    void loadExistingMaps(initialRepo);
+  }
 }
 
 /* ---------- routing ---------- */

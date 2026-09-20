@@ -152,6 +152,33 @@ interface Blocker {
   open: boolean | null;
 }
 
+/** Read a single ticket directly from GitHub as a Ticket. */
+export async function fetchTicket(repo: string, number: number, typePrefix = 'wayfinder:'): Promise<Ticket | null> {
+  const raw = await fetchIssue(repo, number);
+  if (raw === null) return null;
+  const labels = labelNames(raw);
+  const open = isOpenState(raw.state);
+  const assignee = raw.assignee?.login ?? raw.assignees?.[0]?.login ?? null;
+  const blockers = await fetchBlockers(repo, raw);
+  const blockedBy = blockers.map((blocker) => blocker.number);
+  const openBlockers = blockers
+    .filter((blocker) => blocker.open ?? true)
+    .map((blocker) => blocker.number);
+  return {
+    number: raw.number,
+    title: raw.title,
+    url: issueUrl(raw, repo),
+    body: raw.body ?? '',
+    type: ticketType(labels, typePrefix),
+    labels,
+    open,
+    assignee,
+    blockedBy,
+    openBlockers,
+    state: ticketStateOf(open, openBlockers, assignee),
+  };
+}
+
 async function fetchChildren(repo: string, map: RawIssue, warnings: string[]): Promise<RawIssue[]> {
   try {
     return await ghJson<RawIssue[]>([

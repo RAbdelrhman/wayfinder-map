@@ -27,6 +27,40 @@ work. Close it the way the wayfinder flow does: answer in a comment, close it,
 then add the context pointer to the map's Decisions-so-far.
 `;
 
+export const DEFAULT_STANDALONE_TEMPLATE = `Pick up ticket #{{ticketNumber}} in {{repo}}.
+
+Repo:    {{repo}}
+Ticket:  #{{ticketNumber}} {{ticketTitle}}
+Type:    {{ticketType}}
+State:   {{ticketState}}{{blockedLine}}
+Link:    {{ticketUrl}}
+
+What the ticket says:
+{{ticketBody}}
+
+{{worktreeSteps}}
+{{typeSteps}}
+Never run \`git stash\` in a shared checkout. If you need to check whether a
+failure predates your changes, create a throwaway worktree from HEAD and test
+there.
+
+Once you are in the dedicated worktree, claim the ticket before doing ticket
+work. Close it when work is completed.
+`;
+
+export const DEFAULT_NEW_MAP_TEMPLATE = `You are helping plan a new Wayfinder map for the repository {{repo}}.
+
+Destination / Goal:
+{{goal}}
+
+Please interview me one question at a time to clarify requirements, scope, decisions, and fog before drafting the proposed map and ticket structure.
+Break down the work into discrete Wayfinder tickets:
+- research tickets for unknowns and docs investigation
+- prototype tickets for throwaway experiments
+- grilling tickets for key user/architectural decisions
+- task tickets for concrete implementation units
+`;
+
 const STATE_WORDS: Record<Ticket['state'], string> = {
   done: 'closed',
   blocked: 'blocked',
@@ -42,10 +76,16 @@ export interface PreparedWorktree {
 
 export interface PromptInput {
   repo: string;
-  map: WayfinderMap;
+  map?: WayfinderMap | null | undefined;
   ticket: Ticket;
-  template?: string;
-  worktree?: PreparedWorktree;
+  template?: string | null | undefined;
+  worktree?: PreparedWorktree | null | undefined;
+}
+
+export interface NewMapPromptInput {
+  repo: string;
+  goal: string;
+  template?: string | null | undefined;
 }
 
 const WORKTREE_STEPS = `Before you claim the ticket or change any files, create and enter a dedicated
@@ -117,7 +157,8 @@ export function renderTemplate(template: string, values: Readonly<Record<string,
 }
 
 /** The prompt a click on a ticket hands to T3 Code. */
-export function buildPrompt({ repo, map, ticket, template = DEFAULT_TEMPLATE, worktree }: PromptInput): string {
+export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInput): string {
+  const chosenTemplate = template ?? (map ? DEFAULT_TEMPLATE : DEFAULT_STANDALONE_TEMPLATE);
   const blockedLine =
     ticket.openBlockers.length > 0
       ? `\nBlocked by: ${ticket.openBlockers.map((number) => `#${number}`).join(', ')}`
@@ -131,15 +172,29 @@ export function buildPrompt({ repo, map, ticket, template = DEFAULT_TEMPLATE, wo
     baseBranch: worktree?.baseBranch ?? 'HEAD',
   };
 
-  return renderTemplate(template, {
+  const mapValues: Record<string, string> = map
+    ? {
+        mapNumber: String(map.number),
+        mapTitle: map.title,
+        mapUrl: map.url,
+        destination: indent(map.sections.destination),
+        notes: indent(map.sections.notes),
+        decisions: indent(map.sections.decisions),
+        fog: indent(map.sections.fog),
+      }
+    : {
+        mapNumber: '',
+        mapTitle: '',
+        mapUrl: '',
+        destination: '',
+        notes: '',
+        decisions: '',
+        fog: '',
+      };
+
+  return renderTemplate(chosenTemplate, {
     repo,
-    mapNumber: String(map.number),
-    mapTitle: map.title,
-    mapUrl: map.url,
-    destination: indent(map.sections.destination),
-    notes: indent(map.sections.notes),
-    decisions: indent(map.sections.decisions),
-    fog: indent(map.sections.fog),
+    ...mapValues,
     ticketNumber: String(ticket.number),
     ticketTitle: ticket.title,
     ticketType: ticket.type ?? 'untyped',
@@ -152,5 +207,14 @@ export function buildPrompt({ repo, map, ticket, template = DEFAULT_TEMPLATE, wo
     prototypeBranch: prototypeBranch(ticket),
     typeSteps: typeSteps ? `\n${renderTemplate(typeSteps, { prototypeBranch: prototypeBranch(ticket) })}\n` : '',
     blockedLine,
+  }).trim();
+}
+
+/** Build an interview prompt for starting a new Wayfinder map in T3 Code. */
+export function buildNewMapPrompt({ repo, goal, template }: NewMapPromptInput): string {
+  const chosenTemplate = template ?? DEFAULT_NEW_MAP_TEMPLATE;
+  return renderTemplate(chosenTemplate, {
+    repo,
+    goal: indent(goal),
   }).trim();
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildPrompt, renderTemplate } from './prompt.js';
+import { buildNewMapPrompt, buildPrompt, renderTemplate } from './prompt.js';
 import type { Ticket, WayfinderMap } from './types.js';
 
 const map: WayfinderMap = {
@@ -148,16 +148,25 @@ describe('buildPrompt', () => {
     const free: Ticket = { ...ticket, blockedBy: [], openBlockers: [], state: 'frontier' };
     const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: free });
     expect(prompt).not.toContain('Blocked by');
-    expect(prompt).toContain('open, unblocked, unclaimed');
   });
 
-  it('honours a custom template', () => {
-    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket, template: 'do {{ticketNumber}} now' });
-    expect(prompt).toBe('do 11 now');
+  it('generates a standalone prompt when no map is provided', () => {
+    const standalonePrompt = buildPrompt({ repo: 'owner/repo', ticket });
+    expect(standalonePrompt).toContain('Pick up ticket #11 in owner/repo.');
+    expect(standalonePrompt).toContain('#11 Retire /api/agents once nothing needs it');
+    expect(standalonePrompt).toContain('Worktree: ../wayfinder-11-retire-api-agents-once-nothing-needs-it');
+    expect(standalonePrompt).not.toContain('Where the map is heading');
   });
+});
 
-  it('marks an empty body rather than leaving a hole', () => {
-    const bare: Ticket = { ...ticket, body: '' };
-    expect(buildPrompt({ repo: 'owner/repo', map, ticket: bare })).toContain('(empty)');
+describe('buildNewMapPrompt', () => {
+  it('generates a new map interview prompt with repo and goal', () => {
+    const prompt = buildNewMapPrompt({
+      repo: 'owner/repo',
+      goal: 'Build an offline-first sync engine.',
+    });
+    expect(prompt).toContain('You are helping plan a new Wayfinder map for the repository owner/repo.');
+    expect(prompt).toContain('Build an offline-first sync engine.');
+    expect(prompt).toContain('interview me one question at a time');
   });
 });

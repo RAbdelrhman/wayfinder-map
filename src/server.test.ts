@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { Config } from './config.js';
 import type { HomeState } from './home.js';
-import { startServer } from './server.js';
+import { DEFAULT_TEMPLATE, startServer } from './server.js';
 import type { ServerT3 } from './server.js';
 import type { RepositoryFetcher } from './repositoryStore.js';
+import type { Ticket, WayfinderMap } from './types.js';
 
 const config: Config = {
   repo: null,
@@ -42,20 +43,49 @@ const home: HomeState = {
   warning: null,
 };
 
+const sampleTicket: Ticket = {
+  number: 11,
+  title: 'Retire API agents',
+  url: 'https://github.com/octo/one/issues/11',
+  body: 'Body text here',
+  type: 'task',
+  labels: ['wayfinder:task'],
+  open: true,
+  assignee: null,
+  blockedBy: [],
+  openBlockers: [],
+  state: 'frontier',
+};
+
+const sampleMap: WayfinderMap = {
+  number: 5,
+  title: 'Roadmap v1',
+  url: 'https://github.com/octo/one/issues/5',
+  body: '## Destination\nLaunch product',
+  open: true,
+  sections: {
+    destination: 'Launch product',
+    notes: '',
+    decisions: '',
+    fog: '',
+    outOfScope: '',
+  },
+  tickets: [sampleTicket],
+};
+
 describe('repository-scoped server', () => {
   it('serves Home, repository, and map page routes', async () => {
     const running = await startServer({
       config,
       repo: null,
-      template: 'prompt',
+      template: DEFAULT_TEMPLATE,
       workspaceRoot: null,
       t3,
-      fetcher: async () => ({ maps: [], warnings: [] }),
       homeLoader: async () => home,
     });
 
     try {
-      const homePage = await fetch(running.url);
+      const homePage = await fetch(`${running.url}/`);
       const repositoryPage = await fetch(`${running.url}/repos/octo/one`);
       const mapPage = await fetch(`${running.url}/repos/octo/one/maps/12`);
       expect(await homePage.text()).toContain('src="/home.js"');
@@ -74,7 +104,7 @@ describe('repository-scoped server', () => {
     const running = await startServer({
       config,
       repo: null,
-      template: 'prompt',
+      template: DEFAULT_TEMPLATE,
       workspaceRoot: null,
       t3,
       fetcher,
@@ -94,12 +124,105 @@ describe('repository-scoped server', () => {
     }
   });
 
+  it('inspects a ticket and returns its ticket data and parent map info', async () => {
+    const fetcher: RepositoryFetcher = vi.fn(async () => ({
+      maps: [sampleMap],
+      warnings: [],
+    }));
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      fetcher,
+      homeLoader: async () => home,
+    });
+
+    try {
+      const res = await fetch(`${running.url}/api/repos/octo/one/ticket?number=11`);
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ticket: Ticket; map: { number: number; title: string } | null };
+      expect(data.ticket.number).toBe(11);
+      expect(data.ticket.title).toBe('Retire API agents');
+      expect(data.map).toEqual({ number: 5, title: 'Roadmap v1' });
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('handles hand-off with a goal to start a new map interview', async () => {
+    const fetcher: RepositoryFetcher = vi.fn(async () => ({
+      maps: [],
+      warnings: [],
+    }));
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      fetcher,
+      homeLoader: async () => home,
+    });
+
+    try {
+      const res = await fetch(`${running.url}/api/repos/octo/one/hand-off`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: running.url,
+        },
+        body: JSON.stringify({ goal: 'Build offline mode', copyOnly: true }),
+      });
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { prompt: string; copied: boolean };
+      expect(data.prompt).toContain('Build offline mode');
+      expect(data.prompt).toContain('octo/one');
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('handles hand-off for a singular ticket without specifying map', async () => {
+    const fetcher: RepositoryFetcher = vi.fn(async () => ({
+      maps: [sampleMap],
+      warnings: [],
+    }));
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      fetcher,
+      homeLoader: async () => home,
+    });
+
+    try {
+      const res = await fetch(`${running.url}/api/repos/octo/one/hand-off`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: running.url,
+        },
+        body: JSON.stringify({ ticket: 11, copyOnly: true }),
+      });
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { prompt: string; copied: boolean };
+      expect(data.prompt).toContain('#11 Retire API agents');
+      expect(data.prompt).toContain('octo/one');
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
   it('keeps the Home shell available when discovery reports an account error', async () => {
     const signedOut = { ...home, account: { ...home.account, status: 'signed-out' as const, login: null } };
     const running = await startServer({
       config,
       repo: null,
-      template: 'prompt',
+      template: DEFAULT_TEMPLATE,
       workspaceRoot: null,
       t3,
       homeLoader: async () => signedOut,
@@ -119,7 +242,7 @@ describe('repository-scoped server', () => {
     const running = await startServer({
       config,
       repo: null,
-      template: 'prompt',
+      template: DEFAULT_TEMPLATE,
       workspaceRoot: null,
       t3,
       homeLoader: async () => home,

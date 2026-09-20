@@ -5,15 +5,15 @@ import { join } from 'node:path';
 
 import { parseModelChoice } from './models.js';
 import { copyToClipboard } from './clipboard.js';
-import { DEFAULT_TEMPLATE, buildPrompt, ticketBranch } from './prompt.js';
+import { DEFAULT_TEMPLATE, buildNewMapPrompt, buildPrompt, ticketBranch } from './prompt.js';
 import { parsePrototypeFilePath } from './prototypes.js';
 import { detectT3, handOff } from './t3.js';
 import type { T3HandOff } from './t3.js';
 import type { Config } from './config.js';
-import type { MapSnapshot, Prototype, WayfinderMap } from './types.js';
+import type { MapSnapshot, Prototype, Ticket, WayfinderMap } from './types.js';
 import { loadHomeState, readAccount } from './home.js';
 import type { HomeState } from './home.js';
-import { fetchAllPrototypes, fetchBranchFile, fetchPrototypes, gh } from './github.js';
+import { fetchAllPrototypes, fetchBranchFile, fetchPrototypes, fetchTicket, gh } from './github.js';
 import { AuthFlow } from './authFlow.js';
 import { parseRepoPagePath } from './repoRoutes.js';
 import type { ScopedApiAction } from './repoRoutes.js';
@@ -272,7 +272,43 @@ export async function startServer({
       }
 
       const scoped = parseScopedApiPath(path);
-      const requestedRepo = scoped?.repo ?? (path === '/api/hand-off' || path === '/api/prototypes' ? repo : null);
+      const requestedRepo = scoped?.repo ?? (path === '/api/hand-off' || path === '/api/prototypes' || path === '/api/ticket' ? repo : null);
+
+      if (requestedRepo !== null && (scoped?.action === 'ticket' || path === '/api/ticket')) {
+        const ticketParam = requestUrl.searchParams.get('number') ?? requestUrl.searchParams.get('ticket');
+        if (!ticketParam || Number.isNaN(Number(ticketParam))) {
+          json(response, 400, { error: 'Missing or invalid ticket number parameter.' });
+          return;
+        }
+        const ticketNumber = Number(ticketParam);
+        try {
+          const snapshot = await repositories.snapshot(requestedRepo, false);
+          let foundMap: WayfinderMap | null = null;
+          let foundTicket: Ticket | null = null;
+          for (const candidateMap of snapshot.maps) {
+            const candidate = candidateMap.tickets.find((t) => t.number === ticketNumber);
+            if (candidate) {
+              foundMap = candidateMap;
+              foundTicket = candidate;
+              break;
+            }
+          }
+          if (!foundTicket) {
+            foundTicket = await fetchTicket(requestedRepo, ticketNumber, config.typePrefix);
+          }
+          if (!foundTicket) {
+            json(response, 404, { error: `Ticket #${String(ticketNumber)} not found in ${requestedRepo}.` });
+            return;
+          }
+          json(response, 200, {
+            ticket: foundTicket,
+            map: foundMap ? { number: foundMap.number, title: foundMap.title } : null,
+          });
+        } catch (error) {
+          json(response, 502, { error: (error as Error).message });
+        }
+        return;
+      }
 
       if (requestedRepo !== null && (scoped?.action === 'prototypes' || path === '/api/prototypes')) {
         try {
@@ -297,16 +333,68 @@ export async function startServer({
       }
 
       if (requestedRepo !== null && (scoped?.action === 'hand-off' || path === '/api/hand-off') && request.method === 'POST') {
-        const body = (await readBody(request)) as { map?: number; ticket?: number; copyOnly?: boolean; model?: unknown };
-        const snapshot = await repositories.snapshot(requestedRepo, false);
-        const found = find(snapshot, Number(body.map), Number(body.ticket));
-        if (!found) {
-          json(response, 404, { error: 'No such ticket on that map.' });
+        const body = (await readBody(request)) as {
+          map?: number;
+          ticket?: number;
+          copyOnly?: boolean;
+          model?: unknown;
+          goal?: string;
+        };
+
+        if (typeof body.goal === 'string' && body.goal.trim().length > 0) {
+          const goal = body.goal.trim();
+          const prompt = buildNewMapPrompt({ repo: requestedRepo, goal });
+          if (body.copyOnly === true) {
+            json(response, 200, { prompt, ...(await copyOnly(prompt)) });
+            return;
+          }
+          const result = await handOff(
+            {
+              title: `New map: ${goal.replace(/[\r\n]+/g, ' ').slice(0, 48)}`,
+              workspaceRoot: requestedRepo === repo ? workspaceRoot : null,
+              branch: 'wayfinder/new-map',
+              model: parseModelChoice(body.model),
+              prompt: () => prompt,
+            },
+            t3.steps(await detectT3()),
+          );
+          json(response, 200, result);
           return;
         }
 
-        const { map, ticket } = found;
-        const prompt = buildPrompt({ repo: requestedRepo, map, ticket, template });
+        const snapshot = await repositories.snapshot(requestedRepo, false);
+        let map: WayfinderMap | null = null;
+        let ticket: Ticket | null = null;
+
+        if (body.map !== undefined && body.map !== null && !Number.isNaN(Number(body.map)) && body.ticket !== undefined) {
+          const found = find(snapshot, Number(body.map), Number(body.ticket));
+          if (found) {
+            map = found.map;
+            ticket = found.ticket;
+          }
+        }
+
+        if (!ticket && body.ticket !== undefined && !Number.isNaN(Number(body.ticket))) {
+          const ticketNumber = Number(body.ticket);
+          for (const candidateMap of snapshot.maps) {
+            const candidate = candidateMap.tickets.find((t) => t.number === ticketNumber);
+            if (candidate) {
+              map = candidateMap;
+              ticket = candidate;
+              break;
+            }
+          }
+          if (!ticket) {
+            ticket = await fetchTicket(requestedRepo, ticketNumber, config.typePrefix);
+          }
+        }
+
+        if (!ticket) {
+          json(response, 404, { error: 'No such ticket.' });
+          return;
+        }
+
+        const prompt = buildPrompt({ repo: requestedRepo, map, ticket, template: map ? template : undefined });
         if (body.copyOnly === true) {
           json(response, 200, { prompt, ...(await copyOnly(prompt)) });
           return;
@@ -322,7 +410,14 @@ export async function startServer({
             workspaceRoot: requestedRepo === repo ? workspaceRoot : null,
             branch: ticketBranch(ticket),
             model: parseModelChoice(body.model),
-            prompt: (worktree) => buildPrompt({ repo: requestedRepo, map, ticket, template, ...(worktree ? { worktree } : {}) }),
+            prompt: (worktree) =>
+              buildPrompt({
+                repo: requestedRepo,
+                map,
+                ticket,
+                template: map ? template : undefined,
+                ...(worktree ? { worktree } : {}),
+              }),
           },
           t3.steps(await detectT3()),
         );
@@ -352,9 +447,7 @@ export async function startServer({
         response.end(bytes);
       } catch (error) {
         response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-        response.end(`Not on ${prototypeFile.branch}: ${prototypeFile.file}
-
-${(error as Error).message}`);
+        response.end(`Not on ${prototypeFile.branch}: ${prototypeFile.file}\n\n${(error as Error).message}`);
       }
       return;
     }
@@ -409,7 +502,7 @@ ${(error as Error).message}`);
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|prototypes)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|prototypes|ticket)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;
