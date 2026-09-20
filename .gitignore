@@ -3,3 +3,6 @@ dist/
 *.log
 snap.json
 .claude/worktrees/
+
+# Scratch output from browser automation
+.playwright-cli/
