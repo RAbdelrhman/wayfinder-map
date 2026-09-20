@@ -1,3 +1,4 @@
+import { PROTOTYPE_BRANCH_PREFIX } from './prototypes.js';
 import type { Ticket, TicketType, WayfinderMap } from './types.js';
 
 export const DEFAULT_TEMPLATE = `Pick up wayfinder ticket #{{ticketNumber}} on the "{{mapTitle}}" map.
@@ -68,7 +69,10 @@ user hasn't agreed to. If you can't reach the user, stop and say so.`;
 const TYPE_STEPS: Partial<Record<TicketType, string>> = {
   grilling: HUMAN_IN_THE_LOOP_STEPS,
   prototype: `${HUMAN_IN_THE_LOOP_STEPS}
-Show them the prototype and let them react before settling anything.`,
+Show them the prototype and let them react before settling anything.
+When you capture the prototype, commit it to the branch {{prototypeBranch}}
+and push it. That exact name is how wayfinder-map finds it later, so do not
+pick another. Keep a logic prototype to one self-contained HTML file.`,
 };
 
 function indent(text: string, prefix = '  '): string {
@@ -83,6 +87,11 @@ function indent(text: string, prefix = '  '): string {
 /** `12-some-title`, the stem of the ticket's worktree and branch names. */
 export function ticketSlug(ticket: Pick<Ticket, 'number' | 'title'>): string {
   return `${String(ticket.number)}-${slugifyTitle(ticket.title)}`;
+}
+
+/** The throwaway branch a prototype ticket's prototype is kept on. */
+export function prototypeBranch(ticket: Pick<Ticket, 'number' | 'title'>): string {
+  return `${PROTOTYPE_BRANCH_PREFIX}${ticketSlug(ticket)}`;
 }
 
 /** The branch a ticket's work lands on. */
@@ -114,6 +123,7 @@ export function buildPrompt({ repo, map, ticket, template = DEFAULT_TEMPLATE, wo
       ? `\nBlocked by: ${ticket.openBlockers.map((number) => `#${number}`).join(', ')}`
       : '';
   const slug = ticketSlug(ticket);
+  const typeSteps = ticket.type ? TYPE_STEPS[ticket.type] : undefined;
   const branchName = worktree?.branch ?? ticketBranch(ticket);
   const worktreeValues = {
     worktreeName: `../wayfinder-${slug}`,
@@ -139,7 +149,8 @@ export function buildPrompt({ repo, map, ticket, template = DEFAULT_TEMPLATE, wo
     ticketSlug: slug,
     ...worktreeValues,
     worktreeSteps: renderTemplate(worktree ? PREPARED_WORKTREE_STEPS : WORKTREE_STEPS, worktreeValues),
-    typeSteps: ticket.type && TYPE_STEPS[ticket.type] ? `\n${TYPE_STEPS[ticket.type]}\n` : '',
+    prototypeBranch: prototypeBranch(ticket),
+    typeSteps: typeSteps ? `\n${renderTemplate(typeSteps, { prototypeBranch: prototypeBranch(ticket) })}\n` : '',
     blockedLine,
   }).trim();
 }

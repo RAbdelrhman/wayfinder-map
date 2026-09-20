@@ -46,6 +46,22 @@ export interface WayfinderMap {
   tickets: Ticket[];
 }
 
+/** A prototype branch belonging to one of a map's tickets. */
+export interface Prototype {
+  branch: string;
+  ticketNumber: number;
+  /** The branch on GitHub. */
+  url: string;
+  /** When the branch last got a commit, or null if GitHub could not compare it. */
+  updatedAt: string | null;
+  /** Files the branch adds or changes against the default branch. */
+  files: string[];
+  /** Of those, the HTML files the page can serve and open live. */
+  openable: string[];
+  /** The closed ticket's last comment, which the wayfinder flow writes as its answer. Null while open. */
+  verdict: string | null;
+}
+
 export interface MapSnapshot {
   repo: string;
   fetchedAt: string;

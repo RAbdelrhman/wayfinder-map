@@ -57,6 +57,23 @@ The left panel carries the map's own prose: destination, fog, notes, decisions,
 out of scope. A table view sits behind the Map/Table toggle for anyone who would
 rather read rows than a graph, and for screen readers.
 
+## Prototypes
+
+Prototype tickets keep their prototype on a throwaway branch named
+`prototype/<ticket>-<slug>`, e.g. `prototype/8-what-does-the-home-page-look-like`.
+The hand-off prompt tells the agent to push there. If you work a prototype ticket by
+hand, use the same name, because the name is the only way the tool finds it.
+
+**Prototypes** (the beaker in the left rail) lists every such branch whose ticket is
+on the current map, newest first: its ticket, the date of its last commit, the files
+it changes, and, once the ticket is closed, its verdict (the ticket's last comment).
+The ticket panel of a prototype ticket shows the same block.
+
+HTML files open live: the server reads them off the branch through `gh` and serves
+them sandboxed, so a prototype's scripts cannot reach the tool's API. A prototype
+that runs inside the real app gets a link to its branch instead; check it out to run
+it.
+
 ## Starting a thread
 
 Run the tool inside a clone of the repo, click a ticket, then **Open in T3 Code**.
@@ -108,12 +125,12 @@ npx wayfinder-map --prompt ./my-prompt.txt
 Placeholders: `{{repo}}`, `{{mapNumber}}`, `{{mapTitle}}`, `{{mapUrl}}`,
 `{{destination}}`, `{{notes}}`, `{{decisions}}`, `{{fog}}`, `{{ticketNumber}}`,
 `{{ticketTitle}}`, `{{ticketType}}`, `{{ticketState}}`, `{{ticketUrl}}`,
-`{{ticketBody}}`, `{{ticketSlug}}`, `{{worktreeName}}`, `{{branchName}}`,
+`{{ticketBody}}`, `{{ticketSlug}}`, `{{worktreeName}}`, `{{branchName}}`, `{{prototypeBranch}}`,
 `{{baseBranch}}`, `{{worktreeSteps}}`, `{{typeSteps}}`, `{{blockedLine}}`.
 `{{worktreeSteps}}` asks the agent to make its worktree, or tells it that T3 Code
 already did. `{{typeSteps}}` tells the agent that grilling and prototype tickets are
 human-in-the-loop: grill the user one question at a time and decide nothing without
-them. It is empty for other types. An unknown one is left in the text rather than silently blanked,
+them, and tells prototype agents which branch to push to. It is empty for other types. An unknown one is left in the text rather than silently blanked,
 so a typo is visible.
 
 ## Options
@@ -162,6 +179,7 @@ src/github.ts    gh calls to maps, tickets, blockers
 src/mapBody.ts   the map body's sections, and the fallback parsers
 src/layout.ts    dependency depth to x/y
 src/prompt.ts    ticket to prompt
+src/prototypes.ts prototype branch names and file URLs
 src/t3.ts        the hand-off ladder
 src/t3Api.ts     T3 Code server: session token, snapshot, thread commands, RPC
 src/models.ts    T3 Code models to the picker catalog

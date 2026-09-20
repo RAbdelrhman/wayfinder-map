@@ -2,8 +2,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { parseBlockedByLine, parseChildNumbers, parseMapBody } from './mapBody.js';
+import { PROTOTYPE_BRANCH_PREFIX, isHtml, isSelfContained, prototypeTicketNumber } from './prototypes.js';
 import { TICKET_TYPES } from './types.js';
-import type { Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
+import type { Prototype, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
 
 const run = promisify(execFile);
 
@@ -19,12 +20,18 @@ export class GhError extends Error {
 
 /** Run `gh` and return stdout. Throws GhError with gh's own stderr, which is usually the useful part. */
 export async function gh(args: string[]): Promise<string> {
+  return (await ghBytes(args)).toString('utf8');
+}
+
+/** `gh` stdout as raw bytes, for files that may not be text. */
+export async function ghBytes(args: string[]): Promise<Buffer> {
   try {
-    const { stdout } = await run('gh', args, { maxBuffer: 64 * 1024 * 1024, windowsHide: true });
+    const { stdout } = await run('gh', args, { maxBuffer: 64 * 1024 * 1024, windowsHide: true, encoding: 'buffer' });
     return stdout;
   } catch (error) {
-    const stderr = typeof (error as { stderr?: unknown }).stderr === 'string' ? (error as { stderr: string }).stderr : '';
-    const reason = stderr.trim() || (error as Error).message;
+    const stderr = (error as { stderr?: unknown }).stderr;
+    const text = Buffer.isBuffer(stderr) ? stderr.toString('utf8') : typeof stderr === 'string' ? stderr : '';
+    const reason = text.trim() || (error as Error).message;
     throw new GhError(reason, args);
   }
 }
@@ -237,4 +244,119 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
 
   maps.sort((a, b) => Number(b.open) - Number(a.open) || a.number - b.number);
   return { maps, warnings };
+}
+
+interface RawRef {
+  ref: string;
+}
+
+interface RawCompare {
+  files?: Array<{ filename: string }>;
+  commits?: Array<{ commit: { committer?: { date?: string } | null } }>;
+}
+
+interface RawCommit {
+  commit?: { committer?: { date?: string } | null } | null;
+  files?: Array<{ filename: string }>;
+}
+
+/**
+ * What the branch holds. Normally that is its diff against the default branch, but a
+ * prototype whose commits have landed on the default branch compares to nothing, so fall
+ * back to its tip commit: behind or merged, the branch still holds the prototype.
+ */
+export function branchFacts(
+  compare: { files?: readonly { filename: string }[]; commits?: readonly { commit: { committer?: { date?: string } | null } }[] } | null,
+  tip: { commit?: { committer?: { date?: string } | null } | null; files?: readonly { filename: string }[] } | null,
+): { updatedAt: string | null; files: string[] } {
+  const compared = (compare?.files ?? []).map((file) => file.filename);
+  return {
+    updatedAt: compare?.commits?.at(-1)?.commit.committer?.date ?? tip?.commit?.committer?.date ?? null,
+    files: compared.length > 0 ? compared : (tip?.files ?? []).map((file) => file.filename),
+  };
+}
+
+interface RawComment {
+  body?: string | null;
+}
+
+/** Branch names under `prototype/` whose ticket sits on `map`. */
+export function mapPrototypeBranches(refs: readonly string[], map: Pick<WayfinderMap, 'tickets'>): string[] {
+  const numbers = new Set(map.tickets.map((ticket) => ticket.number));
+  return refs
+    .map((ref) => ref.replace(/^refs\/heads\//, ''))
+    .filter((branch) => {
+      const number = prototypeTicketNumber(branch);
+      return number !== null && numbers.has(number);
+    });
+}
+
+/** Newest first; branches GitHub could not date go last. */
+export function sortPrototypes(prototypes: Prototype[]): Prototype[] {
+  return prototypes.sort(
+    (a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '') || a.ticketNumber - b.ticketNumber,
+  );
+}
+
+/** Every prototype branch on `map`, with its files, last commit and, for closed tickets, the verdict. */
+export async function fetchPrototypes(repo: string, map: WayfinderMap): Promise<Prototype[]> {
+  const refs = await ghJson<RawRef[]>(['api', `repos/${repo}/git/matching-refs/heads/${PROTOTYPE_BRANCH_PREFIX}`]);
+  const branches = mapPrototypeBranches(
+    refs.map((ref) => ref.ref),
+    map,
+  );
+  if (branches.length === 0) return [];
+
+  const base = (await gh(['api', `repos/${repo}`, '-q', '.default_branch'])).trim();
+
+  const prototypes = await pool(branches, 6, async (branch): Promise<Prototype> => {
+    const ticketNumber = prototypeTicketNumber(branch) ?? 0;
+    const ticket = map.tickets.find((candidate) => candidate.number === ticketNumber);
+    const [compare, comments] = await Promise.all([
+      ghJson<RawCompare>(['api', `repos/${repo}/compare/${base}...${branch}`]).catch(() => null),
+      ticket?.open === false
+        ? ghJson<RawComment[]>(['api', `repos/${repo}/issues/${String(ticketNumber)}/comments?per_page=100`]).catch(() => [])
+        : Promise.resolve([]),
+    ]);
+    const tip =
+      (compare?.files ?? []).length > 0
+        ? null
+        : await ghJson<RawCommit>(['api', `repos/${repo}/commits/${encodeURIComponent(branch)}`]).catch(() => null);
+    const { updatedAt, files } = branchFacts(compare, tip);
+    return {
+      branch,
+      ticketNumber,
+      url: `https://github.com/${repo}/tree/${branch}`,
+      updatedAt,
+      files,
+      openable: await openableFiles(repo, branch, files),
+      verdict: comments.at(-1)?.body?.trim() || null,
+    };
+  });
+
+  return sortPrototypes(prototypes);
+}
+
+/** Of a branch's HTML files, the ones that stand alone well enough for the page to serve them. */
+async function openableFiles(repo: string, branch: string, files: readonly string[]): Promise<string[]> {
+  const html = files.filter(isHtml);
+  const checked = await pool(html, 4, async (file) => {
+    try {
+      return isSelfContained((await fetchBranchFile(repo, branch, file)).toString('utf8'));
+    } catch {
+      return false;
+    }
+  });
+  return html.filter((_, index) => checked[index] === true);
+}
+
+/** One file off a branch, as raw bytes. */
+export async function fetchBranchFile(repo: string, branch: string, file: string): Promise<Buffer> {
+  const path = file.split('/').map(encodeURIComponent).join('/');
+  return ghBytes([
+    'api',
+    '-H',
+    'Accept: application/vnd.github.raw',
+    `repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`,
+  ]);
 }
