@@ -27,6 +27,7 @@ const t3: ServerT3 = {
 };
 
 const home: HomeState = {
+  version: '0.0.0-dev',
   account: {
     status: 'ready',
     host: 'github.com',

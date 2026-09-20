@@ -1,8 +1,7 @@
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 import { parseModelChoice } from './models.js';
 import { copyToClipboard } from './clipboard.js';
@@ -20,9 +19,6 @@ import { parseRepoPagePath } from './repoRoutes.js';
 import type { ScopedApiAction } from './repoRoutes.js';
 import { RepositoryStore } from './repositoryStore.js';
 import type { RepositoryFetcher } from './repositoryStore.js';
-
-const here = dirname(fileURLToPath(import.meta.url));
-const UI_DIR = join(here, 'ui');
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -63,6 +59,11 @@ export interface ServeOptions {
   fetcher?: RepositoryFetcher;
   homeLoader?: (labels: readonly string[]) => Promise<HomeState>;
   onShutdown?: () => void;
+  /**
+   * Where the page's files live. Every entry point names it: the packaged app and the
+   * ESM CLI resolve it differently, and deriving it here would tie the server to one of them.
+   */
+  uiDir?: string;
 }
 
 export interface RunningServer {
@@ -134,6 +135,7 @@ export async function startServer({
   fetcher,
   homeLoader,
   onShutdown,
+  uiDir = join(process.cwd(), 'src', 'ui'),
 }: ServeOptions): Promise<RunningServer> {
   const repositories = new RepositoryStore({
     mapLabel: config.mapLabel,
@@ -367,7 +369,7 @@ ${(error as Error).message}`);
     }
 
     try {
-      const bytes = await readFile(join(UI_DIR, file));
+      const bytes = await readFile(join(uiDir, file));
       const extension = file.slice(file.lastIndexOf('.'));
       response.writeHead(200, {
         'content-type': MIME[extension] ?? 'application/octet-stream',

@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -6,6 +6,15 @@ import * as esbuild from 'esbuild';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
+const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+/*
+  The version and the auto-update switch are stamped in at build time: a packaged app has
+  no package.json to read, and updates only ever run against a signed release.
+*/
+const define = {
+  __WAYFINDER_VERSION__: JSON.stringify(packageJson.version),
+  __WAYFINDER_AUTO_UPDATE__: JSON.stringify(process.env.WAYFINDER_SIGNED_RELEASE === '1'),
+};
 
 await rm(dist, { recursive: true, force: true });
 await mkdir(join(dist, 'ui'), { recursive: true });
@@ -17,17 +26,20 @@ await esbuild.build({
   platform: 'node',
   target: 'node22',
   format: 'esm',
+  define,
   logLevel: 'info',
 });
 
 await esbuild.build({
   entryPoints: [join(root, 'src', 'desktop', 'main.ts')],
-  outfile: join(dist, 'desktop.js'),
+  // CommonJS, because electron-updater's dependency graph is not loadable as ESM.
+  outfile: join(dist, 'desktop.cjs'),
   bundle: true,
   platform: 'node',
   target: 'node22',
-  format: 'esm',
+  format: 'cjs',
   external: ['electron'],
+  define,
   logLevel: 'info',
 });
 

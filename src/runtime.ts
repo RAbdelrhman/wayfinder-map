@@ -45,6 +45,8 @@ export interface RuntimeDependencies {
 
 export interface RuntimeStartOptions {
   resolveCurrentRepository?: boolean;
+  /** Where the page's files live, named by the entry point rather than derived here. */
+  uiDir?: string;
 }
 
 const DEFAULT_DEPENDENCIES: RuntimeDependencies = {
@@ -109,7 +111,14 @@ export async function startWayfinder(
   const t3 = dependencies.createT3();
   let running: RunningServer;
   try {
-    running = await dependencies.startServer({ config, repo, template, workspaceRoot, t3 });
+    running = await dependencies.startServer({
+      config,
+      repo,
+      template,
+      workspaceRoot,
+      t3,
+      ...(options.uiDir === undefined ? {} : { uiDir: options.uiDir }),
+    });
   } catch (error) {
     t3.close();
     throw startupError('server', `Could not start Wayfinder on ${config.host}:${String(config.port)}.`, error);

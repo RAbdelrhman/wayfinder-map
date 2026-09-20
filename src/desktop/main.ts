@@ -1,11 +1,15 @@
 import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, session, shell } from 'electron';
+import { join } from 'node:path';
 
 import { DEFAULTS } from '../config.js';
 import type { Config } from '../config.js';
 import { startWayfinder } from '../runtime.js';
 import type { WayfinderRuntime } from '../runtime.js';
 import { startServer } from '../server.js';
+import { AUTO_UPDATE_ENABLED } from '../version.js';
 import { DesktopLifecycle, isInternalUrl, isSafeExternalUrl } from './lifecycle.js';
+import { startAutoUpdates } from './updater.js';
+import { shouldEnableUpdates } from './updaterPolicy.js';
 
 const TRAY_ICON = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFSSURBVDhPjVOhbsMwEA0sLByyBwf3CYWDlUrGWjhNm29wpNLYQD9gcKrUfygKCRkcqTQYKaSJXTUqqKYq4E3npGnsNOpOeoriu/fe2T4HQUdIyvuSzMDiMbvy850hKZsIZWJJBk0IMmupsle/vg52FGSWPtGHIPMlaX3t84P/kGsRZb7lOO7VZKnSB7/oEgRt3k/uSudlYou5BpJwa4tGYQHoPUacWxwAHDB1hPJ+wPtpKk9XAFa7WgwoMJ9VYnbd6WQQSEqHziI7setsjwQFEg1Ei1KYv66AfrHX5ixWxHl4sI7snIR7RFUnTi1fq6Ts1lU9tl452r3jdBYO0uHxCn+bCXsOteMOEf+29496QgVtPlrJC+C5Oc3BOO4J0j9+URfsWPvvg8/CJs4QHDLPzHN255CPYd+DMp8+qeG8bDmfi3K47Hy8WSh9L5/MjV/H8QcYxvxKVQ6UNgAAAABJRU5ErkJggg==';
 
@@ -15,6 +19,7 @@ let tray: Tray | null = null;
 let runtime: WayfinderRuntime | null = null;
 let runtimeOrigin: string | null = null;
 let startupPromise: Promise<void> | null = null;
+let stopUpdates = (): void => undefined;
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] ?? character);
@@ -39,6 +44,7 @@ function navigate(path: '/' | '/new-map'): void {
 }
 
 async function quitApplication(): Promise<void> {
+  stopUpdates();
   await lifecycle.quit(async () => {
     await runtime?.close();
     runtime = null;
@@ -89,6 +95,7 @@ function createWindow(): BrowserWindow {
     show: false,
     backgroundColor: '#0d1117',
     title: 'Wayfinder',
+    icon: applicationIcon(),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -107,8 +114,16 @@ function createWindow(): BrowserWindow {
   return window;
 }
 
+function applicationIcon(): Electron.NativeImage {
+  if (app.isPackaged) {
+    const packaged = nativeImage.createFromPath(join(process.resourcesPath, 'Wayfinder.ico'));
+    if (!packaged.isEmpty()) return packaged;
+  }
+  return nativeImage.createFromBuffer(Buffer.from(TRAY_ICON, 'base64'));
+}
+
 function createTray(): Tray {
-  const image = nativeImage.createFromBuffer(Buffer.from(TRAY_ICON, 'base64')).resize({ width: 16, height: 16 });
+  const image = applicationIcon().resize({ width: 16, height: 16 });
   const appTray = new Tray(image, '4cf718aa-6a75-4d10-a817-7299cd31b519');
   appTray.setToolTip('Wayfinder');
   appTray.setContextMenu(Menu.buildFromTemplate([
@@ -133,10 +148,20 @@ async function startRuntime(): Promise<void> {
       runtime = await startWayfinder(
         config,
         { startServer: (options) => startServer({ ...options, onShutdown: () => void quitApplication() }) },
-        { resolveCurrentRepository: false },
+        { resolveCurrentRepository: false, uiDir: join(app.getAppPath(), 'dist', 'ui') },
       );
       runtimeOrigin = new URL(runtime.url).origin;
       await mainWindow.loadURL(runtime.url);
+      stopUpdates = startAutoUpdates({
+        window: mainWindow,
+        enabled: shouldEnableUpdates(app.isPackaged, app.getVersion(), AUTO_UPDATE_ENABLED),
+        prepareForRestart: async () => {
+          stopUpdates();
+          await lifecycle.quit(async () => runtime?.close());
+          tray?.destroy();
+          tray = null;
+        },
+      });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       await runtime?.close().catch(() => undefined);
@@ -150,8 +175,11 @@ async function startRuntime(): Promise<void> {
   return startupPromise;
 }
 
+app.setAppUserModelId('com.rabdelrhman.wayfinder');
 const primaryInstance = app.requestSingleInstanceLock();
 if (!primaryInstance) {
+  // The running copy raises its window on 'second-instance'. Say so, or this looks like a crash.
+  process.stderr.write('Wayfinder is already running. Raising the window that is already open.\n');
   app.quit();
 } else {
   app.on('second-instance', showWindow);
