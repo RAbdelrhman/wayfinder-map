@@ -101,8 +101,8 @@ function homeTabs(active: 'recent' | 'browse'): string {
 }
 
 function recent(): string {
-  const items = REPOSITORIES.flatMap((repository) => repository.maps.slice(0, 1).map((map) => ({ repository, map })));
-  return `<main class="prototype-main home-main">${homeTabs('recent')}<div class="page-heading with-action"><div><h1>Pick up where you left off</h1><p>Recent repositories stay at the top. Choose a map and get back to the work.</p></div>${link('create', `${icon(icons.PLUS)}Start a new map`, 'primary-action')}</div><section class="recent-list" aria-label="Recently opened maps">${items.map(({ repository, map }) => recentMapCard(repository, map)).join('')}</section></main>`;
+  const items = REPOSITORIES.slice(1).flatMap((repository) => repository.maps.slice(0, 1).map((map) => ({ repository, map })));
+  return `<main class="prototype-main home-main">${homeTabs('recent')}<div class="page-heading with-action"><div><h1>Pick up where you left off</h1><p>Pins stay above the repositories you opened most recently.</p></div>${link('create', `${icon(icons.PLUS)}Start a new map`, 'primary-action')}</div><section class="home-section" aria-labelledby="pinned-heading"><h2 id="pinned-heading">Pinned</h2><div class="recent-list">${recentMapCard(selectedRepository, selectedMap)}</div></section><section class="home-section" aria-labelledby="recent-heading"><h2 id="recent-heading">Recent</h2><div class="recent-list">${items.map(({ repository, map }) => recentMapCard(repository, map)).join('')}</div></section></main>`;
 }
 
 function browse(): string {
