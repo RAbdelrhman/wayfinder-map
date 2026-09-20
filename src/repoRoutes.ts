@@ -1,6 +1,8 @@
 export interface RepoPageRoute {
   repo: string;
   mapNumber: number | null;
+  /** True for the repository's own prototypes page, which spans every map. */
+  prototypes?: boolean;
 }
 
 export function normalizeRepo(value: string): string | null {
@@ -9,7 +11,7 @@ export function normalizeRepo(value: string): string | null {
 }
 
 export function parseRepoPagePath(pathname: string): RepoPageRoute | null {
-  const match = /^\/repos\/([^/]+)\/([^/]+)(?:\/maps\/(\d+))?\/?$/.exec(pathname);
+  const match = /^\/repos\/([^/]+)\/([^/]+)(?:\/maps\/(\d+)|\/(prototypes))?\/?$/.exec(pathname);
   if (match === null) return null;
   let owner: string;
   let name: string;
@@ -21,12 +23,18 @@ export function parseRepoPagePath(pathname: string): RepoPageRoute | null {
   }
   const repo = normalizeRepo(`${owner}/${name}`);
   if (repo === null) return null;
+  if (match[4] !== undefined) return { repo, mapNumber: null, prototypes: true };
   const mapNumber = match[3] === undefined ? null : Number(match[3]);
   return Number.isSafeInteger(mapNumber) && mapNumber !== null && mapNumber > 0
     ? { repo, mapNumber }
     : mapNumber === null
       ? { repo, mapNumber: null }
       : null;
+}
+
+/** The repository's prototypes page: every prototype across its maps. */
+export function prototypesPath(repo: string): string {
+  return `${repoPath(repo)}/prototypes`;
 }
 
 export function repoPath(repo: string): string {

@@ -40,6 +40,7 @@ const STATIC_ICONS: Record<string, string> = {
   info: icons.INFO,
   minus: icons.MINUS,
   plus: icons.PLUS,
+  play: icons.PLAY,
   home: icons.HOME,
   repo: icons.REPO,
   arrow: icons.ARROW,

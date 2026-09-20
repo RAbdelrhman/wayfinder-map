@@ -1146,6 +1146,8 @@ function setView(next: View): void {
   render();
 }
 
+if (new URLSearchParams(window.location.search).get('view') === 'prototypes') setView('prototypes');
+
 need('view-map').addEventListener('click', () => setView('map'));
 need('view-table').addEventListener('click', () => setView('table'));
 need('view-prototypes').addEventListener('click', () => setView('prototypes'));

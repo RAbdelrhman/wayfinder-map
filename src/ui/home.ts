@@ -1,11 +1,12 @@
 import type { HomeState } from '../home.js';
 import type { AuthFlowState } from '../authFlow.js';
-import { mapPath, normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import type { MapSnapshot, WayfinderMap } from '../types.js';
+import { mapPath, normalizeRepo, parseRepoPagePath, prototypesPath, repoPath, scopedApiPath } from '../repoRoutes.js';
+import { prototypeFileUrl } from '../prototypes.js';
+import type { MapSnapshot, Prototype, WayfinderMap } from '../types.js';
 import { STATE_ORDER, STATE_STYLE, bindTheme, countStates, paintIcons, progressRing } from './chrome.js';
 import { syncedLabel } from './focus.js';
 import { icon } from './icons.js';
-import { escapeHtml } from './markdown.js';
+import { escapeHtml, renderMarkdown } from './markdown.js';
 
 const RECENT_KEY = 'wayfinder-map:recent-repositories';
 
@@ -248,7 +249,124 @@ function mapCard(repo: string, map: WayfinderMap): string {
     </div>
     <p class="dest">${escapeHtml(destination)}</p>
     ${mapSummary(map)}
+    <span class="proto-badge" data-proto-badge="${String(map.number)}" hidden></span>
   </a>`;
+}
+
+/* ---------- prototypes ---------- */
+
+function prototypeCount(total: number): string {
+  return `${String(total)} prototype${total === 1 ? '' : 's'}`;
+}
+
+/**
+ * Prototypes cost their own GitHub reads, so the page paints first and the badges arrive
+ * after. A map with none keeps its badge hidden rather than saying zero.
+ */
+async function paintPrototypeBadges(repo: string, refresh: boolean): Promise<void> {
+  let list: Prototype[];
+  try {
+    list = await getJson<Prototype[]>(`${scopedApiPath(repo, 'prototypes')}${refresh ? '?refresh=1' : ''}`);
+  } catch {
+    return;
+  }
+  const byMap = new Map<number, number>();
+  for (const prototype of list) byMap.set(prototype.mapNumber, (byMap.get(prototype.mapNumber) ?? 0) + 1);
+
+  for (const badge of els.main.querySelectorAll<HTMLElement>('[data-proto-badge]')) {
+    const total = byMap.get(Number(badge.dataset['protoBadge'])) ?? 0;
+    if (total === 0) continue;
+    badge.innerHTML = `<span data-icon="beaker"></span>${escapeHtml(prototypeCount(total))}`;
+    badge.hidden = false;
+  }
+  const link = document.getElementById('proto-link');
+  if (link !== null && list.length > 0) {
+    link.innerHTML = `<span data-icon="beaker"></span>${escapeHtml(prototypeCount(list.length))}`;
+    link.hidden = false;
+  }
+  paintIcons(els.main);
+}
+
+/**
+ * The verdict's opening line of prose, as plain text, so a card says what was decided.
+ * Headings are skipped: a resolution comment usually opens with one, and "Decided spec"
+ * tells the reader nothing.
+ */
+function verdictGist(verdict: string): string {
+  const rows = verdict.split(/\r?\n/).map((row) => row.trim());
+  const prose = rows.filter((row) => row.length > 0 && !row.startsWith('#'));
+  const line = (prose.length > 0 ? prose : rows.filter((row) => row.length > 0))
+    .map((row) => row.replace(/^[#>*-]+\s*/, '').replace(/[*`_[\]]/g, '').trim())
+    .find((row) => row.length > 0);
+  return line === undefined ? 'No verdict was written.' : line.length > 150 ? `${line.slice(0, 150)}…` : line;
+}
+
+/**
+ * Collapsed to its opening line. A decided spec runs long, and clipping it at a fixed
+ * height cuts a sentence in half; this keeps every card scannable and nothing truncated.
+ */
+function verdictHtml(verdict: string): string {
+  return `<details class="proto-verdict is-collapsible">
+    <summary><span class="eyebrow">Verdict</span><span class="gist">${escapeHtml(verdictGist(verdict))}</span></summary>
+    <div class="prose">${renderMarkdown(verdict)}</div>
+  </details>`;
+}
+
+function prototypeCard(repo: string, prototype: Prototype, snapshot: MapSnapshot): string {
+  const map = snapshot.maps.find((candidate) => candidate.number === prototype.mapNumber);
+  const ticket = map?.tickets.find((candidate) => candidate.number === prototype.ticketNumber);
+  const updated = prototype.updatedAt === null ? '' : new Date(prototype.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const opens = prototype.openable
+    .map(
+      (file, index) =>
+        `<a class="${index === 0 ? 'primary' : 'ghost'}" href="${escapeHtml(prototypeFileUrl(repo, prototype.branch, file))}" target="_blank" rel="noreferrer"><span data-icon="play"></span>Open ${escapeHtml(file.slice(file.lastIndexOf('/') + 1))}</a>`,
+    )
+    .join('');
+  return `<article class="card proto-card">
+    <div class="proto-card-head">
+      <div class="grow">
+        <p class="eyebrow">#${String(prototype.ticketNumber)} · ${escapeHtml(map?.title ?? `map #${String(prototype.mapNumber)}`)}</p>
+        <h2>${escapeHtml(ticket?.title ?? prototype.branch)}</h2>
+      </div>
+      ${updated === '' ? '' : `<span class="proto-date">${escapeHtml(updated)}</span>`}
+    </div>
+    ${prototype.verdict === null ? '<p class="hint">Still open, so there is no verdict yet.</p>' : verdictHtml(prototype.verdict)}
+    <div class="proto-actions">
+      ${opens}
+      <a class="ghost" href="${escapeHtml(prototype.url)}" target="_blank" rel="noreferrer"><span data-icon="external"></span>Branch on GitHub</a>
+      <a class="ghost" href="${mapPath(repo, prototype.mapNumber)}?view=prototypes"><span data-icon="graph"></span>Open on the map</a>
+    </div>
+    ${
+      prototype.openable.length === 0
+        ? `<p class="hint">Nothing to open on its own: it runs inside the app. Check out <code>${escapeHtml(prototype.branch)}</code> and start it.</p>`
+        : ''
+    }
+  </article>`;
+}
+
+async function renderPrototypes(repo: string, refresh: boolean): Promise<void> {
+  remember(repo);
+  crumbs([repo, 'Prototypes']);
+  els.accountMark.textContent = repo.slice(0, 1).toUpperCase();
+  const snapshot = await getJson<MapSnapshot>(scopedApiPath(repo, 'snapshot'));
+  const list = await getJson<Prototype[]>(`${scopedApiPath(repo, 'prototypes')}${refresh ? '?refresh=1' : ''}`);
+  els.synced.textContent = syncedLabel(0);
+
+  paint(`<div class="page-head">
+      <div class="grow">
+        <p class="eyebrow">Prototypes</p>
+        <h1>${escapeHtml(repo)}</h1>
+        <p>Every prototype this repository's maps have produced, newest first.</p>
+      </div>
+      <div class="page-actions">
+        <a class="ghost" href="${repoPath(repo)}"><span data-icon="arrow"></span>Maps</a>
+      </div>
+    </div>
+    ${
+      list.length === 0
+        ? '<div class="empty"><strong>No prototypes yet</strong><p>A prototype ticket keeps its prototype on a <code>prototype/&lt;ticket&gt;-&lt;slug&gt;</code> branch, and it shows up here once pushed.</p></div>'
+        : `<div class="proto-grid">${list.map((prototype) => prototypeCard(repo, prototype, snapshot)).join('')}</div>`
+    }`);
 }
 
 async function renderRepository(repo: string, refresh: boolean): Promise<void> {
@@ -269,6 +387,7 @@ async function renderRepository(repo: string, refresh: boolean): Promise<void> {
       </div>
       <div class="page-actions">
         <span class="badge">${String(snapshot.maps.length)} map${snapshot.maps.length === 1 ? '' : 's'}</span>
+        <a class="ghost" id="proto-link" href="${prototypesPath(repo)}" hidden></a>
         <a class="ghost" href="https://github.com/${escapeHtml(repo)}" target="_blank" rel="noreferrer"><span data-icon="external"></span>GitHub</a>
       </div>
     </div>
@@ -278,6 +397,8 @@ async function renderRepository(repo: string, refresh: boolean): Promise<void> {
         ? '<div class="empty"><strong>No Wayfinder maps here yet</strong><p>No issue in this repository carries the configured map label.</p><a class="ghost" href="/">Back to Home</a></div>'
         : `<div class="map-grid">${snapshot.maps.map((map) => mapCard(repo, map)).join('')}</div>`
     }`);
+
+  void paintPrototypeBadges(repo, refresh);
 }
 
 async function renderNewMap(): Promise<void> {
@@ -303,8 +424,14 @@ async function renderNewMap(): Promise<void> {
 /* ---------- routing ---------- */
 
 const route = parseRepoPagePath(window.location.pathname);
-const page: { kind: 'home' } | { kind: 'repository'; repo: string } | { kind: 'new-map' } =
-  window.location.pathname === '/new-map' ? { kind: 'new-map' } : route?.mapNumber === null ? { kind: 'repository', repo: route.repo } : { kind: 'home' };
+const page: { kind: 'home' } | { kind: 'repository'; repo: string } | { kind: 'prototypes'; repo: string } | { kind: 'new-map' } =
+  window.location.pathname === '/new-map'
+    ? { kind: 'new-map' }
+    : route?.prototypes === true
+      ? { kind: 'prototypes', repo: route.repo }
+      : route?.mapNumber === null
+        ? { kind: 'repository', repo: route.repo }
+        : { kind: 'home' };
 
 async function run(work: () => Promise<void> | void): Promise<void> {
   try {
@@ -322,6 +449,7 @@ async function show(refresh = false): Promise<void> {
   else paint('<p class="loading">Reading GitHub…</p>');
   await run(async () => {
     if (page.kind === 'new-map') await renderNewMap();
+    else if (page.kind === 'prototypes') await renderPrototypes(page.repo, refresh);
     else if (page.kind === 'repository') await renderRepository(page.repo, refresh);
     else await renderHome(refresh);
   });

@@ -2072,3 +2072,88 @@ textarea.input {
 .page-form {
   max-width: 620px;
 }
+
+/* ---------- prototypes on Home's repository pages ---------- */
+
+.proto-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: start;
+  margin-top: 10px;
+  padding: 3px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.proto-badge .i {
+  width: 13px;
+  height: 13px;
+}
+
+.proto-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.proto-card {
+  display: block;
+  padding: 16px 18px;
+}
+
+.proto-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.proto-card h2 {
+  margin: 2px 0 0;
+  font-size: 16px;
+}
+
+.proto-card .proto-actions {
+  margin-bottom: 0;
+}
+
+.proto-card .proto-verdict {
+  max-height: none;
+  overflow: visible;
+}
+
+.proto-verdict.is-collapsible > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.proto-verdict.is-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.proto-verdict.is-collapsible > summary .gist {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.proto-verdict.is-collapsible[open] > summary .gist {
+  display: none;
+}
+
+.proto-verdict.is-collapsible > summary::after {
+  content: 'Read';
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.proto-verdict.is-collapsible[open] > summary::after {
+  content: 'Hide';
+}

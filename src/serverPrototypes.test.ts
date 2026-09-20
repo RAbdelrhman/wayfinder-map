@@ -10,6 +10,7 @@ const fetchPrototypes = vi.fn(
     {
       branch: `prototype/${String(map.number)}-x`,
       ticketNumber: map.number,
+      mapNumber: map.number,
       url: `https://github.com/${repo}/tree/prototype/${String(map.number)}-x`,
       updatedAt: null,
       files: ['index.html'],
@@ -18,10 +19,24 @@ const fetchPrototypes = vi.fn(
     },
   ],
 );
+const fetchAllPrototypes = vi.fn(
+  async (repo: string, maps: readonly WayfinderMap[]): Promise<Prototype[]> =>
+    maps.map((map) => ({
+      branch: `prototype/${String(map.number)}-x`,
+      ticketNumber: map.number,
+      mapNumber: map.number,
+      url: `https://github.com/${repo}/tree/prototype/${String(map.number)}-x`,
+      updatedAt: null,
+      files: ['index.html'],
+      openable: ['index.html'],
+      verdict: null,
+    })),
+);
 const fetchBranchFile = vi.fn(async (repo: string, _branch: string, _file: string) => Buffer.from(`<h1>${repo}</h1>`));
 
 vi.mock('./github.js', () => ({
   fetchPrototypes: (repo: string, map: WayfinderMap) => fetchPrototypes(repo, map),
+  fetchAllPrototypes: (repo: string, maps: readonly WayfinderMap[]) => fetchAllPrototypes(repo, maps),
   fetchBranchFile: (repo: string, branch: string, file: string) => fetchBranchFile(repo, branch, file),
   fetchMaps: async () => ({ maps: [], warnings: [] }),
   gh: async () => '',
@@ -87,6 +102,19 @@ describe('prototypes on a repository-scoped server', () => {
       expect(again).toEqual(one);
       expect(fetchPrototypes).toHaveBeenCalledTimes(2);
       expect(fetchPrototypes.mock.calls.map(([repo]) => repo)).toEqual(['octo/one', 'octo/two']);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('lists every map’s prototypes when no map is named', async () => {
+    fetchAllPrototypes.mockClear();
+    const running = await serve();
+
+    try {
+      const all = await fetch(`${running.url}/api/repos/octo/one/prototypes`).then((response) => response.json());
+      expect(all).toMatchObject([{ branch: 'prototype/7-x', mapNumber: 7 }]);
+      expect(fetchAllPrototypes).toHaveBeenCalledTimes(1);
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }

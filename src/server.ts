@@ -14,7 +14,7 @@ import type { Config } from './config.js';
 import type { MapSnapshot, Prototype, WayfinderMap } from './types.js';
 import { loadHomeState, readAccount } from './home.js';
 import type { HomeState } from './home.js';
-import { fetchBranchFile, fetchPrototypes, gh } from './github.js';
+import { fetchAllPrototypes, fetchBranchFile, fetchPrototypes, gh } from './github.js';
 import { AuthFlow } from './authFlow.js';
 import { parseRepoPagePath } from './repoRoutes.js';
 import type { ScopedApiAction } from './repoRoutes.js';
@@ -137,13 +137,15 @@ export async function startServer({ config, repo, template, workspaceRoot, t3, f
   /** One entry per repository and map, since every prototype list costs GitHub calls. */
   const prototypeCache = new Map<string, { at: number; list: Promise<Prototype[]> }>();
 
-  const prototypesOf = async (forRepo: string, mapNumber: number, force: boolean): Promise<Prototype[] | null> => {
-    const map = (await repositories.snapshot(forRepo, false)).maps.find((candidate) => candidate.number === mapNumber);
-    if (map === undefined) return null;
-    const key = `${forRepo}#${String(mapNumber)}`;
+  /** `mapNumber` null asks for the whole repository, which the repository page wants in one read. */
+  const prototypesOf = async (forRepo: string, mapNumber: number | null, force: boolean): Promise<Prototype[] | null> => {
+    const snapshot = await repositories.snapshot(forRepo, false);
+    const map = mapNumber === null ? null : snapshot.maps.find((candidate) => candidate.number === mapNumber);
+    if (mapNumber !== null && map === undefined) return null;
+    const key = `${forRepo}#${mapNumber === null ? 'all' : String(mapNumber)}`;
     const cached = prototypeCache.get(key);
     if (!force && cached !== undefined && Date.now() - cached.at < PROTOTYPE_TTL_MS) return cached.list;
-    const list = fetchPrototypes(forRepo, map);
+    const list = map === null || map === undefined ? fetchAllPrototypes(forRepo, snapshot.maps) : fetchPrototypes(forRepo, map);
     prototypeCache.set(key, { at: Date.now(), list });
     list.catch(() => prototypeCache.delete(key));
     return list;
@@ -262,7 +264,8 @@ export async function startServer({ config, repo, template, workspaceRoot, t3, f
 
       if (requestedRepo !== null && (scoped?.action === 'prototypes' || path === '/api/prototypes')) {
         try {
-          const list = await prototypesOf(requestedRepo, Number(requestUrl.searchParams.get('map')), requestUrl.searchParams.get('refresh') === '1');
+          const asked = requestUrl.searchParams.get('map');
+          const list = await prototypesOf(requestedRepo, asked === null ? null : Number(asked), requestUrl.searchParams.get('refresh') === '1');
           if (list === null) json(response, 404, { error: 'No such map.' });
           else json(response, 200, list);
         } catch (error) {
