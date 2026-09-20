@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wayfinder</title>
+    <link rel="stylesheet" href="/home.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <nav class="rail" aria-label="Wayfinder">
+        <a class="logo" href="/" aria-label="Wayfinder Home">W</a>
+        <a class="rail-link is-on" href="/" aria-label="Home">⌂</a>
+        <a class="rail-link" href="/new-map" aria-label="Start a new map">＋</a>
+        <span class="rail-space"></span>
+        <span class="account-mark" id="account-mark">…</span>
+      </nav>
+      <div class="page">
+        <header class="topbar">
+          <a href="/">Home</a><span>/</span><strong id="crumb">Repositories</strong>
+          <a class="primary small" href="/new-map">Start a new map</a>
+        </header>
+        <main id="main" tabindex="-1"><div class="loading">Reading GitHub…</div></main>
+      </div>
+    </div>
+    <script type="module" src="/home.js"></script>
+  </body>
+</html>

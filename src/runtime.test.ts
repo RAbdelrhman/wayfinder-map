@@ -34,7 +34,10 @@ function fakeT3(close = vi.fn()): ManagedT3 {
 
 async function listen(): Promise<Server> {
   const server = createServer();
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => {
+    server.once('listening', resolve);
+    server.listen(0, '127.0.0.1');
+  });
   return server;
 }
 
@@ -71,13 +74,13 @@ describe('startWayfinder', () => {
 
     expect(runtime).toMatchObject({
       repo: 'owner/repo',
-      url: 'http://127.0.0.1:49152',
+      url: 'http://127.0.0.1:49152/repos/owner/repo',
       workspaceRoot: 'C:\\repo',
       t3Origin: 'http://127.0.0.1:3773',
     });
 
     await Promise.all([runtime.close(), runtime.close()]);
-    expect(server.listening).toBe(false);
+    expect(server.address()).toBeNull();
     expect(closeT3).toHaveBeenCalledTimes(1);
   });
 
@@ -111,22 +114,40 @@ describe('startWayfinder', () => {
         }),
       ),
     ).rejects.toBeInstanceOf(WayfinderStartupError);
-    expect(server.listening).toBe(false);
+    expect(server.address()).toBeNull();
     expect(closeT3).toHaveBeenCalledTimes(1);
   });
 
-  it('returns a typed repository failure before creating T3 state', async () => {
+  it('opens Home without creating a repository workspace when cwd cannot resolve one', async () => {
     const createT3 = vi.fn(() => fakeT3());
+    const resolveWorkspace = vi.fn(async () => 'C:\\repo');
+    const start = vi.fn(async () => {
+      const server = await listen();
+      return { server, url: 'http://127.0.0.1:49152' };
+    });
 
-    await expect(
-      startWayfinder(
-        config({ repo: null }),
-        dependencies({
-          currentRepo: async () => Promise.reject(new Error('not a checkout')),
-          createT3,
-        }),
-      ),
-    ).rejects.toMatchObject({ stage: 'repository' });
+    const runtime = await startWayfinder(
+      config({ repo: null }),
+      dependencies({
+        currentRepo: async () => Promise.reject(new Error('not a checkout')),
+        resolveWorkspace,
+        createT3,
+        startServer: start,
+      }),
+    );
+
+    expect(runtime.repo).toBeNull();
+    expect(runtime.workspaceRoot).toBeNull();
+    expect(resolveWorkspace).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ repo: null, workspaceRoot: null }));
+    await runtime.close();
+  });
+
+  it('rejects an explicitly malformed repository before creating T3 state', async () => {
+    const createT3 = vi.fn(() => fakeT3());
+    await expect(startWayfinder(config({ repo: 'not-a-repository' }), dependencies({ createT3 }))).rejects.toMatchObject({
+      stage: 'repository',
+    });
     expect(createT3).not.toHaveBeenCalled();
   });
 });

@@ -9,6 +9,7 @@ import { startServer } from './server.js';
 import type { RunningServer, ServerT3 } from './server.js';
 import { T3HandOff, detectT3, resolveWorkspace } from './t3.js';
 import type { T3Runtime } from './t3.js';
+import { normalizeRepo, repoPath } from './repoRoutes.js';
 
 export type StartupStage = 'repository' | 'prompt' | 'workspace' | 'server' | 't3';
 
@@ -26,7 +27,7 @@ export class WayfinderStartupError extends Error {
 export type ManagedT3 = ServerT3 & Pick<T3HandOff, 'close'>;
 
 export interface WayfinderRuntime {
-  repo: string;
+  repo: string | null;
   url: string;
   workspaceRoot: string | null;
   t3Origin: string | null;
@@ -52,9 +53,11 @@ const DEFAULT_DEPENDENCIES: RuntimeDependencies = {
 };
 
 async function closeServer(server: Server): Promise<void> {
-  if (!server.listening) return;
   await new Promise<void>((resolveClose, rejectClose) => {
-    server.close((error) => (error === undefined ? resolveClose() : rejectClose(error)));
+    server.close((error) => {
+      if (error === undefined || (error as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING') resolveClose();
+      else rejectClose(error);
+    });
   });
 }
 
@@ -68,16 +71,15 @@ export async function startWayfinder(
 ): Promise<WayfinderRuntime> {
   const dependencies: RuntimeDependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
 
-  let repo = config.repo;
+  let repo = config.repo === null ? null : normalizeRepo(config.repo);
+  if (config.repo !== null && repo === null) {
+    throw startupError('repository', `Invalid repository "${config.repo}". Use owner/name.`, new Error('Invalid repository'));
+  }
   if (repo === null) {
     try {
-      repo = await dependencies.currentRepo(config.cwd);
-    } catch (error) {
-      throw startupError(
-        'repository',
-        `Could not work out the repo from ${config.cwd}. Pass --repo owner/name, or run this inside a git checkout with gh set up.`,
-        error,
-      );
+      repo = normalizeRepo(await dependencies.currentRepo(config.cwd));
+    } catch {
+      repo = null;
     }
   }
 
@@ -90,11 +92,13 @@ export async function startWayfinder(
     }
   }
 
-  let workspaceRoot: string | null;
-  try {
-    workspaceRoot = await dependencies.resolveWorkspace(config.cwd, repo, () => dependencies.currentRepo(config.cwd));
-  } catch (error) {
-    throw startupError('workspace', `Could not inspect the checkout at ${config.cwd}.`, error);
+  let workspaceRoot: string | null = null;
+  if (repo !== null) {
+    try {
+      workspaceRoot = await dependencies.resolveWorkspace(config.cwd, repo, () => dependencies.currentRepo(config.cwd));
+    } catch (error) {
+      throw startupError('workspace', `Could not inspect the checkout at ${config.cwd}.`, error);
+    }
   }
 
   const t3 = dependencies.createT3();
@@ -126,7 +130,7 @@ export async function startWayfinder(
 
   return {
     repo,
-    url: running.url,
+    url: repo === null ? running.url : `${running.url}${repoPath(repo)}`,
     workspaceRoot,
     t3Origin: t3Runtime.origin,
     close,

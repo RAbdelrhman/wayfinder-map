@@ -33,13 +33,13 @@ async function main(): Promise<number> {
     });
   }
 
-  process.stdout.write(`wayfinder-map  ${runtime.repo}\n`);
+  process.stdout.write(`wayfinder-map  ${runtime.repo ?? 'Home'}\n`);
   process.stdout.write(`  serving   ${runtime.url}\n`);
   process.stdout.write(
     `  T3 Code   ${runtime.t3Origin ?? 'not detected (clipboard still works)'}\n`,
   );
   process.stdout.write(
-    `  threads   ${runtime.workspaceRoot ?? `run inside a clone of ${runtime.repo} to start threads directly`}\n`,
+    `  threads   ${runtime.workspaceRoot ?? (runtime.repo === null ? 'choose a repository and attach a local clone' : `run inside a clone of ${runtime.repo} to start threads directly`)}\n`,
   );
 
   if (config.open) await openExternal(runtime.url).catch(() => undefined);

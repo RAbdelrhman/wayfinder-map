@@ -4,7 +4,6 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { fetchMaps } from './github.js';
 import { parseModelChoice } from './models.js';
 import { copyToClipboard } from './clipboard.js';
 import { DEFAULT_TEMPLATE, buildPrompt, ticketBranch } from './prompt.js';
@@ -12,6 +11,14 @@ import { detectT3, handOff } from './t3.js';
 import type { T3HandOff } from './t3.js';
 import type { Config } from './config.js';
 import type { MapSnapshot, WayfinderMap } from './types.js';
+import { loadHomeState } from './home.js';
+import { readAccount } from './home.js';
+import type { HomeState } from './home.js';
+import { gh } from './github.js';
+import { AuthFlow } from './authFlow.js';
+import { parseRepoPagePath } from './repoRoutes.js';
+import { RepositoryStore } from './repositoryStore.js';
+import type { RepositoryFetcher } from './repositoryStore.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = join(here, 'ui');
@@ -23,15 +30,17 @@ const MIME: Record<string, string> = {
   '.svg': 'image/svg+xml',
 };
 
-export type ServerT3 = Pick<T3HandOff, 'models' | 'steps'>;
+export type ServerT3 = Pick<T3HandOff, 'models' | 'steps'> & { close?: () => void };
 
 export interface ServeOptions {
   config: Config;
-  repo: string;
+  repo: string | null;
   template: string;
   /** The checkout T3 Code threads run in, or null when the launch directory is not one. */
   workspaceRoot: string | null;
   t3: ServerT3;
+  fetcher?: RepositoryFetcher;
+  homeLoader?: (labels: readonly string[]) => Promise<HomeState>;
 }
 
 export interface RunningServer {
@@ -80,30 +89,18 @@ function originAllowed(request: IncomingMessage, port: number): boolean {
 
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
-export async function startServer({ config, repo, template, workspaceRoot, t3 }: ServeOptions): Promise<RunningServer> {
-  let snapshot: MapSnapshot | null = null;
-  let inFlight: Promise<MapSnapshot> | null = null;
+export async function startServer({ config, repo, template, workspaceRoot, t3, fetcher, homeLoader }: ServeOptions): Promise<RunningServer> {
+  const repositories = new RepositoryStore({
+    mapLabel: config.mapLabel,
+    typePrefix: config.typePrefix,
+    ...(fetcher === undefined ? {} : { fetcher }),
+  });
+  const loadHome = homeLoader ?? ((labels: readonly string[]) => loadHomeState(labels));
+  let homeState: HomeState | null = null;
+  const authFlow = new AuthFlow();
 
-  const load = async (): Promise<MapSnapshot> => {
-    const { maps, warnings } = await fetchMaps({
-      repo,
-      mapLabel: config.mapLabel,
-      typePrefix: config.typePrefix,
-    });
-    snapshot = { repo, fetchedAt: new Date().toISOString(), maps, warnings };
-    return snapshot;
-  };
-
-  const snapshotOnce = async (force: boolean): Promise<MapSnapshot> => {
-    if (!force && snapshot !== null) return snapshot;
-    inFlight ??= load().finally(() => {
-      inFlight = null;
-    });
-    return inFlight;
-  };
-
-  const find = (mapNumber: number, ticketNumber: number): { map: WayfinderMap; ticket: MapTicket } | null => {
-    const map = snapshot?.maps.find((candidate) => candidate.number === mapNumber);
+  const find = (snapshot: MapSnapshot, mapNumber: number, ticketNumber: number): { map: WayfinderMap; ticket: MapTicket } | null => {
+    const map = snapshot.maps.find((candidate) => candidate.number === mapNumber);
     const ticket = map?.tickets.find((candidate) => candidate.number === ticketNumber);
     return map && ticket ? { map, ticket } : null;
   };
@@ -128,12 +125,76 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
       }
 
       if (path === '/api/snapshot') {
+        if (repo === null) {
+          json(response, 404, { error: 'Choose a repository from Home first.' });
+          return;
+        }
         const force = requestUrl.searchParams.get('refresh') === '1';
         try {
-          json(response, 200, await snapshotOnce(force));
+          json(response, 200, await repositories.snapshot(repo, force));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
+        return;
+      }
+
+      if (path === '/api/home') {
+        const force = requestUrl.searchParams.get('refresh') === '1';
+        if (force || homeState === null) {
+          const labels = config.mapLabel === 'wayfinder:map' ? [config.mapLabel] : ['wayfinder:map', config.mapLabel];
+          homeState = await loadHome(labels);
+        }
+        json(response, 200, homeState);
+        return;
+      }
+
+      if (path === '/api/auth/status') {
+        const account = await readAccount();
+        if (account.status === 'ready') homeState = null;
+        json(response, 200, account);
+        return;
+      }
+
+      if (path === '/api/auth/flow') {
+        json(response, 200, authFlow.snapshot());
+        return;
+      }
+
+      if (path === '/api/auth/login' && request.method === 'POST') {
+        json(response, 202, authFlow.start(['auth', 'login', '--web', '--hostname', 'github.com', '--git-protocol', 'https', '--skip-ssh-key']));
+        return;
+      }
+
+      if (path === '/api/auth/refresh' && request.method === 'POST') {
+        const account = await readAccount();
+        if (account.login === null || account.missingScopes.length === 0) {
+          json(response, 409, { error: 'There are no missing scopes to grant.' });
+          return;
+        }
+        json(response, 202, authFlow.start(['auth', 'refresh', '-h', account.host, '-s', account.missingScopes.join(',')]));
+        return;
+      }
+
+      if (path === '/api/auth/switch' && request.method === 'POST') {
+        const body = (await readBody(request)) as { login?: unknown };
+        const login = typeof body.login === 'string' ? body.login : '';
+        const account = await readAccount();
+        if (!account.accounts.includes(login)) {
+          json(response, 400, { error: 'That account is not available in GitHub CLI.' });
+          return;
+        }
+        await gh(['auth', 'switch', '-h', account.host, '-u', login]);
+        homeState = null;
+        repositories.clear();
+        json(response, 200, await readAccount());
+        return;
+      }
+
+      if (path === '/api/shutdown' && request.method === 'POST') {
+        json(response, 200, { stopped: true });
+        authFlow.cancel();
+        t3.close?.();
+        setImmediate(() => server.close());
         return;
       }
 
@@ -146,17 +207,29 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
         return;
       }
 
-      if (path === '/api/hand-off' && request.method === 'POST') {
+      const scoped = parseScopedApiPath(path);
+      const requestedRepo = scoped?.repo ?? (path === '/api/hand-off' ? repo : null);
+      if (requestedRepo !== null && (scoped?.action === 'snapshot' || path === '/api/snapshot')) {
+        const force = requestUrl.searchParams.get('refresh') === '1';
+        try {
+          json(response, 200, await repositories.snapshot(requestedRepo, force));
+        } catch (error) {
+          json(response, 502, { error: (error as Error).message });
+        }
+        return;
+      }
+
+      if (requestedRepo !== null && (scoped?.action === 'hand-off' || path === '/api/hand-off') && request.method === 'POST') {
         const body = (await readBody(request)) as { map?: number; ticket?: number; copyOnly?: boolean; model?: unknown };
-        await snapshotOnce(false);
-        const found = find(Number(body.map), Number(body.ticket));
+        const snapshot = await repositories.snapshot(requestedRepo, false);
+        const found = find(snapshot, Number(body.map), Number(body.ticket));
         if (!found) {
           json(response, 404, { error: 'No such ticket on that map.' });
           return;
         }
 
         const { map, ticket } = found;
-        const prompt = buildPrompt({ repo, map, ticket, template });
+        const prompt = buildPrompt({ repo: requestedRepo, map, ticket, template });
         if (body.copyOnly === true) {
           json(response, 200, { prompt, ...(await copyOnly(prompt)) });
           return;
@@ -169,10 +242,10 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
         const result = await handOff(
           {
             title: `#${String(ticket.number)} ${ticket.title}`,
-            workspaceRoot,
+            workspaceRoot: requestedRepo === repo ? workspaceRoot : null,
             branch: ticketBranch(ticket),
             model: parseModelChoice(body.model),
-            prompt: (worktree) => buildPrompt({ repo, map, ticket, template, ...(worktree ? { worktree } : {}) }),
+            prompt: (worktree) => buildPrompt({ repo: requestedRepo, map, ticket, template, ...(worktree ? { worktree } : {}) }),
           },
           t3.steps(await detectT3()),
         );
@@ -184,7 +257,13 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
       return;
     }
 
-    const file = path === '/' ? 'index.html' : path.replace(/^\/+/, '');
+    const pageRoute = parseRepoPagePath(path);
+    const file =
+      path === '/' || path === '/new-map' || pageRoute?.mapNumber === null
+        ? 'home.html'
+        : pageRoute !== null
+          ? 'index.html'
+          : path.replace(/^\/+/, '');
     if (file.includes('..')) {
       json(response, 400, { error: 'Bad path' });
       return;
@@ -220,8 +299,17 @@ export async function startServer({ config, repo, template, workspaceRoot, t3 }:
   }
   port = address.port;
   url = `http://${config.host}:${String(port)}`;
+  server.once('close', () => authFlow.cancel());
 
   return { server, url };
+}
+
+function parseScopedApiPath(path: string): { repo: string; action: 'snapshot' | 'hand-off' } | null {
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off)$/.exec(path);
+  if (match?.[1] === undefined || match[2] === undefined) return null;
+  const route = parseRepoPagePath(match[1]);
+  if (route === null || route.mapNumber !== null) return null;
+  return { repo: route.repo, action: match[2] as 'snapshot' | 'hand-off' };
 }
 
 type MapTicket = WayfinderMap['tickets'][number];
