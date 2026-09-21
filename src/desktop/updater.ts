@@ -108,6 +108,15 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
   });
 
   autoUpdater.on('error', (error) => {
+    const is404 = /404|not found/i.test(error.message);
+    if (is404) {
+      currentStatus = {
+        status: 'up-to-date',
+        currentVersion: autoUpdater.currentVersion?.version ?? '0.0.0',
+        releaseUrl: RELEASES_URL,
+      };
+      return;
+    }
     currentStatus = {
       status: 'error',
       currentVersion: autoUpdater.currentVersion?.version ?? '0.0.0',
@@ -153,10 +162,19 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
       }
       return currentStatus;
     } catch (error) {
+      const message = (error as Error).message;
+      if (/404|not found/i.test(message)) {
+        currentStatus = {
+          status: 'up-to-date',
+          currentVersion: autoUpdater.currentVersion?.version ?? '0.0.0',
+          releaseUrl: RELEASES_URL,
+        };
+        return currentStatus;
+      }
       currentStatus = {
         status: 'error',
         currentVersion: autoUpdater.currentVersion?.version ?? '0.0.0',
-        error: (error as Error).message,
+        error: message,
         releaseUrl: RELEASES_URL,
       };
       return currentStatus;
