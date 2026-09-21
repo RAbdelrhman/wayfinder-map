@@ -42,5 +42,7 @@ export const COPY = '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M
 export const INFO = '<circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/>';
 export const MINUS = '<path d="M5 12h14"/>';
 export const PLUS = '<path d="M12 5v14M5 12h14"/>';
+/** A tray with a downward arrow: check for or download updates. */
+export const DOWNLOAD = '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>';
 /** An open folder: point Wayfinder at a checkout on disk. */
 export const FOLDER = '<path d="M4 20a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5l2 2.5h8a1 1 0 0 1 1 1V10"/><path d="m3.6 19.6 2.3-7.2a1 1 0 0 1 1-.7h13.5a1 1 0 0 1 1 1.3l-2 6.3a1 1 0 0 1-1 .7H4"/>';

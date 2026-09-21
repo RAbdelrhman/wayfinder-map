@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { discoverRepositories, loadHomeState, readAccount } from './home.js';
+import { discoverRepositories, listRepositories, loadHomeState, readAccount } from './home.js';
 import type { HomeGh } from './home.js';
 
 function runner(outputs: readonly (string | Error)[]): HomeGh {
@@ -26,6 +26,7 @@ describe('readAccount', () => {
     await expect(readAccount(runner([ready]))).resolves.toMatchObject({
       status: 'ready',
       login: 'octo',
+      avatarUrl: 'https://github.com/octo.png?size=64',
       accounts: ['octo', 'mona'],
       tokenSource: 'keyring',
     });
@@ -76,5 +77,13 @@ describe('discoverRepositories', () => {
     const state = await loadHomeState(['wayfinder:map'], runner([ready, new Error('API rate limit exceeded')]));
     expect(state.warning).toContain('rate limit');
     expect(state.account.status).toBe('ready');
+  });
+});
+
+describe('listRepositories', () => {
+  it('lists every repository the account can reach, keeping GitHub order', async () => {
+    const runGh = runner(['octo/recent\r\nacme/older\n\nocto/recent\n']);
+    await expect(listRepositories(runGh)).resolves.toEqual(['octo/recent', 'acme/older']);
+    expect(runGh).toHaveBeenCalledWith(['api', '--paginate', 'user/repos?per_page=100&sort=pushed', '--jq', '.[].full_name']);
   });
 });

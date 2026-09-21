@@ -26,7 +26,7 @@ function run(command, args, env = process.env) {
 }
 
 await run(process.execPath, ['scripts/create-icons.mjs']);
-await run(process.execPath, ['scripts/build.mjs']);
+await run(process.execPath, ['scripts/build.mjs'], { ...process.env, WAYFINDER_SIGNED_RELEASE: '1' });
 const builder = join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'electron-builder.exe' : 'electron-builder');
 await run(builder, ['--config', 'electron-builder.config.cjs', '--win', 'nsis', `--${requested}`, '--publish', 'never'], {
   ...process.env,

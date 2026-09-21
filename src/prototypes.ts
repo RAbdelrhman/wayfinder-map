@@ -7,6 +7,12 @@ import { normalizeRepo } from './repoRoutes.js';
  */
 export const PROTOTYPE_BRANCH_PREFIX = 'prototype/';
 
+/**
+ * A runnable copy of the prototype, saved at the branch root when it is captured: one HTML
+ * file with its styles and script inlined, so it opens without the app that built it.
+ */
+export const PROTOTYPE_SNAPSHOT_FILE = 'prototype-snapshot.html';
+
 /** Where the page serves a file off a prototype branch. */
 export const PROTOTYPE_ROUTE = '/proto/';
 
@@ -28,6 +34,39 @@ export function isHtml(file: string): boolean {
  */
 export function isSelfContained(html: string): boolean {
   return !/<(?:script|link|img)\s[^>]*(?:src|href)\s*=\s*["']\//i.test(html);
+}
+
+/**
+ * A design canvas's board: an `index.html` with the canvas's `config.js` beside it. When a
+ * prototype is a canvas, that board is the thing to open, not one of the pages inside it.
+ */
+export function canvasEntry(openable: readonly string[], files: readonly string[]): string | null {
+  const all = new Set(files);
+  return openable.find((file) => /(?:^|\/)index\.html$/i.test(file) && all.has(file.replace(/index\.html$/i, 'config.js'))) ?? null;
+}
+
+/**
+ * Canvas boards the branch changed without touching their `index.html`. The canvas engine
+ * lives on the default branch, so a prototype usually only edits `config.js` and its pages,
+ * and the diff never lists the board. These are worth reading off the branch directly.
+ */
+export function unlistedCanvasBoards(files: readonly string[]): string[] {
+  const all = new Set(files);
+  return files
+    .filter((file) => /(?:^|\/)config\.js$/.test(file))
+    .map((file) => file.replace(/config\.js$/, 'index.html'))
+    .filter((board) => !all.has(board));
+}
+
+/**
+ * The page a prototype shows running: its design canvas when it has one, then its saved
+ * snapshot, which is built to run anywhere, otherwise the first HTML file that stands alone.
+ */
+export function pickPreview(hasSnapshot: boolean, openable: readonly string[], files: readonly string[] = []): string | null {
+  const canvas = canvasEntry(openable, files);
+  if (canvas !== null) return canvas;
+  if (hasSnapshot) return PROTOTYPE_SNAPSHOT_FILE;
+  return openable[0] ?? null;
 }
 
 /**

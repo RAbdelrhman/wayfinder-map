@@ -59,6 +59,19 @@ describe('buildPrompt', () => {
     expect(prompt).not.toContain('{{prototypeBranch}}');
   });
 
+  it('asks prototype tickets to save a runnable snapshot', () => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
+    expect(prompt).toContain('prototype-snapshot.html');
+    expect(prompt).toContain('CSS and JavaScript inlined');
+  });
+
+  it('points visual prototype tickets at the design canvas', () => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
+    expect(prompt).toContain('design canvas');
+    expect(prompt).toContain('design-canvas/scaffold.mjs');
+    expect(buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'task' } })).not.toContain('design canvas');
+  });
+
   it('only names a prototype branch on prototype tickets', () => {
     for (const type of ['grilling', 'research', 'task', null] as const) {
       expect(buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type } })).not.toContain('prototype/');

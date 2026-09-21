@@ -17,7 +17,7 @@ module.exports = {
     icon: '.generated/Wayfinder.ico',
     target: [{ target: 'nsis', arch: [arch] }],
     artifactName: `Wayfinder-\${version}-${arch}-Setup.\${ext}`,
-    verifyUpdateCodeSignature: true,
+    verifyUpdateCodeSignature: false,
   },
   nsis: {
     oneClick: false,

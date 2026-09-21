@@ -15,6 +15,7 @@ const fetchPrototypes = vi.fn(
       updatedAt: null,
       files: ['index.html'],
       openable: ['index.html'],
+      preview: 'index.html',
       verdict: null,
     },
   ],
@@ -29,6 +30,7 @@ const fetchAllPrototypes = vi.fn(
       updatedAt: null,
       files: ['index.html'],
       openable: ['index.html'],
+      preview: 'index.html',
       verdict: null,
     })),
 );
@@ -145,5 +147,14 @@ describe('prototypes on a repository-scoped server', () => {
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }
+  });
+});
+
+describe('the app page policy', () => {
+  it('lets the gallery frame its own prototypes and nothing from elsewhere', async () => {
+    const { PAGE_CSP } = await import('./server.js');
+    expect(PAGE_CSP).toContain("frame-src 'self'");
+    expect(PAGE_CSP).not.toContain('frame-src *');
+    expect(PAGE_CSP).toContain("object-src 'none'");
   });
 });

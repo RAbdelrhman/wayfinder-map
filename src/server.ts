@@ -11,7 +11,7 @@ import { detectT3, handOff } from './t3.js';
 import type { T3HandOff } from './t3.js';
 import type { Config } from './config.js';
 import type { MapSnapshot, Prototype, Ticket, WayfinderMap } from './types.js';
-import { loadHomeState, readAccount } from './home.js';
+import { listRepositories, loadHomeState, readAccount } from './home.js';
 import type { HomeState } from './home.js';
 import { fetchAllPrototypes, fetchBranchFile, fetchPrototypes, fetchTicket, gh } from './github.js';
 import { AuthFlow } from './authFlow.js';
@@ -21,6 +21,8 @@ import { RepositoryStore } from './repositoryStore.js';
 import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './workspaces.js';
 import type { WorkspaceState } from './workspaces.js';
+import { WAYFINDER_VERSION } from './version.js';
+import { resolveRepoIcon } from './repoIcon.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -49,7 +51,15 @@ const PROTOTYPE_TTL_MS = 60_000;
  */
 const PROTOTYPE_CSP = 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads';
 
-export type ServerT3 = Pick<T3HandOff, 'models' | 'steps' | 'projects'> & { close?: () => void };
+/**
+ * The app's own pages. Frames are allowed from this origin only, which is where the
+ * prototype gallery's live previews come from; each of those is still sandboxed twice,
+ * by PROTOTYPE_CSP on the response and by the iframe's own `sandbox` attribute.
+ */
+export const PAGE_CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'self'; form-action 'self'";
+
+export type ServerT3 =Pick<T3HandOff, 'models' | 'steps' | 'projects'> & { close?: () => void };
 
 export interface ServeOptions {
   config: Config;
@@ -67,12 +77,29 @@ export interface ServeOptions {
   workspaces?: WorkspaceResolver;
   fetcher?: RepositoryFetcher;
   homeLoader?: (labels: readonly string[]) => Promise<HomeState>;
+  /** Every repository the account can open, for Home's picker. */
+  repoLister?: () => Promise<string[]>;
   onShutdown?: () => void;
   /**
    * Where the page's files live. Every entry point names it: the packaged app and the
    * ESM CLI resolve it differently, and deriving it here would tie the server to one of them.
    */
   uiDir?: string;
+  updater?: UpdaterService;
+}
+
+export interface UpdaterStatus {
+  status: 'up-to-date' | 'available' | 'downloading' | 'ready' | 'dev' | 'disabled' | 'error';
+  currentVersion: string;
+  latestVersion?: string;
+  releaseUrl?: string;
+  error?: string;
+}
+
+export interface UpdaterService {
+  check: () => Promise<UpdaterStatus>;
+  install?: () => Promise<void>;
+  status?: () => UpdaterStatus;
 }
 
 export interface RunningServer {
@@ -145,9 +172,45 @@ export async function startServer({
   workspaces,
   fetcher,
   homeLoader,
+  repoLister = listRepositories,
   onShutdown,
   uiDir = join(process.cwd(), 'src', 'ui'),
+  updater,
 }: ServeOptions): Promise<RunningServer> {
+  const defaultUpdater: UpdaterService = {
+    async check(): Promise<UpdaterStatus> {
+      const currentVersion = WAYFINDER_VERSION;
+      if (currentVersion === '0.0.0-dev' || currentVersion.includes('-dev')) {
+        return { status: 'dev', currentVersion };
+      }
+      try {
+        const res = await fetch('https://api.github.com/repos/RAbdelrhman/wayfinder-map/releases/latest', {
+          headers: { 'User-Agent': 'Wayfinder' },
+        });
+        if (res.status === 404) {
+          return { status: 'up-to-date', currentVersion, releaseUrl: 'https://github.com/RAbdelrhman/wayfinder-map/releases' };
+        }
+        if (!res.ok) {
+          return { status: 'error', currentVersion, error: `GitHub API returned ${String(res.status)}` };
+        }
+        const data = (await res.json()) as { tag_name?: string; html_url?: string };
+        const latestTag = data.tag_name ? data.tag_name.replace(/^v/, '') : currentVersion;
+        const releaseUrl = data.html_url ?? 'https://github.com/RAbdelrhman/wayfinder-map/releases';
+        if (latestTag !== currentVersion) {
+          return { status: 'available', currentVersion, latestVersion: latestTag, releaseUrl };
+        }
+        return { status: 'up-to-date', currentVersion, latestVersion: latestTag, releaseUrl };
+      } catch (error) {
+        return { status: 'error', currentVersion, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    status(): UpdaterStatus {
+      return {
+        status: WAYFINDER_VERSION === '0.0.0-dev' || WAYFINDER_VERSION.includes('-dev') ? 'dev' : 'up-to-date',
+        currentVersion: WAYFINDER_VERSION,
+      };
+    },
+  };
   const repositories = new RepositoryStore({
     mapLabel: config.mapLabel,
     typePrefix: config.typePrefix,
@@ -155,6 +218,7 @@ export async function startServer({
   });
   const loadHome = homeLoader ?? ((labels: readonly string[]) => loadHomeState(labels));
   let homeState: HomeState | null = null;
+  let repoList: Promise<string[]> | null = null;
   const authFlow = new AuthFlow();
 
   /** One entry per repository and map, since every prototype list costs GitHub calls. */
@@ -240,6 +304,22 @@ export async function startServer({
         return;
       }
 
+      if (path === '/api/repositories') {
+        if (requestUrl.searchParams.get('refresh') === '1' || repoList === null) {
+          const list = repoLister();
+          repoList = list;
+          list.catch(() => {
+            if (repoList === list) repoList = null;
+          });
+        }
+        try {
+          json(response, 200, await repoList);
+        } catch (error) {
+          json(response, 502, { error: (error as Error).message });
+        }
+        return;
+      }
+
       if (path === '/api/auth/status') {
         const account = await readAccount();
         if (account.status === 'ready') homeState = null;
@@ -277,6 +357,7 @@ export async function startServer({
         }
         await gh(['auth', 'switch', '-h', account.host, '-u', login]);
         homeState = null;
+        repoList = null;
         repositories.clear();
         json(response, 200, await readAccount());
         return;
@@ -287,6 +368,34 @@ export async function startServer({
         authFlow.cancel();
         t3.close?.();
         setImmediate(() => (onShutdown === undefined ? server.close() : onShutdown()));
+        return;
+      }
+
+      if (path === '/api/updater') {
+        const service = updater ?? defaultUpdater;
+        json(response, 200, service.status ? service.status() : await service.check());
+        return;
+      }
+
+      if (path === '/api/updater/check' && request.method === 'POST') {
+        const service = updater ?? defaultUpdater;
+        try {
+          const status = await service.check();
+          json(response, 200, status);
+        } catch (error) {
+          json(response, 500, { status: 'error', currentVersion: WAYFINDER_VERSION, error: (error as Error).message });
+        }
+        return;
+      }
+
+      if (path === '/api/updater/install' && request.method === 'POST') {
+        const service = updater ?? defaultUpdater;
+        if (!service.install) {
+          json(response, 400, { error: 'Direct installation is only available in the desktop application.' });
+          return;
+        }
+        json(response, 200, { installing: true });
+        void service.install();
         return;
       }
 
@@ -390,6 +499,26 @@ export async function startServer({
             return;
           }
           json(response, 200, await workspaceView(requestedRepo));
+          return;
+        }
+      }
+
+      if (requestedRepo !== null && scoped?.action === 'icon') {
+        try {
+          const icon = await resolveRepoIcon(requestedRepo, clones, t3, workspaceRoot);
+          if (icon === null) {
+            json(response, 404, { error: 'No repository icon found.' });
+            return;
+          }
+          response.writeHead(200, {
+            'content-type': icon.contentType,
+            'content-length': icon.data.length,
+            'cache-control': 'public, max-age=3600',
+          });
+          response.end(icon.data);
+          return;
+        } catch (error) {
+          json(response, 502, { error: (error as Error).message });
           return;
         }
       }
@@ -546,8 +675,7 @@ export async function startServer({
       response.writeHead(200, {
         'content-type': MIME[extension] ?? 'application/octet-stream',
         'cache-control': 'no-store',
-        'content-security-policy':
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'self'",
+        'content-security-policy': PAGE_CSP,
       });
       response.end(bytes);
     } catch {
@@ -578,7 +706,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|icon)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;

@@ -39,13 +39,25 @@ describe('startAutoUpdates', () => {
     const { startAutoUpdates } = await import('./updater.js');
     expect(reads).toBe(0);
 
-    const stop = startAutoUpdates({
+    const handle = startAutoUpdates({
       window: {} as never,
       enabled: false,
       prepareForRestart: async () => undefined,
     });
 
     expect(reads).toBe(0);
-    expect(() => stop()).not.toThrow();
+    expect(() => handle()).not.toThrow();
+    expect(handle.status()).toEqual({
+      status: 'disabled',
+      currentVersion: 'dev',
+      releaseUrl: 'https://github.com/RAbdelrhman/wayfinder-map/releases',
+    });
+    await expect(handle.check()).resolves.toEqual({
+      status: 'disabled',
+      currentVersion: 'dev',
+      releaseUrl: 'https://github.com/RAbdelrhman/wayfinder-map/releases',
+    });
+    await expect(handle.install()).resolves.toBeUndefined();
+    expect(reads).toBe(0);
   });
 });

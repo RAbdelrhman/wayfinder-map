@@ -124,7 +124,19 @@ const TYPE_STEPS: Partial<Record<TicketType, string>> = {
 Show them the prototype and let them react before settling anything.
 When you capture the prototype, commit it to the branch {{prototypeBranch}}
 and push it. That exact name is how wayfinder-map finds it later, so do not
-pick another. Keep a logic prototype to one self-contained HTML file.`,
+pick another. When the question is visual or UX, build the prototype as a
+design canvas: a board showing the options side by side (pages, styles,
+components, palettes, moodboards) with a note on each. If the repo already
+has prototypes/canvas, build on it. If not, and you have the design-canvas
+skill, run node ~/.claude/skills/design-canvas/scaffold.mjs. Either way,
+follow prototypes/canvas/README.md, and make node
+prototypes/canvas/tools/check.mjs pass before you show the user.
+wayfinder-map opens a canvas (an index.html with its config.js beside it)
+before any other file. For any other prototype, commit
+prototype-snapshot.html at the branch root: the prototype as one HTML file
+with its CSS and JavaScript inlined, no paths starting with /, and no calls
+to a server. That file is what people click to see the prototype running
+later, long after the app has moved on.`,
 };
 
 function indent(text: string, prefix = '  '): string {
