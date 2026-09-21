@@ -1,6 +1,6 @@
 {
   "name": "wayfinder-map",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Interactive map of a repo's wayfinder maps, with one-click ticket hand-off to T3 Code",
   "type": "module",
   "main": "dist/desktop.cjs",
