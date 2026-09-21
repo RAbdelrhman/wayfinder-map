@@ -9,6 +9,8 @@ import { currentCatalog, loadCatalog, modelSelectHtml, readChoice, tierDefaults 
 import { syncedLabel } from './focus.js';
 import { icon } from './icons.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
+import { composerState, initialRepository, newMapPath } from './newMap.js';
+import type { WorkspaceView } from './newMap.js';
 
 const RECENT_KEY = 'wayfinder-map:recent-repositories';
 
@@ -437,12 +439,11 @@ async function renderNewMap(): Promise<void> {
   const recents = recentRepositories();
   const allRepos = Array.from(new Set([...recents, ...(homeState?.repositories ?? [])]));
 
-  const searchParams = new URLSearchParams(window.location.search);
-  const repoFromQuery = searchParams.get('repo');
-  const initialRepo = (repoFromQuery && normalizeRepo(repoFromQuery)) || recents[0] || allRepos[0] || '';
+  const initialRepo = initialRepository(new URLSearchParams(window.location.search).get('repo'), recents, allRepos);
 
   const catalogState = await loadCatalog();
   const catalog = catalogState.status === 'ready' ? catalogState.catalog : null;
+  const t3Unavailable = catalogState.status === 'unavailable' ? catalogState.reason : null;
   const defaultModelChoice = catalog ? tierDefaults()['mid'] ?? null : null;
 
   const repoOptionsHtml = allRepos.map((r) => `<option value="${escapeHtml(r)}"></option>`).join('');
@@ -533,7 +534,7 @@ async function renderNewMap(): Promise<void> {
 
           <div class="field">
             <label for="new-map-goal">What do you want to accomplish?</label>
-            <textarea class="input" id="new-map-goal" rows="5" placeholder="e.g. Build an offline-first draft mode with local indexedDB storage and automatic background sync..."></textarea>
+            <textarea class="input" id="new-map-goal" rows="5" required placeholder="e.g. Build an offline-first draft mode with local indexedDB storage and automatic background sync..."></textarea>
           </div>
 
           <div class="model-row">
@@ -545,12 +546,14 @@ async function renderNewMap(): Promise<void> {
 
           <div class="add-new-actions">
             <button type="button" class="primary" id="map-start-btn" disabled>
-              <span data-icon="play"></span>Start Interview in T3 Code
+              <span data-icon="play"></span>Start in T3 Code
             </button>
             <button type="button" class="ghost" id="map-copy-btn" disabled>
               <span data-icon="copy"></span>Copy prompt
             </button>
           </div>
+          <p class="hint clone-hint" id="map-note" role="status" hidden></p>
+          <div id="map-clone"></div>
 
           <details class="prompt-details" id="map-prompt-details" hidden>
             <summary><span data-icon="chevron"></span>View interview prompt</summary>
@@ -583,10 +586,97 @@ async function renderNewMap(): Promise<void> {
   const mapPromptCode = need<HTMLElement>('map-prompt-code');
   const existingMapsHint = need<HTMLDivElement>('existing-maps-hint');
   const existingMapsList = need<HTMLDivElement>('existing-maps-list');
+  const mapNote = need<HTMLParagraphElement>('map-note');
+  const mapClone = need<HTMLDivElement>('map-clone');
 
   let activeResolvedTicket: { ticket: Ticket; map: { number: number; title: string } | null } | null = null;
   let activeTicketPrompt: string | null = null;
-  let activeMapPrompt: string | null = null;
+  let mapWorkspace: WorkspaceView | 'loading' | null = 'loading';
+  /** Why the last hand-off fell short of a running thread, until the inputs change. */
+  let mapNotice: string | null = null;
+  let workspaceAsk = 0;
+
+  function selectedRepo(): string | null {
+    return normalizeRepo(repoInput.value.trim());
+  }
+
+  /** Enable the actions, say why a hand-off can't start, and offer a clone when none is verified. */
+  function syncMapComposer(): void {
+    const repo = selectedRepo();
+    const state = composerState({ repo, goal: mapGoal.value, workspace: mapWorkspace, t3Unavailable });
+    mapStartBtn.disabled = !state.canStart;
+    mapCopyBtn.disabled = !state.canCopy;
+    const note = mapNotice ?? state.reason;
+    mapNote.hidden = note === null;
+    mapNote.textContent = note ?? '';
+
+    const workspace = mapWorkspace;
+    if (repo === null || workspace === null || workspace === 'loading' || workspace.status === 'ready') {
+      mapClone.innerHTML = '';
+      return;
+    }
+    const picker = workspace.canChoose
+      ? `<button type="button" class="${workspace.candidates.length === 0 ? 'primary' : 'ghost'}" id="map-choose-clone">${icon(icons.FOLDER)}Choose local clone</button>`
+      : '';
+    const list =
+      workspace.candidates.length === 0
+        ? ''
+        : `<div class="clone-row">
+            <select id="map-clone-path" aria-label="Local clone">${workspace.candidates.map((path) => `<option value="${escapeHtml(path)}">${escapeHtml(path)}</option>`).join('')}</select>
+            <button type="button" class="primary" id="map-use-clone">Use this clone</button>
+          </div>`;
+    const cli = workspace.canChoose || workspace.candidates.length > 0 ? '' : '<p class="hint">Run wayfinder-map inside a clone, or pick a folder in the desktop app.</p>';
+    mapClone.innerHTML = `${list}${cli}${picker ? `<div class="add-new-actions">${picker}</div>` : ''}`;
+    paintIcons(mapClone);
+  }
+
+  /** Ask which checkout T3 Code would run the selected repository in. Only the latest answer counts. */
+  async function loadMapWorkspace(): Promise<void> {
+    const repo = selectedRepo();
+    const ask = (workspaceAsk += 1);
+    mapNotice = null;
+    mapWorkspace = repo === null ? null : 'loading';
+    syncMapComposer();
+    if (repo === null) return;
+    let answer: WorkspaceView | null;
+    try {
+      answer = await getJson<WorkspaceView>(scopedApiPath(repo, 'workspace'));
+    } catch {
+      answer = null;
+    }
+    if (ask !== workspaceAsk) return;
+    mapWorkspace = answer;
+    syncMapComposer();
+  }
+
+  async function setMapClone(body: { choose: true } | { path: string }): Promise<void> {
+    const repo = selectedRepo();
+    if (repo === null) return;
+    for (const button of mapClone.querySelectorAll<HTMLButtonElement>('button')) button.disabled = true;
+    try {
+      const response = await fetch(scopedApiPath(repo, 'workspace'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const result = (await response.json()) as Partial<WorkspaceView> & { error?: string; cancelled?: boolean };
+      if (result.status !== undefined) mapWorkspace = result as WorkspaceView;
+      if (typeof result.error === 'string') toast(result.error, 9000);
+      else if (result.cancelled !== true && result.status === 'ready') toast(`Threads will run in ${result.path}.`, 5000);
+    } catch (error) {
+      toast((error as Error).message, 9000);
+    }
+    syncMapComposer();
+  }
+
+  mapClone.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('#map-choose-clone') !== null) void setMapClone({ choose: true });
+    if (target.closest('#map-use-clone') !== null) {
+      const path = mapClone.querySelector<HTMLSelectElement>('#map-clone-path')?.value;
+      if (path) void setMapClone({ path });
+    }
+  });
 
   async function loadExistingMaps(repo: string): Promise<void> {
     const normalized = normalizeRepo(repo);
@@ -707,6 +797,7 @@ async function renderNewMap(): Promise<void> {
         repoInput.value = parsedRepo;
         remember(parsedRepo);
         void loadExistingMaps(parsedRepo);
+        void loadMapWorkspace();
       }
       ticketInput.value = `#${String(parsedNum)}`;
       void inspectTicket(parsedNum);
@@ -727,6 +818,7 @@ async function renderNewMap(): Promise<void> {
 
   repoInput.addEventListener('change', () => {
     const normalized = normalizeRepo(repoInput.value.trim());
+    void loadMapWorkspace();
     if (normalized) {
       remember(normalized);
       void loadExistingMaps(normalized);
@@ -744,6 +836,7 @@ async function renderNewMap(): Promise<void> {
         repoInput.value = targetRepo;
         remember(targetRepo);
         void loadExistingMaps(targetRepo);
+        void loadMapWorkspace();
         const numMatch = /^#?(\d+)$/.exec(ticketInput.value.trim());
         if (numMatch && numMatch[1]) {
           void inspectTicket(Number(numMatch[1]));
@@ -810,91 +903,71 @@ async function renderNewMap(): Promise<void> {
 
   let mapGoalTimer = 0;
   mapGoal.addEventListener('input', () => {
-    const text = mapGoal.value.trim();
-    if (text.length > 0) {
-      mapStartBtn.disabled = false;
-      mapCopyBtn.disabled = false;
-      window.clearTimeout(mapGoalTimer);
-      mapGoalTimer = window.setTimeout(async () => {
-        const repo = normalizeRepo(repoInput.value.trim());
-        if (!repo) return;
-        try {
-          const res = await postJson<{ prompt: string }>(
-            scopedApiPath(repo, 'hand-off'),
-            { goal: text, copyOnly: true }
-          );
-          activeMapPrompt = res.prompt;
-          mapPromptCode.textContent = res.prompt;
-          mapPromptDetails.hidden = false;
-        } catch {
-          // ignore
-        }
-      }, 350);
-    } else {
-      mapStartBtn.disabled = true;
-      mapCopyBtn.disabled = true;
+    mapNotice = null;
+    syncMapComposer();
+    window.clearTimeout(mapGoalTimer);
+    const goal = mapGoal.value.trim();
+    const repo = selectedRepo();
+    if (goal.length === 0 || repo === null) {
       mapPromptDetails.hidden = true;
-      activeMapPrompt = null;
+      return;
     }
+    mapGoalTimer = window.setTimeout(async () => {
+      try {
+        const { prompt } = await postJson<{ prompt: string }>(scopedApiPath(repo, 'new-map'), { goal, preview: true });
+        mapPromptCode.textContent = prompt;
+        mapPromptDetails.hidden = false;
+      } catch {
+        // The preview is a courtesy; the actions still build the prompt themselves.
+      }
+    }, 350);
   });
 
   mapStartBtn.addEventListener('click', async () => {
-    const text = mapGoal.value.trim();
-    if (!text) return;
-    const repo = normalizeRepo(repoInput.value.trim());
-    if (!repo) {
-      toast('Please enter a valid repository (owner/name) above first.');
-      return;
-    }
-    const originalText = mapStartBtn.innerHTML;
+    const goal = mapGoal.value.trim();
+    const repo = selectedRepo();
+    if (goal.length === 0 || repo === null) return;
+    const originalHtml = mapStartBtn.innerHTML;
     mapStartBtn.disabled = true;
-    mapStartBtn.textContent = 'Starting interview...';
-
+    mapStartBtn.textContent = 'Starting in T3 Code…';
     try {
       const modelChoice = catalog ? readChoice(catalog, mapModelSelect, null) : null;
-      const res = await postJson<{ threadId?: string; copied?: boolean }>(
-        scopedApiPath(repo, 'hand-off'),
-        {
-          goal: text,
-          ...(modelChoice ? { model: modelChoice } : {}),
-        }
+      const result = await postJson<{ rung: 'thread' | 'app' | 'clipboard' | null; copied: boolean; notice: string | null; error: string | null }>(
+        scopedApiPath(repo, 'new-map'),
+        { goal, ...(modelChoice ? { model: modelChoice } : {}) },
       );
-      if (res.copied) {
-        toast('Copied interview prompt to clipboard! Paste it into T3 Code.');
+      if (result.rung === 'thread') {
+        mapNotice = null;
+        toast('Started a planning thread in T3 Code.');
       } else {
-        toast('Started new map planning interview in T3 Code!');
+        mapNotice = [result.notice, result.copied ? 'The prompt is on the clipboard.' : result.error].filter(Boolean).join(' ');
+        toast(result.copied ? 'Copied the prompt. Paste it into T3 Code.' : (result.error ?? 'Could not start the thread.'), 9000);
       }
     } catch (err) {
-      toast((err as Error).message);
+      toast((err as Error).message, 9000);
+      // The clone may have gone away since the page asked.
+      void loadMapWorkspace();
     } finally {
-      mapStartBtn.disabled = false;
-      mapStartBtn.innerHTML = originalText;
+      mapStartBtn.innerHTML = originalHtml;
       paintIcons(mapStartBtn);
+      syncMapComposer();
     }
   });
 
   mapCopyBtn.addEventListener('click', async () => {
-    const text = mapGoal.value.trim();
-    if (!text) return;
-    const repo = normalizeRepo(repoInput.value.trim());
-    if (!repo) {
-      toast('Please enter a valid repository (owner/name) above first.');
-      return;
-    }
+    const goal = mapGoal.value.trim();
+    const repo = selectedRepo();
+    if (goal.length === 0 || repo === null) return;
     try {
-      const res = await postJson<{ prompt: string }>(
-        scopedApiPath(repo, 'hand-off'),
-        { goal: text, copyOnly: true }
-      );
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(res.prompt);
-      }
-      toast('Copied interview prompt to clipboard!');
+      const result = await postJson<{ prompt: string; copied: boolean }>(scopedApiPath(repo, 'new-map'), { goal, copyOnly: true });
+      if (!result.copied) await navigator.clipboard.writeText(result.prompt);
+      toast('Copied the prompt. Paste it into T3 Code.');
     } catch (err) {
       toast((err as Error).message);
     }
   });
 
+  void loadMapWorkspace();
   if (initialRepo) {
     void loadExistingMaps(initialRepo);
   }
@@ -940,6 +1013,10 @@ bindTheme(need('theme'));
 els.navHome.classList.toggle('is-on', page.kind !== 'new-map');
 els.navNew.classList.toggle('is-on', page.kind === 'new-map');
 els.newMapLink.hidden = page.kind === 'new-map';
+// From a repository's pages, the composer opens on that repository.
+const composerHref = newMapPath(page.kind === 'repository' || page.kind === 'prototypes' ? page.repo : null);
+els.newMapLink.setAttribute('href', composerHref);
+els.navNew.setAttribute('href', composerHref);
 els.refresh.addEventListener('click', () => void show(true));
 document.addEventListener('click', (event) => {
   const target = (event.target as HTMLElement | null)?.closest('[data-refresh-home], [data-auth]');
