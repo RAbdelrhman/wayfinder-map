@@ -169,3 +169,9 @@ export async function loadHomeState(mapLabels: readonly string[], runGh: HomeGh 
     };
   }
 }
+
+/** Every repository the signed-in account can open, most recently pushed first. */
+export async function listRepositories(runGh: HomeGh = gh): Promise<string[]> {
+  const output = await runGh(['api', '--paginate', 'user/repos?per_page=100&sort=pushed', '--jq', '.[].full_name']);
+  return [...new Set(output.split(/\r?\n/).map((repo) => repo.trim()).filter(Boolean))];
+}

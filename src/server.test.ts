@@ -240,6 +240,29 @@ describe('repository-scoped server', () => {
     }
   });
 
+  it('lists the account repositories once and relists on refresh', async () => {
+    const repoLister = vi.fn(async () => ['octo/one', 'acme/two']);
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      homeLoader: async () => home,
+      repoLister,
+    });
+
+    try {
+      await expect((await fetch(`${running.url}/api/repositories`)).json()).resolves.toEqual(['octo/one', 'acme/two']);
+      await fetch(`${running.url}/api/repositories`);
+      expect(repoLister).toHaveBeenCalledTimes(1);
+      await fetch(`${running.url}/api/repositories?refresh=1`);
+      expect(repoLister).toHaveBeenCalledTimes(2);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
   it('hands an explicit shutdown to the desktop owner after responding', async () => {
     const onShutdown = vi.fn();
     const running = await startServer({

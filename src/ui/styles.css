@@ -1937,6 +1937,64 @@ textarea.input {
   resize: vertical;
 }
 
+.repo-picker {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.repo-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+}
+
+.repo-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.repo-option .i {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--text-muted);
+}
+
+.repo-option span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.repo-option:hover,
+.repo-option.is-active {
+  background: color-mix(in srgb, var(--state-claimed) 14%, transparent);
+}
+
+.repo-menu-note {
+  padding: 8px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
 .input:focus {
   outline: 0;
   border-color: var(--state-claimed);

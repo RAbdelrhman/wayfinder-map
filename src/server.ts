@@ -11,7 +11,7 @@ import { detectT3, handOff } from './t3.js';
 import type { T3HandOff } from './t3.js';
 import type { Config } from './config.js';
 import type { MapSnapshot, Prototype, Ticket, WayfinderMap } from './types.js';
-import { loadHomeState, readAccount } from './home.js';
+import { listRepositories, loadHomeState, readAccount } from './home.js';
 import type { HomeState } from './home.js';
 import { fetchAllPrototypes, fetchBranchFile, fetchPrototypes, fetchTicket, gh } from './github.js';
 import { AuthFlow } from './authFlow.js';
@@ -75,6 +75,8 @@ export interface ServeOptions {
   workspaces?: WorkspaceResolver;
   fetcher?: RepositoryFetcher;
   homeLoader?: (labels: readonly string[]) => Promise<HomeState>;
+  /** Every repository the account can open, for Home's picker. */
+  repoLister?: () => Promise<string[]>;
   onShutdown?: () => void;
   /**
    * Where the page's files live. Every entry point names it: the packaged app and the
@@ -153,6 +155,7 @@ export async function startServer({
   workspaces,
   fetcher,
   homeLoader,
+  repoLister = listRepositories,
   onShutdown,
   uiDir = join(process.cwd(), 'src', 'ui'),
 }: ServeOptions): Promise<RunningServer> {
@@ -163,6 +166,7 @@ export async function startServer({
   });
   const loadHome = homeLoader ?? ((labels: readonly string[]) => loadHomeState(labels));
   let homeState: HomeState | null = null;
+  let repoList: Promise<string[]> | null = null;
   const authFlow = new AuthFlow();
 
   /** One entry per repository and map, since every prototype list costs GitHub calls. */
@@ -248,6 +252,22 @@ export async function startServer({
         return;
       }
 
+      if (path === '/api/repositories') {
+        if (requestUrl.searchParams.get('refresh') === '1' || repoList === null) {
+          const list = repoLister();
+          repoList = list;
+          list.catch(() => {
+            if (repoList === list) repoList = null;
+          });
+        }
+        try {
+          json(response, 200, await repoList);
+        } catch (error) {
+          json(response, 502, { error: (error as Error).message });
+        }
+        return;
+      }
+
       if (path === '/api/auth/status') {
         const account = await readAccount();
         if (account.status === 'ready') homeState = null;
@@ -285,6 +305,7 @@ export async function startServer({
         }
         await gh(['auth', 'switch', '-h', account.host, '-u', login]);
         homeState = null;
+        repoList = null;
         repositories.clear();
         json(response, 200, await readAccount());
         return;

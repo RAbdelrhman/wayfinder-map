@@ -178,10 +178,13 @@ async function renderHome(refresh: boolean): Promise<void> {
     <form class="field" id="repo-entry">
       <label for="repo-name">Open a repository</label>
       <div class="row">
-        <input class="input" id="repo-name" name="repo" placeholder="owner/name" autocomplete="off" spellcheck="false" required />
+        <div class="repo-picker">
+          <input class="input" id="repo-name" name="repo" placeholder="Search your repositories or type owner/name" autocomplete="off" spellcheck="false" required role="combobox" aria-expanded="false" aria-controls="repo-menu" aria-autocomplete="list" />
+          <ul class="repo-menu" id="repo-menu" role="listbox" hidden></ul>
+        </div>
         <button class="primary" type="submit">Open</button>
       </div>
-      <p class="hint">Typing the name always works, even when discovery misses a repository.</p>
+      <p class="hint">Typing the name always works, even when a repository isn't listed.</p>
     </form>
     ${
       recent.length === 0
@@ -211,6 +214,7 @@ async function renderHome(refresh: boolean): Promise<void> {
     }
     window.location.assign(repoPath(repo));
   });
+  bindRepoPicker(need<HTMLInputElement>('repo-name'), need<HTMLUListElement>('repo-menu'));
   document.getElementById('account-switch')?.addEventListener('change', (event) => {
     const select = event.currentTarget as HTMLSelectElement;
     void run(async () => {
@@ -223,6 +227,92 @@ async function renderHome(refresh: boolean): Promise<void> {
       crumbs([]);
       paint('<div class="empty"><strong>Wayfinder stopped</strong><p>Your GitHub CLI account is still signed in.</p></div>');
     });
+  });
+}
+
+const MENU_LIMIT = 50;
+let repoList: Promise<string[]> | null = null;
+
+/** Opens a filterable list of the account's repositories under the Home input. */
+function bindRepoPicker(input: HTMLInputElement, menu: HTMLUListElement): void {
+  let repos: string[] | null = null;
+  let error: string | null = null;
+  let matches: string[] = [];
+  let active = -1;
+
+  const close = (): void => {
+    menu.hidden = true;
+    input.setAttribute('aria-expanded', 'false');
+    active = -1;
+  };
+
+  const draw = (): void => {
+    if (repos === null) {
+      menu.innerHTML = `<li class="repo-menu-note">${escapeHtml(error ?? 'Loading your repositories…')}</li>`;
+    } else {
+      const query = input.value.trim().toLowerCase();
+      matches = repos.filter((repo) => repo.toLowerCase().includes(query)).slice(0, MENU_LIMIT);
+      active = Math.min(active, matches.length - 1);
+      menu.innerHTML =
+        matches.length === 0
+          ? `<li class="repo-menu-note">No repositories match. Press Enter to open it by name.</li>`
+          : matches
+              .map(
+                (repo, index) =>
+                  `<li role="option" class="repo-option${index === active ? ' is-active' : ''}" aria-selected="${String(index === active)}" data-repo="${escapeHtml(repo)}">${icon(icons.REPO)}<span>${escapeHtml(repo)}</span></li>`,
+              )
+              .join('');
+      menu.querySelector('.is-active')?.scrollIntoView({ block: 'nearest' });
+    }
+    menu.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+  };
+
+  const open = (): void => {
+    draw();
+    if (repos !== null || error !== null) return;
+    repoList ??= getJson<string[]>('/api/repositories');
+    repoList.then(
+      (list) => {
+        repos = list;
+        if (!menu.hidden) draw();
+      },
+      (reason: unknown) => {
+        repoList = null;
+        error = `Could not list repositories. ${reason instanceof Error ? reason.message : String(reason)}`;
+        if (!menu.hidden) draw();
+      },
+    );
+  };
+
+  input.addEventListener('focus', open);
+  input.addEventListener('click', open);
+  input.addEventListener('input', () => {
+    active = -1;
+    draw();
+  });
+  input.addEventListener('blur', close);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      close();
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (menu.hidden) return open();
+      if (matches.length === 0) return;
+      active = (active + (event.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length;
+      draw();
+    } else if (event.key === 'Enter' && !menu.hidden) {
+      const picked = matches[active];
+      if (picked === undefined) return;
+      event.preventDefault();
+      window.location.assign(repoPath(picked));
+    }
+  });
+  // Keep focus in the input so a click on an option lands before blur closes the menu.
+  menu.addEventListener('mousedown', (event) => event.preventDefault());
+  menu.addEventListener('click', (event) => {
+    const repo = (event.target as HTMLElement).closest<HTMLElement>('[data-repo]')?.dataset['repo'];
+    if (repo !== undefined) window.location.assign(repoPath(repo));
   });
 }
 
