@@ -722,9 +722,17 @@ kbd {
   position: absolute;
   inset: 0;
   overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   background-image: radial-gradient(var(--gridline) 1px, transparent 1px);
   background-size: 22px 22px;
   cursor: grab;
+}
+
+.canvas-wrap::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .canvas-wrap.is-panning {

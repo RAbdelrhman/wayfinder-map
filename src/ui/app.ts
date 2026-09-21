@@ -1235,9 +1235,19 @@ els.zoomReset.addEventListener('click', () => setZoom(1));
 els.canvasWrap.addEventListener(
   'wheel',
   (event) => {
-    if (!event.ctrlKey) return;
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      setZoom(zoom + (event.deltaY > 0 ? -0.1 : 0.1));
+      return;
+    }
     event.preventDefault();
-    setZoom(zoom + (event.deltaY > 0 ? -0.1 : 0.1));
+    let delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (event.deltaMode === 1) {
+      delta *= 32;
+    } else if (event.deltaMode === 2) {
+      delta *= els.canvasWrap.clientWidth;
+    }
+    els.canvasWrap.scrollLeft += delta;
   },
   { passive: false },
 );
