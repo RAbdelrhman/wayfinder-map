@@ -162,8 +162,10 @@
       </div>
     </div>
     <script src="../kit/kit.js"></script>
+    <script src="wayfinder.js"></script>
     <script>
-      const { FIXTURES: F, esc } = Kit;
+      const F = FIXTURES;
+      const { esc } = Kit;
       const map = F.lastMap;
       const cont = document.getElementById('continue');
       cont.dataset.to = `map #${map.number}`;

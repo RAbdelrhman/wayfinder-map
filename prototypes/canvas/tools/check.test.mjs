@@ -1,4 +1,4 @@
-// Run with: node --test prototypes/canvas/tools/check.test.mjs
+// Run with: node --test <canvas>/tools/check.test.mjs
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { checkCanvas, checkPageHtml, loadConfig } from './check.mjs';
@@ -13,7 +13,17 @@ test('a valid config of every kind passes', () => {
     {
       items: [
         { id: 'A', src: 'variants/a.html', note: 'n' },
-        { id: 'C', kind: 'compose', width: 10, height: 10, layers: [{ type: 'image', src: 'assets/x.png' }, { type: 'text', text: 'hi' }], note: 'n' },
+        {
+          id: 'C',
+          kind: 'compose',
+          width: 10,
+          height: 10,
+          layers: [
+            { type: 'image', src: 'assets/x.png' },
+            { type: 'text', text: 'hi' },
+          ],
+          note: 'n',
+        },
         { id: 'K', kind: 'components', styles: ['warm'], items: [{ html: '<b>x</b>' }], note: 'n' },
         { id: 'P', kind: 'swatches', style: 'warm', note: 'n' },
         { id: 'Y', kind: 'type', note: 'n' },
@@ -47,12 +57,26 @@ test('missing files, root paths and unknown styles are errors', () => {
 });
 
 test('duplicate ids count expanded style ids', () => {
-  const { errors } = run([{ items: [{ id: 'K-warm', kind: 'type' }, { id: 'K', kind: 'type', styles: ['warm'] }] }]);
+  const { errors } = run([
+    {
+      items: [
+        { id: 'K-warm', kind: 'type' },
+        { id: 'K', kind: 'type', styles: ['warm'] },
+      ],
+    },
+  ]);
   assert.match(errors.join('\n'), /duplicate id "K-warm"/);
 });
 
 test('bad kinds and layers are named', () => {
-  const { errors } = run([{ items: [{ id: 'X', kind: 'video' }, { id: 'C', kind: 'compose', width: 1, height: 1, layers: [{ type: 'blob' }] }] }]);
+  const { errors } = run([
+    {
+      items: [
+        { id: 'X', kind: 'video' },
+        { id: 'C', kind: 'compose', width: 1, height: 1, layers: [{ type: 'blob' }] },
+      ],
+    },
+  ]);
   assert.match(errors[0], /unknown kind/);
   assert.match(errors[1], /type must be one of/);
 });
@@ -72,4 +96,25 @@ test('pages that cannot run sandboxed are flagged', () => {
 
 test('loadConfig runs config.js like the browser', () => {
   assert.deepEqual(loadConfig('const X = 1; window.CANVAS = { title: "t", n: X };'), { title: 't', n: 1 });
+});
+
+test('pages are checked, and ids are unique across pages', () => {
+  const page = (title, id) => ({ title, sections: [{ items: [{ id, kind: 'type', note: 'n' }] }] });
+  const errorsFor = (pages) => checkCanvas({ ...base, pages }, disk).errors.join(' | ');
+  assert.equal(errorsFor([page('One', 'A'), page('Two', 'B')]), '');
+  assert.match(errorsFor([page('One', 'A'), page('Two', 'A')]), /duplicate id "A"/);
+  assert.match(errorsFor([page('One', 'A'), page('One', 'B')]), /duplicate page id "one"/);
+  assert.match(errorsFor([page('One', 'A'), { sections: [] }]), /every page needs sections/);
+});
+
+test('base and style stylesheets must exist', () => {
+  const cfg = {
+    ...base,
+    base: { stylesheets: ['missing.css'] },
+    styles: { x: { stylesheets: ['assets/x.png'] } },
+    sections: [{ items: [{ kind: 'note', text: 't' }] }],
+  };
+  const { errors } = checkCanvas(cfg, disk);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /base.stylesheets\[0\]: "missing.css" does not exist/);
 });

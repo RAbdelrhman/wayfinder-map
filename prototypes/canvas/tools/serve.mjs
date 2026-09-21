@@ -1,17 +1,26 @@
 #!/usr/bin/env node
 /*
-  Preview the canvas exactly as Wayfinder will serve it: files straight off disk, under the
-  same sandbox CSP (opaque origin: no fetch, no localStorage, no module scripts).
-  Usage: node prototypes/canvas/tools/serve.mjs [port]
+  Preview the canvas under a sandbox CSP (opaque origin: no fetch, no localStorage, no module
+  scripts), the strictest way it may be hosted. Serves the git repository the canvas lives in,
+  so paths that climb out of the canvas folder (a project's own stylesheet) resolve.
+  Usage: node <canvas>/tools/serve.mjs [port]
 */
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { dirname, extname, join, resolve, sep } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const CANVAS = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = (() => {
+  try {
+    return resolve(execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: CANVAS, encoding: 'utf8' }).trim());
+  } catch {
+    return CANVAS;
+  }
+})();
 const PORT = Number(process.argv[2] ?? 4390);
-/** Wayfinder's PROTOTYPE_CSP in src/server.ts. Keep the two in step. */
+/** The same policy Wayfinder serves prototypes under. */
 const CSP = 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads';
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -46,5 +55,6 @@ createServer(async (request, response) => {
     response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end(`Not found: ${path}`);
   }
 }).listen(PORT, '127.0.0.1', () => {
-  console.log(`Canvas: http://127.0.0.1:${PORT}/prototypes/canvas/index.html`);
+  const path = relative(ROOT, join(CANVAS, 'index.html')).split(sep).map(encodeURIComponent).join('/');
+  console.log(`Canvas: http://127.0.0.1:${PORT}/${path}`);
 });

@@ -3,13 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Prototype canvas</title>
+    <title>Canvas</title>
     <link rel="stylesheet" href="canvas.css" />
   </head>
   <body>
     <header class="bar">
       <span class="brand" aria-hidden="true">◈</span>
       <h1 class="title" id="title"></h1>
+      <div class="pages">
+        <button type="button" class="btn pages-btn" id="pages-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="pages-menu" title="Switch page (P, [ and ])">
+          <span aria-hidden="true">▤</span><span id="pages-label"></span><span aria-hidden="true" class="caret">▾</span>
+        </button>
+        <div class="pages-menu" id="pages-menu" role="menu" aria-label="Pages" hidden></div>
+      </div>
+      <span class="page-title" id="page-title"></span>
       <span class="count" id="count"></span>
       <span class="spacer"></span>
       <div class="group" role="group" aria-label="Zoom">
@@ -52,6 +59,8 @@
           direction you want, or which parts of each.
         </p>
         <dl>
+          <dt><kbd>P</kbd> <kbd>[</kbd> <kbd>]</kbd></dt>
+          <dd>Pick a page, previous / next page</dd>
           <dt><kbd>1</kbd>–<kbd>9</kbd></dt>
           <dd>Open an item full size</dd>
           <dt><kbd>←</kbd> <kbd>→</kbd></dt>
@@ -66,7 +75,7 @@
           <dd>Zoom in, out, fit (or Ctrl + wheel). Drag empty space to pan.</dd>
         </dl>
         <p class="fine">
-          Built from <code>prototypes/canvas/config.js</code>. Agents: read <code>prototypes/canvas/README.md</code>.
+          Built from <code>config.js</code> next to this page. Agents: read <code>README.md</code> beside it.
         </p>
         <button class="btn is-primary" value="close">Got it</button>
       </form>

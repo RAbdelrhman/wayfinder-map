@@ -71,8 +71,9 @@
       </div>
     </div>
     <script src="../kit/kit.js"></script>
+    <script src="wayfinder.js"></script>
     <script>
-      document.getElementById('repos').innerHTML = Kit.FIXTURES.repositories
+      document.getElementById('repos').innerHTML = FIXTURES.repositories
         .map(
           (r) => `<a class="card repo-card" href="#" data-to="${Kit.esc(r.name)}">
             <span data-icon="repo"></span>
