@@ -17,8 +17,17 @@ real Windows ARM64 machine.
 
 ## Stable release
 
-Push a tag that exactly matches the root package version, such as `v0.1.0`. The
-Windows workflow builds x64 and ARM64, writes SHA-256 checksum files, and attaches
+Nobody edits the version by hand. The **Release** workflow
+(`.github/workflows/release-please.yml`) keeps one `chore: release x.y.z` PR open.
+It collects everything merged to `main` and works out the bump from the conventional
+commits: while the version is below 1.0, `feat:` and `fix:` both bump the patch
+number, and a breaking change bumps the minor. It also writes `CHANGELOG.md`.
+Merging that PR sets the version in `package.json`, creates the tag and GitHub
+release, and then starts the Windows workflow on that tag. Merging anything else
+into `main` does not release anything.
+
+The Windows workflow can also run from a tag you push yourself, as long as the tag
+exactly matches the root package version, such as `v0.1.0`. It builds x64 and ARM64, writes SHA-256 checksum files, and attaches
 the signed artifacts and update metadata to the GitHub release.
 
 The same release carries the CLI as `wayfinder-map-<version>.tgz`, an `npm pack` of
