@@ -29,7 +29,7 @@ import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { mapPath, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
+import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing, repoIconHtml } from './chrome.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -246,7 +246,7 @@ function render(): void {
 function renderHead(): void {
   if (snapshot === null) return;
   const [owner, name] = snapshot.repo.includes('/') ? snapshot.repo.split('/', 2) : ['', snapshot.repo];
-  els.repo.innerHTML = `<a href="/">Home</a><span class="crumb-sep">/</span><a class="is-repo" href="${repoPath(snapshot.repo)}">${owner ? `${escapeHtml(owner)}/${escapeHtml(name ?? '')}` : escapeHtml(name ?? '')}</a><span class="crumb-sep">/</span>`;
+  els.repo.innerHTML = `<a href="/">Home</a><span class="crumb-sep">/</span><a class="is-repo" href="${repoPath(snapshot.repo)}">${repoIconHtml(snapshot.repo, 'sm')}<span>${owner ? `${escapeHtml(owner)}/${escapeHtml(name ?? '')}` : escapeHtml(name ?? '')}</span></a><span class="crumb-sep">/</span>`;
 
   const map = currentMap();
   els.mapSwitch.hidden = false;

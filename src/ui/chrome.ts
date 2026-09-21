@@ -226,6 +226,32 @@ export function bindAccountMark(element: HTMLElement | null): void {
     });
 }
 
+
+/**
+ * Renders a repository icon badge.
+ * Uses the GitHub owner/org avatar for personalization when available,
+ * and falls back to a rounded square badge with the repository initial (like T3 Code),
+ * or the repository icon.
+ */
+export function repoIconHtml(repo: string, size: 'sm' | 'md' | 'lg' = 'md'): string {
+  const trimmed = repo.trim();
+  const slash = trimmed.indexOf('/');
+  const owner = slash > 0 ? trimmed.slice(0, slash) : null;
+  const name = slash > 0 ? trimmed.slice(slash + 1) : trimmed;
+  const initial = (name || owner || '').slice(0, 1).toUpperCase();
+  const avatarUrl = owner ? `https://github.com/${encodeURIComponent(owner)}.png?size=64` : null;
+
+  const sizeClass = size === 'sm' ? ' is-sm' : size === 'lg' ? ' is-lg' : '';
+  const imgTag = avatarUrl
+    ? `<img class="repo-icon-img" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" onerror="this.remove()" />`
+    : '';
+  const fallback = initial
+    ? `<span class="repo-icon-initial">${escapeHtml(initial)}</span>`
+    : `<span class="repo-icon-initial" data-icon="repo">${icon(icons.REPO)}</span>`;
+
+  return `<span class="repo-icon-badge${sizeClass}" aria-hidden="true">${imgTag}${fallback}</span>`;
+}
+
 export function countStates(map: WayfinderMap): Record<TicketState, number> {
   const counts: Record<TicketState, number> = { frontier: 0, claimed: 0, blocked: 0, done: 0 };
   for (const ticket of map.tickets) counts[ticket.state] += 1;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { progressRing, renderAccountMarkContent, updateAccountMark } from './chrome.js';
+import { progressRing, renderAccountMarkContent, repoIconHtml, updateAccountMark } from './chrome.js';
 
 const RADIUS = (76 - 7) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -85,5 +85,27 @@ describe('updateAccountMark', () => {
     updateAccountMark(el, null);
     expect(el.title).toBe('GitHub account (Not signed in)');
     expect(el.getAttribute('aria-label')).toBe('GitHub account: Not signed in');
+  });
+});
+
+describe('repoIconHtml', () => {
+  it('renders GitHub owner avatar and repo name initial for owner/repo', () => {
+    const html = repoIconHtml('RAbdelrhman/wayfinder-map');
+    expect(html).toContain('class="repo-icon-badge"');
+    expect(html).toContain('src="https://github.com/RAbdelrhman.png?size=64"');
+    expect(html).toContain('onerror="this.remove()"');
+    expect(html).toContain('<span class="repo-icon-initial">W</span>');
+  });
+
+  it('renders repo initial for repository without owner', () => {
+    const html = repoIconHtml('local-workspace');
+    expect(html).toContain('class="repo-icon-badge"');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('<span class="repo-icon-initial">L</span>');
+  });
+
+  it('supports sm and lg size variants', () => {
+    expect(repoIconHtml('owner/repo', 'sm')).toContain('class="repo-icon-badge is-sm"');
+    expect(repoIconHtml('owner/repo', 'lg')).toContain('class="repo-icon-badge is-lg"');
   });
 });

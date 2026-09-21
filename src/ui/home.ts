@@ -2,7 +2,7 @@ import type { HomeState } from '../home.js';
 import type { AuthFlowState } from '../authFlow.js';
 import { mapPath, normalizeRepo, parseRepoPagePath, prototypesPath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import type { MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
-import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, bindUpdater, countStates, paintIcons, progressRing, renderAccountMarkContent, updateAccountMark } from './chrome.js';
+import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, bindUpdater, countStates, paintIcons, progressRing, renderAccountMarkContent, repoIconHtml, updateAccountMark } from './chrome.js';
 import type { AccountProfile } from './chrome.js';
 import * as icons from './icons.js';
 import { currentCatalog, loadCatalog, modelSelectHtml, readChoice, tierDefaults } from './models.js';
@@ -56,7 +56,15 @@ function paint(html: string): void {
 }
 
 function crumbs(trail: readonly string[]): void {
-  const parts = ['<a href="/">Home</a>', ...trail.map((part) => `<span class="is-repo">${escapeHtml(part)}</span>`)];
+  const parts = [
+    '<a href="/">Home</a>',
+    ...trail.map((part, index) => {
+      const isRepo = index === 0 && trail.length > 0 && part.includes('/');
+      return isRepo
+        ? `<span class="is-repo">${repoIconHtml(part, 'sm')}<span>${escapeHtml(part)}</span></span>`
+        : `<span class="is-repo">${escapeHtml(part)}</span>`;
+    }),
+  ];
   els.crumbs.innerHTML = parts.join('<span class="crumb-sep">/</span>');
 }
 
@@ -75,7 +83,7 @@ function remember(repo: string): void {
 }
 
 function repositoryLink(repo: string): string {
-  return `<a class="card repo-card" href="${repoPath(repo)}"><span data-icon="repo"></span><span class="grow">${escapeHtml(repo)}</span><span class="go" data-icon="arrow"></span></a>`;
+  return `<a class="card repo-card" href="${repoPath(repo)}">${repoIconHtml(repo)}<span class="grow">${escapeHtml(repo)}</span><span class="go" data-icon="arrow"></span></a>`;
 }
 
 /* ---------- GitHub account ---------- */
@@ -293,7 +301,7 @@ function bindRepoPicker(
           : matches
               .map(
                 (repo, index) =>
-                  `<li role="option" class="repo-option${index === active ? ' is-active' : ''}" aria-selected="${String(index === active)}" data-repo="${escapeHtml(repo)}">${icon(icons.REPO)}<span>${escapeHtml(repo)}</span></li>`,
+                  `<li role="option" class="repo-option${index === active ? ' is-active' : ''}" aria-selected="${String(index === active)}" data-repo="${escapeHtml(repo)}">${repoIconHtml(repo, 'sm')}<span>${escapeHtml(repo)}</span></li>`,
               )
               .join('');
       menu.querySelector('.is-active')?.scrollIntoView({ block: 'nearest' });
@@ -453,7 +461,10 @@ async function renderPrototypes(repo: string, refresh: boolean): Promise<void> {
   paint(`<div class="page-head">
       <div class="grow">
         <p class="eyebrow">Prototypes</p>
-        <h1>${escapeHtml(repo)}</h1>
+        <div class="page-title-row">
+          ${repoIconHtml(repo, 'lg')}
+          <h1>${escapeHtml(repo)}</h1>
+        </div>
         <p>Every prototype this repository's maps have produced, newest first. Click one to open it.</p>
       </div>
       <div class="page-actions">
@@ -482,7 +493,10 @@ async function renderRepository(repo: string, refresh: boolean): Promise<void> {
   paint(`<div class="page-head">
       <div class="grow">
         <p class="eyebrow">Repository</p>
-        <h1>${escapeHtml(repo)}</h1>
+        <div class="page-title-row">
+          ${repoIconHtml(repo, 'lg')}
+          <h1>${escapeHtml(repo)}</h1>
+        </div>
       </div>
       <div class="page-actions">
         <span class="badge">${String(snapshot.maps.length)} map${snapshot.maps.length === 1 ? '' : 's'}</span>
@@ -542,7 +556,7 @@ async function renderNewMap(): Promise<void> {
   const repoOptionsHtml = allRepos.map((r) => `<option value="${escapeHtml(r)}"></option>`).join('');
   const recentPillsHtml = recents
     .slice(0, 4)
-    .map((r) => `<button type="button" class="repo-pill" data-repo="${escapeHtml(r)}">${escapeHtml(r)}</button>`)
+    .map((r) => `<button type="button" class="repo-pill" data-repo="${escapeHtml(r)}">${repoIconHtml(r, 'sm')}<span>${escapeHtml(r)}</span></button>`)
     .join('');
 
   const ticketModelSelectHtml = catalog

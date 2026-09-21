@@ -186,6 +186,9 @@ export async function startServer({
         const res = await fetch('https://api.github.com/repos/RAbdelrhman/wayfinder-map/releases/latest', {
           headers: { 'User-Agent': 'Wayfinder' },
         });
+        if (res.status === 404) {
+          return { status: 'up-to-date', currentVersion, releaseUrl: 'https://github.com/RAbdelrhman/wayfinder-map/releases' };
+        }
         if (!res.ok) {
           return { status: 'error', currentVersion, error: `GitHub API returned ${String(res.status)}` };
         }
