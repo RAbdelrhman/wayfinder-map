@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, parsePrototypeFilePath, pickPreview, prototypeFileUrl, prototypeTicketNumber } from './prototypes.js';
+import { PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, parsePrototypeFilePath, pickPreview, prototypeFileUrl, prototypeTicketNumber, unlistedCanvasBoards } from './prototypes.js';
 
 describe('prototypeTicketNumber', () => {
   it('reads the ticket number off a conventional branch', () => {
@@ -68,6 +68,18 @@ describe('prototype file paths', () => {
   });
 });
 
+describe('unlistedCanvasBoards', () => {
+  it('finds a canvas board the diff left out because only its config changed', () => {
+    expect(unlistedCanvasBoards(['prototypes/canvas/config.js', 'prototypes/canvas/variants/a.html'])).toEqual(['prototypes/canvas/index.html']);
+    expect(unlistedCanvasBoards(['config.js'])).toEqual(['index.html']);
+  });
+
+  it('skips boards the diff already lists, and files that only end in config.js', () => {
+    expect(unlistedCanvasBoards(['prototypes/canvas/config.js', 'prototypes/canvas/index.html'])).toEqual([]);
+    expect(unlistedCanvasBoards(['src/vite-config.js'])).toEqual([]);
+  });
+});
+
 describe('pickPreview', () => {
   it('leads with the saved snapshot, which runs without the app', () => {
     expect(pickPreview(true, ['docs/flow.html'])).toBe(PROTOTYPE_SNAPSHOT_FILE);
@@ -79,5 +91,16 @@ describe('pickPreview', () => {
 
   it('has nothing to show when neither exists', () => {
     expect(pickPreview(false, [])).toBeNull();
+  });
+
+  it('opens a design canvas board before anything else', () => {
+    const openable = ['docs/notes.html', 'prototypes/canvas/index.html', 'prototypes/canvas/variants/a.html'];
+    const files = [...openable, 'prototypes/canvas/config.js', 'prototypes/canvas/canvas.js'];
+    expect(pickPreview(true, openable, files)).toBe('prototypes/canvas/index.html');
+    expect(pickPreview(false, ['index.html'], ['index.html', 'config.js'])).toBe('index.html');
+  });
+
+  it('treats an index.html without a canvas config beside it as an ordinary page', () => {
+    expect(pickPreview(false, ['docs/a.html', 'site/index.html'], ['docs/a.html', 'site/index.html', 'config.js'])).toBe('docs/a.html');
   });
 });
