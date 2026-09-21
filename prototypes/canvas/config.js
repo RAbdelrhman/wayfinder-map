@@ -1,29 +1,77 @@
 /*
-  Wayfinder's canvas for ticket #39. README.md documents every field; this uses all of them.
-  Paths are relative to index.html. Check with: node prototypes/canvas/tools/check.mjs
+  Wayfinder's canvas for ticket #42: three navigation shells. README.md documents every field.
+  Each variant is one clickable page (variants/nav-*.html) that starts on the view named by ?view=;
+  the page bodies are shared (variants/nav-shared.js), so only the shell differs between A, B and C.
+  Check with: node prototypes/canvas/tools/check.mjs
 */
 
-// Snippets reused below. Component HTML uses the app's own classes from src/ui/styles.css.
-const BUTTONS = `<div style="display:flex;gap:10px;flex-wrap:wrap">
-  <button class="primary">Start a new map</button>
-  <button class="ghost">Refresh</button>
-  <button class="primary" disabled>Handing off…</button>
-</div>`;
-const FIELD = `<div class="field" style="margin:0"><label>Open a repository</label>
-  <div class="row"><input class="input" placeholder="owner/name" /><button class="primary">Open</button></div></div>`;
-const REPO_CARD = `<a class="card repo-card" style="margin:0">
-  <span class="grow">RAbdelrhman/wayfinder-map</span><span style="color:var(--text-muted);font-size:12px">2 maps</span></a>`;
-const PANEL = `<div class="panel" style="margin:0"><span class="avatar">R</span>
-  <span class="grow"><strong>ramon</strong><p>github.com</p></span></div>`;
+const NOTES = {
+  A: {
+    idea: 'Path bar. The topbar is a live path, Home / repository ▾ / map ▾, and each segment is a switcher. The rail has one rule: above the divider are the places you can always go (Home, Start a new map), below it are the views of wherever you are (Maps and Prototypes in a repository, Map, Table and Prototypes in a map).',
+    pros: [
+      'Smallest change: the map page keeps its topbar and rail views, and only gains Home and New map above the divider',
+      'Where you are is written out in full on every page',
+      'You can jump to a sibling repository or map from the path, with no trip back to Home',
+    ],
+    cons: [
+      'The rail still changes from page to page, though now by a stated rule',
+      'Long repository and map names fight for width in the path',
+      'The primary action is always "Start a new map" and never follows your context',
+    ],
+  },
+  B: {
+    idea: 'Scope and tabs. The rail is identical on every page and holds only global places: Home, New map, Jump to and settings. The topbar holds the scope switcher (repository, then map), the views of that scope as tabs, and one primary action that changes with where you are.',
+    pros: [
+      'The rail never changes, which fixes R1’s point that the rail’s meaning shifts between pages',
+      'Maps ↔ Prototypes and Map ↔ Table ↔ Prototypes sit next to each other as tabs',
+      'The primary action always does the next useful thing: New map in this repo, or Start #40 in T3 Code',
+    ],
+    cons: [
+      'Changes the map page: its view buttons move from the rail into the topbar',
+      'A primary button that changes can surprise you; on the map page it competes with the inspector’s Open in T3 Code',
+      'Home has no scope, so its topbar looks emptier than the others',
+    ],
+  },
+  C: {
+    idea: 'Sidebar tree. A 256px sidebar lists every repository, its maps and its Prototypes, and you are the highlighted row. Start a new map and Jump to live at the top of it in the same place on every page. On the map page it folds back to today’s rail so the canvas keeps its width.',
+    pros: [
+      'Where you are and everywhere you can go are visible together, one click apiece',
+      'Maps are shown in their repository before you get there, so the two-step Home → repository → map flow disappears',
+      'The primary action never moves',
+    ],
+    cons: [
+      'Takes 200px from every Home-owned page and repeats what Home lists',
+      'Two shells to maintain, the open sidebar and the folded map rail, and the switch between them is a mode change',
+      'Gets long with many repositories and would need search, pinning or recent-first ordering',
+    ],
+  },
+};
+
+// Ids are the direction plus the page number (A1 = A on Home … A5 = A on the map page), unique across pages.
+const PAGE_NO = { home: 1, repo: 2, protos: 3, new: 4, map: 5 };
+const variant = (id, view, name, note) => ({ id: `${id}${PAGE_NO[view]}`, name, src: `variants/nav-${id.toLowerCase()}.html?view=${view}`, note });
+
+// R1 (#36) navigation findings against each direction, as a component sheet.
+const FINDINGS = [
+  ['Only the map page keeps repository/map context and search (P0/P1)', 'Path + Ctrl K on every page', 'Scope switcher + Ctrl K on every page', 'Tree highlights the location; Ctrl K in the sidebar'],
+  ['The rail changes controls and meaning between Home and map (P1)', 'Still changes, by a stated rule (global ▸ divider ▸ views of here)', 'Never changes: global only', 'Sidebar everywhere; folds to the old rail on the map page'],
+  ['Maps ↔ Prototypes has no visible sibling tab (P1)', 'Rail views below the divider', 'Segmented tabs in the topbar', 'Sibling rows in the tree'],
+  ['Home → repository is an unannounced extra step (P1)', 'Repo ▾ lets you skip back and forth', 'Scope switcher; Home unchanged', 'Maps visible in the tree before you pick'],
+  ['Primary CTA (map #35 scope)', '"Start a new map", same everywhere except the map page', 'Follows context: New map in repo / Start #40 in T3 Code', 'Fixed at the top of the sidebar'],
+  ['Map page changes', 'Rail gains Home + New map', 'Rail views move into topbar tabs', 'None while folded'],
+];
+const FINDINGS_TABLE = `<table class="nv-compare"><thead><tr><th>R1 finding / question</th><th>A · Path bar</th><th>B · Scope and tabs</th><th>C · Sidebar tree</th></tr></thead><tbody>${FINDINGS.map(
+  (row) => `<tr>${row.map((cell, i) => (i === 0 ? `<th>${cell}</th>` : `<td>${cell}</td>`)).join('')}</tr>`,
+).join('')}</tbody></table>`;
 
 window.CANVAS = {
-  ticket: 39,
-  title: 'Prototype canvas',
+  ticket: 42,
+  title: 'Navigation shells',
   question:
-    'Is this the right board for design decisions? Every prototype on map #35 will be shown like this: full pages, and also style directions, component sheets, palettes, type and moodboards.',
-  sampleState: 'Placeholder content on fake data. Real directions come in P1–P4.',
+    'How should navigation show where you are and where you can go? Three shells (rail, crumbs, topbar and primary CTA) across Home, repository, Prototypes, /new-map and the map page.',
+  sampleState:
+    'Fake data: 4 repositories, map #35 as it stands today. Every frame is clickable, so rail, path, switchers, tabs and tree rows move between views; Ctrl K opens Jump to. The page bodies are identical across A/B/C, so only the shell differs. Page layouts are #43/#44, not this ticket.',
 
-  // What every item renders on: Wayfinder's real stylesheet, its token root, and its surfaces for the canvas's sheets.
   base: {
     stylesheets: ['../../src/ui/styles.css'],
     bodyClass: 'viz-root',
@@ -36,165 +84,98 @@ window.CANVAS = {
     },
   },
 
-  // Named token sets. `vars` override the app's CSS variables (light), `dark` overrides in dark mode.
-  styles: {
-    app: { label: 'Wayfinder today', vars: {} },
-    warm: {
-      label: 'Warm paper',
-      font: "Georgia, 'Iowan Old Style', serif",
-      vars: {
-        '--surface-1': '#fffdf8',
-        '--plane': '#f3efe6',
-        '--text-primary': '#1f1b16',
-        '--text-secondary': '#5b5347',
-        '--text-muted': '#8c8375',
-        '--hairline': 'rgba(60, 40, 10, 0.12)',
-        '--state-claimed': '#c2552d',
-      },
-      dark: {
-        '--surface-1': '#211e1a',
-        '--plane': '#171512',
-        '--text-primary': '#f5efe4',
-        '--text-secondary': '#cfc5b4',
-        '--hairline': 'rgba(255, 240, 210, 0.12)',
-        '--state-claimed': '#e07a52',
-      },
-    },
-    crisp: {
-      label: 'Crisp',
-      vars: {
-        '--surface-1': '#ffffff',
-        '--plane': '#eef1f5',
-        '--text-primary': '#0a0f1a',
-        '--text-secondary': '#3d4657',
-        '--text-muted': '#7a8496',
-        '--hairline': 'rgba(10, 15, 26, 0.12)',
-        '--state-claimed': '#4f46e5',
-      },
-      dark: {
-        '--surface-1': '#141821',
-        '--plane': '#0b0e14',
-        '--text-primary': '#f4f6fb',
-        '--text-secondary': '#b6bfcf',
-        '--hairline': 'rgba(255, 255, 255, 0.1)',
-        '--state-claimed': '#818cf8',
-      },
-      css: '.primary, .ghost, .input { border-radius: 999px; }',
-    },
-  },
-
   pages: [
     {
-      title: 'Home directions',
+      title: 'Home',
+      question: 'Home: which shell makes the first step obvious? Start here: every frame is the whole flow, so click through it.',
       sections: [
         {
-          title: 'Pages',
-          note: 'Full pages you can click through. Each is an HTML file under variants/.',
+          title: 'Directions',
+          note: 'Each frame is a full clickable prototype that starts on Home. The note on each explains the idea and the trade-offs.',
+          items: [variant('A', 'home', 'A · Path bar', NOTES.A), variant('B', 'home', 'B · Scope and tabs', NOTES.B), variant('C', 'home', 'C · Sidebar tree', NOTES.C)],
+        },
+      ],
+    },
+    {
+      title: 'Repository',
+      question: 'Repository: how does each shell say which repository you are in and let you switch?',
+      sections: [
+        {
+          title: 'wayfinder-map',
           items: [
-            {
-              id: 'A',
-              name: 'Directory',
-              src: 'variants/a.html',
-              note: {
-                idea: "Today's Home, tidied up: account, a search box, then every repository as a card with its open maps and progress.",
-                pros: ['Familiar: nothing moves', 'Scales to many repositories'],
-                cons: ["Doesn't say what to do next", 'In-flight work is invisible'],
-              },
-            },
-            {
-              id: 'B',
-              name: 'Pick up where you left off',
-              src: 'variants/b.html',
-              note: {
-                idea: 'Home leads with the map you were last on and what is in flight in T3 Code.',
-                pros: ['One obvious next action', 'Hand-offs are visible from the start'],
-                cons: ['Needs hand-off tracking (G2)'],
-              },
-            },
+            variant('A', 'repo', 'A · Path bar', 'Home / WM wayfinder-map ▾. The rail gains Maps and Prototypes below the divider.'),
+            variant('B', 'repo', 'B · Scope and tabs', 'The repository switcher replaces the page heading. Maps | Prototypes tabs; the CTA becomes "New map in wayfinder-map".'),
+            variant('C', 'repo', 'C · Sidebar tree', 'The repository row is highlighted and expanded, with its maps and Prototypes underneath.'),
           ],
         },
       ],
     },
     {
-      title: 'Style directions',
-      question: 'Which look should Wayfinder move towards? Same components, three token sets.',
+      title: 'Prototypes',
+      question: 'Prototypes: is it a sibling of Maps, and can you tell?',
       sections: [
         {
-          title: 'Components',
-          note: 'The same component sheet under each style. One item with `styles: [...]` expands into one frame per style.',
+          title: 'wayfinder-map prototypes',
+          items: [
+            variant('A', 'protos', 'A · Path bar', 'Home / repo ▾ / Prototypes, and the beaker is lit below the rail divider.'),
+            variant('B', 'protos', 'B · Scope and tabs', 'The same scope, with the Prototypes tab on.'),
+            variant('C', 'protos', 'C · Sidebar tree', 'The Prototypes row under the repository is on.'),
+          ],
+        },
+      ],
+    },
+    {
+      title: 'New map',
+      question: '/new-map: where does the primary action go once you are already starting a map?',
+      sections: [
+        {
+          title: 'Start a new map',
+          note: 'The form is a stand-in: #44 designs /new-map. Look at the shell around it.',
+          items: [
+            variant('A', 'new', 'A · Path bar', 'Home / Start a new map. The topbar CTA hides because you are already there, and the rail’s + is lit.'),
+            variant('B', 'new', 'B · Scope and tabs', 'Title only, no CTA, and the rail’s + is lit. The form carries the repository you came from.'),
+            variant('C', 'new', 'C · Sidebar tree', 'The sidebar button stays where it is. The tree keeps your repository open, so you can see where the map will go.'),
+          ],
+        },
+      ],
+    },
+    {
+      title: 'Map',
+      question: 'Map page: how much does each shell change the visual anchor?',
+      sections: [
+        {
+          title: 'Map #35',
+          note: 'The map page itself is out of scope (map #35), so each shell should change it as little as possible.',
+          items: [
+            variant('A', 'map', 'A · Path bar', 'Today’s map page, plus Home and New map above a divider in the rail. The path adds the repository switcher.'),
+            variant('B', 'map', 'B · Scope and tabs', 'The rail is the global one. Map | Table | Prototypes move into topbar tabs, and the CTA becomes "Start #40 in T3 Code".'),
+            variant('C', 'map', 'C · Sidebar tree', 'Folded: today’s rail plus a sidebar button. Open the sidebar to see the tree, with the map’s views as rows.'),
+          ],
+        },
+      ],
+    },
+    {
+      title: 'Findings',
+      question: 'How each direction answers R1’s navigation findings (#36).',
+      sections: [
+        {
+          title: 'R1 × directions',
           items: [
             {
-              id: 'S',
+              id: 'F',
               kind: 'components',
-              name: 'Core components',
-              styles: ['app', 'warm', 'crisp'],
-              note: 'Buttons, a field, a card and a panel: enough to feel a style.',
-              columns: 2,
-              items: [
-                { label: 'Buttons', html: BUTTONS, span: 2 },
-                { label: 'Field', html: FIELD, span: 2 },
-                { label: 'Repository card', html: REPO_CARD },
-                { label: 'Account panel', html: PANEL },
-              ],
-            },
-          ],
-        },
-        {
-          title: 'Palette and type',
-          items: [
-            { id: 'P', kind: 'swatches', name: 'Warm paper palette', style: 'warm', note: 'Pulled straight from the style’s colour tokens.' },
-            {
-              id: 'T',
-              kind: 'type',
-              name: 'Warm paper type',
-              style: 'warm',
-              text: 'Pick up where you left off',
-              note: 'A serif gives Home a calmer, editorial voice.',
-            },
-            {
-              kind: 'note',
-              name: 'Why a palette?',
-              text: 'Palettes and type sit next to the pages that use them, so a style is judged on real screens, not swatches alone.',
-            },
-          ],
-        },
-      ],
-    },
-    {
-      title: 'Moodboard',
-      question: 'Compositions: screenshots, shapes, text and real components layered on an artboard.',
-      sections: [
-        {
-          title: 'Composition',
-          note: 'Layered images, shapes, text and HTML placed on an artboard: for moodboards, hero ideas and annotated screenshots.',
-          items: [
-            {
-              id: 'M',
-              kind: 'compose',
-              name: 'Annotated screenshot',
+              name: 'R1 navigation findings',
               width: 1200,
-              height: 720,
-              background: '#1c1b19',
-              layers: [
-                { type: 'image', src: 'assets/home-b.png', x: 60, y: 60, w: 800, h: 500, radius: 10, shadow: '0 30px 60px -20px rgba(0,0,0,.6)' },
-                { type: 'rect', x: 165, y: 283, w: 385, h: 95, fill: 'transparent', border: '3px solid #f59e0b', radius: 12 },
-                { type: 'text', text: 'The next action lives here', x: 900, y: 290, w: 260, size: 26, weight: 650, color: '#fbbf24' },
-                {
-                  type: 'text',
-                  text: 'Frontier tickets start right from Home, one click to T3 Code.',
-                  x: 900,
-                  y: 360,
-                  w: 250,
-                  size: 15,
-                  color: '#d6d3cd',
-                  lineHeight: 1.5,
-                },
-                { type: 'image', src: '../../assets/wayfinder-icon.svg', x: 1080, y: 600, w: 64, h: 64, fit: 'contain', opacity: 0.9 },
-                { type: 'html', x: 60, y: 610, w: 520, style: 'color:#d6d3cd', html: '<button class="primary">Real app button, layered in</button>' },
-              ],
-              note: { idea: 'Screenshot, highlight box, callout text, a logo and a real app button, all as layers.' },
+              boardWidth: 1200,
+              columns: 1,
+              css: `.nv-compare{width:100%;border-collapse:collapse;font-size:13px;line-height:1.45}
+                .nv-compare th,.nv-compare td{padding:10px 12px;border-bottom:1px solid var(--hairline);text-align:left;vertical-align:top}
+                .nv-compare thead th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted)}
+                .nv-compare tbody th{font-weight:600;width:28%}
+                .nv-compare td{color:var(--text-secondary)}`,
+              items: [{ label: 'Findings', html: FINDINGS_TABLE, bare: true }],
+              note: 'All three add a global Jump to (Ctrl K) for repositories, maps and tickets. They differ in how the rail behaves and where the CTA sits.',
             },
-            { id: 'I', kind: 'image', name: 'Plain image', src: 'assets/home-b.png', width: 800, note: 'Any screenshot or reference image.' },
           ],
         },
       ],

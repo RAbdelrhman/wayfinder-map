@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A · Path bar</title>
+    <!-- PROTOTYPE (#42), direction A: every crumb is a switcher; the rail splits into global and "views of here". -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="nav-shared.css" />
+    <style>
+      .rail-divider {
+        width: 22px;
+        height: 1px;
+        margin: 6px 0;
+        background: var(--hairline);
+      }
+      .path {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        min-width: 0;
+        font-size: 13px;
+      }
+      .path .crumb-sep {
+        padding: 0 2px;
+      }
+      .path-seg {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+        height: 32px;
+        padding: 0 8px;
+        border: 0;
+        border-radius: 8px;
+        background: none;
+        color: var(--text-secondary);
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .path-seg:hover,
+      .path-seg[aria-expanded='true'] {
+        background: var(--wash);
+        color: var(--text-primary);
+      }
+      .path-seg.is-here {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      .path-seg .t {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 380px;
+      }
+      .path-seg > .i {
+        width: 13px;
+        height: 13px;
+        color: var(--text-muted);
+      }
+      .search {
+        cursor: pointer;
+      }
+      .search .ph {
+        flex: 1;
+        text-align: left;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="nav-shared.js"></script>
+    <script>
+      const { icon, esc, repoOf, mapOf, short, repoMark, go, goRepo, goMap } = NAV;
+
+      function rail(s) {
+        const btn = (label, ic, attrs, on) =>
+          `<a class="rail-btn${on ? ' is-on' : ''}" href="#" ${attrs} title="${label}" aria-label="${label}"${on ? ' aria-current="page"' : ''}>${icon(ic)}</a>`;
+        const repo = repoOf(s.repo);
+        // Below the divider: the views of wherever you are. A repository has two, a map has three.
+        const here =
+          s.view === 'map'
+            ? btn('Map', 'graph', goMap(repo, mapOf(repo, s.map), 'map'), s.mapView === 'map') +
+              btn('Table', 'table', goMap(repo, mapOf(repo, s.map), 'table'), s.mapView === 'table') +
+              btn('Prototypes of this map', 'beaker', goMap(repo, mapOf(repo, s.map), 'prototypes'), s.mapView === 'prototypes')
+            : s.view === 'repo' || s.view === 'protos'
+              ? btn('Maps', 'graph', goRepo(repo), s.view === 'repo') + btn('Prototypes', 'beaker', goRepo(repo, 'protos'), s.view === 'protos')
+              : '';
+        return `<nav class="rail" aria-label="App">
+          <a class="logo" href="#" ${go('home')} aria-label="Wayfinder Home">${icon('compass')}</a>
+          ${btn('Home', 'home', go('home'), s.view === 'home')}
+          ${btn('Start a new map', 'plus', go('new'), s.view === 'new')}
+          ${here ? `<span class="rail-divider" role="none"></span>${here}` : ''}
+          <span class="rail-spacer"></span>
+          ${s.view === 'map' ? `<button type="button" class="rail-btn" data-to="model defaults" aria-label="Model defaults">${icon('sliders')}</button>` : ''}
+          <button type="button" class="rail-btn" data-to="a refresh" aria-label="Refresh">${icon('refresh')}</button>
+          <button type="button" class="rail-btn" data-to="the theme switch" aria-label="Theme">${icon('moon')}</button>
+          <span class="rail-mark">R</span>
+        </nav>`;
+      }
+
+      function path(s) {
+        const repo = repoOf(s.repo);
+        const sep = '<span class="crumb-sep">/</span>';
+        const segs = [`<a class="path-seg${s.view === 'home' ? ' is-here' : ''}" href="#" ${go('home')}>Home</a>`];
+        if (s.view === 'new') segs.push(`<span class="path-seg is-here">Start a new map</span>`);
+        if (['repo', 'protos', 'map'].includes(s.view)) {
+          segs.push(`<span class="menu-anchor"><button type="button" class="path-seg${s.view === 'repo' ? ' is-here' : ''}" data-menu="repos" aria-haspopup="menu" aria-expanded="false">
+            ${repoMark(repo)}<span class="t">${esc(repo.name)}</span>${icon('chevron')}</button>
+            <div class="menu" data-menu-for="repos" hidden><div class="menu-label">Repositories</div>${NAV.repoMenu(s)}</div></span>`);
+        }
+        if (s.view === 'protos') segs.push(`<span class="path-seg is-here">${icon('beaker')}Prototypes</span>`);
+        if (s.view === 'map') {
+          const map = mapOf(repo, s.map);
+          segs.push(`<span class="menu-anchor"><button type="button" class="path-seg is-here" data-menu="maps" aria-haspopup="menu" aria-expanded="false">
+            <span class="t">#${map.number} ${esc(map.title)}</span><span class="badge">${map.counts.frontier + map.counts.claimed + map.counts.blocked} open</span>${icon('chevron')}</button>
+            <div class="menu" data-menu-for="maps" hidden>${NAV.mapMenu(s)}</div></span>`);
+        }
+        return `<nav class="path" aria-label="You are here">${segs.join(sep)}</nav>`;
+      }
+
+      NAV.start(
+        (s, body) => `<div class="app">${rail(s)}
+          <div class="main">
+            <header class="topbar">
+              ${path(s)}
+              <button type="button" class="search" data-palette>${icon('lens')}<span class="ph">Jump to a repository, map or ticket…</span><kbd>Ctrl K</kbd></button>
+              <span class="synced">Synced just now</span>
+              ${s.view === 'new' || s.view === 'map' ? '' : `<a class="primary" href="#" ${go('new')}>${icon('plus')}Start a new map</a>`}
+            </header>
+            ${s.view === 'map' ? body : `<main class="page">${body}</main>`}
+          </div></div>`,
+      );
+    </script>
+  </body>
+</html>

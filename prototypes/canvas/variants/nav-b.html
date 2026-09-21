@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>B · Scope and tabs</title>
+    <!-- PROTOTYPE (#42), direction B: a fixed global rail; the topbar holds the scope switchers, the views as tabs, and one CTA that follows you. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="nav-shared.css" />
+    <style>
+      .scope {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        height: 34px;
+        padding: 0 10px 0 8px;
+        border: 1px solid var(--hairline);
+        border-radius: 9px;
+        background: var(--surface-1);
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .scope:hover,
+      .scope[aria-expanded='true'] {
+        background: var(--wash);
+      }
+      .scope .t {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 300px;
+      }
+      .scope > .i {
+        width: 13px;
+        height: 13px;
+        color: var(--text-muted);
+      }
+      .scope.is-quiet {
+        border-color: transparent;
+        background: none;
+        font-weight: 500;
+        color: var(--text-secondary);
+      }
+      .scope.is-quiet:hover {
+        background: var(--wash);
+      }
+      .title {
+        font-size: 15px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+        padding: 0 4px;
+      }
+      .topbar .segmented {
+        margin-left: 10px;
+      }
+      .topbar .seg {
+        text-decoration: none;
+      }
+      .topbar .seg .i {
+        width: 13px;
+        height: 13px;
+      }
+      .topbar .seg .badge {
+        padding: 0 6px;
+      }
+      .search {
+        cursor: pointer;
+        width: min(240px, 18vw);
+      }
+      .search .ph {
+        flex: 1;
+        text-align: left;
+        font-size: 13px;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="nav-shared.js"></script>
+    <script>
+      const { icon, esc, repoOf, mapOf, short, repoMark, go, goRepo, goMap } = NAV;
+
+      // The same rail on every page: places you can always go, never views of the current page.
+      function rail(s) {
+        const btn = (label, ic, attrs, on) =>
+          `<a class="rail-btn${on ? ' is-on' : ''}" href="#" ${attrs} title="${label}" aria-label="${label}"${on ? ' aria-current="page"' : ''}>${icon(ic)}</a>`;
+        return `<nav class="rail" aria-label="App">
+          <a class="logo" href="#" ${go('home')} aria-label="Wayfinder Home">${icon('compass')}</a>
+          ${btn('Home', 'home', go('home'), s.view === 'home')}
+          ${btn('Start a new map', 'plus', go('new'), s.view === 'new')}
+          <button type="button" class="rail-btn" data-palette title="Jump to… (Ctrl K)" aria-label="Jump to">${icon('lens')}</button>
+          <span class="rail-spacer"></span>
+          <button type="button" class="rail-btn" data-to="model defaults" aria-label="Model defaults">${icon('sliders')}</button>
+          <button type="button" class="rail-btn" data-to="a refresh" aria-label="Refresh">${icon('refresh')}</button>
+          <button type="button" class="rail-btn" data-to="the theme switch" aria-label="Theme">${icon('moon')}</button>
+          <span class="rail-mark">R</span>
+        </nav>`;
+      }
+
+      function tabs(s) {
+        const repo = repoOf(s.repo);
+        const tab = (label, ic, attrs, on, badge = '') =>
+          `<a class="seg${on ? ' is-on' : ''}" href="#" ${attrs}${on ? ' aria-current="page"' : ''}>${icon(ic)}${label}${badge}</a>`;
+        if (s.view === 'repo' || s.view === 'protos')
+          return `<nav class="segmented" aria-label="Repository views">${tab('Maps', 'graph', goRepo(repo), s.view === 'repo', ` <span class="badge">${repo.maps.length}</span>`)}${tab(
+            'Prototypes',
+            'beaker',
+            goRepo(repo, 'protos'),
+            s.view === 'protos',
+            ` <span class="badge">${repo.prototypes.length}</span>`,
+          )}</nav>`;
+        if (s.view === 'map') {
+          const map = mapOf(repo, s.map);
+          return `<nav class="segmented" aria-label="Map views">${tab('Map', 'graph', goMap(repo, map, 'map'), s.mapView === 'map')}${tab('Table', 'table', goMap(repo, map, 'table'), s.mapView === 'table')}${tab(
+            'Prototypes',
+            'beaker',
+            goMap(repo, map, 'prototypes'),
+            s.mapView === 'prototypes',
+          )}</nav>`;
+        }
+        return '';
+      }
+
+      function scope(s) {
+        const repo = repoOf(s.repo);
+        if (s.view === 'home') return `<span class="title">Home</span>`;
+        if (s.view === 'new') return `<span class="title">Start a new map</span>`;
+        const repoBtn = `<span class="menu-anchor"><button type="button" class="scope${s.view === 'map' ? ' is-quiet' : ''}" data-menu="repos" aria-haspopup="menu" aria-expanded="false">
+          ${repoMark(repo, 20)}<span class="t">${esc(s.view === 'map' ? short(repo.name) : repo.name)}</span>${icon('chevron')}</button>
+          <div class="menu" data-menu-for="repos" hidden><div class="menu-label">Switch repository</div>${NAV.repoMenu(s, s.view === 'protos' ? 'protos' : 'repo')}
+          <div class="menu-sep"></div><button type="button" class="menu-item" ${go('home')}>${icon('home')}<span class="grow">All repositories</span></button></div></span>`;
+        if (s.view !== 'map') return repoBtn;
+        const map = mapOf(repo, s.map);
+        return `${repoBtn}<span class="crumb-sep">/</span><span class="menu-anchor"><button type="button" class="scope" data-menu="maps" aria-haspopup="menu" aria-expanded="false">
+          ${NAV.miniRing(map.counts)}<span class="t">#${map.number} ${esc(map.title)}</span>${icon('chevron')}</button>
+          <div class="menu" data-menu-for="maps" hidden>${NAV.mapMenu(s)}</div></span>`;
+      }
+
+      // One primary action per page, and it changes with where you are.
+      function cta(s) {
+        const repo = repoOf(s.repo);
+        if (s.view === 'home') return `<a class="primary" href="#" ${go('new')}>${icon('plus')}Start a new map</a>`;
+        if (s.view === 'repo' || s.view === 'protos') return `<a class="primary" href="#" ${goRepo(repo, 'new')}>${icon('plus')}New map in ${esc(short(repo.name))}</a>`;
+        if (s.view === 'map') {
+          const next = NAV.nextTicket(s);
+          return next ? `<a class="primary" href="#" data-to="T3 Code with ticket #${next.number}" title="${esc(next.title)}">${icon('play')}Start #${next.number} in T3 Code</a>` : '';
+        }
+        return '';
+      }
+
+      NAV.start(
+        (s, body) => `<div class="app">${rail(s)}
+          <div class="main">
+            <header class="topbar">
+              ${scope(s)}${tabs(s)}
+              <span class="topbar-spacer"></span>
+              <button type="button" class="search" data-palette>${icon('lens')}<span class="ph">Jump to…</span><kbd>Ctrl K</kbd></button>
+              <span class="synced">Synced just now</span>
+              ${cta(s)}
+            </header>
+            ${s.view === 'map' ? body : `<main class="page">${NAV.body(s, { head: false })}</main>`}
+          </div></div>`,
+      );
+    </script>
+  </body>
+</html>

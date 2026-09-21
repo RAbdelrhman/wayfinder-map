@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>C · Sidebar tree</title>
+    <!-- PROTOTYPE (#42), direction C: a sidebar tree of repositories and maps; you are the highlighted row. The map page folds it back to today's rail. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="nav-shared.css" />
+    <style>
+      .app.has-side {
+        grid-template-columns: 256px minmax(0, 1fr);
+      }
+      .side {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        background: var(--surface-1);
+        border-right: 1px solid var(--hairline);
+        font-size: 13px;
+      }
+      .side-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 56px;
+        padding: 0 10px 0 13px;
+        border-bottom: 1px solid var(--hairline);
+        flex: none;
+      }
+      .side-head b {
+        flex: 1;
+        font-size: 14px;
+        letter-spacing: -0.01em;
+      }
+      .side-head .iconbtn {
+        width: 30px;
+        height: 30px;
+        border: 0;
+        background: none;
+        border-radius: 8px;
+        color: var(--text-muted);
+        display: grid;
+        place-items: center;
+      }
+      .side-head .iconbtn:hover {
+        background: var(--wash);
+        color: var(--text-primary);
+      }
+      .side-actions {
+        display: grid;
+        gap: 6px;
+        padding: 12px 10px 6px;
+      }
+      .side-actions .primary {
+        justify-content: center;
+        text-decoration: none;
+      }
+      .side .search {
+        width: auto;
+        margin: 0;
+        cursor: pointer;
+      }
+      .side .search .ph {
+        flex: 1;
+        text-align: left;
+      }
+      .tree {
+        flex: 1;
+        overflow: auto;
+        padding: 6px 8px 12px;
+      }
+      .tree-label {
+        padding: 14px 8px 6px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .row {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 30px;
+        padding: 0 8px;
+        border-radius: 7px;
+        color: var(--text-secondary);
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .row:hover {
+        background: var(--wash);
+        color: var(--text-primary);
+      }
+      .row .grow {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .row > .i {
+        width: 15px;
+        height: 15px;
+        flex: none;
+      }
+      .row.is-on {
+        background: color-mix(in srgb, var(--state-claimed) 12%, transparent);
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      .row.is-on::before {
+        content: '';
+        position: absolute;
+        left: -8px;
+        top: 7px;
+        bottom: 7px;
+        width: 3px;
+        border-radius: 0 3px 3px 0;
+        background: var(--state-claimed);
+      }
+      .row.is-trail {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      .row .twist {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        display: grid;
+        place-items: center;
+        border-radius: 4px;
+        color: var(--text-muted);
+      }
+      .row .twist .i {
+        width: 12px;
+        height: 12px;
+        transition: transform 0.15s;
+      }
+      .row .twist.is-open .i {
+        transform: rotate(90deg);
+      }
+      .row .twist:hover {
+        background: var(--wash);
+      }
+      .kids {
+        margin-left: 15px;
+        padding-left: 9px;
+        border-left: 1px solid var(--hairline);
+      }
+      .kids .kids .row {
+        min-height: 26px;
+        font-size: 12.5px;
+      }
+      .side-foot {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-top: 1px solid var(--hairline);
+      }
+      .side-foot .rail-mark {
+        margin: 0;
+      }
+      .side-foot .grow {
+        flex: 1;
+        min-width: 0;
+      }
+      .side-foot .rail-btn {
+        width: 32px;
+        height: 32px;
+      }
+      .page-title {
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="nav-shared.js"></script>
+    <script>
+      const { icon, esc, repoOf, mapOf, short, repoMark, go, goRepo, goMap, state } = NAV;
+
+      // The map page needs its width, so there the sidebar folds back to today's rail until you open it.
+      let override = null; // { key, open } for the map you toggled the sidebar on
+      const key = (s) => `${s.repo}#${s.map}`;
+      const sideOpen = (s) => (s.view !== 'map' ? true : override?.key === key(s) ? override.open : false);
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('[data-side]')) return;
+        override = { key: key(state), open: !sideOpen(state) };
+        NAV.render();
+      });
+
+      function tree(s) {
+        const row = (attrs, inner, cls = '') => `<a class="row${cls}" href="#" ${attrs}>${inner}</a>`;
+        const repos = NAV.REPOS.map((r) => {
+          const open = !!s.expanded[r.name];
+          const here = s.repo === r.name && s.view !== 'home' && s.view !== 'new';
+          const twist = `<span class="twist${open ? ' is-open' : ''}" data-expand="${esc(r.name)}" role="button" aria-label="${open ? 'Collapse' : 'Expand'}">${icon('right')}</span>`;
+          const kids = open
+            ? `<div class="kids">${r.maps
+                .map((m) => {
+                  const on = here && s.view === 'map' && s.map === m.number;
+                  const views = on
+                    ? `<div class="kids">${[
+                        ['map', 'Map', 'graph'],
+                        ['table', 'Table', 'table'],
+                        ['prototypes', 'Prototypes', 'beaker'],
+                      ]
+                        .map(([v, label, ic]) => row(goMap(r, m, v), `${icon(ic)}<span class="grow">${label}</span>`, s.mapView === v ? ' is-on' : ''))
+                        .join('')}</div>`
+                    : '';
+                  return row(goMap(r, m), `${NAV.miniRing(m.counts)}<span class="grow">#${m.number} ${esc(m.title)}</span>`, on ? ' is-trail' : '') + views;
+                })
+                .join('')}${row(goRepo(r, 'protos'), `${icon('beaker')}<span class="grow">Prototypes</span><span class="nv-meta">${r.prototypes.length}</span>`, here && s.view === 'protos' ? ' is-on' : '')}</div>`
+            : '';
+          return (
+            row(goRepo(r), `${twist}${repoMark(r)}<span class="grow">${esc(short(r.name))}</span>`, here && s.view === 'repo' ? ' is-on' : here ? ' is-trail' : '') + kids
+          );
+        }).join('');
+        return `${row(go('home'), `${icon('home')}<span class="grow">Home</span>`, s.view === 'home' ? ' is-on' : '')}
+          <div class="tree-label">Repositories</div>${repos}`;
+      }
+
+      function side(s) {
+        return `<nav class="side" aria-label="App">
+          <div class="side-head"><a class="logo" href="#" ${go('home')} aria-label="Wayfinder Home">${icon('compass')}</a><b>Wayfinder</b>
+            ${s.view === 'map' ? `<button type="button" class="iconbtn" data-side title="Fold the sidebar" aria-label="Fold the sidebar">${icon('panel')}</button>` : ''}</div>
+          <div class="side-actions">
+            <a class="primary${s.view === 'new' ? ' is-on' : ''}" href="#" ${go('new')}>${icon('plus')}Start a new map</a>
+            <button type="button" class="search" data-palette>${icon('lens')}<span class="ph">Jump to…</span><kbd>Ctrl K</kbd></button>
+          </div>
+          <div class="tree">${tree(s)}</div>
+          <div class="side-foot"><span class="rail-mark">R</span><span class="grow">ramon</span>
+            <button type="button" class="rail-btn" data-to="a refresh" aria-label="Refresh">${icon('refresh')}</button>
+            <button type="button" class="rail-btn" data-to="the theme switch" aria-label="Theme">${icon('moon')}</button></div>
+        </nav>`;
+      }
+
+      // Folded: today's map-page rail, plus the button that opens the tree.
+      function rail(s) {
+        const repo = repoOf(s.repo);
+        const map = mapOf(repo, s.map);
+        const btn = (label, v, ic) =>
+          `<a class="rail-btn${s.mapView === v ? ' is-on' : ''}" href="#" ${goMap(repo, map, v)} aria-label="${label}" title="${label}">${icon(ic)}</a>`;
+        return `<nav class="rail" aria-label="App">
+          <a class="logo" href="#" ${go('home')} aria-label="Wayfinder Home">${icon('compass')}</a>
+          <button type="button" class="rail-btn" data-side title="Open the sidebar" aria-label="Open the sidebar">${icon('panel')}</button>
+          ${btn('Map view', 'map', 'graph')}${btn('Table view', 'table', 'table')}${btn('Prototypes view', 'prototypes', 'beaker')}
+          <span class="rail-spacer"></span>
+          <button type="button" class="rail-btn" data-to="model defaults" aria-label="Model defaults">${icon('sliders')}</button>
+          <button type="button" class="rail-btn" data-to="a refresh" aria-label="Refresh">${icon('refresh')}</button>
+          <button type="button" class="rail-btn" data-to="the theme switch" aria-label="Theme">${icon('moon')}</button>
+        </nav>`;
+      }
+
+      // The topbar only names the page; the tree already says where it sits.
+      function topbar(s) {
+        const repo = repoOf(s.repo);
+        if (s.view === 'map') {
+          const map = mapOf(repo, s.map);
+          return `<header class="topbar"><span class="crumbs"><span class="is-repo" style="display:flex;gap:6px;align-items:center">${repoMark(repo)}${esc(short(repo.name))}</span><span class="crumb-sep">/</span></span>
+            <span class="page-title">#${map.number} ${esc(map.title)}</span><span class="badge">${map.counts.frontier + map.counts.claimed + map.counts.blocked} open</span>
+            <span class="topbar-spacer"></span>${sideOpen(s) ? '' : `<button type="button" class="search" data-palette style="cursor:pointer">${icon('lens')}<span style="flex:1;text-align:left">Jump to…</span><kbd>Ctrl K</kbd></button>`}<span class="synced">Synced just now</span></header>`;
+        }
+        const title = { home: 'Home', repo: repo.name, protos: 'Prototypes', new: 'Start a new map' }[s.view];
+        return `<header class="topbar"><span class="page-title">${esc(title)}</span><span class="topbar-spacer"></span><span class="synced">Synced just now</span></header>`;
+      }
+
+      const shell = (s, body) => {
+        const open = sideOpen(s);
+        return `<div class="app${open ? ' has-side' : ''}">${open ? side(s) : rail(s)}
+          <div class="main">${topbar(s)}${s.view === 'map' ? body : `<main class="page">${body}</main>`}</div></div>`;
+      };
+      NAV.start(shell);
+    </script>
+  </body>
+</html>
