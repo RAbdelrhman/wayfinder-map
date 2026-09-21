@@ -4,8 +4,33 @@
   Variants link the real stylesheet (../../../src/ui/styles.css), so they look like the app.
 */
 window.Kit = (() => {
-  const theme = new URLSearchParams(location.search).get('theme');
+  const params = new URLSearchParams(location.search);
+  const theme = params.get('theme');
   if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+
+  // A named style from config.js, passed by the canvas. Same rules canvas.js writes for its own items.
+  const decls = (vars) =>
+    Object.entries(vars ?? {})
+      .map(([key, value]) => `${key.startsWith('--') ? key : `--${key}`}:${value};`)
+      .join('');
+  try {
+    const style = JSON.parse(params.get('style') ?? 'null');
+    if (style) {
+      for (const href of style.fonts ?? []) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        document.head.append(link);
+      }
+      const el = document.createElement('style');
+      el.textContent = `.viz-root{${decls(style.vars)}${style.font ? `font-family:${style.font};` : ''}}
+        :root[data-theme='dark'] .viz-root{${decls({ ...style.vars, ...style.dark })}}
+        ${style.css ?? ''}`;
+      document.head.append(el);
+    }
+  } catch {
+    console.warn('Ignoring a style the canvas could not parse.');
+  }
 
   const FIXTURES = {
     login: 'ramon',
