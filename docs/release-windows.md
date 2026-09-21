@@ -37,19 +37,21 @@ suite first, including the smoke test that installs a packed tarball and runs it
 against a fake `gh`. The package is not on the npm registry: the name is free, but
 publishing needs an npm account and token the repository does not have.
 
-Stable tags fail closed unless these repository secrets exist:
+Releases are **unsigned for now**. Without a certificate the workflow logs a warning and
+builds an unsigned installer, the same as a local `package:win` build, so Windows
+SmartScreen warns before installing. Two repository secrets turn signing on, with no
+workflow change:
 
 - `WIN_CSC_LINK`: the PFX/P12 file, HTTPS URL, or base64 certificate accepted by
   electron-builder.
 - `WIN_CSC_KEY_PASSWORD`: the certificate password.
 
-Azure Artifact Signing Basic remains the preferred future signing route if the
-release owner is eligible. The workflow does not create Azure resources or weaken
-the stable signing gate while those external credentials are unavailable.
+The plan is Azure Artifact Signing (Basic), which signs through Azure rather than a
+PFX, so adopting it means a workflow change as well as an Azure account.
 
-Signed stable builds check the architecture-specific GitHub Releases channel at
-launch and every 24 hours. They download in the background and ask before restart.
-Unsigned local builds and prerelease versions do not check for updates.
+Installed builds made with `package:win` (CI or local) check the architecture-specific
+GitHub Releases channel at launch and every 24 hours, download in the background, and
+ask before restart. `bun run desktop` and prerelease versions do not check for updates.
 
 ## Release gates
 
