@@ -108,7 +108,7 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
   });
 
   autoUpdater.on('error', (error) => {
-    const is404 = /404|not found/i.test(error.message);
+    const is404 = /404|not found|no published versions/i.test(error.message);
     if (is404) {
       currentStatus = {
         status: 'up-to-date',
@@ -163,7 +163,7 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
       return currentStatus;
     } catch (error) {
       const message = (error as Error).message;
-      if (/404|not found/i.test(message)) {
+      if (/404|not found|no published versions/i.test(message)) {
         currentStatus = {
           status: 'up-to-date',
           currentVersion: autoUpdater.currentVersion?.version ?? '0.0.0',
