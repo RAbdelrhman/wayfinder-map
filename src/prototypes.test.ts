@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isHtml, isSelfContained, parsePrototypeFilePath, prototypeFileUrl, prototypeTicketNumber } from './prototypes.js';
+import { PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, parsePrototypeFilePath, pickPreview, prototypeFileUrl, prototypeTicketNumber } from './prototypes.js';
 
 describe('prototypeTicketNumber', () => {
   it('reads the ticket number off a conventional branch', () => {
@@ -65,5 +65,19 @@ describe('prototype file paths', () => {
     expect(parsePrototypeFilePath('/proto/owner/repo/prototype%2F8-x')).toBeNull();
     expect(parsePrototypeFilePath('/proto/owner/repo/prototype%2F8-x/')).toBeNull();
     expect(parsePrototypeFilePath('/proto/owner/repo/prototype%2F%E0/x.html')).toBeNull();
+  });
+});
+
+describe('pickPreview', () => {
+  it('leads with the saved snapshot, which runs without the app', () => {
+    expect(pickPreview(true, ['docs/flow.html'])).toBe(PROTOTYPE_SNAPSHOT_FILE);
+  });
+
+  it('falls back to the first standalone page on the branch', () => {
+    expect(pickPreview(false, ['docs/flow.html', 'docs/other.html'])).toBe('docs/flow.html');
+  });
+
+  it('has nothing to show when neither exists', () => {
+    expect(pickPreview(false, [])).toBeNull();
   });
 });

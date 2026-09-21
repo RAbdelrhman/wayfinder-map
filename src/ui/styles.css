@@ -368,8 +368,6 @@ code {
   color: var(--text-secondary);
 }
 
-
-
 /* ---------- layout ---------- */
 
 .app {
@@ -512,9 +510,6 @@ code {
   height: 14px;
   color: var(--text-muted);
 }
-
-
-
 
 .search {
   margin-left: auto;
@@ -1611,7 +1606,7 @@ tbody tr.is-selected {
   }
 }
 
-/* ---------- prototypes view ---------- */
+/* ---------- prototypes: gallery of live previews ---------- */
 
 .app.is-prototypes .filters,
 .app.is-prototypes .keybox,
@@ -1630,92 +1625,9 @@ tbody tr.is-selected {
   font-size: 11px;
 }
 
-.protolist {
-  display: grid;
-  gap: 12px;
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 20px 24px 40px;
-}
-
-.protolist > .eyebrow {
-  margin: 0;
-}
-
-.proto {
-  border: 1px solid var(--hairline);
-  border-radius: 12px;
-  padding: 14px 16px 4px;
-  background: var(--surface-1);
-}
-
-.proto-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.proto-title {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 0;
-  border: 0;
-  background: none;
-  text-align: left;
-  font-weight: 600;
-}
-
-.proto-title:hover {
-  color: var(--state-claimed);
-}
-
-.proto-date {
-  flex: none;
-  font-size: 12px;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.proto-verdict {
-  margin: 4px 0 10px;
-  padding: 8px 12px;
-  border-left: 3px solid var(--state-done);
-  background: var(--wash);
-  border-radius: 0 8px 8px 0;
-  max-height: 220px;
-  overflow: auto;
-}
-
-.proto-verdict .prose {
-  margin-top: 4px;
-}
-
-.proto-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 10px 0;
-}
-
-.proto-actions .primary {
-  text-decoration: none;
-}
-
 .proto .sec code,
 .ticket-proto .sec code {
   font-size: 11px;
-}
-
-.proto-files {
-  margin: 8px 0 0;
-  padding-left: 18px;
-  font: 12px ui-monospace, 'Cascadia Code', Consolas, monospace;
-  color: var(--text-secondary);
-  overflow-wrap: anywhere;
 }
 
 .ticket-proto {
@@ -2103,8 +2015,6 @@ textarea.input {
   color: var(--text-muted);
 }
 
-/* ---------- prototypes on Home's repository pages ---------- */
-
 .proto-badge {
   display: inline-flex;
   align-items: center;
@@ -2122,72 +2032,6 @@ textarea.input {
   width: 13px;
   height: 13px;
 }
-
-.proto-grid {
-  display: grid;
-  gap: 12px;
-}
-
-.proto-card {
-  display: block;
-  padding: 16px 18px;
-}
-
-.proto-card-head {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-
-.proto-card h2 {
-  margin: 2px 0 0;
-  font-size: 16px;
-}
-
-.proto-card .proto-actions {
-  margin-bottom: 0;
-}
-
-.proto-card .proto-verdict {
-  max-height: none;
-  overflow: visible;
-}
-
-.proto-verdict.is-collapsible > summary {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  cursor: pointer;
-  list-style: none;
-}
-
-.proto-verdict.is-collapsible > summary::-webkit-details-marker {
-  display: none;
-}
-
-.proto-verdict.is-collapsible > summary .gist {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-secondary);
-}
-
-.proto-verdict.is-collapsible[open] > summary .gist {
-  display: none;
-}
-
-.proto-verdict.is-collapsible > summary::after {
-  content: 'Read';
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.proto-verdict.is-collapsible[open] > summary::after {
-  content: 'Hide';
-}
-
 
 /* ---------- Add New Page (/new-map) Split Layout ---------- */
 
@@ -2544,3 +2388,145 @@ textarea.input {
   background: var(--surface-1);
   border-color: var(--text-muted);
 }
+
+.protogallery {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 20px 24px 40px;
+}
+
+.protogallery > .eyebrow {
+  margin: 0 0 14px;
+}
+
+.proto-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px;
+}
+
+.proto-tile {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-1);
+}
+
+/* The real page, laid out at 1280x800 and scaled to the tile's width by fitPrototypeThumbs. */
+.proto-thumb {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--plane);
+}
+
+.proto-thumb iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1280px;
+  height: 800px;
+  border: 0;
+  transform: scale(var(--thumb-scale, 0.25));
+  transform-origin: top left;
+  pointer-events: none;
+}
+
+.proto-open {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--state-claimed);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 140ms, transform 140ms;
+}
+
+.proto-thumb:hover .proto-open,
+.proto-thumb:focus-visible .proto-open {
+  opacity: 1;
+  transform: none;
+}
+
+.proto-thumb:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: -2px;
+}
+
+.proto-thumb.is-empty {
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.proto-tile-body {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px 16px;
+}
+
+.proto-tile-body .eyebrow {
+  margin: 0;
+}
+
+.proto-tile-body h2 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.proto-tile-body h2 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.proto-tile-body h2 a:hover {
+  color: var(--state-claimed);
+}
+
+.proto-gist {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.proto-tile-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.proto-tile-foot a,
+.proto-tile-foot .linkish {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.proto-tile-foot a:hover,
+.proto-tile-foot .linkish:hover {
+  color: var(--state-claimed);
+}
+
+/* In the narrow ticket panel the tile sits flush in its section. */
+.ticket-proto .proto-tile {
+  border: 0;
+  border-radius: 0;
+}
+

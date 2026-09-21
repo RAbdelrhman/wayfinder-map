@@ -49,7 +49,15 @@ const PROTOTYPE_TTL_MS = 60_000;
  */
 const PROTOTYPE_CSP = 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads';
 
-export type ServerT3 = Pick<T3HandOff, 'models' | 'steps' | 'projects'> & { close?: () => void };
+/**
+ * The app's own pages. Frames are allowed from this origin only, which is where the
+ * prototype gallery's live previews come from; each of those is still sandboxed twice,
+ * by PROTOTYPE_CSP on the response and by the iframe's own `sandbox` attribute.
+ */
+export const PAGE_CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'self'; form-action 'self'";
+
+export type ServerT3 =Pick<T3HandOff, 'models' | 'steps' | 'projects'> & { close?: () => void };
 
 export interface ServeOptions {
   config: Config;
@@ -532,8 +540,7 @@ export async function startServer({
       response.writeHead(200, {
         'content-type': MIME[extension] ?? 'application/octet-stream',
         'cache-control': 'no-store',
-        'content-security-policy':
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'self'",
+        'content-security-policy': PAGE_CSP,
       });
       response.end(bytes);
     } catch {

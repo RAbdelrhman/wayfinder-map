@@ -7,6 +7,12 @@ import { normalizeRepo } from './repoRoutes.js';
  */
 export const PROTOTYPE_BRANCH_PREFIX = 'prototype/';
 
+/**
+ * A runnable copy of the prototype, saved at the branch root when it is captured: one HTML
+ * file with its styles and script inlined, so it opens without the app that built it.
+ */
+export const PROTOTYPE_SNAPSHOT_FILE = 'prototype-snapshot.html';
+
 /** Where the page serves a file off a prototype branch. */
 export const PROTOTYPE_ROUTE = '/proto/';
 
@@ -28,6 +34,15 @@ export function isHtml(file: string): boolean {
  */
 export function isSelfContained(html: string): boolean {
   return !/<(?:script|link|img)\s[^>]*(?:src|href)\s*=\s*["']\//i.test(html);
+}
+
+/**
+ * The page a prototype shows running: its saved snapshot when there is one, which is
+ * built to run anywhere, otherwise the first HTML file on the branch that stands alone.
+ */
+export function pickPreview(hasSnapshot: boolean, openable: readonly string[]): string | null {
+  if (hasSnapshot) return PROTOTYPE_SNAPSHOT_FILE;
+  return openable[0] ?? null;
 }
 
 /**

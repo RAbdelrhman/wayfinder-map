@@ -1,14 +1,15 @@
 import type { HomeState } from '../home.js';
 import type { AuthFlowState } from '../authFlow.js';
 import { mapPath, normalizeRepo, parseRepoPagePath, prototypesPath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import { prototypeFileUrl } from '../prototypes.js';
 import type { MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
 import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, countStates, paintIcons, progressRing } from './chrome.js';
 import * as icons from './icons.js';
 import { currentCatalog, loadCatalog, modelSelectHtml, readChoice, tierDefaults } from './models.js';
 import { syncedLabel } from './focus.js';
 import { icon } from './icons.js';
-import { escapeHtml, renderMarkdown } from './markdown.js';
+import { escapeHtml } from './markdown.js';
+import { fitPrototypeThumbs, prototypeTileHtml } from './prototypeTile.js';
+import type { TileText } from './prototypeTile.js';
 
 const RECENT_KEY = 'wayfinder-map:recent-repositories';
 
@@ -290,61 +291,17 @@ async function paintPrototypeBadges(repo: string, refresh: boolean): Promise<voi
   paintIcons(els.main);
 }
 
-/**
- * The verdict's opening line of prose, as plain text, so a card says what was decided.
- * Headings are skipped: a resolution comment usually opens with one, and "Decided spec"
- * tells the reader nothing.
- */
-function verdictGist(verdict: string): string {
-  const rows = verdict.split(/\r?\n/).map((row) => row.trim());
-  const prose = rows.filter((row) => row.length > 0 && !row.startsWith('#'));
-  const line = (prose.length > 0 ? prose : rows.filter((row) => row.length > 0))
-    .map((row) => row.replace(/^[#>*-]+\s*/, '').replace(/[*`_[\]]/g, '').trim())
-    .find((row) => row.length > 0);
-  return line === undefined ? 'No verdict was written.' : line.length > 150 ? `${line.slice(0, 150)}…` : line;
-}
-
-/**
- * Collapsed to its opening line. A decided spec runs long, and clipping it at a fixed
- * height cuts a sentence in half; this keeps every card scannable and nothing truncated.
- */
-function verdictHtml(verdict: string): string {
-  return `<details class="proto-verdict is-collapsible">
-    <summary><span class="eyebrow">Verdict</span><span class="gist">${escapeHtml(verdictGist(verdict))}</span></summary>
-    <div class="prose">${renderMarkdown(verdict)}</div>
-  </details>`;
-}
-
-function prototypeCard(repo: string, prototype: Prototype, snapshot: MapSnapshot): string {
+/** The words under a tile on the repository page: which map it answered, and its ticket. */
+function tileText(repo: string, prototype: Prototype, snapshot: MapSnapshot): TileText {
   const map = snapshot.maps.find((candidate) => candidate.number === prototype.mapNumber);
   const ticket = map?.tickets.find((candidate) => candidate.number === prototype.ticketNumber);
-  const updated = prototype.updatedAt === null ? '' : new Date(prototype.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-  const opens = prototype.openable
-    .map(
-      (file, index) =>
-        `<a class="${index === 0 ? 'primary' : 'ghost'}" href="${escapeHtml(prototypeFileUrl(repo, prototype.branch, file))}" target="_blank" rel="noreferrer"><span data-icon="play"></span>Open ${escapeHtml(file.slice(file.lastIndexOf('/') + 1))}</a>`,
-    )
-    .join('');
-  return `<article class="card proto-card">
-    <div class="proto-card-head">
-      <div class="grow">
-        <p class="eyebrow">#${String(prototype.ticketNumber)} · ${escapeHtml(map?.title ?? `map #${String(prototype.mapNumber)}`)}</p>
-        <h2>${escapeHtml(ticket?.title ?? prototype.branch)}</h2>
-      </div>
-      ${updated === '' ? '' : `<span class="proto-date">${escapeHtml(updated)}</span>`}
-    </div>
-    ${prototype.verdict === null ? '<p class="hint">Still open, so there is no verdict yet.</p>' : verdictHtml(prototype.verdict)}
-    <div class="proto-actions">
-      ${opens}
-      <a class="ghost" href="${escapeHtml(prototype.url)}" target="_blank" rel="noreferrer"><span data-icon="external"></span>Branch on GitHub</a>
-      <a class="ghost" href="${mapPath(repo, prototype.mapNumber)}?view=prototypes"><span data-icon="graph"></span>Open on the map</a>
-    </div>
-    ${
-      prototype.openable.length === 0
-        ? `<p class="hint">Nothing to open on its own: it runs inside the app. Check out <code>${escapeHtml(prototype.branch)}</code> and start it.</p>`
-        : ''
-    }
-  </article>`;
+  return {
+    eyebrow: `#${String(prototype.ticketNumber)} · ${map?.title ?? `map #${String(prototype.mapNumber)}`}`,
+    title: ticket?.title ?? prototype.branch,
+    links: `<a href="${mapPath(repo, prototype.mapNumber)}?view=prototypes">On the map</a>${
+      ticket === undefined ? '' : `<a href="${escapeHtml(ticket.url)}" target="_blank" rel="noreferrer">Ticket ↗</a>`
+    }`,
+  };
 }
 
 async function renderPrototypes(repo: string, refresh: boolean): Promise<void> {
@@ -359,7 +316,7 @@ async function renderPrototypes(repo: string, refresh: boolean): Promise<void> {
       <div class="grow">
         <p class="eyebrow">Prototypes</p>
         <h1>${escapeHtml(repo)}</h1>
-        <p>Every prototype this repository's maps have produced, newest first.</p>
+        <p>Every prototype this repository's maps have produced, newest first. Click one to open it.</p>
       </div>
       <div class="page-actions">
         <a class="ghost" href="${repoPath(repo)}"><span data-icon="arrow"></span>Maps</a>
@@ -368,8 +325,9 @@ async function renderPrototypes(repo: string, refresh: boolean): Promise<void> {
     ${
       list.length === 0
         ? '<div class="empty"><strong>No prototypes yet</strong><p>A prototype ticket keeps its prototype on a <code>prototype/&lt;ticket&gt;-&lt;slug&gt;</code> branch, and it shows up here once pushed.</p></div>'
-        : `<div class="proto-grid">${list.map((prototype) => prototypeCard(repo, prototype, snapshot)).join('')}</div>`
+        : `<div class="proto-grid">${list.map((prototype) => prototypeTileHtml(repo, prototype, tileText(repo, prototype, snapshot))).join('')}</div>`
     }`);
+  fitPrototypeThumbs(els.main);
 }
 
 async function renderRepository(repo: string, refresh: boolean): Promise<void> {

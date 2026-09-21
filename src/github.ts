@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { parseBlockedByLine, parseChildNumbers, parseMapBody } from './mapBody.js';
-import { PROTOTYPE_BRANCH_PREFIX, isHtml, isSelfContained, prototypeTicketNumber } from './prototypes.js';
+import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, pickPreview, prototypeTicketNumber } from './prototypes.js';
 import { TICKET_TYPES } from './types.js';
 import type { Prototype, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
 
@@ -376,12 +376,27 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): 
       url: `https://github.com/${repo}/tree/${branch}`,
       updatedAt,
       files,
-      openable: await openableFiles(repo, branch, files),
+      ...(await previewOf(repo, branch, files)),
       verdict: comments.at(-1)?.body?.trim() || null,
     };
   });
 
   return sortPrototypes(prototypes);
+}
+
+/** What the branch can show running: its standalone HTML files, and the one to lead with. */
+async function previewOf(repo: string, branch: string, files: readonly string[]): Promise<{ openable: string[]; preview: string | null }> {
+  const [openable, hasSnapshot] = await Promise.all([openableFiles(repo, branch, files), snapshotExists(repo, branch)]);
+  return { openable, preview: pickPreview(hasSnapshot, openable) };
+}
+
+/** Whether the branch carries a runnable snapshot. Read directly, since the diff may not list it. */
+async function snapshotExists(repo: string, branch: string): Promise<boolean> {
+  try {
+    return isSelfContained((await fetchBranchFile(repo, branch, PROTOTYPE_SNAPSHOT_FILE)).toString('utf8'));
+  } catch {
+    return false;
+  }
 }
 
 /** Of a branch's HTML files, the ones that stand alone well enough for the page to serve them. */

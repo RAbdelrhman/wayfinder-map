@@ -112,7 +112,10 @@ const TYPE_STEPS: Partial<Record<TicketType, string>> = {
 Show them the prototype and let them react before settling anything.
 When you capture the prototype, commit it to the branch {{prototypeBranch}}
 and push it. That exact name is how wayfinder-map finds it later, so do not
-pick another. Keep a logic prototype to one self-contained HTML file.`,
+pick another. Also commit prototype-snapshot.html at the branch root: the
+prototype as one HTML file with its CSS and JavaScript inlined, no paths
+starting with /, and no calls to a server. That file is what people click
+to see the prototype running later, long after the app has moved on.`,
 };
 
 function indent(text: string, prefix = '  '): string {
