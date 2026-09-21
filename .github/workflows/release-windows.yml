@@ -71,17 +71,52 @@ jobs:
           path: release/${{ matrix.arch }}/*
           if-no-files-found: error
 
+  cli:
+    name: CLI package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.1.0
+
+      - name: Match the tag to package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
+
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run typecheck
+      # Includes the packaged-CLI smoke test, here on POSIX where it also checks SIGINT shutdown.
+      - run: bun run test
+
+      - name: Pack the CLI
+        run: |
+          mkdir release-cli
+          npm pack --pack-destination release-cli
+          cd release-cli && sha256sum *.tgz > SHA256SUMS-cli.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wayfinder-cli
+          path: release-cli/*
+          if-no-files-found: error
+
   release:
     name: Signed GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, cli]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: wayfinder-windows-*
+          pattern: wayfinder-*
           path: release-assets
 
       - uses: softprops/action-gh-release@v2

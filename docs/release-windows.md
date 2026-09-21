@@ -21,6 +21,13 @@ Push a tag that exactly matches the root package version, such as `v0.1.0`. The
 Windows workflow builds x64 and ARM64, writes SHA-256 checksum files, and attaches
 the signed artifacts and update metadata to the GitHub release.
 
+The same release carries the CLI as `wayfinder-map-<version>.tgz`, an `npm pack` of
+the same tag with its own `SHA256SUMS-cli.txt`. It has no runtime dependencies and
+installs with `npm install --global <release asset URL>`. The job runs the full test
+suite first, including the smoke test that installs a packed tarball and runs it
+against a fake `gh`. The package is not on the npm registry: the name is free, but
+publishing needs an npm account and token the repository does not have.
+
 Stable tags fail closed unless these repository secrets exist:
 
 - `WIN_CSC_LINK`: the PFX/P12 file, HTTPS URL, or base64 certificate accepted by

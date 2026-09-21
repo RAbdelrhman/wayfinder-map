@@ -12,7 +12,8 @@
     "node": ">=22"
   },
   "files": [
-    "dist",
+    "dist/cli.js",
+    "dist/ui",
     "README.md"
   ],
   "scripts": {
@@ -30,6 +31,7 @@
     "@types/node": "^22.10.2",
     "electron": "44.4.3",
     "electron-builder": "26.16.1",
+    "electron-updater": "6.8.9",
     "esbuild": "^0.25.0",
     "sharp": "0.35.4",
     "typescript": "^5.9.3",
@@ -50,8 +52,5 @@
     "visualization",
     "cli"
   ],
-  "author": "Ramon Abdelrhman",
-  "dependencies": {
-    "electron-updater": "6.8.9"
-  }
+  "author": "Ramon Abdelrhman"
 }
