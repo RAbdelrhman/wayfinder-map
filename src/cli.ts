@@ -8,9 +8,20 @@ import { openExternal } from './t3.js';
 import { WAYFINDER_VERSION } from './version.js';
 
 async function main(): Promise<number> {
-  const config = await resolveConfig(process.argv.slice(2));
+  let config;
+  try {
+    config = await resolveConfig(process.argv.slice(2));
+  } catch (error) {
+    process.stderr.write(`${(error as Error).message}\n`);
+    return 1;
+  }
   if (config === 'help') {
     process.stdout.write(USAGE);
+    return 0;
+  }
+  if (config === 'version') {
+    process.stdout.write(`${WAYFINDER_VERSION}
+`);
     return 0;
   }
 
@@ -37,7 +48,7 @@ async function main(): Promise<number> {
     });
   }
 
-  process.stdout.write(`wayfinder-map  ${runtime.repo ?? 'Home'}\n`);
+  process.stdout.write(`wayfinder-map ${WAYFINDER_VERSION}  ${runtime.repo ?? 'Home'}\n`);
   process.stdout.write(`  serving   ${runtime.url}\n`);
   process.stdout.write(
     `  T3 Code   ${runtime.t3Origin ?? 'not detected (clipboard still works)'}\n`,

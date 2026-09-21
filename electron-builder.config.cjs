@@ -9,6 +9,9 @@ module.exports = {
     output: `release/${arch}`,
   },
   files: ['dist/**/*', 'package.json'],
+  // electron-updater is bundled into dist/desktop.cjs and kept out of `dependencies` so the CLI package
+  // installs nothing. builder reads that field to pick the update-info format, so name it here.
+  electronUpdaterCompatibility: '>=2.16',
   extraResources: [{ from: '.generated/Wayfinder.ico', to: 'Wayfinder.ico' }],
   win: {
     icon: '.generated/Wayfinder.ico',
