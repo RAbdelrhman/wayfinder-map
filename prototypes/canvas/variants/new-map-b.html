@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>B · Stepped</title>
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="new-map.css" />
+    <style>
+      .b-wrap { display: grid; grid-template-columns: 240px minmax(0, 620px); gap: 24px; justify-content: center; padding: 28px 24px 64px; }
+      .b-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; align-content: start; position: sticky; top: 16px; }
+      .b-steps li button { width: 100%; display: grid; grid-template-columns: 22px 1fr; gap: 2px 10px; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 9px; font: inherit; color: var(--text-muted); cursor: pointer; }
+      .b-steps li button:disabled { cursor: default; }
+      .b-steps li button:not(:disabled):hover { background: var(--wash); }
+      .b-steps .num { grid-row: span 2; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; border: 1.5px solid var(--baseline); }
+      .b-steps strong { font-size: 13px; font-weight: 600; }
+      .b-steps small { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .b-steps li.is-now button { background: var(--surface-1); color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--hairline); }
+      .b-steps li.is-now .num { border-color: var(--state-claimed); background: var(--state-claimed); color: #fff; }
+      .b-steps li.is-done button { color: var(--text-secondary); }
+      .b-steps li.is-done .num { border-color: var(--state-frontier); color: var(--state-frontier); }
+      .b-panel { padding: 20px; display: grid; gap: 14px; }
+      .b-panel h2 { font-size: 19px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+      .b-panel > p { margin: -8px 0 0; font-size: 13px; color: var(--text-secondary); }
+      .b-nav { display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding-top: 4px; }
+      .b-nav .grow { flex: 1; }
+      .b-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .b-choice button { text-align: left; font: inherit; padding: 14px; border-radius: 12px; border: 1px solid var(--hairline); background: var(--surface-1); color: var(--text-primary); cursor: pointer; display: grid; gap: 6px; }
+      .b-choice button:hover { background: var(--wash); }
+      .b-choice button.is-on { border-color: var(--state-claimed); box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-claimed) 18%, transparent); }
+      .b-choice .i { font-size: 18px; color: var(--state-claimed); }
+      .b-choice strong { font-size: 14px; }
+      .b-choice span { font-size: 12px; color: var(--text-secondary); }
+      .b-repos { display: grid; gap: 4px; }
+      .b-repos button { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px; border: 1px solid transparent; background: none; font: inherit; font-size: 13px; color: var(--text-primary); cursor: pointer; text-align: left; }
+      .b-repos button:hover { background: var(--wash); }
+      .b-repos button.is-on { border-color: var(--state-claimed); background: color-mix(in srgb, var(--state-claimed) 7%, transparent); }
+      .b-repos small { margin-left: auto; color: var(--text-muted); font-size: 12px; }
+      .b-review { display: grid; grid-template-columns: max-content 1fr max-content; gap: 8px 14px; font-size: 13px; align-items: baseline; margin: 0; }
+      .b-review dt { color: var(--text-muted); font-size: 12px; }
+      .b-review dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+      .b-prompt { font-size: 12px; }
+      .b-prompt pre { margin: 8px 0 0; padding: 10px 12px; border-radius: 9px; background: var(--plane); border: 1px solid var(--hairline); white-space: pre-wrap; font-size: 12px; max-height: 160px; overflow: auto; }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div class="app">
+      <nav class="rail" aria-label="App">
+        <a class="logo" href="#" data-to="Home" data-icon="compass" aria-label="Wayfinder Home"></a>
+        <a class="rail-btn" href="#" data-to="Home" data-icon="home" aria-label="Home"></a>
+        <a class="rail-btn is-on" href="#" data-icon="plus" aria-label="Start a new map"></a>
+        <span class="rail-spacer"></span>
+        <button type="button" class="rail-btn" data-to="the theme switch" data-icon="moon" aria-label="Theme"></button>
+        <span class="rail-mark">R</span>
+      </nav>
+      <div class="main">
+        <header class="topbar">
+          <span class="crumbs"><a href="#" data-to="Home">Home</a><span class="crumb-sep">/</span><span>Start new work</span></span>
+          <span class="topbar-spacer"></span>
+          <a class="ghost" href="#" data-to="Home">Cancel</a>
+        </header>
+        <main class="page">
+          <div class="b-wrap">
+            <ol class="b-steps" id="steps"></ol>
+            <section class="nm-box b-panel" id="panel" aria-live="polite"></section>
+          </div>
+        </main>
+      </div>
+    </div>
+    <script src="../kit/kit.js"></script>
+    <script src="wayfinder.js"></script>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const F = FIXTURES;
+      const s = { step: 0, repo: null, clone: null, kind: null, goal: '', ticket: null, model: 'balanced', sent: false };
+
+      const STEPS = [
+        { title: 'Repository', summary: () => s.repo && NM.short(s.repo) },
+        { title: 'Where it runs', summary: () => s.clone && s.clone.split('\\').slice(-2).join('\\') },
+        { title: 'Map or ticket', summary: () => s.kind && (s.kind === 'map' ? 'A new map' : 'One ticket') },
+        { title: () => (s.kind === 'ticket' ? 'The issue' : 'The goal'), summary: () => (s.kind === 'ticket' ? s.ticket && `#${s.ticket.number}` : s.goal && s.goal.slice(0, 40)) },
+        { title: 'Review and hand off', summary: () => (s.sent ? 'Handed off' : '') },
+      ];
+      const valid = [() => !!s.repo, () => !!s.clone, () => !!s.kind, () => (s.kind === 'ticket' ? !!s.ticket : s.goal.trim().length > 0), () => true];
+      const reachable = (i) => !s.sent && valid.slice(0, i).every((ok) => ok());
+
+      function paintSteps() {
+        $('steps').innerHTML = STEPS.map((st, i) => {
+          const title = typeof st.title === 'function' ? st.title() : st.title;
+          const done = i < s.step || (s.sent && i === 4);
+          const cls = i === s.step && !s.sent ? 'is-now' : done && valid[i]() ? 'is-done' : '';
+          return `<li class="${cls}"><button type="button" data-i="${i}" ${reachable(i) ? '' : 'disabled'}>
+            <span class="num">${cls === 'is-done' ? NM.icon('check') : i + 1}</span><strong>${NM.esc(title)}</strong><small>${NM.esc(st.summary() || '')}</small></button></li>`;
+        }).join('');
+      }
+      $('steps').onclick = (e) => {
+        const i = e.target.closest('[data-i]')?.dataset.i;
+        if (i !== undefined) go(Number(i));
+      };
+
+      const nav = (label = 'Continue') => `<div class="b-nav">${s.step > 0 ? '<button type="button" class="ghost" data-back>Back</button>' : ''}<span class="grow"></span>
+        <button type="button" class="primary" data-next ${valid[s.step]() ? '' : 'disabled'}>${label}${NM.icon('arrow')}</button></div>`;
+      const refreshNext = () => {
+        const b = $('panel').querySelector('[data-next]');
+        if (b) b.disabled = !valid[s.step]();
+        paintSteps();
+      };
+
+      function go(i) {
+        s.step = i;
+        paintSteps();
+        const p = $('panel');
+        if (i === 0) {
+          const list = [...new Set([...F.recents, ...Object.keys(F.repositories)])];
+          p.innerHTML = `<h2>Which repository?</h2><p>The map lives in this repo's GitHub issues.</p>
+            <div class="nm-picker"><input class="input" id="repo" placeholder="Search or type owner/name" autocomplete="off" role="combobox" aria-controls="repo-menu" value="${NM.esc(s.repo ?? '')}"/><ul class="nm-menu" id="repo-menu" role="listbox" hidden></ul></div>
+            <div class="b-repos" id="repos">${list
+              .map((r) => `<button type="button" data-repo="${NM.esc(r)}" class="${r === s.repo ? 'is-on' : ''}">${NM.repoMark(r)}${NM.esc(r)}<small>${F.recents.includes(r) ? 'recent · ' : ''}${NM.known(r).maps.length} map${NM.known(r).maps.length === 1 ? '' : 's'}</small></button>`)
+              .join('')}</div>${nav()}`;
+          const pick = (r) => {
+            if (r !== s.repo) s.clone = null;
+            s.repo = r;
+            for (const b of $('repos').children) b.classList.toggle('is-on', b.dataset.repo === r);
+            refreshNext();
+          };
+          NM.repoPicker($('repo'), $('repo-menu'), pick);
+          $('repos').onclick = (e) => {
+            const r = e.target.closest('[data-repo]')?.dataset.repo;
+            if (r) ($('repo').value = r), pick(r);
+          };
+        }
+        if (i === 1) {
+          p.innerHTML = `<h2>Where should T3 Code work?</h2><p>T3 Code opens a worktree from a local clone of ${NM.esc(s.repo)}.</p><div id="clone"></div>${nav()}`;
+          NM.cloneLine($('clone'), s.repo, (path) => ((s.clone = path), refreshNext()));
+        }
+        if (i === 2) {
+          p.innerHTML = `<h2>What are you starting?</h2><p>A map plans something bigger. A ticket hands one issue straight over.</p>
+            <div class="b-choice" id="choice">
+              <button type="button" data-k="map" class="${s.kind === 'map' ? 'is-on' : ''}">${NM.icon('graph')}<strong>A new map</strong><span>Describe a goal. T3 Code interviews you and drafts the issues.</span></button>
+              <button type="button" data-k="ticket" class="${s.kind === 'ticket' ? 'is-on' : ''}">${NM.icon('ticket')}<strong>One ticket</strong><span>Pick an existing issue. T3 Code claims it and does the work.</span></button>
+            </div>${nav()}`;
+          $('choice').onclick = (e) => {
+            const k = e.target.closest('[data-k]')?.dataset.k;
+            if (!k) return;
+            s.kind = k;
+            for (const b of $('choice').children) b.classList.toggle('is-on', b.dataset.k === k);
+            refreshNext();
+          };
+        }
+        if (i === 3 && s.kind === 'map') {
+          const maps = NM.known(s.repo)?.maps ?? [];
+          p.innerHTML = `<h2>Where do you want to end up?</h2><p>A sentence or two is enough. The interview fills in the rest.</p>
+            <textarea class="input nm-textarea" id="goal" placeholder="e.g. Offline draft mode: drafts save locally and sync in the background.">${NM.esc(s.goal)}</textarea>
+            ${maps.length ? `<p class="nm-hint">Already mapped here: ${maps.map((m) => `<a class="linkish" href="#" data-to="map #${m.number}">#${m.number} ${NM.esc(m.title)}</a>`).join(', ')}</p>` : ''}${nav()}`;
+          $('goal').oninput = () => ((s.goal = $('goal').value), refreshNext());
+        }
+        if (i === 3 && s.kind === 'ticket') {
+          p.innerHTML = `<h2>Which issue?</h2><p>A number or a link. Try #42 or #61.</p>
+            <input class="input" id="ticket" placeholder="#42 or an issue URL" autocomplete="off" value="${s.ticket ? `#${s.ticket.number}` : ''}"/>
+            <div id="preview">${s.ticket ? NM.ticketCard(s.ticket) : ''}</div>${nav()}`;
+          $('ticket').oninput = () => {
+            s.ticket = NM.parseTicket($('ticket').value);
+            $('preview').innerHTML = s.ticket ? NM.ticketCard(s.ticket) : '';
+            refreshNext();
+          };
+        }
+        if (i === 4) {
+          const model = F.models.find((m) => m.id === s.model);
+          const what = s.kind === 'map' ? NM.esc(s.goal) : `#${s.ticket.number} ${NM.esc(s.ticket.title)}`;
+          const edit = (n) => `<button type="button" class="linkish" data-edit="${n}">Edit</button>`;
+          p.innerHTML = `<h2>Ready to hand off</h2><p>Check this over. Nothing happens in T3 Code until you press the button.</p>
+            <dl class="b-review">
+              <dt>Repository</dt><dd>${NM.esc(s.repo)}</dd>${edit(0)}
+              <dt>Works in</dt><dd><code>${NM.esc(s.clone)}</code></dd>${edit(1)}
+              <dt>${s.kind === 'map' ? 'Goal' : 'Ticket'}</dt><dd>${what}</dd>${edit(3)}
+              <dt>Model</dt><dd><div class="nm-seg" id="models">${F.models.map((m) => `<button type="button" data-m="${m.id}" class="${m.id === s.model ? 'is-on' : ''}">${m.label}</button>`).join('')}</div> <span class="nm-why">${NM.esc(model.detail)}</span></dd><span></span>
+            </dl>
+            <details class="b-prompt"><summary class="linkish">See the prompt T3 Code gets</summary><pre>${
+              s.kind === 'map'
+                ? `Start a wayfinder map in ${NM.esc(s.repo)}.\nGoal: ${what}\nInterview the user one question at a time, then draft the map as GitHub issues…`
+                : `Pick up wayfinder ticket #${s.ticket.number} in ${NM.esc(s.repo)}.\nClaim it, work in a dedicated worktree, open a PR…`
+            }</pre></details>
+            <div class="b-nav"><button type="button" class="ghost" data-back>Back</button><span class="grow"></span>
+              <button type="button" class="ghost" onclick="Kit.toast('Copied the prompt')">${NM.icon('copy')}Copy prompt</button>
+              <button type="button" class="primary" id="send">${NM.icon('play')}${s.kind === 'map' ? 'Start map in T3 Code' : `Hand off #${s.ticket.number}`}</button></div>`;
+          $('models').onclick = (e) => {
+            const m = e.target.closest('[data-m]')?.dataset.m;
+            if (m) (s.model = m), go(4);
+          };
+          p.onclick = (e) => {
+            const n = e.target.closest('[data-edit]')?.dataset.edit;
+            if (n !== undefined) go(Number(n));
+          };
+          $('send').onclick = async () => {
+            p.onclick = null;
+            p.innerHTML = '<div id="result"></div>';
+            await NM.handOff($('result'), { kind: s.kind, repo: s.repo, clone: s.clone, subject: s.kind === 'map' ? s.goal : s.ticket.number, model: model.label });
+            s.sent = true;
+            paintSteps();
+            p.insertAdjacentHTML('beforeend', `<div class="b-nav"><button type="button" class="ghost" onclick="location.reload()">${NM.icon('plus')}Start something else</button></div>`);
+          };
+        }
+        p.querySelector('[data-back]')?.addEventListener('click', () => go(s.step - 1));
+        p.querySelector('[data-next]')?.addEventListener('click', () => go(s.step + 1));
+        Kit.fillIcons(p);
+      }
+
+      go(0);
+    </script>
+  </body>
+</html>

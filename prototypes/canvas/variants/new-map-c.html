@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>C · Goal first</title>
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="new-map.css" />
+    <style>
+      .c-stage { max-width: 720px; margin: 0 auto; padding: 72px 24px 64px; }
+      .c-stage h1 { font-size: 19px; font-weight: 650; text-align: center; margin: 0 0 16px; letter-spacing: -0.01em; }
+      .c-composer { padding: 4px; box-shadow: var(--shadow); }
+      .c-composer:focus-within { border-color: color-mix(in srgb, var(--state-claimed) 55%, var(--hairline)); }
+      .c-composer textarea { width: 100%; min-height: 104px; border: 0; outline: 0; resize: none; background: none; color: var(--text-primary); font: inherit; font-size: 15px; line-height: 1.5; padding: 12px 14px 4px; }
+      .c-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px 8px; flex-wrap: wrap; }
+      .c-bar .grow { flex: 1; }
+      .c-chip { position: relative; display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--hairline); background: var(--plane); color: var(--text-secondary); cursor: pointer; }
+      .c-chip:hover { background: var(--wash); }
+      .c-chip.is-ok .i { color: var(--state-frontier); }
+      .c-chip.is-warn { border-color: color-mix(in srgb, var(--state-blocked) 50%, var(--hairline)); background: color-mix(in srgb, var(--state-blocked) 12%, transparent); }
+      .c-chip.is-warn .i { color: var(--state-blocked); }
+      .c-pop { position: absolute; z-index: 6; top: calc(100% + 6px); left: 0; width: 380px; padding: 10px; text-align: left; cursor: default; }
+      .c-pop.nm-box { box-shadow: var(--shadow); }
+      .c-send { border-radius: 9px; }
+      .c-intent { display: flex; align-items: center; gap: 8px; margin: 10px 4px 0; font-size: 12px; color: var(--text-muted); min-height: 20px; }
+      .c-intent .i { color: var(--state-claimed); }
+      .c-under { margin-top: 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+      .c-under h2 { font-size: 12px; font-weight: 600; color: var(--text-muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+      .c-under a, .c-under button.c-ex { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border-radius: 8px; font: inherit; font-size: 13px; color: var(--text-secondary); text-decoration: none; background: none; border: 0; text-align: left; cursor: pointer; }
+      .c-under a:hover, .c-under button.c-ex:hover { background: var(--wash); color: var(--text-primary); }
+      .c-under small { margin-left: auto; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+      .c-sent { display: grid; gap: 12px; }
+      .c-bubble { justify-self: end; max-width: 80%; padding: 10px 14px; border-radius: 12px 12px 4px 12px; background: var(--wash); font-size: 14px; }
+      .c-bubble small { display: block; color: var(--text-muted); font-size: 12px; margin-top: 4px; }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div class="app">
+      <nav class="rail" aria-label="App">
+        <a class="logo" href="#" data-to="Home" data-icon="compass" aria-label="Wayfinder Home"></a>
+        <a class="rail-btn" href="#" data-to="Home" data-icon="home" aria-label="Home"></a>
+        <a class="rail-btn is-on" href="#" data-icon="plus" aria-label="Start a new map"></a>
+        <span class="rail-spacer"></span>
+        <button type="button" class="rail-btn" data-to="the theme switch" data-icon="moon" aria-label="Theme"></button>
+        <span class="rail-mark">R</span>
+      </nav>
+      <div class="main">
+        <header class="topbar">
+          <span class="crumbs"><a href="#" data-to="Home">Home</a><span class="crumb-sep">/</span><span>New</span></span>
+          <span class="topbar-spacer"></span>
+        </header>
+        <main class="page">
+          <div class="c-stage" id="stage">
+            <h1>What do you want to get done?</h1>
+            <div class="nm-box c-composer">
+              <textarea id="goal" aria-label="Goal or issue" placeholder="Describe a goal to start a map, or paste an issue (#42) to hand off one ticket."></textarea>
+              <div class="c-bar">
+                <span class="c-chip" id="repo-chip" tabindex="0" role="button" aria-haspopup="dialog"></span>
+                <span class="c-chip" id="clone-chip" tabindex="0" role="button" aria-haspopup="dialog"></span>
+                <span class="c-chip" id="model-chip" tabindex="0" role="button" aria-haspopup="dialog"></span>
+                <span class="grow"></span>
+                <button type="button" class="ghost" id="copy" title="Copy prompt" aria-label="Copy prompt"><span data-icon="copy"></span></button>
+                <button type="button" class="primary c-send" id="go"><span id="go-label">Start map</span><span data-icon="arrow"></span></button>
+              </div>
+            </div>
+            <div class="c-intent" id="intent" role="status"></div>
+            <div id="ticket-preview" style="margin-top: 8px"></div>
+
+            <div class="c-under">
+              <div id="existing"></div>
+              <div>
+                <h2>Try a goal</h2>
+                <button type="button" class="c-ex" data-ex="Offline draft mode: drafts save locally and sync in the background when the network is back."></button>
+                <button type="button" class="c-ex" data-ex="#42"></button>
+                <button type="button" class="c-ex" data-ex="https://github.com/RAbdelrhman/wayfinder-map/issues/61"></button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+    <script src="../kit/kit.js"></script>
+    <script src="wayfinder.js"></script>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const F = FIXTURES;
+      const s = { repo: F.recents[0], clone: null, cloneInfo: 'checking', model: 'balanced', forceMap: false, open: null };
+
+      for (const b of document.querySelectorAll('[data-ex]')) {
+        const ex = b.dataset.ex;
+        b.innerHTML = `${NM.icon(ex.startsWith('#') || ex.startsWith('http') ? 'ticket' : 'graph')}<span>${NM.esc(ex.length > 60 ? `${ex.slice(0, 58)}…` : ex)}</span>`;
+        b.onclick = () => (($('goal').value = ex), (s.forceMap = false), sync(), $('goal').focus());
+      }
+
+      const ticket = () => (s.forceMap ? null : NM.parseTicket($('goal').value));
+
+      function loadClone() {
+        s.clone = null;
+        s.cloneInfo = 'checking';
+        paintChips();
+        NM.workspace(s.repo).then((info) => {
+          s.cloneInfo = info;
+          if (info.status === 'ready') s.clone = info.path;
+          paintChips();
+          sync();
+        });
+      }
+
+      function paintChips() {
+        $('repo-chip').innerHTML = `${NM.repoMark(s.repo)}${NM.esc(s.repo)}${NM.icon('chevron')}`;
+        const c = $('clone-chip');
+        c.className = `c-chip ${s.clone ? 'is-ok' : s.cloneInfo === 'checking' ? '' : 'is-warn'}`;
+        c.innerHTML = s.clone
+          ? `${NM.icon('check')}Local clone`
+          : s.cloneInfo === 'checking'
+            ? '<span class="nm-spin"></span>Finding clone…'
+            : `${NM.icon('alert')}${s.cloneInfo.status === 'choose' ? 'Pick a clone' : 'No local clone'}`;
+        const m = F.models.find((x) => x.id === s.model);
+        $('model-chip').innerHTML = `${NM.icon('sliders')}${m.label}${NM.icon('chevron')}`;
+        if (s.open) openPop(s.open);
+      }
+
+      function closePops() {
+        document.querySelectorAll('.c-pop').forEach((p) => p.remove());
+      }
+      function openPop(which) {
+        closePops();
+        s.open = which;
+        const chip = $(`${which}-chip`);
+        const pop = document.createElement('div');
+        pop.className = 'c-pop nm-box';
+        pop.onclick = (e) => e.stopPropagation();
+        if (which === 'repo') {
+          pop.innerHTML = `<div class="nm-picker"><input class="input" id="repo-in" placeholder="Search or type owner/name" autocomplete="off" role="combobox" aria-controls="repo-menu"/><ul class="nm-menu" id="repo-menu" role="listbox" hidden></ul></div>`;
+          chip.append(pop);
+          NM.repoPicker($('repo-in'), $('repo-menu'), (r) => {
+            if (!r || !NM.known(r)) return;
+            s.repo = r;
+            s.open = null;
+            closePops();
+            loadClone();
+            sync();
+          });
+          $('repo-in').focus();
+          return;
+        }
+        if (which === 'clone') {
+          pop.innerHTML = '<div id="clone-line"></div>';
+          chip.append(pop);
+          // Reuse the shared clone line; it re-checks, which is fine for a prototype.
+          NM.cloneLine($('clone-line'), s.repo, (path) => {
+            if (!path) return;
+            s.clone = path;
+            s.cloneInfo = { status: 'ready', path };
+            s.open = null;
+            closePops();
+            paintChips();
+            sync();
+          });
+          return;
+        }
+        pop.innerHTML = `<div class="nm-seg">${F.models.map((m) => `<button type="button" data-m="${m.id}" class="${m.id === s.model ? 'is-on' : ''}">${m.label}</button>`).join('')}</div>
+          <p class="nm-hint">${NM.esc(F.models.find((m) => m.id === s.model).detail)}</p>`;
+        pop.onclick = (e) => {
+          e.stopPropagation();
+          const m = e.target.closest('[data-m]')?.dataset.m;
+          if (m) (s.model = m), (s.open = null), closePops(), paintChips();
+        };
+        chip.append(pop);
+      }
+      for (const which of ['repo', 'clone', 'model'])
+        $(`${which}-chip`).addEventListener('click', () => (s.open === which ? ((s.open = null), closePops()) : openPop(which)));
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.c-chip')) (s.open = null), closePops();
+      });
+
+      function sync() {
+        const text = $('goal').value.trim();
+        const t = ticket();
+        $('ticket-preview').innerHTML = t ? NM.ticketCard(t) : '';
+        $('go-label').textContent = t ? `Hand off #${t.number}` : 'Start map';
+        const intent = !text
+          ? ''
+          : t
+            ? `${NM.icon('ticket')}Looks like an issue, so it goes straight to T3 Code as one ticket. <button type="button" class="linkish" id="as-map">Start a map about it instead</button>`
+            : `${NM.icon('graph')}Starts a new map: T3 Code interviews you about this goal, then drafts the issues.`;
+        const why = !s.clone ? (s.cloneInfo === 'checking' ? '' : ' Pick a local clone first (the amber chip).') : '';
+        $('intent').innerHTML = intent + (why && text ? `<span class="nm-why">${why}</span>` : '');
+        if ($('as-map')) $('as-map').onclick = () => ((s.forceMap = true), sync());
+        $('go').disabled = !text || !s.clone;
+        $('copy').disabled = !text;
+
+        const maps = NM.known(s.repo)?.maps ?? [];
+        $('existing').innerHTML = `<h2>Maps in ${NM.esc(NM.short(s.repo))}</h2>${
+          maps.length
+            ? maps.map((m) => `<a href="#" data-to="map #${m.number}">${NM.icon('graph')}#${m.number} ${NM.esc(m.title)}<small>${m.done}/${m.total}</small></a>`).join('')
+            : '<p class="nm-hint" style="padding: 0 8px">None yet. This will be the first.</p>'
+        }`;
+      }
+
+      $('goal').oninput = () => ((s.forceMap = false), sync());
+      $('goal').onkeydown = (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !$('go').disabled) $('go').click();
+      };
+      $('copy').onclick = () => Kit.toast('Copied the prompt. Paste it into any T3 Code thread.');
+      $('go').onclick = async () => {
+        const text = $('goal').value.trim();
+        const t = ticket();
+        const model = F.models.find((m) => m.id === s.model).label;
+        $('stage').innerHTML = `<div class="c-sent"><div class="c-bubble">${NM.esc(text)}<small>${NM.esc(s.repo)} · ${NM.esc(model)}</small></div><div id="result"></div>
+          <button type="button" class="linkish" style="justify-self:center" onclick="location.reload()">Start something else</button></div>`;
+        await NM.handOff($('result'), { kind: t ? 'ticket' : 'map', repo: s.repo, clone: s.clone, subject: t ? t.number : text, model });
+      };
+
+      paintChips();
+      loadClone();
+      sync();
+      Kit.fillIcons();
+    </script>
+  </body>
+</html>

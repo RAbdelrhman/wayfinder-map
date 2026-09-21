@@ -1,0 +1,91 @@
+/*
+  Pieces shared by the /new-map flows (#44). Only R2's tokens: --surface-1, --plane, text-*,
+  --hairline, --wash, --shadow, --state-*; the map's 11/12/13/14/19px type, 4–16px rhythm and
+  8/9/12px radii. PROTOTYPE, throw away.
+*/
+.nm-sheet { max-width: 760px; margin: 0 auto; padding: 28px 24px 64px; }
+.nm-head { margin-bottom: 18px; }
+.nm-head .eyebrow { margin: 0 0 4px; }
+.nm-head h1 { font-size: 19px; font-weight: 650; margin: 0 0 4px; letter-spacing: -0.01em; }
+.nm-head p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+.nm-box { background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px; }
+.nm-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nm-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 0 0 6px; }
+.nm-hint { margin: 6px 0 0; font-size: 12px; color: var(--text-muted); }
+.nm-row .grow, .nm-clone .grow, .nm-ticket .grow { flex: 1; min-width: 0; }
+.nm-textarea { width: 100%; min-height: 120px; resize: vertical; font: inherit; font-size: 14px; line-height: 1.5; }
+code { font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; font-size: 12px; }
+
+/* Repository identity, like chrome.ts's deterministic squares. */
+.nm-mark {
+  display: inline-grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 5px;
+  font-size: 10px; font-weight: 700; color: hsl(var(--hue) 60% 32%); background: hsl(var(--hue) 70% 90%);
+}
+:root[data-theme='dark'] .nm-mark { color: hsl(var(--hue) 70% 78%); background: hsl(var(--hue) 35% 22%); }
+
+/* Repo combobox */
+.nm-picker { position: relative; }
+.nm-picker .input { width: 100%; }
+.nm-menu {
+  position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none;
+  background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px; box-shadow: var(--shadow);
+}
+.nm-menu li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.nm-menu li:hover { background: var(--wash); }
+.nm-menu small { color: var(--text-muted); font-size: 11px; }
+
+/* Clone line: one row that says where T3 Code runs. */
+.nm-clone { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); padding: 8px 10px; border-radius: 9px; background: var(--plane); }
+.nm-clone .i { flex: none; }
+.nm-clone.is-ready .i { color: var(--state-frontier); }
+.nm-clone.is-choose .i { color: var(--state-claimed); }
+.nm-clone.is-missing { background: color-mix(in srgb, var(--state-blocked) 12%, transparent); }
+.nm-clone.is-missing .i { color: var(--state-blocked); }
+.nm-clone code { color: var(--text-primary); }
+.nm-clone-pick { padding: 8px 10px 2px 32px; display: grid; gap: 6px; }
+.nm-radio { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+
+/* Spinner */
+.nm-spin { flex: none; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--hairline); border-top-color: var(--state-claimed); animation: nm-spin 0.8s linear infinite; }
+@keyframes nm-spin { to { transform: rotate(360deg); } }
+
+/* Ticket preview */
+.nm-ticket { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: 9px; background: var(--surface-1); font-size: 13px; }
+.nm-ticket small { display: block; color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.nm-dot { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--c); }
+
+/* Segmented model choice */
+.nm-seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: 9px; background: var(--plane); border: 1px solid var(--hairline); }
+.nm-seg button { border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 7px; cursor: pointer; }
+.nm-seg button.is-on { background: var(--surface-1); color: var(--text-primary); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+
+/* Readiness checks next to the action */
+.nm-checks { display: flex; gap: 12px; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--text-muted); }
+.nm-checks li { display: inline-flex; align-items: center; gap: 4px; }
+.nm-checks li.is-ok { color: var(--text-secondary); }
+.nm-checks li.is-ok .i { color: var(--state-frontier); }
+.nm-checks li .nm-bullet { width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid var(--baseline); }
+.nm-why { font-size: 12px; color: var(--text-muted); }
+
+/* Hand-off moment and its result */
+.nm-result { border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-1); padding: 14px 16px; }
+.nm-result.is-done { border-color: color-mix(in srgb, var(--state-frontier) 45%, var(--hairline)); }
+.nm-result-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.nm-result.is-done .nm-result-head > .i { color: var(--state-frontier); }
+.nm-result p { margin: 6px 0 10px; color: var(--text-secondary); font-size: 13px; }
+.nm-when { margin-left: auto; font-size: 12px; color: var(--text-muted); }
+.nm-steps { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13px; color: var(--text-muted); }
+.nm-steps li { display: flex; align-items: center; gap: 8px; }
+.nm-steps li.is-done { color: var(--text-secondary); }
+.nm-steps li.is-done .i { color: var(--state-frontier); }
+.nm-steps li.is-now { color: var(--text-primary); font-weight: 600; }
+.nm-bullet { display: inline-block; width: 8px; height: 8px; margin: 0 3px; border-radius: 50%; border: 1.5px solid var(--baseline); }
+.nm-steps li.is-now .nm-bullet { border-color: var(--state-claimed); background: var(--state-claimed); }
+.nm-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 12px; font-size: 12px; }
+.nm-facts dt { color: var(--text-muted); }
+.nm-facts dd { margin: 0; color: var(--text-primary); min-width: 0; overflow-wrap: anywhere; }
+
+a.primary, a.ghost { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+button.primary, button.ghost { display: inline-flex; align-items: center; gap: 6px; }
+.linkish { border: 0; background: none; padding: 0; font: inherit; font-size: 12px; color: var(--state-claimed); cursor: pointer; text-decoration: none; }
+.linkish:hover { text-decoration: underline; }

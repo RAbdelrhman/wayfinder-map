@@ -1,31 +1,51 @@
 /*
-  Wayfinder's canvas for ticket #39. README.md documents every field; this uses all of them.
+  Wayfinder's canvas for ticket #44: what starting a new map should feel like.
   Paths are relative to index.html. Check with: node prototypes/canvas/tools/check.mjs
 */
 
-// Snippets reused below. Component HTML uses the app's own classes from src/ui/styles.css.
-const BUTTONS = `<div style="display:flex;gap:10px;flex-wrap:wrap">
-  <button class="primary">Start a new map</button>
-  <button class="ghost">Refresh</button>
-  <button class="primary" disabled>Handing off…</button>
-</div>`;
-const FIELD = `<div class="field" style="margin:0"><label>Open a repository</label>
-  <div class="row"><input class="input" placeholder="owner/name" /><button class="primary">Open</button></div></div>`;
-const REPO_CARD = `<a class="card repo-card" style="margin:0">
-  <span class="grow">RAbdelrhman/wayfinder-map</span><span style="color:var(--text-muted);font-size:12px">2 maps</span></a>`;
-const PANEL = `<div class="panel" style="margin:0"><span class="avatar">R</span>
-  <span class="grow"><strong>ramon</strong><p>github.com</p></span></div>`;
+// Inline icons for the component sheet (the pages use Kit.icons from variants/wayfinder.js).
+const svg = (d) =>
+  `<svg class="i" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const CHECK = svg('<path d="M20 6 9 17l-5-5"/>');
+const FOLDER = svg(
+  '<path d="M4 20a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5l2 2.5h8a1 1 0 0 1 1 1V10"/><path d="m3.6 19.6 2.3-7.2a1 1 0 0 1 1-.7h13.5a1 1 0 0 1 1 1.3l-2 6.3a1 1 0 0 1-1 .7H4"/>',
+);
+const ALERT = svg('<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>');
+const EXTERNAL = svg('<path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>');
+const COPY = svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>');
+
+const CLONE_CHECKING = `<div class="nm-clone is-checking"><span class="nm-spin"></span><span class="grow">Looking for a local clone of wayfinder-map…</span></div>`;
+const CLONE_READY = `<div class="nm-clone is-ready">${CHECK}<span class="grow">Runs in <code>C:\\Users\\ramon\\code\\wayfinder-map</code></span><button type="button" class="linkish">Change</button></div>`;
+const CLONE_CHOOSE = `<div class="nm-clone is-choose">${FOLDER}<span class="grow">Found 2 clones. Which one should T3 Code use?</span></div>
+  <div class="nm-clone-pick"><label class="nm-radio"><input type="radio" name="k" checked /><code>C:\\Users\\ramon\\code\\podcontrol</code></label>
+  <label class="nm-radio"><input type="radio" name="k" /><code>D:\\work\\podcontrol-old</code></label>
+  <div class="nm-row"><button type="button" class="primary">Use this clone</button><button type="button" class="ghost">${FOLDER}Another folder…</button></div></div>`;
+const CLONE_MISSING = `<div class="nm-clone is-missing">${ALERT}<span class="grow">No local clone of ecpl-lockstep yet. T3 Code needs one to work in.</span></div>
+  <div class="nm-clone-pick"><div class="nm-row"><button type="button" class="primary">${FOLDER}Choose a folder…</button><button type="button" class="ghost">Clone it for me</button></div>
+  <p class="nm-hint">You can still copy the prompt and run it yourself.</p></div>`;
+
+const HANDING_OFF = `<div class="nm-result is-working"><div class="nm-result-head"><span class="nm-spin"></span><strong>Handing off to T3 Code…</strong></div>
+  <ol class="nm-steps"><li class="is-done">${CHECK}Writing the prompt</li><li class="is-now"><span class="nm-bullet"></span>Opening a worktree in wayfinder-map</li>
+  <li><span class="nm-bullet"></span>Starting the planning thread</li></ol></div>`;
+const HANDED_OFF = `<div class="nm-result is-done"><div class="nm-result-head">${CHECK}<strong>Planning thread started</strong><span class="nm-when">just now</span></div>
+  <p>T3 Code is interviewing you about the goal. Answer there; the map shows up in Wayfinder once the issues exist.</p>
+  <dl class="nm-facts"><dt>Repository</dt><dd>RAbdelrhman/wayfinder-map</dd><dt>Worktree</dt><dd><code>C:\\Users\\ramon\\code\\wayfinder-map</code></dd>
+  <dt>Branch</dt><dd><code>wayfinder/new-map-draft-mode</code></dd><dt>Model</dt><dd>Balanced</dd></dl>
+  <div class="nm-row"><a class="primary" href="#">${EXTERNAL}Open in T3 Code</a><button type="button" class="ghost">${COPY}Copy prompt</button><span class="grow"></span><a class="linkish" href="#">Back to Home</a></div></div>`;
+
+const R1 = 'R1 (#36) on this flow:';
 
 window.CANVAS = {
-  ticket: 39,
-  title: 'Prototype canvas',
+  ticket: 44,
+  title: 'Start a new map',
   question:
-    'Is this the right board for design decisions? Every prototype on map #35 will be shown like this: full pages, and also style directions, component sheets, palettes, type and moodboards.',
-  sampleState: 'Placeholder content on fake data. Real directions come in P1–P4.',
+    'What should starting a new map feel like? Three flows, each covering the repo, the local clone (#32), the goal, ticket vs. map (#31), and the moment of handing off.',
+  sampleState:
+    'Fake data. Try the repos: wayfinder-map has a clone ready, podcontrol has two to pick from, ecpl-lockstep has none. Try #42 or #61 for a single ticket.',
 
-  // What every item renders on: Wayfinder's real stylesheet, its token root, and its surfaces for the canvas's sheets.
+  // Wayfinder's real stylesheet (R2's tokens) plus the pieces the three flows share.
   base: {
-    stylesheets: ['../../src/ui/styles.css'],
+    stylesheets: ['../../src/ui/styles.css', 'variants/new-map.css'],
     bodyClass: 'viz-root',
     surfaces: {
       plane: 'var(--plane)',
@@ -36,79 +56,57 @@ window.CANVAS = {
     },
   },
 
-  // Named token sets. `vars` override the app's CSS variables (light), `dark` overrides in dark mode.
-  styles: {
-    app: { label: 'Wayfinder today', vars: {} },
-    warm: {
-      label: 'Warm paper',
-      font: "Georgia, 'Iowan Old Style', serif",
-      vars: {
-        '--surface-1': '#fffdf8',
-        '--plane': '#f3efe6',
-        '--text-primary': '#1f1b16',
-        '--text-secondary': '#5b5347',
-        '--text-muted': '#8c8375',
-        '--hairline': 'rgba(60, 40, 10, 0.12)',
-        '--state-claimed': '#c2552d',
-      },
-      dark: {
-        '--surface-1': '#211e1a',
-        '--plane': '#171512',
-        '--text-primary': '#f5efe4',
-        '--text-secondary': '#cfc5b4',
-        '--hairline': 'rgba(255, 240, 210, 0.12)',
-        '--state-claimed': '#e07a52',
-      },
-    },
-    crisp: {
-      label: 'Crisp',
-      vars: {
-        '--surface-1': '#ffffff',
-        '--plane': '#eef1f5',
-        '--text-primary': '#0a0f1a',
-        '--text-secondary': '#3d4657',
-        '--text-muted': '#7a8496',
-        '--hairline': 'rgba(10, 15, 26, 0.12)',
-        '--state-claimed': '#4f46e5',
-      },
-      dark: {
-        '--surface-1': '#141821',
-        '--plane': '#0b0e14',
-        '--text-primary': '#f4f6fb',
-        '--text-secondary': '#b6bfcf',
-        '--hairline': 'rgba(255, 255, 255, 0.1)',
-        '--state-claimed': '#818cf8',
-      },
-      css: '.primary, .ghost, .input { border-radius: 999px; }',
-    },
-  },
-
   pages: [
     {
-      title: 'Home directions',
+      title: 'Flows',
       sections: [
         {
-          title: 'Pages',
-          note: 'Full pages you can click through. Each is an HTML file under variants/.',
+          title: 'Three ways to start',
+          note: 'Every flow is clickable end to end, including the hand-off. Press ▶ to try one full size.',
           items: [
             {
               id: 'A',
-              name: 'Directory',
-              src: 'variants/a.html',
+              name: 'One page, map first',
+              src: 'variants/new-map-a.html',
               note: {
-                idea: "Today's Home, tidied up: account, a search box, then every repository as a card with its open maps and progress.",
-                pros: ['Familiar: nothing moves', 'Scales to many repositories'],
-                cons: ["Doesn't say what to do next", 'In-flight work is invisible'],
+                idea:
+                  "Today's page, focused: one form for a map, with the repo, clone, goal and model in order. A single ticket is a link under the form that swaps the goal for an issue field. Readiness checks sit next to the button, which says why it's disabled. After the hand-off, the form is replaced by a result that stays on the page.",
+                pros: [
+                  'Closest to what exists; smallest build',
+                  'Everything visible at once, action never below the fold',
+                  `${R1} map path is primary, model is behind "Model: Balanced", one repo context, disabled reason next to the action`,
+                ],
+                cons: ['Single tickets feel like an afterthought', 'Still a form: says little about what happens next until you press it'],
               },
             },
             {
               id: 'B',
-              name: 'Pick up where you left off',
-              src: 'variants/b.html',
+              name: 'Stepped',
+              src: 'variants/new-map-b.html',
               note: {
-                idea: 'Home leads with the map you were last on and what is in flight in T3 Code.',
-                pros: ['One obvious next action', 'Hand-offs are visible from the start'],
-                cons: ['Needs hand-off tracking (G2)'],
+                idea:
+                  'A five-step walk: repository, where it runs, map or ticket, the goal or issue, then review and hand off. The stepper keeps each answer visible and editable. The review step shows the exact prompt before anything reaches T3 Code, and the stepper ends on "Handed off".',
+                pros: [
+                  'Clone problems get their own step instead of an inline warning',
+                  'Review step makes the hand-off deliberate and inspectable',
+                  `${R1} one question at a time, map vs. ticket asked once, streamed readiness per step`,
+                ],
+                cons: ['Five clicks for the common case (repo with a clone ready)', 'Heaviest to build, and slow for repeat use'],
+              },
+            },
+            {
+              id: 'C',
+              name: 'Goal first',
+              src: 'variants/new-map-c.html',
+              note: {
+                idea:
+                  'A composer like a chat box: type the goal first. The repo, clone and model are chips under it, defaulting to the last repo used. Paste #42 or an issue link and it becomes a single-ticket hand-off, with a link to start a map about it instead. Sending turns the page into your message plus a live hand-off card.',
+                pros: [
+                  'Fastest path: type, Ctrl+Enter',
+                  'Map vs. ticket is inferred, not a choice up front',
+                  `${R1} no forked card system, context lives in chips, the clone chip turns amber and fixes in place`,
+                ],
+                cons: ['Chips hide the clone decision if you are not looking', 'Inferring ticket vs. map could surprise people'],
               },
             },
           ],
@@ -116,85 +114,53 @@ window.CANVAS = {
       ],
     },
     {
-      title: 'Style directions',
-      question: 'Which look should Wayfinder move towards? Same components, three token sets.',
+      title: 'Shared pieces',
+      question: 'The same pieces sit inside every flow. React to them separately from the flow you pick.',
       sections: [
         {
-          title: 'Components',
-          note: 'The same component sheet under each style. One item with `styles: [...]` expands into one frame per style.',
+          title: 'Local clone (#32)',
+          note: 'One line that says where T3 Code will work, and fixes itself in place. Replaces the separate hint, select and button.',
           items: [
             {
-              id: 'S',
+              id: 'K',
               kind: 'components',
-              name: 'Core components',
-              styles: ['app', 'warm', 'crisp'],
-              note: 'Buttons, a field, a card and a panel: enough to feel a style.',
+              name: 'Clone states',
               columns: 2,
+              width: 900,
+              note: {
+                idea: 'Checking, ready, several found, none found. Amber uses --state-blocked, green uses --state-frontier: no new colours.',
+                pros: ['Always says why the button is disabled', 'Copy prompt stays open when there is no clone'],
+                cons: ['"Clone it for me" is new server work'],
+              },
               items: [
-                { label: 'Buttons', html: BUTTONS, span: 2 },
-                { label: 'Field', html: FIELD, span: 2 },
-                { label: 'Repository card', html: REPO_CARD },
-                { label: 'Account panel', html: PANEL },
+                { label: 'Checking', html: CLONE_CHECKING },
+                { label: 'Ready', html: CLONE_READY },
+                { label: 'Several clones', html: CLONE_CHOOSE },
+                { label: 'No clone', html: CLONE_MISSING },
               ],
             },
           ],
         },
         {
-          title: 'Palette and type',
-          items: [
-            { id: 'P', kind: 'swatches', name: 'Warm paper palette', style: 'warm', note: 'Pulled straight from the style’s colour tokens.' },
-            {
-              id: 'T',
-              kind: 'type',
-              name: 'Warm paper type',
-              style: 'warm',
-              text: 'Pick up where you left off',
-              note: 'A serif gives Home a calmer, editorial voice.',
-            },
-            {
-              kind: 'note',
-              name: 'Why a palette?',
-              text: 'Palettes and type sit next to the pages that use them, so a style is judged on real screens, not swatches alone.',
-            },
-          ],
-        },
-      ],
-    },
-    {
-      title: 'Moodboard',
-      question: 'Compositions: screenshots, shapes, text and real components layered on an artboard.',
-      sections: [
-        {
-          title: 'Composition',
-          note: 'Layered images, shapes, text and HTML placed on an artboard: for moodboards, hero ideas and annotated screenshots.',
+          title: 'The moment of handing off',
+          note: 'Replaces the toast. The result stays until you leave the page; #45 decides what you see after that.',
           items: [
             {
-              id: 'M',
-              kind: 'compose',
-              name: 'Annotated screenshot',
-              width: 1200,
-              height: 720,
-              background: '#1c1b19',
-              layers: [
-                { type: 'image', src: 'assets/home-b.png', x: 60, y: 60, w: 800, h: 500, radius: 10, shadow: '0 30px 60px -20px rgba(0,0,0,.6)' },
-                { type: 'rect', x: 165, y: 283, w: 385, h: 95, fill: 'transparent', border: '3px solid #f59e0b', radius: 12 },
-                { type: 'text', text: 'The next action lives here', x: 900, y: 290, w: 260, size: 26, weight: 650, color: '#fbbf24' },
-                {
-                  type: 'text',
-                  text: 'Frontier tickets start right from Home, one click to T3 Code.',
-                  x: 900,
-                  y: 360,
-                  w: 250,
-                  size: 15,
-                  color: '#d6d3cd',
-                  lineHeight: 1.5,
-                },
-                { type: 'image', src: '../../assets/wayfinder-icon.svg', x: 1080, y: 600, w: 64, h: 64, fit: 'contain', opacity: 0.9 },
-                { type: 'html', x: 60, y: 610, w: 520, style: 'color:#d6d3cd', html: '<button class="primary">Real app button, layered in</button>' },
+              id: 'H',
+              kind: 'components',
+              name: 'Hand-off',
+              columns: 2,
+              width: 900,
+              note: {
+                idea: 'Steps tick off while T3 Code starts, then a result with the thread, worktree, branch and a way back.',
+                pros: ['R1 P0: a durable result with a thread link, not a toast', 'One verb across the app: "Open in T3 Code"'],
+                cons: ['The step list needs progress events from the server (#55)'],
+              },
+              items: [
+                { label: 'Handing off', html: HANDING_OFF },
+                { label: 'Handed off', html: HANDED_OFF },
               ],
-              note: { idea: 'Screenshot, highlight box, callout text, a logo and a real app button, all as layers.' },
             },
-            { id: 'I', kind: 'image', name: 'Plain image', src: 'assets/home-b.png', width: 800, note: 'Any screenshot or reference image.' },
           ],
         },
       ],

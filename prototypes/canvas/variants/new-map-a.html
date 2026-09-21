@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A · One page, map first</title>
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="new-map.css" />
+    <style>
+      .a-form { padding: 16px; display: grid; gap: 16px; }
+      .a-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--hairline); background: var(--plane); border-radius: 0 0 12px 12px; }
+      .a-foot .grow { flex: 1; min-width: 200px; display: grid; gap: 4px; }
+      .a-recents { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+      .a-recents button { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12px; padding: 3px 8px 3px 4px; border-radius: 999px; border: 1px solid var(--hairline); background: var(--surface-1); color: var(--text-secondary); cursor: pointer; }
+      .a-recents button:hover { background: var(--wash); }
+      .a-custom summary { font-size: 12px; color: var(--text-secondary); cursor: pointer; display: inline-flex; gap: 4px; align-items: center; list-style: none; }
+      .a-custom summary::-webkit-details-marker { display: none; }
+      .a-custom[open] summary .i { transform: rotate(180deg); }
+      .a-custom > div { margin-top: 10px; display: flex; gap: 10px; align-items: center; }
+      .a-switch { margin-top: 14px; font-size: 13px; color: var(--text-secondary); display: flex; gap: 6px; align-items: center; }
+      .a-existing { margin-top: 18px; }
+      .a-existing h2 { font-size: 12px; font-weight: 600; color: var(--text-muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+      .a-existing a { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 13px; color: var(--text-primary); text-decoration: none; }
+      .a-existing a:hover { background: var(--wash); }
+      .a-existing small { color: var(--text-muted); margin-left: auto; font-size: 12px; }
+      #result:not(:empty) { margin-bottom: 16px; }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div class="app">
+      <nav class="rail" aria-label="App">
+        <a class="logo" href="#" data-to="Home" data-icon="compass" aria-label="Wayfinder Home"></a>
+        <a class="rail-btn" href="#" data-to="Home" data-icon="home" aria-label="Home"></a>
+        <a class="rail-btn is-on" href="#" data-icon="plus" aria-label="Start a new map"></a>
+        <span class="rail-spacer"></span>
+        <button type="button" class="rail-btn" data-to="the theme switch" data-icon="moon" aria-label="Theme"></button>
+        <span class="rail-mark">R</span>
+      </nav>
+      <div class="main">
+        <header class="topbar">
+          <span class="crumbs"><a href="#" data-to="Home">Home</a><span class="crumb-sep">/</span><span>Start a new map</span></span>
+          <span class="topbar-spacer"></span>
+        </header>
+        <main class="page">
+          <div class="nm-sheet">
+            <div id="result"></div>
+            <div class="nm-head">
+              <p class="eyebrow" id="eyebrow">New map</p>
+              <h1 id="title">Where do you want to end up?</h1>
+              <p id="blurb">Describe the goal. T3 Code interviews you about it, then drafts the map as GitHub issues.</p>
+            </div>
+
+            <form class="nm-box" id="form" onsubmit="event.preventDefault()">
+              <div class="a-form">
+                <div>
+                  <label class="nm-label" for="repo">Repository</label>
+                  <div class="nm-picker">
+                    <input class="input" id="repo" value="RAbdelrhman/wayfinder-map" autocomplete="off" spellcheck="false" role="combobox" aria-controls="repo-menu" />
+                    <ul class="nm-menu" id="repo-menu" role="listbox" hidden></ul>
+                  </div>
+                  <div class="a-recents" id="recents"></div>
+                </div>
+
+                <div id="clone"></div>
+
+                <div id="goal-field">
+                  <label class="nm-label" for="goal">Goal</label>
+                  <textarea class="input nm-textarea" id="goal" placeholder="e.g. Offline draft mode: drafts save locally and sync in the background when the network is back."></textarea>
+                </div>
+
+                <div id="ticket-field" hidden>
+                  <label class="nm-label" for="ticket">Issue</label>
+                  <input class="input" id="ticket" placeholder="#42 or https://github.com/owner/name/issues/42" autocomplete="off" style="width: 100%" />
+                  <div id="ticket-preview" style="margin-top: 8px"></div>
+                </div>
+
+                <details class="a-custom">
+                  <summary><span data-icon="sliders"></span>Model: <strong id="model-name">Balanced</strong><span data-icon="chevron"></span></summary>
+                  <div><div class="nm-seg" id="models"></div><span class="nm-why" id="model-detail"></span></div>
+                </details>
+              </div>
+
+              <div class="a-foot">
+                <div class="grow">
+                  <ul class="nm-checks" id="checks"></ul>
+                  <span class="nm-why" id="why" role="status"></span>
+                </div>
+                <button type="button" class="ghost" id="copy"><span data-icon="copy"></span>Copy prompt</button>
+                <button type="button" class="primary" id="go"><span data-icon="play"></span><span id="go-label">Start map in T3 Code</span></button>
+              </div>
+            </form>
+
+            <p class="a-switch" id="switch"></p>
+
+            <div class="a-existing" id="existing"></div>
+          </div>
+        </main>
+      </div>
+    </div>
+    <script src="../kit/kit.js"></script>
+    <script src="wayfinder.js"></script>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const F = FIXTURES;
+      const s = { repo: 'RAbdelrhman/wayfinder-map', clone: null, mode: 'map', model: 'balanced', ticket: null };
+
+      $('recents').innerHTML = F.recents.map((r) => `<button type="button" data-repo="${NM.esc(r)}">${NM.repoMark(r)}${NM.esc(NM.short(r))}</button>`).join('');
+      $('recents').onclick = (e) => {
+        const r = e.target.closest('[data-repo]')?.dataset.repo;
+        if (r) ($('repo').value = r), pickRepo(r);
+      };
+      NM.repoPicker($('repo'), $('repo-menu'), pickRepo);
+
+      $('models').innerHTML = F.models.map((m) => `<button type="button" data-m="${m.id}">${m.label}</button>`).join('');
+      $('models').onclick = (e) => {
+        const m = e.target.closest('[data-m]')?.dataset.m;
+        if (m) (s.model = m), sync();
+      };
+
+      function pickRepo(repo) {
+        if (repo === s.repo) return;
+        s.repo = repo;
+        NM.cloneLine($('clone'), repo, (path) => ((s.clone = path), sync()));
+        sync();
+      }
+
+      function setMode(mode) {
+        s.mode = mode;
+        const map = mode === 'map';
+        $('goal-field').hidden = !map;
+        $('ticket-field').hidden = map;
+        $('eyebrow').textContent = map ? 'New map' : 'Single ticket';
+        $('title').textContent = map ? 'Where do you want to end up?' : 'Hand off one issue';
+        $('blurb').textContent = map
+          ? 'Describe the goal. T3 Code interviews you about it, then drafts the map as GitHub issues.'
+          : 'No map needed. T3 Code claims the issue and works on it in its own worktree.';
+        $('go-label').textContent = map ? 'Start map in T3 Code' : 'Hand off in T3 Code';
+        $('switch').innerHTML = map
+          ? `<span data-icon="ticket"></span>Only need one issue done? <button type="button" class="linkish" onclick="setMode('ticket')">Hand off a single ticket instead</button>`
+          : `<span data-icon="graph"></span>Bigger than one issue? <button type="button" class="linkish" onclick="setMode('map')">Start a map instead</button>`;
+        Kit.fillIcons($('switch'));
+        sync();
+      }
+
+      $('goal').oninput = sync;
+      $('ticket').oninput = () => {
+        s.ticket = NM.parseTicket($('ticket').value);
+        $('ticket-preview').innerHTML = s.ticket ? NM.ticketCard(s.ticket) : '';
+        sync();
+      };
+
+      function sync() {
+        const model = F.models.find((m) => m.id === s.model);
+        $('model-name').textContent = model.label;
+        $('model-detail').textContent = model.detail;
+        for (const b of $('models').children) b.classList.toggle('is-on', b.dataset.m === s.model);
+
+        const subject = s.mode === 'map' ? $('goal').value.trim().length > 0 : s.ticket !== null;
+        const checks = [
+          ['Repository', !!s.repo],
+          ['Local clone', !!s.clone],
+          [s.mode === 'map' ? 'Goal' : 'Issue', subject],
+          ['T3 Code running', true],
+        ];
+        $('checks').innerHTML = checks
+          .map(([label, ok]) => `<li class="${ok ? 'is-ok' : ''}">${ok ? NM.icon('check') : '<span class="nm-bullet"></span>'}${label}</li>`)
+          .join('');
+        const missing = checks.find(([, ok]) => !ok);
+        const why = !s.repo
+          ? 'Pick a repository first.'
+          : !s.clone
+            ? 'Choose where T3 Code should work, above.'
+            : !subject
+              ? s.mode === 'map' ? 'Describe the goal to start.' : 'Enter an issue number or link.'
+              : '';
+        $('why').textContent = why;
+        $('go').disabled = !!missing;
+        $('copy').disabled = !s.repo || !subject;
+
+        const info = s.repo && NM.known(s.repo);
+        const maps = info ? info.maps : [];
+        $('existing').innerHTML =
+          s.mode === 'map' && maps.length
+            ? `<h2>Already mapped in ${NM.esc(NM.short(s.repo))}</h2>${maps
+                .map((m) => `<a href="#" data-to="map #${m.number}">${NM.icon('graph')}#${m.number} ${NM.esc(m.title)}<small>${m.done}/${m.total} done</small></a>`)
+                .join('')}`
+            : '';
+      }
+
+      $('copy').onclick = () => Kit.toast('Copied the prompt. Paste it into any T3 Code thread.');
+      $('go').onclick = async () => {
+        $('form').hidden = true;
+        $('switch').hidden = true;
+        $('existing').hidden = true;
+        document.querySelector('.nm-head').hidden = true;
+        await NM.handOff($('result'), {
+          kind: s.mode,
+          repo: s.repo,
+          clone: s.clone,
+          subject: s.mode === 'map' ? $('goal').value.trim() : s.ticket.number,
+          model: F.models.find((m) => m.id === s.model).label,
+        });
+      };
+
+      NM.cloneLine($('clone'), s.repo, (path) => ((s.clone = path), sync()));
+      setMode('map');
+    </script>
+  </body>
+</html>
