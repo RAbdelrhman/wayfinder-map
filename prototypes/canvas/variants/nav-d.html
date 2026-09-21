@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>D · Sidebar tree with scope tabs</title>
+    <!-- PROTOTYPE (#42), direction D: C's sidebar tree everywhere, B's scope switcher and view tabs in the topbar of a
+         repository, its Prototypes and a map. The sidebar folds to a compact rail of the same tree (default on the map page). -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="nav-shared.css" />
+    <style>
+      .app.has-side {
+        grid-template-columns: 256px minmax(0, 1fr);
+      }
+
+      /* ---------- open sidebar (C) ---------- */
+      .side {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        background: var(--surface-1);
+        border-right: 1px solid var(--hairline);
+        font-size: 13px;
+      }
+      .side-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 56px;
+        padding: 0 10px 0 13px;
+        border-bottom: 1px solid var(--hairline);
+        flex: none;
+      }
+      .side-head b {
+        flex: 1;
+        font-size: 14px;
+        letter-spacing: -0.01em;
+      }
+      .fold {
+        width: 30px;
+        height: 30px;
+        border: 0;
+        background: none;
+        border-radius: 8px;
+        color: var(--text-muted);
+        display: grid;
+        place-items: center;
+      }
+      .fold:hover {
+        background: var(--wash);
+        color: var(--text-primary);
+      }
+      .fold .i {
+        width: 16px;
+        height: 16px;
+      }
+      .side-actions {
+        display: grid;
+        gap: 6px;
+        padding: 12px 10px 6px;
+      }
+      .side-actions .primary {
+        justify-content: center;
+        text-decoration: none;
+      }
+      .side .search {
+        width: auto;
+        margin: 0;
+        cursor: pointer;
+      }
+      .side .search .ph {
+        flex: 1;
+        text-align: left;
+      }
+      .tree {
+        flex: 1;
+        overflow: auto;
+        padding: 6px 8px 12px;
+      }
+      .tree-label {
+        padding: 14px 8px 6px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .row {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 30px;
+        padding: 0 8px;
+        border-radius: 7px;
+        color: var(--text-secondary);
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .row:hover {
+        background: var(--wash);
+        color: var(--text-primary);
+      }
+      .row .grow {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .row > .i {
+        width: 15px;
+        height: 15px;
+        flex: none;
+      }
+      .row.is-on {
+        background: color-mix(in srgb, var(--state-claimed) 12%, transparent);
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      .row.is-on::before {
+        content: '';
+        position: absolute;
+        left: -8px;
+        top: 7px;
+        bottom: 7px;
+        width: 3px;
+        border-radius: 0 3px 3px 0;
+        background: var(--state-claimed);
+      }
+      .row.is-trail {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      .row .twist {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        display: grid;
+        place-items: center;
+        border-radius: 4px;
+        color: var(--text-muted);
+      }
+      .row .twist .i {
+        width: 12px;
+        height: 12px;
+        transition: transform 0.15s;
+      }
+      .row .twist.is-open .i {
+        transform: rotate(90deg);
+      }
+      .row .twist:hover {
+        background: var(--wash);
+      }
+      .kids {
+        margin-left: 15px;
+        padding-left: 9px;
+        border-left: 1px solid var(--hairline);
+      }
+      .side-foot {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-top: 1px solid var(--hairline);
+      }
+      .side-foot .rail-mark {
+        margin: 0;
+      }
+      .side-foot .grow {
+        flex: 1;
+        min-width: 0;
+      }
+      .side-foot .rail-btn {
+        width: 32px;
+        height: 32px;
+      }
+
+      /* ---------- folded sidebar: the same tree, compacted ---------- */
+      .mini {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        min-height: 0;
+        padding: 0 0 12px;
+        background: var(--surface-1);
+        border-right: 1px solid var(--hairline);
+      }
+      .mini-head {
+        flex: none;
+        height: 56px;
+        width: 100%;
+        display: grid;
+        place-items: center;
+        border-bottom: 1px solid var(--hairline);
+        margin-bottom: 8px;
+      }
+      /* the logo turns into the open-sidebar button on hover */
+      .mini-logo {
+        width: 34px;
+        height: 34px;
+      }
+      .mini-logo > .i,
+      .mini-logo:hover .logo {
+        display: none;
+      }
+      .mini-logo:hover > .i {
+        display: block;
+      }
+      .mini .new {
+        position: relative;
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 10px;
+        background: var(--state-claimed);
+        color: #fff;
+        text-decoration: none;
+      }
+      .mini .new:hover {
+        filter: brightness(1.08);
+      }
+      .mini .new:hover::after {
+        content: attr(data-tip);
+      }
+      .mini .new .i {
+        width: 18px;
+        height: 18px;
+      }
+      .mini-sep {
+        width: 24px;
+        height: 1px;
+        margin: 6px 0;
+        background: var(--hairline);
+        flex: none;
+      }
+      .mini-repos {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        min-height: 0;
+        overflow: visible;
+      }
+      .mini .rail-btn .nv-mark {
+        width: 24px;
+        height: 24px;
+        font-size: 10px;
+        border-radius: 7px;
+      }
+      /* the current repository keeps the open tree's blue marker */
+      .mini .rail-btn.is-here {
+        background: color-mix(in srgb, var(--state-claimed) 12%, transparent);
+      }
+      .mini .rail-btn.is-here::before {
+        content: '';
+        position: absolute;
+        left: -9px;
+        top: 9px;
+        bottom: 9px;
+        width: 3px;
+        border-radius: 0 3px 3px 0;
+        background: var(--state-claimed);
+      }
+      .mini .rail-btn.is-on {
+        background: color-mix(in srgb, var(--state-claimed) 12%, transparent);
+      }
+      .mini .rail-btn.is-on::before {
+        background: var(--state-claimed);
+      }
+      .mini .menu-anchor {
+        min-width: auto;
+      }
+      .menu.is-side {
+        top: 0;
+        left: calc(100% + 18px);
+      }
+      .rail-btn[data-tip]:hover::after,
+      .mini .new:hover::after {
+        content: attr(data-tip);
+        position: absolute;
+        left: calc(100% + 10px);
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 45;
+        padding: 4px 8px;
+        border-radius: 7px;
+        background: var(--text-primary);
+        color: var(--plane);
+        font-size: 12px;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+      .rail-btn[aria-expanded='true']::after {
+        display: none;
+      }
+
+      /* ---------- topbar: B's scope and tabs ---------- */
+      .scope {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        height: 34px;
+        padding: 0 10px 0 8px;
+        border: 1px solid var(--hairline);
+        border-radius: 9px;
+        background: var(--surface-1);
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .scope:hover,
+      .scope[aria-expanded='true'] {
+        background: var(--wash);
+      }
+      .scope .t {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 300px;
+      }
+      .scope > .i {
+        width: 13px;
+        height: 13px;
+        color: var(--text-muted);
+      }
+      .scope.is-quiet {
+        border-color: transparent;
+        background: none;
+        font-weight: 500;
+        color: var(--text-secondary);
+      }
+      .scope.is-quiet:hover {
+        background: var(--wash);
+      }
+      .page-title {
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .topbar .segmented {
+        margin-left: 10px;
+      }
+      .topbar .seg {
+        text-decoration: none;
+      }
+      .topbar .seg .i {
+        width: 13px;
+        height: 13px;
+      }
+      .topbar .seg .badge {
+        padding: 0 6px;
+      }
+      .topbar .search {
+        cursor: pointer;
+        width: min(240px, 18vw);
+      }
+      .topbar .search .ph {
+        flex: 1;
+        text-align: left;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="nav-shared.js"></script>
+    <script>
+      const { icon, esc, repoOf, mapOf, short, repoMark, go, goRepo, goMap, state } = NAV;
+
+      // Open everywhere except the map page, which needs its width. Folding is remembered per page kind.
+      const folded = { map: new URLSearchParams(location.search).get('side') !== 'open' };
+      if (new URLSearchParams(location.search).get('side') === 'folded') folded[state.view] = true;
+      const isFolded = (s) => !!folded[s.view];
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('[data-fold]')) return;
+        folded[state.view] = !isFolded(state);
+        NAV.render();
+      });
+
+      const inRepo = (s, r) => s.repo === r.name && s.view !== 'home' && s.view !== 'new';
+
+      /* ---------- open sidebar ---------- */
+
+      function tree(s) {
+        const row = (attrs, inner, cls = '') => `<a class="row${cls}" href="#" ${attrs}>${inner}</a>`;
+        const repos = NAV.REPOS.map((r) => {
+          const open = !!s.expanded[r.name];
+          const here = inRepo(s, r);
+          const twist = `<span class="twist${open ? ' is-open' : ''}" data-expand="${esc(r.name)}" role="button" aria-label="${open ? 'Collapse' : 'Expand'}">${icon('right')}</span>`;
+          const kids = open
+            ? `<div class="kids">${r.maps
+                .map((m) => row(goMap(r, m), `${NAV.miniRing(m.counts)}<span class="grow">#${m.number} ${esc(m.title)}</span>`, here && s.view === 'map' && s.map === m.number ? ' is-on' : ''))
+                .join('')}${row(goRepo(r, 'protos'), `${icon('beaker')}<span class="grow">Prototypes</span><span class="nv-meta">${r.prototypes.length}</span>`, here && s.view === 'protos' ? ' is-on' : '')}</div>`
+            : '';
+          return row(goRepo(r), `${twist}${repoMark(r)}<span class="grow">${esc(short(r.name))}</span>`, here && s.view === 'repo' ? ' is-on' : here ? ' is-trail' : '') + kids;
+        }).join('');
+        return `${row(go('home'), `${icon('home')}<span class="grow">Home</span>`, s.view === 'home' ? ' is-on' : '')}<div class="tree-label">Repositories</div>${repos}`;
+      }
+
+      function side(s) {
+        return `<nav class="side" aria-label="App">
+          <div class="side-head"><a class="logo" href="#" ${go('home')} aria-label="Wayfinder Home">${icon('compass')}</a><b>Wayfinder</b>
+            <button type="button" class="fold" data-fold title="Fold the sidebar" aria-label="Fold the sidebar">${icon('panel')}</button></div>
+          <div class="side-actions">
+            <a class="primary" href="#" ${go('new')}>${icon('plus')}Start a new map</a>
+            <button type="button" class="search" data-palette>${icon('lens')}<span class="ph">Jump to…</span><kbd>Ctrl K</kbd></button>
+          </div>
+          <div class="tree">${tree(s)}</div>
+          <div class="side-foot"><span class="rail-mark">R</span><span class="grow">ramon</span>
+            <button type="button" class="rail-btn" data-to="a refresh" aria-label="Refresh">${icon('refresh')}</button>
+            <button type="button" class="rail-btn" data-to="the theme switch" aria-label="Theme">${icon('moon')}</button></div>
+        </nav>`;
+      }
+
+      /* ---------- folded sidebar ---------- */
+
+      // Same order as the open sidebar: New map, Jump to, Home, then one mark per repository whose flyout is its subtree.
+      function mini(s) {
+        const repos = NAV.REPOS.map((r) => {
+          const here = inRepo(s, r);
+          const items = `<div class="menu-label">${esc(r.name)}</div>
+            <button type="button" class="menu-item${here && s.view === 'repo' ? ' is-on' : ''}" ${goRepo(r)}>${icon('graph')}<span class="grow">All maps</span><span class="nv-meta">${r.maps.length}</span></button>
+            ${r.maps
+              .map(
+                (m) =>
+                  `<button type="button" class="menu-item${here && s.view === 'map' && s.map === m.number ? ' is-on' : ''}" ${goMap(r, m)}>${NAV.miniRing(m.counts)}<span class="grow">#${m.number} ${esc(m.title)}</span></button>`,
+              )
+              .join('')}
+            <button type="button" class="menu-item${here && s.view === 'protos' ? ' is-on' : ''}" ${goRepo(r, 'protos')}>${icon('beaker')}<span class="grow">Prototypes</span><span class="nv-meta">${r.prototypes.length}</span></button>`;
+          return `<span class="menu-anchor"><button type="button" class="rail-btn${here ? ' is-here' : ''}" data-menu="mini-${esc(r.mark)}" data-tip="${esc(short(r.name))}" aria-label="${esc(r.name)}" aria-haspopup="menu" aria-expanded="false">${repoMark(r)}</button>
+            <div class="menu is-side" data-menu-for="mini-${esc(r.mark)}" hidden>${items}</div></span>`;
+        }).join('');
+        return `<nav class="mini" aria-label="App">
+          <div class="mini-head"><button type="button" class="fold mini-logo" data-fold title="Open the sidebar" aria-label="Open the sidebar"><span class="logo">${icon('compass')}</span>${icon('panel')}</button></div>
+          <a class="new" href="#" ${go('new')} data-tip="Start a new map" aria-label="Start a new map">${icon('plus')}</a>
+          <button type="button" class="rail-btn" data-palette data-tip="Jump to… Ctrl K" aria-label="Jump to">${icon('lens')}</button>
+          <a class="rail-btn${s.view === 'home' ? ' is-on' : ''}" href="#" ${go('home')} data-tip="Home" aria-label="Home">${icon('home')}</a>
+          <span class="mini-sep" role="none"></span>
+          <div class="mini-repos">${repos}</div>
+          <span class="rail-spacer"></span>
+          ${s.view === 'map' ? `<button type="button" class="rail-btn" data-to="model defaults" data-tip="Model defaults" aria-label="Model defaults">${icon('sliders')}</button>` : ''}
+          <button type="button" class="rail-btn" data-to="a refresh" data-tip="Refresh" aria-label="Refresh">${icon('refresh')}</button>
+          <button type="button" class="rail-btn" data-to="the theme switch" data-tip="Theme" aria-label="Theme">${icon('moon')}</button>
+          <span class="rail-mark">R</span>
+        </nav>`;
+      }
+
+      /* ---------- topbar ---------- */
+
+      function tabs(s) {
+        const repo = repoOf(s.repo);
+        const tab = (label, ic, attrs, on, badge = '') =>
+          `<a class="seg${on ? ' is-on' : ''}" href="#" ${attrs}${on ? ' aria-current="page"' : ''}>${icon(ic)}${label}${badge}</a>`;
+        if (s.view === 'repo' || s.view === 'protos')
+          return `<nav class="segmented" aria-label="Repository views">${tab('Maps', 'graph', goRepo(repo), s.view === 'repo', ` <span class="badge">${repo.maps.length}</span>`)}${tab(
+            'Prototypes',
+            'beaker',
+            goRepo(repo, 'protos'),
+            s.view === 'protos',
+            ` <span class="badge">${repo.prototypes.length}</span>`,
+          )}</nav>`;
+        const map = mapOf(repo, s.map);
+        return `<nav class="segmented" aria-label="Map views">${tab('Map', 'graph', goMap(repo, map, 'map'), s.mapView === 'map')}${tab('Table', 'table', goMap(repo, map, 'table'), s.mapView === 'table')}${tab(
+          'Prototypes',
+          'beaker',
+          goMap(repo, map, 'prototypes'),
+          s.mapView === 'prototypes',
+        )}</nav>`;
+      }
+
+      function scope(s) {
+        const repo = repoOf(s.repo);
+        const repoBtn = `<span class="menu-anchor"><button type="button" class="scope${s.view === 'map' ? ' is-quiet' : ''}" data-menu="repos" aria-haspopup="menu" aria-expanded="false">
+          ${repoMark(repo, 20)}<span class="t">${esc(s.view === 'map' ? short(repo.name) : repo.name)}</span>${icon('chevron')}</button>
+          <div class="menu" data-menu-for="repos" hidden><div class="menu-label">Switch repository</div>${NAV.repoMenu(s, s.view === 'protos' ? 'protos' : 'repo')}</div></span>`;
+        if (s.view !== 'map') return repoBtn;
+        const map = mapOf(repo, s.map);
+        return `${repoBtn}<span class="crumb-sep">/</span><span class="menu-anchor"><button type="button" class="scope" data-menu="maps" aria-haspopup="menu" aria-expanded="false">
+          ${NAV.miniRing(map.counts)}<span class="t">#${map.number} ${esc(map.title)}</span>${icon('chevron')}</button>
+          <div class="menu" data-menu-for="maps" hidden>${NAV.mapMenu(s)}</div></span>`;
+      }
+
+      // B's context-following button, kept as built so it can be judged next to the sidebar's own "Start a new map".
+      function cta(s) {
+        const repo = repoOf(s.repo);
+        if (s.view === 'repo' || s.view === 'protos') return `<a class="primary" href="#" ${goRepo(repo, 'new')}>${icon('plus')}New map in ${esc(short(repo.name))}</a>`;
+        const next = NAV.nextTicket(s);
+        return next ? `<a class="primary" href="#" data-to="T3 Code with ticket #${next.number}" title="${esc(next.title)}">${icon('play')}Start #${next.number} in T3 Code</a>` : '';
+      }
+
+      function topbar(s) {
+        const search = isFolded(s) ? `<button type="button" class="search" data-palette>${icon('lens')}<span class="ph">Jump to…</span><kbd>Ctrl K</kbd></button>` : '';
+        if (s.view === 'home' || s.view === 'new') {
+          const title = s.view === 'home' ? 'Home' : 'Start a new map';
+          return `<header class="topbar"><span class="page-title">${title}</span><span class="topbar-spacer"></span>${search}<span class="synced">Synced just now</span></header>`;
+        }
+        return `<header class="topbar">${scope(s)}${tabs(s)}<span class="topbar-spacer"></span>${search}<span class="synced">Synced just now</span>${cta(s)}</header>`;
+      }
+
+      NAV.start((s, body) => {
+        const open = !isFolded(s);
+        const content = s.view === 'map' ? body : `<main class="page">${s.view === 'repo' || s.view === 'protos' ? NAV.body(s, { head: false }) : body}</main>`;
+        return `<div class="app${open ? ' has-side' : ''}">${open ? side(s) : mini(s)}<div class="main">${topbar(s)}${content}</div></div>`;
+      });
+    </script>
+  </body>
+</html>

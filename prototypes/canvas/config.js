@@ -86,6 +86,31 @@ window.CANVAS = {
 
   pages: [
     {
+      title: 'D · Your mix',
+      question: 'Your mix: C’s sidebar tree everywhere, B’s scope switcher and tabs on the repository, Prototypes and map pages, and a redesigned folded sidebar. Is this the shell?',
+      sections: [
+        {
+          title: 'Open sidebar',
+          note: 'Home and /new-map are C1 and C4. Repository, Prototypes and the map get B’s topbar (B2, B3, B5) next to the sidebar.',
+          items: [
+            { id: 'D1', name: 'D · Home', src: 'variants/nav-d.html?view=home', note: 'C1 as it was.' },
+            { id: 'D2', name: 'D · Repository', src: 'variants/nav-d.html?view=repo', note: { idea: 'The sidebar shows the repository as your location; the topbar adds the repository switcher and Maps | Prototypes tabs.', cons: ['Two blue buttons: the sidebar’s “Start a new map” and B’s “New map in wayfinder-map”'] } },
+            { id: 'D3', name: 'D · Prototypes', src: 'variants/nav-d.html?view=protos', note: 'B3’s Prototypes tab, with the repository’s Prototypes row lit in the tree.' },
+            { id: 'D4', name: 'D · New map', src: 'variants/nav-d.html?view=new', note: 'C4 as it was: the sidebar button stays put and the tree keeps your repository open.' },
+            { id: 'D6', name: 'D · Map, sidebar open', src: 'variants/nav-d.html?view=map&side=open', note: 'B5’s topbar with the sidebar open. The tree lights the map; the views are topbar tabs, so the tree no longer lists them.' },
+          ],
+        },
+        {
+          title: 'Folded sidebar',
+          note: 'Folded is now the same tree, compacted: New map, Jump to, Home, then one mark per repository. Hover a mark for its name, click it for a flyout of its maps and Prototypes. The current repository keeps the blue marker. The map page starts folded; the panel button at the top toggles it on any page.',
+          items: [
+            { id: 'D5', name: 'D · Map, folded (default)', src: 'variants/nav-d.html?view=map', note: { idea: 'The map page as it would ship: folded rail plus B5’s topbar. Click the WM mark to see the flyout.', pros: ['Map canvas keeps its width', 'Same items and order as the open sidebar, so folding isn’t a different shell'], cons: ['Map views moved from the rail to the topbar tabs (B5), so the map page changes'] } },
+            { id: 'D7', name: 'D · Repository, folded', src: 'variants/nav-d.html?view=repo&side=folded', note: 'The same fold on a Home-owned page, for anyone who wants the width back.' },
+          ],
+        },
+      ],
+    },
+    {
       title: 'Home',
       question: 'Home: which shell makes the first step obvious? Start here: every frame is the whole flow, so click through it.',
       sections: [
