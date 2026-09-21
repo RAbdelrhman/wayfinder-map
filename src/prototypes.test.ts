@@ -80,4 +80,15 @@ describe('pickPreview', () => {
   it('has nothing to show when neither exists', () => {
     expect(pickPreview(false, [])).toBeNull();
   });
+
+  it('opens a design canvas board before anything else', () => {
+    const openable = ['docs/notes.html', 'prototypes/canvas/index.html', 'prototypes/canvas/variants/a.html'];
+    const files = [...openable, 'prototypes/canvas/config.js', 'prototypes/canvas/canvas.js'];
+    expect(pickPreview(true, openable, files)).toBe('prototypes/canvas/index.html');
+    expect(pickPreview(false, ['index.html'], ['index.html', 'config.js'])).toBe('index.html');
+  });
+
+  it('treats an index.html without a canvas config beside it as an ordinary page', () => {
+    expect(pickPreview(false, ['docs/a.html', 'site/index.html'], ['docs/a.html', 'site/index.html', 'config.js'])).toBe('docs/a.html');
+  });
 });

@@ -37,10 +37,21 @@ export function isSelfContained(html: string): boolean {
 }
 
 /**
- * The page a prototype shows running: its saved snapshot when there is one, which is
- * built to run anywhere, otherwise the first HTML file on the branch that stands alone.
+ * A design canvas's board: an `index.html` with the canvas's `config.js` beside it. When a
+ * prototype is a canvas, that board is the thing to open, not one of the pages inside it.
  */
-export function pickPreview(hasSnapshot: boolean, openable: readonly string[]): string | null {
+export function canvasEntry(openable: readonly string[], files: readonly string[]): string | null {
+  const all = new Set(files);
+  return openable.find((file) => /(?:^|\/)index\.html$/i.test(file) && all.has(file.replace(/index\.html$/i, 'config.js'))) ?? null;
+}
+
+/**
+ * The page a prototype shows running: its design canvas when it has one, then its saved
+ * snapshot, which is built to run anywhere, otherwise the first HTML file that stands alone.
+ */
+export function pickPreview(hasSnapshot: boolean, openable: readonly string[], files: readonly string[] = []): string | null {
+  const canvas = canvasEntry(openable, files);
+  if (canvas !== null) return canvas;
   if (hasSnapshot) return PROTOTYPE_SNAPSHOT_FILE;
   return openable[0] ?? null;
 }
