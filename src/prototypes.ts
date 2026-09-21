@@ -46,6 +46,19 @@ export function canvasEntry(openable: readonly string[], files: readonly string[
 }
 
 /**
+ * Canvas boards the branch changed without touching their `index.html`. The canvas engine
+ * lives on the default branch, so a prototype usually only edits `config.js` and its pages,
+ * and the diff never lists the board. These are worth reading off the branch directly.
+ */
+export function unlistedCanvasBoards(files: readonly string[]): string[] {
+  const all = new Set(files);
+  return files
+    .filter((file) => /(?:^|\/)config\.js$/.test(file))
+    .map((file) => file.replace(/config\.js$/, 'index.html'))
+    .filter((board) => !all.has(board));
+}
+
+/**
  * The page a prototype shows running: its design canvas when it has one, then its saved
  * snapshot, which is built to run anywhere, otherwise the first HTML file that stands alone.
  */

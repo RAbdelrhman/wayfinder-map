@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, parsePrototypeFilePath, pickPreview, prototypeFileUrl, prototypeTicketNumber } from './prototypes.js';
+import { PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, parsePrototypeFilePath, pickPreview, prototypeFileUrl, prototypeTicketNumber, unlistedCanvasBoards } from './prototypes.js';
 
 describe('prototypeTicketNumber', () => {
   it('reads the ticket number off a conventional branch', () => {
@@ -65,6 +65,18 @@ describe('prototype file paths', () => {
     expect(parsePrototypeFilePath('/proto/owner/repo/prototype%2F8-x')).toBeNull();
     expect(parsePrototypeFilePath('/proto/owner/repo/prototype%2F8-x/')).toBeNull();
     expect(parsePrototypeFilePath('/proto/owner/repo/prototype%2F%E0/x.html')).toBeNull();
+  });
+});
+
+describe('unlistedCanvasBoards', () => {
+  it('finds a canvas board the diff left out because only its config changed', () => {
+    expect(unlistedCanvasBoards(['prototypes/canvas/config.js', 'prototypes/canvas/variants/a.html'])).toEqual(['prototypes/canvas/index.html']);
+    expect(unlistedCanvasBoards(['config.js'])).toEqual(['index.html']);
+  });
+
+  it('skips boards the diff already lists, and files that only end in config.js', () => {
+    expect(unlistedCanvasBoards(['prototypes/canvas/config.js', 'prototypes/canvas/index.html'])).toEqual([]);
+    expect(unlistedCanvasBoards(['src/vite-config.js'])).toEqual([]);
   });
 });
 
