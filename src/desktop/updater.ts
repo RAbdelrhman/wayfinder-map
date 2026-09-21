@@ -6,14 +6,45 @@ import { updateChannel } from './updaterPolicy.js';
 const RELEASES_URL = 'https://github.com/RAbdelrhman/wayfinder-map/releases';
 const DAILY = 24 * 60 * 60 * 1000;
 
+export interface UpdaterStatus {
+  status: 'up-to-date' | 'available' | 'downloading' | 'ready' | 'dev' | 'disabled' | 'error';
+  currentVersion: string;
+  latestVersion?: string;
+  releaseUrl?: string;
+  error?: string;
+}
+
+export interface DesktopUpdaterHandle {
+  (): void;
+  stop: () => void;
+  check: () => Promise<UpdaterStatus>;
+  install: () => Promise<void>;
+  status: () => UpdaterStatus;
+}
+
 export interface UpdateOptions {
   window: BrowserWindow;
   enabled: boolean;
   prepareForRestart: () => Promise<void>;
 }
 
-export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateOptions): () => void {
-  if (!enabled) return () => undefined;
+export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateOptions): DesktopUpdaterHandle {
+  if (!enabled) {
+    return Object.assign(() => undefined, {
+      stop: () => undefined,
+      check: async (): Promise<UpdaterStatus> => ({
+        status: 'disabled' as const,
+        currentVersion: 'dev',
+        releaseUrl: RELEASES_URL,
+      }),
+      install: async (): Promise<void> => undefined,
+      status: (): UpdaterStatus => ({
+        status: 'disabled' as const,
+        currentVersion: 'dev',
+        releaseUrl: RELEASES_URL,
+      }),
+    });
+  }
 
   /*
     `autoUpdater` is a getter that builds an NsisUpdater the moment it is read, and that
@@ -25,12 +56,42 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
   const { autoUpdater } = electronUpdater;
 
   let errorShown = false;
+  let currentStatus: UpdaterStatus = {
+    status: 'up-to-date',
+    currentVersion: autoUpdater.currentVersion?.version ?? '0.0.0',
+    releaseUrl: RELEASES_URL,
+  };
+
   autoUpdater.channel = updateChannel(process.arch);
   autoUpdater.allowPrerelease = false;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = false;
 
-  autoUpdater.on('update-downloaded', () => {
+  autoUpdater.on('update-available', (info) => {
+    currentStatus = {
+      status: 'available',
+      currentVersion: autoUpdater.currentVersion?.version ?? '0.0.0',
+      latestVersion: info?.version,
+      releaseUrl: RELEASES_URL,
+    };
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    currentStatus = {
+      status: 'up-to-date',
+      currentVersion: autoUpdater.currentVersion?.version ?? '0.0.0',
+      latestVersion: info?.version,
+      releaseUrl: RELEASES_URL,
+    };
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    currentStatus = {
+      status: 'ready',
+      currentVersion: autoUpdater.currentVersion?.version ?? '0.0.0',
+      latestVersion: info?.version,
+      releaseUrl: RELEASES_URL,
+    };
     void dialog.showMessageBox(window, {
       type: 'info',
       title: 'Wayfinder update ready',
@@ -47,6 +108,12 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
   });
 
   autoUpdater.on('error', (error) => {
+    currentStatus = {
+      status: 'error',
+      currentVersion: autoUpdater.currentVersion?.version ?? '0.0.0',
+      error: error.message,
+      releaseUrl: RELEASES_URL,
+    };
     if (errorShown || window.isDestroyed()) return;
     errorShown = true;
     void dialog.showMessageBox(window, {
@@ -62,10 +129,52 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
     });
   });
 
-  const check = (): void => {
-    void autoUpdater.checkForUpdates().catch(() => undefined);
+  const check = async (): Promise<UpdaterStatus> => {
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      if (result && result.updateInfo) {
+        const latest = result.updateInfo.version;
+        const current = autoUpdater.currentVersion?.version ?? '0.0.0';
+        if (latest && current && latest !== current) {
+          currentStatus = {
+            status: currentStatus.status === 'ready' ? 'ready' : 'available',
+            currentVersion: current,
+            latestVersion: latest,
+            releaseUrl: RELEASES_URL,
+          };
+        } else {
+          currentStatus = {
+            status: 'up-to-date',
+            currentVersion: current,
+            latestVersion: latest,
+            releaseUrl: RELEASES_URL,
+          };
+        }
+      }
+      return currentStatus;
+    } catch (error) {
+      currentStatus = {
+        status: 'error',
+        currentVersion: autoUpdater.currentVersion?.version ?? '0.0.0',
+        error: (error as Error).message,
+        releaseUrl: RELEASES_URL,
+      };
+      return currentStatus;
+    }
   };
-  check();
-  const timer = setInterval(check, DAILY);
-  return () => clearInterval(timer);
+
+  const install = async (): Promise<void> => {
+    await prepareForRestart();
+    autoUpdater.quitAndInstall(false, true);
+  };
+
+  void check().catch(() => undefined);
+  const timer = setInterval(() => void check().catch(() => undefined), DAILY);
+
+  return Object.assign(() => clearInterval(timer), {
+    stop: () => clearInterval(timer),
+    check,
+    install,
+    status: () => currentStatus,
+  });
 }

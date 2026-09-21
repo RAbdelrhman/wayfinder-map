@@ -2,7 +2,7 @@ import type { HomeState } from '../home.js';
 import type { AuthFlowState } from '../authFlow.js';
 import { mapPath, normalizeRepo, parseRepoPagePath, prototypesPath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import type { MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
-import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, countStates, paintIcons, progressRing } from './chrome.js';
+import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import * as icons from './icons.js';
 import { currentCatalog, loadCatalog, modelSelectHtml, readChoice, tierDefaults } from './models.js';
 import { syncedLabel } from './focus.js';
@@ -26,7 +26,7 @@ const els = {
   refresh: need('refresh'),
   synced: need('synced'),
   toast: need('toast'),
-  navHome: need('nav-home'),
+  updater: need('updater'),
   navNew: need('nav-new'),
   newMapLink: need('new-map-link'),
 };
@@ -985,7 +985,7 @@ async function show(refresh = false): Promise<void> {
 
 paintIcons();
 bindTheme(need('theme'));
-els.navHome.classList.toggle('is-on', page.kind !== 'new-map');
+bindUpdater(els.updater, toast);
 els.navNew.classList.toggle('is-on', page.kind === 'new-map');
 els.newMapLink.hidden = page.kind === 'new-map';
 els.refresh.addEventListener('click', () => void show(true));

@@ -21,6 +21,7 @@ import { RepositoryStore } from './repositoryStore.js';
 import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './workspaces.js';
 import type { WorkspaceState } from './workspaces.js';
+import { WAYFINDER_VERSION } from './version.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -83,6 +84,21 @@ export interface ServeOptions {
    * ESM CLI resolve it differently, and deriving it here would tie the server to one of them.
    */
   uiDir?: string;
+  updater?: UpdaterService;
+}
+
+export interface UpdaterStatus {
+  status: 'up-to-date' | 'available' | 'downloading' | 'ready' | 'dev' | 'disabled' | 'error';
+  currentVersion: string;
+  latestVersion?: string;
+  releaseUrl?: string;
+  error?: string;
+}
+
+export interface UpdaterService {
+  check: () => Promise<UpdaterStatus>;
+  install?: () => Promise<void>;
+  status?: () => UpdaterStatus;
 }
 
 export interface RunningServer {
@@ -158,7 +174,39 @@ export async function startServer({
   repoLister = listRepositories,
   onShutdown,
   uiDir = join(process.cwd(), 'src', 'ui'),
+  updater,
 }: ServeOptions): Promise<RunningServer> {
+  const defaultUpdater: UpdaterService = {
+    async check(): Promise<UpdaterStatus> {
+      const currentVersion = WAYFINDER_VERSION;
+      if (currentVersion === '0.0.0-dev' || currentVersion.includes('-dev')) {
+        return { status: 'dev', currentVersion };
+      }
+      try {
+        const res = await fetch('https://api.github.com/repos/RAbdelrhman/wayfinder-map/releases/latest', {
+          headers: { 'User-Agent': 'Wayfinder' },
+        });
+        if (!res.ok) {
+          return { status: 'error', currentVersion, error: `GitHub API returned ${String(res.status)}` };
+        }
+        const data = (await res.json()) as { tag_name?: string; html_url?: string };
+        const latestTag = data.tag_name ? data.tag_name.replace(/^v/, '') : currentVersion;
+        const releaseUrl = data.html_url ?? 'https://github.com/RAbdelrhman/wayfinder-map/releases';
+        if (latestTag !== currentVersion) {
+          return { status: 'available', currentVersion, latestVersion: latestTag, releaseUrl };
+        }
+        return { status: 'up-to-date', currentVersion, latestVersion: latestTag, releaseUrl };
+      } catch (error) {
+        return { status: 'error', currentVersion, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    status(): UpdaterStatus {
+      return {
+        status: WAYFINDER_VERSION === '0.0.0-dev' || WAYFINDER_VERSION.includes('-dev') ? 'dev' : 'up-to-date',
+        currentVersion: WAYFINDER_VERSION,
+      };
+    },
+  };
   const repositories = new RepositoryStore({
     mapLabel: config.mapLabel,
     typePrefix: config.typePrefix,
@@ -316,6 +364,34 @@ export async function startServer({
         authFlow.cancel();
         t3.close?.();
         setImmediate(() => (onShutdown === undefined ? server.close() : onShutdown()));
+        return;
+      }
+
+      if (path === '/api/updater') {
+        const service = updater ?? defaultUpdater;
+        json(response, 200, service.status ? service.status() : await service.check());
+        return;
+      }
+
+      if (path === '/api/updater/check' && request.method === 'POST') {
+        const service = updater ?? defaultUpdater;
+        try {
+          const status = await service.check();
+          json(response, 200, status);
+        } catch (error) {
+          json(response, 500, { status: 'error', currentVersion: WAYFINDER_VERSION, error: (error as Error).message });
+        }
+        return;
+      }
+
+      if (path === '/api/updater/install' && request.method === 'POST') {
+        const service = updater ?? defaultUpdater;
+        if (!service.install) {
+          json(response, 400, { error: 'Direct installation is only available in the desktop application.' });
+          return;
+        }
+        json(response, 200, { installing: true });
+        void service.install();
         return;
       }
 

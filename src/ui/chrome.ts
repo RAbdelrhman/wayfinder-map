@@ -51,6 +51,8 @@ const STATIC_ICONS: Record<string, string> = {
   map: icons.COMPASS,
   ticket: icons.LIST,
   chevron: icons.CHEVRON,
+  download: icons.DOWNLOAD,
+  update: icons.DOWNLOAD,
 };
 
 /** Fills every `data-icon` element under `root`, so static markup can name an icon. */
@@ -69,6 +71,116 @@ export function bindTheme(button: HTMLElement): void {
     document.documentElement.dataset.theme = next;
     localStorage.setItem('wayfinder-map:theme', next);
   });
+}
+
+export interface UpdaterStatus {
+  status: 'up-to-date' | 'available' | 'downloading' | 'ready' | 'dev' | 'disabled' | 'error';
+  currentVersion: string;
+  latestVersion?: string;
+  releaseUrl?: string;
+  error?: string;
+}
+
+/** The rail's updater button: checks for updates or restarts into a downloaded update. */
+export function bindUpdater(button: HTMLElement, showToast: (message: string, ms?: number) => void): void {
+  let lastStatus: UpdaterStatus | null = null;
+
+  function applyStatus(data: UpdaterStatus, manual: boolean): void {
+    lastStatus = data;
+    if (data.status === 'ready') {
+      button.classList.add('has-update');
+      const ver = data.latestVersion ? ` v${data.latestVersion}` : '';
+      button.title = `Update ready${ver} (Click to restart and install)`;
+      button.setAttribute('aria-label', `Update ready${ver}`);
+      if (manual) {
+        showToast(`Wayfinder update${ver} is ready. Click again to restart and install.`);
+      }
+    } else if (data.status === 'available') {
+      button.classList.add('has-update');
+      const ver = data.latestVersion ? ` v${data.latestVersion}` : '';
+      button.title = `Update available${ver}`;
+      button.setAttribute('aria-label', `Update available${ver}`);
+      if (manual) {
+        showToast(`Update available${ver}.${data.releaseUrl ? ' Visit releases to download.' : ''}`);
+      }
+    } else if (data.status === 'up-to-date') {
+      button.classList.remove('has-update');
+      button.title = `Wayfinder is up to date (v${data.currentVersion})`;
+      button.setAttribute('aria-label', `Wayfinder is up to date (v${data.currentVersion})`);
+      if (manual) {
+        showToast(`Wayfinder is up to date (v${data.currentVersion}).`);
+      }
+    } else if (data.status === 'dev') {
+      button.classList.remove('has-update');
+      button.title = `Development build (v${data.currentVersion})`;
+      button.setAttribute('aria-label', `Development build (v${data.currentVersion})`);
+      if (manual) {
+        showToast(`Wayfinder is running a development build (v${data.currentVersion}).`);
+      }
+    } else if (data.status === 'disabled') {
+      button.classList.remove('has-update');
+      button.title = 'Updates are disabled for this build';
+      button.setAttribute('aria-label', 'Updates are disabled for this build');
+      if (manual) {
+        showToast('Updates are disabled for this build.');
+      }
+    } else if (data.status === 'error') {
+      if (manual) {
+        showToast(`Could not check for updates: ${data.error ?? 'Unknown error'}`);
+      }
+    }
+  }
+
+  async function check(manual: boolean): Promise<void> {
+    button.classList.add('is-busy');
+    try {
+      const response = await fetch('/api/updater/check', { method: 'POST' });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `Server returned ${String(response.status)}`);
+      }
+      const data = (await response.json()) as UpdaterStatus;
+      applyStatus(data, manual);
+    } catch (error) {
+      if (manual) {
+        const message = error instanceof Error ? error.message : String(error);
+        showToast(`Could not check for updates: ${message}`);
+      }
+    } finally {
+      button.classList.remove('is-busy');
+    }
+  }
+
+  async function install(): Promise<void> {
+    try {
+      const response = await fetch('/api/updater/install', { method: 'POST' });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `Server returned ${String(response.status)}`);
+      }
+      showToast('Restarting Wayfinder to install update…');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      showToast(`Could not install update: ${message}`);
+    }
+  }
+
+  button.addEventListener('click', () => {
+    if (lastStatus?.status === 'ready') {
+      void install();
+    } else {
+      void check(true);
+    }
+  });
+
+  void fetch('/api/updater')
+    .then(async (res) => {
+      if (res.ok) {
+        const data = (await res.json()) as UpdaterStatus;
+        applyStatus(data, false);
+      }
+    })
+    .catch(() => undefined);
 }
 
 export function countStates(map: WayfinderMap): Record<TicketState, number> {

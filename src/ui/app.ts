@@ -29,7 +29,7 @@ import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { mapPath, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindTheme, countStates, paintIcons, progressRing } from './chrome.js';
+import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -1193,6 +1193,7 @@ els.refresh.addEventListener('click', () => {
 });
 
 bindTheme(need('theme'));
+bindUpdater(need('updater'), toast);
 
 function setView(next: View): void {
   view = next;

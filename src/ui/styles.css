@@ -428,6 +428,18 @@ code {
   background: var(--text-primary);
 }
 
+.rail-btn.has-update::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--state-claimed);
+  box-shadow: 0 0 0 2px var(--surface-1);
+}
+
 .rail-btn.is-busy .i {
   animation: spin 0.8s linear infinite;
 }

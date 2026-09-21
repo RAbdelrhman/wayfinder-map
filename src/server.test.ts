@@ -286,6 +286,84 @@ describe('repository-scoped server', () => {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }
   });
+
+  it('serves updater status and handles check and install requests', async () => {
+    const check = vi.fn(async () => ({
+      status: 'available' as const,
+      currentVersion: '0.1.0',
+      latestVersion: '0.2.0',
+    }));
+    const install = vi.fn(async () => undefined);
+    const status = vi.fn(() => ({
+      status: 'ready' as const,
+      currentVersion: '0.1.0',
+      latestVersion: '0.2.0',
+    }));
+
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      homeLoader: async () => home,
+      updater: { check, install, status },
+    });
+
+    try {
+      const getRes = await fetch(`${running.url}/api/updater`);
+      expect(getRes.status).toBe(200);
+      await expect(getRes.json()).resolves.toEqual({
+        status: 'ready',
+        currentVersion: '0.1.0',
+        latestVersion: '0.2.0',
+      });
+      expect(status).toHaveBeenCalledTimes(1);
+
+      const checkRes = await fetch(`${running.url}/api/updater/check`, {
+        method: 'POST',
+        headers: { origin: running.url },
+      });
+      expect(checkRes.status).toBe(200);
+      await expect(checkRes.json()).resolves.toEqual({
+        status: 'available',
+        currentVersion: '0.1.0',
+        latestVersion: '0.2.0',
+      });
+      expect(check).toHaveBeenCalledTimes(1);
+
+      const installRes = await fetch(`${running.url}/api/updater/install`, {
+        method: 'POST',
+        headers: { origin: running.url },
+      });
+      expect(installRes.status).toBe(200);
+      await expect(installRes.json()).resolves.toEqual({ installing: true });
+      expect(install).toHaveBeenCalledTimes(1);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('provides default updater when none configured', async () => {
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      homeLoader: async () => home,
+    });
+
+    try {
+      const getRes = await fetch(`${running.url}/api/updater`);
+      expect(getRes.status).toBe(200);
+      const data = (await getRes.json()) as { status: string; currentVersion: string };
+      expect(data).toHaveProperty('status');
+      expect(data).toHaveProperty('currentVersion');
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
 });
 
 describe('local clone for a hand-off', () => {
