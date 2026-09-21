@@ -1715,17 +1715,51 @@ tbody tr.is-selected {
 }
 
 .rail-mark {
+  position: relative;
   width: 30px;
   height: 30px;
   margin-top: 6px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: var(--state-claimed);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
   flex: none;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--hairline);
+  user-select: none;
+}
+
+.rail-mark .avatar-img,
+.avatar .avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  z-index: 1;
+}
+
+.rail-mark .avatar-initial,
+.avatar .avatar-initial {
+  position: relative;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: uppercase;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.rail-mark .avatar-initial .i,
+.avatar .avatar-initial .i {
+  width: 16px;
+  height: 16px;
 }
 
 .topbar-spacer {
@@ -1871,16 +1905,21 @@ a.card:hover {
 }
 
 .avatar {
-  width: 30px;
-  height: 30px;
+  position: relative;
+  width: 32px;
+  height: 32px;
   flex: none;
-  display: grid;
-  place-items: center;
-  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
   background: var(--state-claimed);
   color: #fff;
   font-size: 13px;
   font-weight: 700;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--hairline);
+  user-select: none;
 }
 
 .repo-grid {

@@ -26,6 +26,7 @@ describe('readAccount', () => {
     await expect(readAccount(runner([ready]))).resolves.toMatchObject({
       status: 'ready',
       login: 'octo',
+      avatarUrl: 'https://github.com/octo.png?size=64',
       accounts: ['octo', 'mona'],
       tokenSource: 'keyring',
     });

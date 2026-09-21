@@ -1,5 +1,6 @@
 import * as icons from './icons.js';
 import { icon } from './icons.js';
+import { escapeHtml } from './markdown.js';
 import type { TicketState, WayfinderMap } from '../types.js';
 
 export interface StateLook {
@@ -133,19 +134,18 @@ export function bindUpdater(button: HTMLElement, showToast: (message: string, ms
 
   async function check(manual: boolean): Promise<void> {
     button.classList.add('is-busy');
+    button.title = 'Checking for updates\u2026';
     try {
       const response = await fetch('/api/updater/check', { method: 'POST' });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `Server returned ${String(response.status)}`);
+        throw new Error(body.error ?? `HTTP ${String(response.status)}`);
       }
       const data = (await response.json()) as UpdaterStatus;
       applyStatus(data, manual);
     } catch (error) {
-      if (manual) {
-        const message = error instanceof Error ? error.message : String(error);
-        showToast(`Could not check for updates: ${message}`);
-      }
+      const message = error instanceof Error ? error.message : String(error);
+      applyStatus({ status: 'error', currentVersion: lastStatus?.currentVersion ?? '', error: message }, manual);
     } finally {
       button.classList.remove('is-busy');
     }
@@ -156,9 +156,9 @@ export function bindUpdater(button: HTMLElement, showToast: (message: string, ms
       const response = await fetch('/api/updater/install', { method: 'POST' });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `Server returned ${String(response.status)}`);
+        throw new Error(body.error ?? `HTTP ${String(response.status)}`);
       }
-      showToast('Restarting Wayfinder to install update…');
+      showToast('Restarting Wayfinder to install update\u2026');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       showToast(`Could not install update: ${message}`);
@@ -181,6 +181,49 @@ export function bindUpdater(button: HTMLElement, showToast: (message: string, ms
       }
     })
     .catch(() => undefined);
+}
+
+export interface AccountProfile {
+  login: string | null;
+  avatarUrl?: string | null;
+}
+
+export function renderAccountMarkContent(profile: AccountProfile | null | undefined): string {
+  const login = profile?.login?.trim();
+  if (!login) {
+    return `<span class="avatar-initial" data-icon="person">${icon(icons.PERSON)}</span>`;
+  }
+  const avatarUrl = profile?.avatarUrl ?? `https://github.com/${encodeURIComponent(login)}.png?size=64`;
+  const initial = login.slice(0, 1).toUpperCase();
+  return `<img class="avatar-img" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(login)}" onerror="this.remove()" /><span class="avatar-initial">${escapeHtml(initial)}</span>`;
+}
+
+export function updateAccountMark(
+  element: HTMLElement | null,
+  profile: AccountProfile | null | undefined,
+): void {
+  if (!element) return;
+  const login = profile?.login?.trim();
+  element.innerHTML = renderAccountMarkContent(profile);
+  if (login) {
+    element.title = `Signed in as ${login}`;
+    element.setAttribute('aria-label', `GitHub account: ${login}`);
+  } else {
+    element.title = 'GitHub account (Not signed in)';
+    element.setAttribute('aria-label', 'GitHub account: Not signed in');
+  }
+}
+
+export function bindAccountMark(element: HTMLElement | null): void {
+  if (!element) return;
+  void fetch('/api/auth/status')
+    .then((response) => (response.ok ? (response.json() as Promise<AccountProfile>) : null))
+    .then((profile) => {
+      updateAccountMark(element, profile);
+    })
+    .catch(() => {
+      updateAccountMark(element, null);
+    });
 }
 
 export function countStates(map: WayfinderMap): Record<TicketState, number> {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { progressRing } from './chrome.js';
+import { progressRing, renderAccountMarkContent, updateAccountMark } from './chrome.js';
 
 const RADIUS = (76 - 7) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -41,5 +41,49 @@ describe('progressRing', () => {
     const svg = progressRing({ frontier: 0, claimed: 0, blocked: 0, done: 0 }, 0);
     expect(arcs(svg)).toEqual([]);
     expect(svg).toContain('stroke="var(--wash)"');
+  });
+});
+
+describe('renderAccountMarkContent', () => {
+  it('renders GitHub avatar with letter initial fallback for authenticated user', () => {
+    const html = renderAccountMarkContent({ login: 'octocat', avatarUrl: 'https://avatars.githubusercontent.com/u/583231' });
+    expect(html).toContain('class="avatar-img"');
+    expect(html).toContain('src="https://avatars.githubusercontent.com/u/583231"');
+    expect(html).toContain('alt="octocat"');
+    expect(html).toContain('onerror="this.remove()"');
+    expect(html).toContain('<span class="avatar-initial">O</span>');
+  });
+
+  it('falls back to github user url if avatarUrl is omitted', () => {
+    const html = renderAccountMarkContent({ login: 'RAbdelrhman' });
+    expect(html).toContain('src="https://github.com/RAbdelrhman.png?size=64"');
+    expect(html).toContain('<span class="avatar-initial">R</span>');
+  });
+
+  it('renders person icon when signed out or login is missing', () => {
+    const html = renderAccountMarkContent(null);
+    expect(html).toContain('data-icon="person"');
+    expect(html).not.toContain('<img');
+  });
+});
+
+describe('updateAccountMark', () => {
+  it('updates title and aria-label according to account state', () => {
+    const attrs = new Map<string, string>();
+    const el = {
+      innerHTML: '',
+      title: '',
+      setAttribute: (k: string, v: string) => attrs.set(k, v),
+      getAttribute: (k: string) => attrs.get(k) ?? null,
+    } as unknown as HTMLElement;
+
+    updateAccountMark(el, { login: 'RAbdelrhman' });
+    expect(el.title).toBe('Signed in as RAbdelrhman');
+    expect(el.getAttribute('aria-label')).toBe('GitHub account: RAbdelrhman');
+    expect(el.innerHTML).toContain('avatar-img');
+
+    updateAccountMark(el, null);
+    expect(el.title).toBe('GitHub account (Not signed in)');
+    expect(el.getAttribute('aria-label')).toBe('GitHub account: Not signed in');
   });
 });

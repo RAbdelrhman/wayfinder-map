@@ -9,6 +9,7 @@ export interface HomeAccount {
   status: AccountStatus;
   host: string;
   login: string | null;
+  avatarUrl?: string | null;
   accounts: string[];
   missingScopes: string[];
   tokenSource: string | null;
@@ -63,6 +64,7 @@ function unavailableAccount(status: AccountStatus, message: string): HomeAccount
     status,
     host: 'github.com',
     login: null,
+    avatarUrl: null,
     accounts: [],
     missingScopes: [],
     tokenSource: null,
@@ -93,10 +95,14 @@ export async function readAccount(runGh: HomeGh = gh): Promise<HomeAccount> {
 
   const scopes = strings(active.scopes);
   const missingScopes = REQUIRED_SCOPES.filter((scope) => !scopes.includes(scope));
+  const avatarUrl = preferredHost === 'github.com'
+    ? `https://github.com/${encodeURIComponent(active.login)}.png?size=64`
+    : `https://${preferredHost}/${encodeURIComponent(active.login)}.png?size=64`;
   return {
     status: missingScopes.length === 0 ? 'ready' : 'missing-scopes',
     host: preferredHost,
     login: active.login,
+    avatarUrl,
     accounts,
     missingScopes,
     tokenSource: typeof active.tokenSource === 'string' ? active.tokenSource : null,

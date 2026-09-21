@@ -2,7 +2,8 @@ import type { HomeState } from '../home.js';
 import type { AuthFlowState } from '../authFlow.js';
 import { mapPath, normalizeRepo, parseRepoPagePath, prototypesPath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import type { MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
-import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
+import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, bindUpdater, countStates, paintIcons, progressRing, renderAccountMarkContent, updateAccountMark } from './chrome.js';
+import type { AccountProfile } from './chrome.js';
 import * as icons from './icons.js';
 import { currentCatalog, loadCatalog, modelSelectHtml, readChoice, tierDefaults } from './models.js';
 import { syncedLabel } from './focus.js';
@@ -94,7 +95,7 @@ function accountPanel(state: HomeState): string {
             .join('')}</select>`
         : '';
     return `<div class="panel">
-      <span class="avatar">${escapeHtml(account.login?.slice(0, 1).toUpperCase() ?? '?')}</span>
+      <span class="avatar">${renderAccountMarkContent(account)}</span>
       <span class="grow"><strong>${escapeHtml(account.login ?? '')}</strong><p>${escapeHtml(account.host)}${environmentToken ? ' · token from the environment' : ''}</p></span>
       ${switcher}
       <button type="button" class="ghost" id="stop-server"><span data-icon="sign-out"></span>Stop server</button>
@@ -161,10 +162,33 @@ async function beginAuth(action: 'login' | 'refresh'): Promise<void> {
 
 /* ---------- pages ---------- */
 
+
+let cachedAccount: AccountProfile | null = null;
+
+async function syncAccountMark(): Promise<AccountProfile | null> {
+  if (cachedAccount) {
+    updateAccountMark(els.accountMark, cachedAccount);
+    return cachedAccount;
+  }
+  try {
+    const res = await fetch('/api/auth/status');
+    if (res.ok) {
+      cachedAccount = (await res.json()) as AccountProfile;
+      updateAccountMark(els.accountMark, cachedAccount);
+      return cachedAccount;
+    }
+  } catch {
+    // ignore
+  }
+  updateAccountMark(els.accountMark, null);
+  return null;
+}
+
 async function renderHome(refresh: boolean): Promise<void> {
   crumbs([]);
   const state = await getJson<HomeState>(`/api/home${refresh ? '?refresh=1' : ''}`);
-  els.accountMark.textContent = state.account.login?.slice(0, 1).toUpperCase() ?? '!';
+  cachedAccount = state.account;
+  updateAccountMark(els.accountMark, state.account);
   setSynced(syncedLabel(0));
   const recent = recentRepositories();
   const discovered = state.repositories.filter((repo) => !recent.includes(repo));
@@ -421,7 +445,7 @@ function tileText(repo: string, prototype: Prototype, snapshot: MapSnapshot): Ti
 async function renderPrototypes(repo: string, refresh: boolean): Promise<void> {
   remember(repo);
   crumbs([repo, 'Prototypes']);
-  els.accountMark.textContent = repo.slice(0, 1).toUpperCase();
+  void syncAccountMark();
   const snapshot = await getJson<MapSnapshot>(scopedApiPath(repo, 'snapshot'));
   const list = await getJson<Prototype[]>(`${scopedApiPath(repo, 'prototypes')}${refresh ? '?refresh=1' : ''}`);
   setSynced(syncedLabel(0));
@@ -447,7 +471,7 @@ async function renderPrototypes(repo: string, refresh: boolean): Promise<void> {
 async function renderRepository(repo: string, refresh: boolean): Promise<void> {
   remember(repo);
   crumbs([repo]);
-  els.accountMark.textContent = repo.slice(0, 1).toUpperCase();
+  void syncAccountMark();
   const snapshot = await getJson<MapSnapshot>(`${scopedApiPath(repo, 'snapshot')}${refresh ? '?refresh=1' : ''}`);
   const fetched = Date.parse(snapshot.fetchedAt);
   setSynced(Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
@@ -496,8 +520,7 @@ function stateChip(state: TicketState): string {
 async function renderNewMap(): Promise<void> {
   crumbs(['Start a new map']);
   setSynced('');
-  const account = await getJson<HomeState['account']>('/api/auth/status');
-  els.accountMark.textContent = account.login?.slice(0, 1).toUpperCase() ?? '!';
+  const account = await syncAccountMark();
 
   let homeState: HomeState | null = null;
   try {
