@@ -110,10 +110,23 @@ Prototype tickets keep their prototype on a throwaway branch named
 The hand-off prompt tells the agent to push there. If you work a prototype ticket by
 hand, use the same name, because the name is the only way the tool finds it.
 
-Alongside the prototype, the branch carries `prototype-snapshot.html` at its root: the
-prototype as one HTML file with its styles and script inlined, no paths starting with
-`/`, and no calls to a server. The hand-off prompt asks for it too. It is what lets you
-open a prototype months later, after the app it was built in has moved on.
+A prototype that asks a visual or UX question is built as a **design canvas**: a board
+that lays the options out side by side (full pages, style directions, component sheets,
+palettes, type, layered moodboards), each with a note giving its pros and cons. It can
+have several pages, and any option opens full size. It lives in `prototypes/canvas/`:
+the options are described in `config.js`, and its `README.md` is the full reference.
+To add one, use the `design-canvas` skill:
+
+```sh
+node ~/.claude/skills/design-canvas/scaffold.mjs prototypes/canvas  # engine + starter; never overwrites your config.js, variants/ or assets/
+node prototypes/canvas/tools/check.mjs                              # validates the config and the sandbox rules
+node prototypes/canvas/tools/serve.mjs                              # previews it under the same CSP the tool serves it with
+```
+
+Any other prototype carries `prototype-snapshot.html` at its branch root: the prototype
+as one HTML file with its styles and script inlined, no paths starting with `/`, and no
+calls to a server. The hand-off prompt asks for one or the other. Either is what lets
+you open a prototype months later, after the app it was built in has moved on.
 
 **Prototypes** is a gallery. Each tile shows the prototype running, scaled down, with
 its ticket and the one-line decision it led to underneath. Click a tile and the
@@ -122,10 +135,10 @@ the beaker in a map's left rail shows that map's prototypes, and the repository 
 links to every prototype across its maps. A prototype ticket's panel shows its tile
 too.
 
-The server reads the snapshot off the branch through `gh` and serves it sandboxed, so
-a prototype's scripts cannot reach the tool's API. A branch with no snapshot falls
-back to any standalone HTML page on it; with neither, its tile says there is no
-preview.
+The server reads the prototype off the branch through `gh` and serves it sandboxed, so
+a prototype's scripts cannot reach the tool's API. A tile opens the design canvas when
+the branch has one (an `index.html` with its `config.js` beside it), then the snapshot,
+then any other standalone HTML page. With none of these, the tile says there is no preview.
 
 ## Starting a thread
 
@@ -189,7 +202,7 @@ Placeholders: `{{repo}}`, `{{mapNumber}}`, `{{mapTitle}}`, `{{mapUrl}}`,
 `{{worktreeSteps}}` asks the agent to make its worktree, or tells it that T3 Code
 already did. `{{typeSteps}}` tells the agent that grilling and prototype tickets are
 human-in-the-loop: grill the user one question at a time and decide nothing without
-them, and tells prototype agents which branch to push to. It is empty for other types. An unknown one is left in the text rather than silently blanked,
+them, and tells prototype agents which branch to push to and to build a design canvas (or a snapshot). It is empty for other types. An unknown one is left in the text rather than silently blanked,
 so a typo is visible.
 
 ## Terminal options
