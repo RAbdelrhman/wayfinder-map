@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prototype canvas</title>
+    <link rel="stylesheet" href="canvas.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <span class="brand" aria-hidden="true">◈</span>
+      <h1 class="title" id="title"></h1>
+      <span class="count" id="count"></span>
+      <span class="spacer"></span>
+      <div class="group" role="group" aria-label="Zoom">
+        <button type="button" class="icon-btn" id="zoom-out" aria-label="Zoom out" title="Zoom out (−)">−</button>
+        <button type="button" class="zoom-label" id="zoom-fit" title="Fit to screen (0)">100%</button>
+        <button type="button" class="icon-btn" id="zoom-in" aria-label="Zoom in" title="Zoom in (+)">+</button>
+      </div>
+      <button type="button" class="btn" id="theme" title="Theme inside the frames (T)"></button>
+      <button type="button" class="btn is-primary" id="present" title="Open the first variant full size">▶ Present</button>
+    </header>
+
+    <main class="board" id="board" tabindex="-1">
+      <div class="stage" id="stage">
+        <section class="note banner" id="banner"></section>
+        <div class="frames" id="frames"></div>
+      </div>
+    </main>
+
+    <div class="present" id="present-view" hidden>
+      <header class="bar">
+        <button type="button" class="btn" id="back" title="Back to the canvas (Esc)">← Canvas</button>
+        <nav class="tabs" id="tabs" aria-label="Variants"></nav>
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="present-theme" title="Theme inside the frame (T)"></button>
+        <button type="button" class="btn" id="notes" aria-pressed="true" title="Show or hide the note (N)">Note</button>
+        <a class="btn" id="new-tab" target="_blank" rel="noreferrer" title="Open in a new tab">↗</a>
+      </header>
+      <div class="present-body">
+        <iframe id="present-frame" title="Variant"></iframe>
+        <aside class="note side-note" id="side-note"></aside>
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="canvas.js"></script>
+  </body>
+</html>

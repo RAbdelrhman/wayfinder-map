@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A · Directory</title>
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <style>
+      .repo-meta {
+        color: var(--text-muted);
+        font-size: 12.5px;
+        white-space: nowrap;
+      }
+      .bar {
+        height: 4px;
+        width: 64px;
+        border-radius: 2px;
+        background: var(--gridline);
+        overflow: hidden;
+      }
+      .bar > i {
+        display: block;
+        height: 100%;
+        background: var(--state-frontier);
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div class="app">
+      <nav class="rail" aria-label="App">
+        <a class="logo" href="#" data-to="Home" data-icon="compass" aria-label="Wayfinder Home"></a>
+        <a class="rail-btn is-on" href="#" data-to="Home" data-icon="home" aria-label="Home"></a>
+        <a class="rail-btn" href="#" data-to="Start a new map" data-icon="plus" aria-label="Start a new map"></a>
+        <span class="rail-spacer"></span>
+        <button type="button" class="rail-btn" data-to="a refresh" data-icon="refresh" aria-label="Refresh"></button>
+        <button type="button" class="rail-btn" data-to="the theme switch" data-icon="moon" aria-label="Theme"></button>
+        <span class="rail-mark">R</span>
+      </nav>
+      <div class="main">
+        <header class="topbar">
+          <span class="crumbs"><a href="#">Home</a></span>
+          <span class="topbar-spacer"></span>
+          <a class="primary" href="#" data-to="Start a new map"><span data-icon="plus"></span>Start a new map</a>
+        </header>
+        <main class="page">
+          <div class="sheet">
+            <div class="page-head">
+              <div class="grow">
+                <p class="eyebrow">Wayfinder</p>
+                <h1>Where do you want to go?</h1>
+                <p>Pick a repository, then open one of its maps.</p>
+              </div>
+            </div>
+            <div class="panel">
+              <span class="avatar">R</span>
+              <span class="grow"><strong>ramon</strong><p>github.com</p></span>
+            </div>
+            <form class="field" onsubmit="event.preventDefault(); Kit.toast('Would open the repository')">
+              <label for="repo-name">Open a repository</label>
+              <div class="row">
+                <input class="input" id="repo-name" placeholder="owner/name" autocomplete="off" />
+                <button class="primary" type="submit">Open</button>
+              </div>
+            </form>
+            <section class="section">
+              <div class="section-head"><h2>Repositories with maps</h2></div>
+              <div class="repo-grid" id="repos"></div>
+            </section>
+          </div>
+        </main>
+      </div>
+    </div>
+    <script src="../kit/kit.js"></script>
+    <script>
+      document.getElementById('repos').innerHTML = Kit.FIXTURES.repositories
+        .map(
+          (r) => `<a class="card repo-card" href="#" data-to="${Kit.esc(r.name)}">
+            <span data-icon="repo"></span>
+            <span class="grow">${Kit.esc(r.name)}</span>
+            <span class="repo-meta">${r.maps} map${r.maps === 1 ? '' : 's'} · ${r.updated}</span>
+            <span class="bar" title="${r.done} of ${r.done + r.open} tickets done"><i style="width:${Math.round((100 * r.done) / (r.done + r.open))}%"></i></span>
+            <span class="go" data-icon="arrow"></span>
+          </a>`,
+        )
+        .join('');
+    </script>
+  </body>
+</html>
