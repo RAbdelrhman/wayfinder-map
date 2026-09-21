@@ -166,13 +166,29 @@ describe('buildPrompt', () => {
 });
 
 describe('buildNewMapPrompt', () => {
-  it('generates a new map interview prompt with repo and goal', () => {
-    const prompt = buildNewMapPrompt({
-      repo: 'owner/repo',
-      goal: 'Build an offline-first sync engine.',
-    });
-    expect(prompt).toContain('You are helping plan a new Wayfinder map for the repository owner/repo.');
-    expect(prompt).toContain('Build an offline-first sync engine.');
-    expect(prompt).toContain('interview me one question at a time');
+  const prompt = buildNewMapPrompt({
+    repo: 'owner/repo',
+    goal: 'Build an offline-first sync engine.\n\nKeep drafts local.',
+    mapLabel: 'wayfinder:map',
+    typePrefix: 'wayfinder:',
+  });
+
+  it('names the repository and carries the goal verbatim, indented', () => {
+    expect(prompt).toContain('Start a new wayfinder map in owner/repo.');
+    expect(prompt).toContain('  Build an offline-first sync engine.\n\n  Keep drafts local.');
+  });
+
+  it('asks T3 to run the wayfinder workflow, interview the user, and create the map and tickets', () => {
+    expect(prompt).toContain('Run the wayfinder workflow');
+    expect(prompt).toContain('Interview the user as needed');
+    expect(prompt).toContain('labeled `wayfinder:map`');
+    expect(prompt).toContain('labeled `wayfinder:<type>`');
+    expect(prompt).toContain('sub-issue');
+  });
+
+  it('uses the configured labels', () => {
+    const custom = buildNewMapPrompt({ repo: 'o/r', goal: 'x', mapLabel: 'plan:map', typePrefix: 'plan:' });
+    expect(custom).toContain('labeled `plan:map`');
+    expect(custom).toContain('labeled `plan:<type>`');
   });
 });

@@ -189,34 +189,28 @@ export function countStates(map: WayfinderMap): Record<TicketState, number> {
   return counts;
 }
 
-/** One arc per state, in progress order, with a small gap between arcs. */
-export function progressRing(counts: Record<TicketState, number>, size = 28, stroke = 3): string {
-  const total = counts.frontier + counts.claimed + counts.blocked + counts.done;
+/**
+ * One arc per state, in progress order, with a small gap between arcs. Drawn on the
+ * ring's own 76px grid: the second argument is the ticket count, not a size.
+ */
+export function progressRing(counts: Record<TicketState, number>, total: number): string {
+  const size = 76;
+  const stroke = 7;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  const center = size / 2;
-
-  if (total === 0) {
-    return `<svg class="ring" width="${String(size)}" height="${String(size)}" viewBox="0 0 ${String(size)} ${String(size)}"><circle cx="${String(center)}" cy="${String(center)}" r="${String(radius)}" fill="none" stroke="var(--border)" stroke-width="${String(stroke)}"/></svg>`;
-  }
-
-  const gap = total === 1 ? 0 : 2;
-  let offset = -circumference / 4;
-  const segments: string[] = [];
-
-  for (const state of PROGRESS_ORDER) {
-    const count = counts[state];
-    if (count === 0) continue;
-    const length = (count / total) * circumference;
-    const arc = Math.max(0, length - gap);
-    segments.push(
-      `<circle cx="${String(center)}" cy="${String(center)}" r="${String(radius)}" fill="none" ` +
-        `stroke="var(${STATE_LOOKS[state].variable})" stroke-width="${String(stroke)}" ` +
-        `stroke-dasharray="${String(arc)} ${String(circumference - arc)}" ` +
-        `stroke-dashoffset="${String(-offset)}"/>`,
-    );
-    offset += length;
-  }
-
-  return `<svg class="ring" width="${String(size)}" height="${String(size)}" viewBox="0 0 ${String(size)} ${String(size)}">${segments.join('')}</svg>`;
+  const center = String(size / 2);
+  let offset = 0;
+  const arcs =
+    total === 0
+      ? `<circle cx="${center}" cy="${center}" r="${String(radius)}" fill="none" stroke="var(--wash)" stroke-width="${String(stroke)}"/>`
+      : PROGRESS_ORDER.filter((state) => counts[state] > 0)
+          .map((state) => {
+            const length = (counts[state] / total) * circumference;
+            const gap = counts[state] === total ? 0 : 3;
+            const arc = `<circle cx="${center}" cy="${center}" r="${String(radius)}" fill="none" stroke="var(${STATE_STYLE[state].variable})" stroke-width="${String(stroke)}" stroke-dasharray="${String(Math.max(0, length - gap))} ${String(circumference)}" stroke-dashoffset="${String(-offset)}"/>`;
+            offset += length;
+            return arc;
+          })
+          .join('');
+  return `<svg viewBox="0 0 ${String(size)} ${String(size)}" aria-hidden="true">${arcs}</svg>`;
 }

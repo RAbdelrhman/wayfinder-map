@@ -18,37 +18,60 @@ This tool reads that structure and draws it.
 
 ## Run it
 
-```bash
-npx wayfinder-map            # opens Home; inside a checkout, opens that repository
-npx wayfinder-map --repo owner/name  # opens that repository's map list
-```
-
-Needs [`gh`](https://cli.github.com) on your PATH and logged in. That is the only
-credential involved: no token to paste, no GitHub App, no config.
+Wayfinder has two entry points over the same local server: the desktop app, which
+is how most people should launch it, and the `wayfinder-map` command for terminal
+use and automation. Both need [`gh`](https://cli.github.com) on your PATH and logged
+in. That is the only credential involved: no token to paste, no GitHub App, no config.
 
 Home shows the active `gh` account and discovers repositories that contain maps.
 You can always enter `owner/name` when discovery misses one. Repository and map
 pages have bookmarkable URLs, and snapshots are isolated per repository in memory.
 
-From a clone:
+### Desktop app
 
-```bash
-bun install
-bun run build
-node dist/cli.js --repo owner/name
-```
-
-To run the desktop shell from a built checkout:
-
-```bash
-bun run desktop
-```
+Install Wayfinder from the Windows installer on the
+[releases page](https://github.com/RAbdelrhman/wayfinder-map/releases) and open it
+from the Start menu or the desktop shortcut. No terminal needed: it opens on Home.
 
 Closing its window keeps Wayfinder in the system tray. The tray can reopen the
 current page, go Home, start a new map, or quit. Quit stops the loopback server
 and revokes the in-memory T3 Code session.
 
-### Windows installer
+The first public release targets Windows 10 and Windows 11. Stable installers must
+be signed; architecture-specific installed-flow gates are documented in
+[`docs/release-windows.md`](docs/release-windows.md).
+
+### Terminal
+
+The command needs Node 22 or newer. Each release attaches it as an npm package,
+`wayfinder-map-<version>.tgz`; install that straight from the release (it is not on
+the npm registry, so `npx wayfinder-map` does not work):
+
+```bash
+npm install --global https://github.com/RAbdelrhman/wayfinder-map/releases/download/v0.1.0/wayfinder-map-0.1.0.tgz
+```
+
+Swap in the version you want. The command reports the same version as the desktop
+app it was released with.
+
+```bash
+wayfinder-map                        # opens Home; inside a checkout, opens that repository
+wayfinder-map --repo owner/name      # opens that repository's map list
+wayfinder-map --no-open --port 0     # serves on a free port without opening a browser
+wayfinder-map --version
+```
+
+It prints the address it serves on and runs until Ctrl+C. It never loads the desktop
+shell.
+
+### From a clone
+
+```bash
+bun install
+bun run build
+node dist/cli.js --repo owner/name   # the terminal command
+bun run desktop                      # the desktop shell
+```
 
 Unsigned owner-test installers can be built for Windows x64 or ARM64:
 
@@ -56,10 +79,6 @@ Unsigned owner-test installers can be built for Windows x64 or ARM64:
 bun run package:win -- x64
 bun run package:win -- arm64
 ```
-
-The first public release targets Windows 10 and Windows 11. Stable installers must
-be signed; architecture-specific installed-flow gates are documented in
-[`docs/release-windows.md`](docs/release-windows.md).
 
 ## What you see
 
@@ -159,7 +178,7 @@ claiming the ticket, then asks the agent to close it the way the wayfinder flow
 does. Replace it with your own:
 
 ```bash
-npx wayfinder-map --prompt ./my-prompt.txt
+wayfinder-map --prompt ./my-prompt.txt
 ```
 
 Placeholders: `{{repo}}`, `{{mapNumber}}`, `{{mapTitle}}`, `{{mapUrl}}`,
@@ -173,16 +192,18 @@ human-in-the-loop: grill the user one question at a time and decide nothing with
 them, and tells prototype agents which branch to push to. It is empty for other types. An unknown one is left in the text rather than silently blanked,
 so a typo is visible.
 
-## Options
+## Terminal options
 
 ```
---repo <owner/name>   Repository to open. Defaults to the one gh resolves in --cwd.
---cwd <path>          Directory used to resolve the repo.
---port <number>       Port to serve on. Default 4478.
+--repo <owner/name>   Repository to open. Uses the one in --cwd, or Home when none.
+--cwd <path>          Directory used to resolve the repo. Defaults to the shell's.
+--port <number>       Port to serve on. Default 4478; 0 picks a free one.
 --map-label <label>   Label that marks a map issue. Default wayfinder:map.
 --type-prefix <text>  Prefix on a ticket's type label. Default wayfinder:.
 --prompt <file>       Prompt template.
 --no-open             Do not open a browser on start.
+-v, --version         Print the version.
+-h, --help            This text.
 ```
 
 A `wayfinder-map.config.json` in the working directory sets the same keys. Flags win
@@ -193,7 +214,7 @@ over it.
 Nothing assumes the word "wayfinder". Point it at whatever your repo uses:
 
 ```bash
-npx wayfinder-map --map-label epic --type-prefix 'kind/'
+wayfinder-map --map-label epic --type-prefix 'kind/'
 ```
 
 Types still have to be one of research, prototype, grilling or task to get a
@@ -207,7 +228,7 @@ from a task list or issue links in the map body, and blockers from a
 
 ## How it is put together
 
-Zero runtime dependencies. A Node HTTP server reads GitHub through `gh`, and the
+The CLI package has zero runtime dependencies. A Node HTTP server reads GitHub through `gh`, and the
 page is plain TypeScript bundled by esbuild.
 
 The server binds to loopback only and refuses any request carrying a foreign
@@ -232,7 +253,7 @@ src/ui/          Home, repository list and map pages
 ```
 
 ```bash
-bun run test        # vitest
+bun run test        # vitest, including a smoke test of the packed and installed CLI
 bun run typecheck   # tsc --noEmit
 ```
 

@@ -499,35 +499,49 @@ export async function startServer({
         }
       }
 
+      if (requestedRepo !== null && scoped?.action === 'new-map' && request.method === 'POST') {
+        const body = (await readBody(request)) as { goal?: unknown; preview?: unknown; copyOnly?: unknown; model?: unknown };
+        const goal = typeof body.goal === 'string' ? body.goal.trim() : '';
+        if (goal.length === 0) {
+          json(response, 400, { error: 'Say what you want to accomplish first.' });
+          return;
+        }
+        const prompt = buildNewMapPrompt({ repo: requestedRepo, goal, mapLabel: config.mapLabel, typePrefix: config.typePrefix });
+        if (body.preview === true) {
+          json(response, 200, { prompt });
+          return;
+        }
+        if (body.copyOnly === true) {
+          json(response, 200, { prompt, ...(await copyOnly(prompt)) });
+          return;
+        }
+        // Planning a map runs in the repository's clone, so starting one needs a verified checkout (#6).
+        const workspaceRoot = await clones.resolve(requestedRepo);
+        if (workspaceRoot === null) {
+          json(response, 409, { error: `Choose a local clone of ${requestedRepo} before starting in T3 Code.`, prompt });
+          return;
+        }
+        const result = await handOff(
+          {
+            title: `New map: ${goal.replace(/\s+/g, ' ').slice(0, 48)}`,
+            workspaceRoot,
+            branch: 'wayfinder/new-map',
+            model: parseModelChoice(body.model),
+            prompt: () => prompt,
+          },
+          t3.steps(await detectT3()),
+        );
+        json(response, 200, result);
+        return;
+      }
+
       if (requestedRepo !== null && (scoped?.action === 'hand-off' || path === '/api/hand-off') && request.method === 'POST') {
         const body = (await readBody(request)) as {
           map?: number;
           ticket?: number;
           copyOnly?: boolean;
           model?: unknown;
-          goal?: string;
         };
-
-        if (typeof body.goal === 'string' && body.goal.trim().length > 0) {
-          const goal = body.goal.trim();
-          const prompt = buildNewMapPrompt({ repo: requestedRepo, goal });
-          if (body.copyOnly === true) {
-            json(response, 200, { prompt, ...(await copyOnly(prompt)) });
-            return;
-          }
-          const result = await handOff(
-            {
-              title: `New map: ${goal.replace(/[\r\n]+/g, ' ').slice(0, 48)}`,
-              workspaceRoot: await clones.resolve(requestedRepo),
-              branch: 'wayfinder/new-map',
-              model: parseModelChoice(body.model),
-              prompt: () => prompt,
-            },
-            t3.steps(await detectT3()),
-          );
-          json(response, 200, result);
-          return;
-        }
 
         const snapshot = await repositories.snapshot(requestedRepo, false);
         let map: WayfinderMap | null = null;
@@ -668,7 +682,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|prototypes|ticket|workspace)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;
