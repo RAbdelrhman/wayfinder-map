@@ -22,6 +22,7 @@ import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './workspaces.js';
 import type { WorkspaceState } from './workspaces.js';
 import { WAYFINDER_VERSION } from './version.js';
+import { resolveRepoIcon } from './repoIcon.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -502,6 +503,26 @@ export async function startServer({
         }
       }
 
+      if (requestedRepo !== null && scoped?.action === 'icon') {
+        try {
+          const icon = await resolveRepoIcon(requestedRepo, clones, t3, workspaceRoot);
+          if (icon === null) {
+            json(response, 404, { error: 'No repository icon found.' });
+            return;
+          }
+          response.writeHead(200, {
+            'content-type': icon.contentType,
+            'content-length': icon.data.length,
+            'cache-control': 'public, max-age=3600',
+          });
+          response.end(icon.data);
+          return;
+        } catch (error) {
+          json(response, 502, { error: (error as Error).message });
+          return;
+        }
+      }
+
       if (requestedRepo !== null && scoped?.action === 'new-map' && request.method === 'POST') {
         const body = (await readBody(request)) as { goal?: unknown; preview?: unknown; copyOnly?: unknown; model?: unknown };
         const goal = typeof body.goal === 'string' ? body.goal.trim() : '';
@@ -685,7 +706,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|icon)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;

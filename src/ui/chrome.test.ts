@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { progressRing, renderAccountMarkContent, repoIconHtml, updateAccountMark } from './chrome.js';
+import {
+  progressRing,
+  renderAccountMarkContent,
+  repoColorName,
+  repoIconHtml,
+  repoMonogram,
+  updateAccountMark,
+} from './chrome.js';
 
 const RADIUS = (76 - 7) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -88,20 +95,43 @@ describe('updateAccountMark', () => {
   });
 });
 
+describe('repoMonogram', () => {
+  it('extracts two-letter uppercase monogram matching T3 Code', () => {
+    expect(repoMonogram('wayfinder-map')).toBe('WM');
+    expect(repoMonogram('RAbdelrhman/wayfinder-map')).toBe('WM');
+    expect(repoMonogram('ECPL-Lockstep')).toBe('EL');
+    expect(repoMonogram('owner/ECPL-Lockstep')).toBe('EL');
+    expect(repoMonogram('local-workspace')).toBe('LW');
+    expect(repoMonogram('single')).toBe('SE');
+  });
+});
+
+describe('repoColorName', () => {
+  it('deterministically hashes repo name to a palette color', () => {
+    const c1 = repoColorName('wayfinder-map');
+    const c2 = repoColorName('wayfinder-map');
+    expect(c1).toBe(c2);
+    expect(typeof c1).toBe('string');
+  });
+});
+
 describe('repoIconHtml', () => {
-  it('renders GitHub owner avatar and repo name initial for owner/repo', () => {
+  it('renders monogram badge and hidden repo-icon image for owner/repo', () => {
     const html = repoIconHtml('RAbdelrhman/wayfinder-map');
     expect(html).toContain('class="repo-icon-badge"');
-    expect(html).toContain('src="https://github.com/RAbdelrhman.png?size=64"');
-    expect(html).toContain('onerror="this.remove()"');
-    expect(html).toContain('<span class="repo-icon-initial">W</span>');
+    expect(html).toContain('class="repo-monogram-svg"');
+    expect(html).toContain('WM');
+    expect(html).toContain('src="/api/repos/RAbdelrhman/wayfinder-map/icon"');
+    expect(html).toContain('style="display:none"');
+    expect(html).not.toContain('onerror=');
   });
 
-  it('renders repo initial for repository without owner', () => {
+  it('renders monogram badge without img for repository without valid owner/repo path', () => {
     const html = repoIconHtml('local-workspace');
     expect(html).toContain('class="repo-icon-badge"');
+    expect(html).toContain('class="repo-monogram-svg"');
+    expect(html).toContain('LW');
     expect(html).not.toContain('<img');
-    expect(html).toContain('<span class="repo-icon-initial">L</span>');
   });
 
   it('supports sm and lg size variants', () => {
