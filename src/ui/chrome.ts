@@ -171,7 +171,10 @@ export interface AccountProfile {
   missingScopes: string[];
 }
 
-export function renderAccountMarkContent(profile: AccountProfile | null | undefined): string {
+/** All the account mark needs, so both the chrome's profile and Home's account can draw it. */
+export type AccountMark = Pick<AccountProfile, 'login' | 'avatarUrl'>;
+
+export function renderAccountMarkContent(profile: AccountMark | null | undefined): string {
   const login = profile?.login?.trim();
   if (!login) {
     return `<span class="avatar-initial" data-icon="person">${icon(icons.PERSON)}</span>`;
@@ -183,7 +186,7 @@ export function renderAccountMarkContent(profile: AccountProfile | null | undefi
 
 export function updateAccountMark(
   element: HTMLElement | null,
-  profile: AccountProfile | null | undefined,
+  profile: AccountMark | null | undefined,
 ): void {
   if (!element) return;
   const login = profile?.login?.trim();
