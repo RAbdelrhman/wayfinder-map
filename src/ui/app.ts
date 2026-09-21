@@ -104,7 +104,6 @@ const els = {
   toast: need('toast'),
   modelsDialog: need<HTMLDialogElement>('models-dialog'),
   tierRows: need('tier-rows'),
-  refresh: need('refresh'),
 };
 
 paintIcons();
@@ -148,7 +147,7 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
   if (loadInFlight !== null) return loadInFlight;
   const force = mode !== 'initial';
   if (mode === 'initial') els.repo.textContent = 'reading GitHub…';
-  if (mode === 'manual') els.refresh.classList.add('is-busy');
+  if (mode === 'manual') els.synced.classList.add('is-busy');
 
   loadInFlight = (async () => {
     try {
@@ -185,7 +184,7 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       return false;
     } finally {
       loadInFlight = null;
-      els.refresh.classList.remove('is-busy');
+      els.synced.classList.remove('is-busy');
     }
   })();
   return loadInFlight;
@@ -277,7 +276,10 @@ function renderHead(): void {
 function renderSynced(): void {
   if (snapshot === null) return;
   const fetched = Date.parse(snapshot.fetchedAt);
-  els.synced.textContent = Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched);
+  const text = Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched);
+  const label = els.synced.querySelector<HTMLElement>('.synced-label') ?? els.synced;
+  label.textContent = text;
+  els.synced.hidden = !text;
 }
 
 function renderFilters(): void {
@@ -1179,7 +1181,7 @@ document.addEventListener('keydown', (event) => {
 
 void loadCatalog().then(refreshTicketPicker);
 
-els.refresh.addEventListener('click', () => {
+els.synced.addEventListener('click', () => {
   void load('manual').then(() => {
     const map = currentMap();
     prototypeLoads.clear();

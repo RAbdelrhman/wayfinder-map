@@ -574,10 +574,59 @@ kbd {
 }
 
 .synced {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin: 0 8px 0 14px;
-  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--text-muted);
+  font-size: 12px;
+  font-family: inherit;
   white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.synced:hover {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+  color: var(--text-primary);
+}
+
+.synced:focus-visible {
+  outline: 0;
+  border-color: var(--state-claimed);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--state-claimed) 25%, transparent);
+}
+
+.synced .synced-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  color: var(--text-muted);
+  flex: none;
+}
+
+.synced:hover .synced-icon {
+  color: var(--text-primary);
+}
+
+.synced.is-busy .synced-icon svg {
+  animation: spin 0.8s linear infinite;
+}
+
+.synced[hidden] {
+  display: none;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .warnings {
@@ -2120,6 +2169,8 @@ textarea.input {
   background: var(--surface-1);
   border: 1px solid var(--hairline);
   border-radius: 10px;
+  position: relative;
+  z-index: 10;
 }
 
 .add-new-repo-bar label {
@@ -2132,9 +2183,9 @@ textarea.input {
   white-space: nowrap;
 }
 
-.add-new-repo-bar .repo-input-wrap {
+.add-new-repo-bar .repo-picker {
   flex: 1;
-  min-width: 240px;
+  min-width: 260px;
 }
 
 .add-new-repo-bar .input {

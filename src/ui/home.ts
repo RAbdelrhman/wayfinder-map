@@ -25,13 +25,17 @@ const els = {
   main: need('main'),
   crumbs: need('crumbs'),
   accountMark: need('account-mark'),
-  refresh: need('refresh'),
   synced: need('synced'),
   toast: need('toast'),
   updater: need('updater'),
   navNew: need('nav-new'),
-  newMapLink: need('new-map-link'),
 };
+
+function setSynced(text: string): void {
+  const label = els.synced.querySelector<HTMLElement>('.synced-label') ?? els.synced;
+  label.textContent = text;
+  els.synced.hidden = !text;
+}
 
 let toastTimer = 0;
 
@@ -161,7 +165,7 @@ async function renderHome(refresh: boolean): Promise<void> {
   crumbs([]);
   const state = await getJson<HomeState>(`/api/home${refresh ? '?refresh=1' : ''}`);
   els.accountMark.textContent = state.account.login?.slice(0, 1).toUpperCase() ?? '!';
-  els.synced.textContent = syncedLabel(0);
+  setSynced(syncedLabel(0));
   const recent = recentRepositories();
   const discovered = state.repositories.filter((repo) => !recent.includes(repo));
   const warning =
@@ -236,7 +240,11 @@ const MENU_LIMIT = 50;
 let repoList: Promise<string[]> | null = null;
 
 /** Opens a filterable list of the account's repositories under the Home input. */
-function bindRepoPicker(input: HTMLInputElement, menu: HTMLUListElement): void {
+function bindRepoPicker(
+  input: HTMLInputElement,
+  menu: HTMLUListElement,
+  onSelect?: (repo: string) => void,
+): void {
   let repos: string[] | null = null;
   let error: string | null = null;
   let matches: string[] = [];
@@ -257,7 +265,7 @@ function bindRepoPicker(input: HTMLInputElement, menu: HTMLUListElement): void {
       active = Math.min(active, matches.length - 1);
       menu.innerHTML =
         matches.length === 0
-          ? `<li class="repo-menu-note">No repositories match. Press Enter to open it by name.</li>`
+          ? `<li class="repo-menu-note">No repositories match. Press Enter to use it by name.</li>`
           : matches
               .map(
                 (repo, index) =>
@@ -293,7 +301,9 @@ function bindRepoPicker(input: HTMLInputElement, menu: HTMLUListElement): void {
     active = -1;
     draw();
   });
-  input.addEventListener('blur', close);
+  input.addEventListener('blur', () => {
+    setTimeout(close, 180);
+  });
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       close();
@@ -307,14 +317,26 @@ function bindRepoPicker(input: HTMLInputElement, menu: HTMLUListElement): void {
       const picked = matches[active];
       if (picked === undefined) return;
       event.preventDefault();
-      window.location.assign(repoPath(picked));
+      close();
+      if (onSelect) {
+        onSelect(picked);
+      } else {
+        window.location.assign(repoPath(picked));
+      }
     }
   });
   // Keep focus in the input so a click on an option lands before blur closes the menu.
   menu.addEventListener('mousedown', (event) => event.preventDefault());
   menu.addEventListener('click', (event) => {
     const repo = (event.target as HTMLElement).closest<HTMLElement>('[data-repo]')?.dataset['repo'];
-    if (repo !== undefined) window.location.assign(repoPath(repo));
+    if (repo !== undefined) {
+      close();
+      if (onSelect) {
+        onSelect(repo);
+      } else {
+        window.location.assign(repoPath(repo));
+      }
+    }
   });
 }
 
@@ -402,7 +424,7 @@ async function renderPrototypes(repo: string, refresh: boolean): Promise<void> {
   els.accountMark.textContent = repo.slice(0, 1).toUpperCase();
   const snapshot = await getJson<MapSnapshot>(scopedApiPath(repo, 'snapshot'));
   const list = await getJson<Prototype[]>(`${scopedApiPath(repo, 'prototypes')}${refresh ? '?refresh=1' : ''}`);
-  els.synced.textContent = syncedLabel(0);
+  setSynced(syncedLabel(0));
 
   paint(`<div class="page-head">
       <div class="grow">
@@ -428,7 +450,7 @@ async function renderRepository(repo: string, refresh: boolean): Promise<void> {
   els.accountMark.textContent = repo.slice(0, 1).toUpperCase();
   const snapshot = await getJson<MapSnapshot>(`${scopedApiPath(repo, 'snapshot')}${refresh ? '?refresh=1' : ''}`);
   const fetched = Date.parse(snapshot.fetchedAt);
-  els.synced.textContent = Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched);
+  setSynced(Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
   const warnings = snapshot.warnings
     .map((warning) => `<div class="panel is-warning"><span class="grow">${escapeHtml(warning)}</span></div>`)
     .join('');
@@ -473,7 +495,7 @@ function stateChip(state: TicketState): string {
 
 async function renderNewMap(): Promise<void> {
   crumbs(['Start a new map']);
-  els.synced.textContent = '';
+  setSynced('');
   const account = await getJson<HomeState['account']>('/api/auth/status');
   els.accountMark.textContent = account.login?.slice(0, 1).toUpperCase() ?? '!';
 
@@ -519,9 +541,9 @@ async function renderNewMap(): Promise<void> {
 
       <div class="add-new-repo-bar">
         <label for="new-repo-input"><span data-icon="repo"></span> Repository</label>
-        <div class="repo-input-wrap">
-          <input class="input" id="new-repo-input" list="add-new-repo-list" placeholder="owner/name" value="${escapeHtml(initialRepo)}" autocomplete="off" spellcheck="false" />
-          <datalist id="add-new-repo-list">${repoOptionsHtml}</datalist>
+        <div class="repo-picker">
+          <input class="input" id="new-repo-input" placeholder="Search GitHub repositories or type owner/name" value="${escapeHtml(initialRepo)}" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="new-repo-menu" aria-autocomplete="list" />
+          <ul class="repo-menu" id="new-repo-menu" role="listbox" hidden></ul>
         </div>
         ${recentPillsHtml ? `<div class="recent-repos-hint"><span>Recent:</span>${recentPillsHtml}</div>` : ''}
       </div>
@@ -864,8 +886,9 @@ async function renderNewMap(): Promise<void> {
   ticketInput.addEventListener('input', handleTicketInput);
   ticketInput.addEventListener('paste', () => setTimeout(handleTicketInput, 20));
 
-  repoInput.addEventListener('change', () => {
-    const normalized = normalizeRepo(repoInput.value.trim());
+  function switchRepo(target: string): void {
+    const normalized = normalizeRepo(target);
+    repoInput.value = normalized ?? target;
     void loadMapWorkspace();
     if (normalized) {
       remember(normalized);
@@ -875,20 +898,19 @@ async function renderNewMap(): Promise<void> {
         void inspectTicket(Number(numMatch[1]));
       }
     }
+  }
+
+  bindRepoPicker(repoInput, need<HTMLUListElement>('new-repo-menu'), switchRepo);
+
+  repoInput.addEventListener('change', () => {
+    switchRepo(repoInput.value.trim());
   });
 
   for (const pill of els.main.querySelectorAll<HTMLButtonElement>('.repo-pill')) {
     pill.addEventListener('click', () => {
       const targetRepo = pill.dataset['repo'];
       if (targetRepo) {
-        repoInput.value = targetRepo;
-        remember(targetRepo);
-        void loadExistingMaps(targetRepo);
-        void loadMapWorkspace();
-        const numMatch = /^#?(\d+)$/.exec(ticketInput.value.trim());
-        if (numMatch && numMatch[1]) {
-          void inspectTicket(Number(numMatch[1]));
-        }
+        switchRepo(targetRepo);
       }
     });
   }
@@ -1045,7 +1067,7 @@ async function run(work: () => Promise<void> | void): Promise<void> {
 }
 
 async function show(refresh = false): Promise<void> {
-  if (refresh) els.refresh.classList.add('is-busy');
+  if (refresh) els.synced.classList.add('is-busy');
   else paint('<p class="loading">Reading GitHub…</p>');
   await run(async () => {
     if (page.kind === 'new-map') await renderNewMap();
@@ -1053,19 +1075,17 @@ async function show(refresh = false): Promise<void> {
     else if (page.kind === 'repository') await renderRepository(page.repo, refresh);
     else await renderHome(refresh);
   });
-  els.refresh.classList.remove('is-busy');
+  els.synced.classList.remove('is-busy');
 }
 
 paintIcons();
 bindTheme(need('theme'));
 bindUpdater(els.updater, toast);
 els.navNew.classList.toggle('is-on', page.kind === 'new-map');
-els.newMapLink.hidden = page.kind === 'new-map';
 // From a repository's pages, the composer opens on that repository.
 const composerHref = newMapPath(page.kind === 'repository' || page.kind === 'prototypes' ? page.repo : null);
-els.newMapLink.setAttribute('href', composerHref);
 els.navNew.setAttribute('href', composerHref);
-els.refresh.addEventListener('click', () => void show(true));
+els.synced.addEventListener('click', () => void show(true));
 document.addEventListener('click', (event) => {
   const target = (event.target as HTMLElement | null)?.closest('[data-refresh-home], [data-auth]');
   if (target === null || target === undefined) return;

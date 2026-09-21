@@ -13,7 +13,6 @@
         <a class="logo" href="/" data-icon="compass" title="Wayfinder Home" aria-label="Wayfinder Home"></a>
         <a class="rail-btn" id="nav-new" href="/new-map" data-icon="plus" title="Start a new map" aria-label="Start a new map"></a>
         <span class="rail-spacer"></span>
-        <button type="button" id="refresh" class="rail-btn" aria-label="Refresh" title="Re-read from GitHub" data-icon="refresh"></button>
         <button type="button" id="theme" class="rail-btn" aria-label="Theme" title="Switch light and dark" data-icon="moon"></button>
         <button type="button" id="updater" class="rail-btn" aria-label="Check for updates" title="Check for updates" data-icon="download"></button>
         <span class="rail-mark" id="account-mark" title="GitHub account">…</span>
@@ -23,8 +22,10 @@
         <header class="topbar">
           <span class="crumbs" id="crumbs"><a href="/">Home</a></span>
           <span class="topbar-spacer"></span>
-          <span class="synced" id="synced"></span>
-          <a class="primary" id="new-map-link" href="/new-map"><span data-icon="plus"></span>Start a new map</a>
+          <button type="button" class="synced" id="synced" aria-label="Resync from GitHub" title="Click to resync from GitHub">
+            <span class="synced-icon" data-icon="refresh"></span>
+            <span class="synced-label" id="synced-label"></span>
+          </button>
         </header>
 
         <main class="page" id="main" tabindex="-1">
