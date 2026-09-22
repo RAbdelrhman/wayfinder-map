@@ -66,6 +66,11 @@ window.CANVAS = {
                 cons: ['The topbar shifts when the button appears'],
               },
             },
+            {
+              kind: 'note',
+              name: 'Agreed so far',
+              text: 'A + B with the list in the topbar. The list covers every map and repository, and each row names its repo and map. No hand-off chrome while nothing is in T3 Code, whatever the placement. A finished hand-off (PR ready, Failed) leaves the list once you act on it or open the list after it finished; it stays on its ticket card and in Home history for 30 days (#41).',
+            },
           ],
         },
         {
