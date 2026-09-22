@@ -3,87 +3,745 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>A · Directory</title>
-    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <title>A · Cards</title>
+    <!-- PROTOTYPE (#43), direction A: Cards. #40's layout at its calmest: one card per job, the map page's
+         cards and rings, generous space. Progress is a small fogged terrain plus a calendar of fog. -->
+    <link rel="stylesheet" href="../assets/app.css" />
+    <link rel="stylesheet" href="shell.css" />
     <style>
-      .repo-meta {
+      .a-sheet {
+        width: min(1120px, 100%);
+        margin: 0 auto;
+        padding: 30px 32px 80px;
+        box-sizing: border-box;
+      }
+      .a-hello h1 {
+        margin: 6px 0 0;
+        font-size: var(--font-page-title);
+        letter-spacing: -0.02em;
+        font-weight: 650;
+      }
+      .a-cols {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        gap: 24px;
+        margin-top: 24px;
+        align-items: start;
+      }
+      .a-left {
+        display: grid;
+        gap: 28px;
+      }
+      .a-head {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        margin: 0 0 10px;
+      }
+      .a-head h2 {
+        margin: 0;
+        font-size: var(--font-xs);
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
         color: var(--text-muted);
+      }
+      .a-head .n {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .a-head .grow {
+        flex: 1;
+      }
+      .a-link {
         font-size: 12.5px;
+        color: var(--state-claimed);
+        text-decoration: none;
+      }
+      .a-link:hover {
+        text-decoration: underline;
+      }
+
+      /* Continue */
+      .a-continue {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 20px 22px;
+      }
+      .a-continue .grow {
+        flex: 1;
+        min-width: 0;
+      }
+      .a-continue h3 {
+        margin: 6px 0 0;
+        font-size: 17px;
+        line-height: 1.32;
+        letter-spacing: -0.01em;
+      }
+      .a-continue .sub {
+        margin: 8px 0 0;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      .a-continue .sub b {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      .a-continue .ring-wrap {
+        position: relative;
+        width: 64px;
+        height: 64px;
+        flex: none;
+      }
+      .a-continue .ring-wrap .lbl {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .a-actions {
+        display: flex;
+        gap: 8px;
+        flex: none;
+      }
+      .a-actions a {
+        text-decoration: none;
+      }
+      .a-live {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .a-live::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--state-frontier);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--state-frontier) 50%, transparent);
+        animation: a-pulse 1.8s infinite;
+      }
+      @keyframes a-pulse {
+        70% {
+          box-shadow: 0 0 0 7px transparent;
+        }
+      }
+      .a-icon-tile {
+        width: 64px;
+        height: 64px;
+        flex: none;
+        display: grid;
+        place-items: center;
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--state-claimed) 12%, transparent);
+        color: var(--state-claimed);
+      }
+      .a-icon-tile .i {
+        width: 26px;
+        height: 26px;
+      }
+      .a-block {
+        border-color: color-mix(in srgb, var(--state-blocked) 55%, transparent);
+        background: color-mix(in srgb, var(--state-blocked) 8%, var(--surface-1));
+      }
+      .a-block .a-icon-tile {
+        background: color-mix(in srgb, var(--state-blocked) 22%, transparent);
+        color: color-mix(in srgb, var(--state-blocked) 65%, var(--text-primary));
+      }
+      .a-cmd {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 12px;
+        padding: 6px 6px 6px 12px;
+        border: 1px solid var(--hairline);
+        border-radius: 8px;
+        background: var(--surface-1);
+        font: 13px ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+      .a-cmd button {
+        border: 0;
+        background: var(--wash);
+        border-radius: 6px;
+        padding: 4px 8px;
+        font: inherit;
+        font-family: system-ui, sans-serif;
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      /* In flight */
+      .a-list {
+        padding: 6px;
+      }
+      .a-sub {
+        padding: 10px 12px 4px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .a-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border-radius: 9px;
+        color: inherit;
+        text-decoration: none;
+      }
+      .a-item:hover {
+        background: var(--wash);
+      }
+      .a-item .grow {
+        flex: 1;
+        min-width: 0;
+      }
+      .a-item strong {
+        display: block;
+        font-size: 13.5px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .a-item .meta {
+        display: block;
+        margin-top: 2px;
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .a-kind {
+        width: 32px;
+        height: 32px;
+        flex: none;
+        display: grid;
+        place-items: center;
+        border-radius: 9px;
+        background: color-mix(in srgb, var(--state-claimed) 12%, transparent);
+        color: var(--state-claimed);
+      }
+      .a-kind.is-run {
+        background: color-mix(in srgb, var(--state-frontier) 12%, transparent);
+        color: var(--state-frontier);
+      }
+      .a-kind .i {
+        width: 16px;
+        height: 16px;
+      }
+      .a-age {
+        font-size: 12px;
+        color: var(--text-muted);
         white-space: nowrap;
       }
-      .bar {
-        height: 4px;
-        width: 64px;
-        border-radius: 2px;
-        background: var(--gridline);
+      .a-quiet {
+        padding: 18px 16px;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      /* Repositories */
+      .a-find {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .a-find .search {
+        flex: 1;
+        width: auto;
+        height: 38px;
+      }
+      .a-find .ghost {
+        height: 38px;
+        white-space: nowrap;
+      }
+      .a-repo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 9px 12px;
+        border-radius: 9px;
+        color: inherit;
+        text-decoration: none;
+        font-size: 13.5px;
+      }
+      .a-repo:hover {
+        background: var(--wash);
+      }
+      .a-repo .grow {
+        flex: 1;
+        min-width: 0;
+        font-weight: 550;
+      }
+      .a-repo .stat {
+        font-size: 12.5px;
+        color: var(--text-secondary);
+        white-space: nowrap;
+      }
+      .a-repo .when {
+        width: 88px;
+        text-align: right;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .a-more {
+        display: block;
+        padding: 8px 12px 6px;
+      }
+
+      /* Progress */
+      .a-progress {
+        position: sticky;
+        top: 20px;
+        padding: 18px;
+      }
+      .a-progress .wf-fog {
+        display: block;
+        margin: 12px 0 12px;
+        border-radius: 10px;
+        border: 1px solid var(--hairline);
+      }
+      .a-big {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .a-big b {
+        font-size: 30px;
+        letter-spacing: -0.02em;
+      }
+      .a-big span {
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      .a-goal {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .a-goal .grow {
+        flex: 1;
+      }
+      .a-step {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--hairline);
+        border-radius: 8px;
         overflow: hidden;
       }
-      .bar > i {
-        display: block;
-        height: 100%;
-        background: var(--state-frontier);
+      .a-step button {
+        width: 26px;
+        height: 26px;
+        border: 0;
+        background: none;
+        color: var(--text-secondary);
+        display: grid;
+        place-items: center;
+      }
+      .a-step button:hover {
+        background: var(--wash);
+      }
+      .a-step .i {
+        width: 12px;
+        height: 12px;
+      }
+      .a-step b {
+        min-width: 22px;
+        text-align: center;
+        font-size: 13px;
+      }
+      .a-cal {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 5px;
+        margin-top: 10px;
+      }
+      .a-cal i {
+        aspect-ratio: 1;
+        border-radius: 5px;
+        background:
+          linear-gradient(color-mix(in srgb, var(--plane) calc(var(--f) * 100%), transparent), color-mix(in srgb, var(--plane) calc(var(--f) * 100%), transparent)),
+          color-mix(in srgb, var(--state-frontier) 55%, var(--surface-1));
+        border: 1px solid var(--hairline);
+      }
+      .a-cal i.is-today {
+        outline: 2px solid var(--state-claimed);
+        outline-offset: 1px;
+      }
+      .a-cal i.is-blank {
+        background: transparent;
+        border-style: dashed;
+      }
+      .a-legend {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 8px;
+        font-size: 11.5px;
+        color: var(--text-muted);
+      }
+      .a-streak {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid var(--hairline);
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .a-streak .i {
+        width: 14px;
+        height: 14px;
+        color: var(--state-blocked);
+      }
+
+      /* Repository page */
+      .a-tools {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .a-tools .search {
+        width: 320px;
+        height: 36px;
+      }
+      .a-maps {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        gap: 14px;
+      }
+      .a-map {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .a-map h2 {
+        margin: 6px 0 0;
+        font-size: 16px;
+        line-height: 1.32;
+      }
+      .a-map .dest {
+        margin: 0;
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.5;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .a-map-foot {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: auto;
+        padding-top: 12px;
+        border-top: 1px solid var(--hairline);
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .a-map-foot .grow {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .a-map-foot .primary {
+        text-decoration: none;
+        height: 30px;
+      }
+      .a-done-maps .a-map {
+        opacity: 0.8;
+      }
+      .a-empty {
+        display: grid;
+        justify-items: center;
+        gap: 10px;
+        padding: 56px 24px;
+        text-align: center;
+        border: 1px dashed var(--baseline);
+        border-radius: 14px;
+      }
+      .a-empty h2 {
+        margin: 6px 0 0;
+        font-size: 18px;
+      }
+      .a-empty p {
+        margin: 0;
+        max-width: 46ch;
+        color: var(--text-secondary);
+        font-size: 13.5px;
+        line-height: 1.55;
+      }
+      .a-empty .primary {
+        margin-top: 8px;
+        text-decoration: none;
+      }
+
+      /* Prototypes tab */
+      .a-pick {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+        gap: 24px;
+        padding: 20px;
+        border-color: color-mix(in srgb, var(--state-claimed) 45%, transparent);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--state-claimed) 8%, transparent);
+      }
+      .a-pick .frames {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        align-content: center;
+      }
+      .a-pick h2 {
+        margin: 8px 0 0;
+        font-size: 17px;
+        line-height: 1.32;
+      }
+      .a-pick p {
+        margin: 8px 0 0;
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .a-pick .a-actions {
+        margin-top: 16px;
+      }
+      .a-flag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--state-claimed);
+        color: var(--on-accent);
+        font-size: 11.5px;
+        font-weight: 600;
+      }
+      .a-flag .i {
+        width: 12px;
+        height: 12px;
+      }
+      .a-protos {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 14px;
+      }
+      .a-proto {
+        display: flex;
+        flex-direction: column;
+        padding: 0;
+        overflow: hidden;
+      }
+      .a-proto .thumb {
+        padding: 14px;
+        background: var(--plane);
+        border-bottom: 1px solid var(--hairline);
+      }
+      .a-proto .thumb .wf-frame {
+        display: grid;
+      }
+      .a-proto .thumb.is-empty {
+        aspect-ratio: auto;
+        height: 150px;
+        display: grid;
+        place-items: center;
+        color: var(--text-muted);
+        font-size: 12.5px;
+      }
+      .a-proto .txt {
+        display: grid;
+        gap: 6px;
+        padding: 14px 16px 16px;
+      }
+      .a-proto strong {
+        font-size: 14px;
+        line-height: 1.35;
+      }
+      .a-proto .gist {
+        color: var(--text-secondary);
+        font-size: 12.5px;
+        line-height: 1.45;
+      }
+      .a-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .a-status .grow {
+        flex: 1;
       }
     </style>
   </head>
   <body class="viz-root">
-    <div class="app">
-      <nav class="rail" aria-label="App">
-        <a class="logo" href="#" data-to="Home" data-icon="compass" aria-label="Wayfinder Home"></a>
-        <a class="rail-btn is-on" href="#" data-to="Home" data-icon="home" aria-label="Home"></a>
-        <a class="rail-btn" href="#" data-to="Start a new map" data-icon="plus" aria-label="Start a new map"></a>
-        <span class="rail-spacer"></span>
-        <button type="button" class="rail-btn" data-to="a refresh" data-icon="refresh" aria-label="Refresh"></button>
-        <button type="button" class="rail-btn" data-to="the theme switch" data-icon="moon" aria-label="Theme"></button>
-        <span class="rail-mark">R</span>
-      </nav>
-      <div class="main">
-        <header class="topbar">
-          <span class="crumbs"><a href="#">Home</a></span>
-          <span class="topbar-spacer"></span>
-          <a class="primary" href="#" data-to="Start a new map"><span data-icon="plus"></span>Start a new map</a>
-        </header>
-        <main class="page">
-          <div class="sheet">
-            <div class="page-head">
-              <div class="grow">
-                <p class="eyebrow">Wayfinder</p>
-                <h1>Where do you want to go?</h1>
-                <p>Pick a repository, then open one of its maps.</p>
-              </div>
-            </div>
-            <div class="panel">
-              <span class="avatar">R</span>
-              <span class="grow"><strong>ramon</strong><p>github.com</p></span>
-            </div>
-            <form class="field" onsubmit="event.preventDefault(); Kit.toast('Would open the repository')">
-              <label for="repo-name">Open a repository</label>
-              <div class="row">
-                <input class="input" id="repo-name" placeholder="owner/name" autocomplete="off" />
-                <button class="primary" type="submit">Open</button>
-              </div>
-            </form>
-            <section class="section">
-              <div class="section-head"><h2>Repositories with maps</h2></div>
-              <div class="repo-grid" id="repos"></div>
-            </section>
-          </div>
-        </main>
-      </div>
-    </div>
+    <div id="root"></div>
     <script src="../kit/kit.js"></script>
-    <script src="wayfinder.js"></script>
+    <script src="data.js"></script>
+    <script src="shell.js"></script>
     <script>
-      document.getElementById('repos').innerHTML = FIXTURES.repositories
-        .map(
-          (r) => `<a class="card repo-card" href="#" data-to="${Kit.esc(r.name)}">
-            <span data-icon="repo"></span>
-            <span class="grow">${Kit.esc(r.name)}</span>
-            <span class="repo-meta">${r.maps} map${r.maps === 1 ? '' : 's'} · ${r.updated}</span>
-            <span class="bar" title="${r.done} of ${r.done + r.open} tickets done"><i style="width:${Math.round((100 * r.done) / (r.done + r.open))}%"></i></span>
-            <span class="go" data-icon="arrow"></span>
-          </a>`,
-        )
-        .join('');
+      const { icon, esc, repoOf, mapOf, short, repoMark, ring, go, goRepo, goMap, goItem, KINDS, REPOS } = WF;
+
+      /* ---------- Home ---------- */
+
+      function continueCard() {
+        if (!WF.SIGNED_IN)
+          return `<section class="card a-continue a-block" role="alert"><span class="a-icon-tile">${icon('github')}</span><div class="grow">
+            <p class="eyebrow">Action needed</p><h3>GitHub CLI is signed out</h3>
+            <p class="sub">Wayfinder reads your maps, in-flight work and progress through <b>gh</b>. Sign in, then check again. Your recent repositories below are from the last sync.</p>
+            <span class="a-cmd">gh auth login<button type="button" data-to="the clipboard">Copy</button></span></div>
+            <div class="a-actions"><button type="button" class="primary" data-to="a new gh check">${icon('refresh')}Check again</button></div></section>`;
+        const c = WF.CONTINUE;
+        if (!c)
+          return `<section class="card a-continue"><span class="a-icon-tile">${icon('compass')}</span><div class="grow">
+            <p class="eyebrow">Welcome to Wayfinder</p><h3>Start your first map</h3>
+            <p class="sub">A map turns a goal into GitHub tickets you can hand to T3 Code one at a time. Open a repository below, or start a map and pick the repository as you go.</p></div>
+            <div class="a-actions"><a class="primary" href="#" data-to="Start a new map (#44)">${icon('plus')}Start a new map</a></div></section>`;
+        const repo = repoOf(c.repo);
+        const map = mapOf(repo, c.map);
+        if (c.kind === 'handoff')
+          return `<section class="card a-continue"><span class="a-icon-tile" style="--state-claimed: var(--state-frontier)">${icon('bolt')}</span><div class="grow">
+            <p class="eyebrow">Continue · your latest hand-off · ${esc(c.since)}</p><h3>#${c.ticket} ${esc(c.title)}</h3>
+            <p class="sub"><span class="a-live">${esc(c.status)}</span> · ${esc(short(repo.name))} · map #${map.number}</p></div>
+            <div class="a-actions"><a class="ghost" href="#" ${goMap(repo, map)}>Open map</a><a class="primary" href="#" data-to="the T3 Code thread">${icon('external')}Open in T3 Code</a></div></section>`;
+        return `<section class="card a-continue"><span class="ring-wrap">${ring(map.counts, 64, 7)}<span class="lbl">${map.counts.done}/${WF.total(map.counts)}</span></span><div class="grow">
+          <p class="eyebrow">Continue · ${esc(short(repo.name))} · opened ${esc(c.since)}</p><h3>#${map.number} ${esc(map.title)}</h3>
+          <p class="sub">Next up <b>#${map.next[0]} ${esc(map.next[1])}</b></p></div>
+          <div class="a-actions"><a class="primary" href="#" ${goMap(repo, map)}>Open map${icon('arrow')}</a></div></section>`;
+      }
+
+      function inflightItem(it) {
+        const k = KINDS[it.kind];
+        return `<a class="a-item" href="#" ${goItem(it)}><span class="a-kind${k.needs ? '' : ' is-run'}">${icon(k.icon)}</span>
+          <span class="grow"><strong>${esc(it.title)}</strong><span class="meta">${k.needs ? '' : '<span class="a-live"></span> '}${esc(it.detail)} · ${esc(short(it.repo))} #${it.ticket}</span></span>
+          <span class="a-age">${esc(it.age)}</span></a>`;
+      }
+
+      function inflight() {
+        const list = WF.INFLIGHT;
+        const needs = list.filter((i) => KINDS[i.kind].needs);
+        const running = list.filter((i) => !KINDS[i.kind].needs);
+        const body = !WF.SIGNED_IN
+          ? '<p class="a-quiet">Sign in to gh to see what’s waiting on you.</p>'
+          : list.length
+            ? `${needs.length ? `<div class="a-sub">Needs you · ${needs.length}</div>${needs.slice(0, 4).map(inflightItem).join('')}` : ''}${
+                running.length ? `<div class="a-sub">Running · ${running.length}</div>${running.slice(0, 3).map(inflightItem).join('')}` : ''
+              }`
+            : '<p class="a-quiet">Nothing in flight. Hand a ticket to T3 Code and it shows up here until it’s done.</p>';
+        return `<section><div class="a-head"><h2>In flight</h2>${list.length ? `<span class="n">${list.length}</span>` : ''}<span class="grow"></span>${
+          list.length > 5 ? `<a class="a-link" href="#" ${goRepo(REPOS[0])}>See all</a>` : ''
+        }</div><div class="card a-list">${body}</div></section>`;
+      }
+
+      function repos() {
+        const shown = 6;
+        const rows = REPOS.map(
+          (r, i) => `<a class="a-repo" href="#" ${goRepo(r)} data-name="${esc(r.name)}"${i >= shown ? ' data-overflow hidden' : ''}>${repoMark(r, 26)}<span class="grow">${esc(r.name)}</span>
+            <span class="stat">${r.maps.length} map${r.maps.length === 1 ? '' : 's'} · ${WF.openTickets(r)} open</span><span class="when">${esc(r.opened)}</span></a>`,
+        ).join('');
+        const more = REPOS.length > shown ? `<a class="a-link a-more" href="#" data-filter-more data-to="every repository">Show all ${REPOS.length}</a>` : '';
+        return `<section data-filter-scope><div class="a-head"><h2>Repositories</h2></div>
+          <div class="a-find"><label class="search">${icon('lens')}<input type="search" data-filter placeholder="Search your repositories, or type owner/name" /></label>
+            <a class="ghost" href="#" data-to="Start a new map (#44)">${icon('plus')}New map</a></div>
+          <div class="card a-list">${
+            REPOS.length
+              ? `${rows}<p class="a-quiet" data-filter-none hidden>No recent repository matches “<b></b>”. Press Enter to open it as owner/name.</p>${more}`
+              : '<p class="a-quiet">Repositories you open show up here, most recent first.</p>'
+          }</div></section>`;
+      }
+
+      function progress() {
+        const blank = WF.TODAY === null;
+        const goal = WF.GOAL;
+        const done = WF.TODAY ?? 0;
+        const left = goal - done;
+        const days = WF.HISTORY ?? Array(33).fill(null);
+        const pad = 35 - days.length;
+        const cells = [...Array(pad).fill(undefined), ...days]
+          .map((n, i) =>
+            n === undefined ? '<i class="is-blank" style="visibility:hidden"></i>' : n === null ? '<i class="is-blank"></i>' : `<i style="--f:${(1 - Math.min(1, n / goal)).toFixed(2)}"${i === 34 ? ' class="is-today"' : ''} title="${n} done"></i>`,
+          )
+          .join('');
+        return `<aside class="card a-progress"><p class="eyebrow">Today</p>
+          <div class="a-big">${blank ? '<b>–</b><span>Sign in to count today’s tickets</span>' : `<b>${done}</b><span>of ${goal} cleared${left > 0 ? ` · ${left} to go` : done > goal ? ` · ${done - goal} past your goal` : ' · goal met'}</span>`}</div>
+          ${WF.fog({ w: 284, h: 150, done, goal, blank })}
+          <div class="a-goal"><span class="grow">Daily goal</span><span class="a-step"><button type="button" data-to="a smaller goal" aria-label="Lower">${icon('minus')}</button><b>${goal}</b><button type="button" data-to="a bigger goal" aria-label="Raise">${icon('plus')}</button></span></div>
+          <div class="a-head" style="margin:20px 0 0"><h2>Last 5 weeks</h2></div>
+          <div class="a-cal">${cells}</div>
+          <div class="a-legend"><span>Fogged</span><span>Goal met</span></div>
+          ${blank ? '' : `<div class="a-streak">${icon('flame')}${WF.STREAK ? `${WF.STREAK}-day streak` : 'Clear one ticket to start a streak'}</div>`}
+        </aside>`;
+      }
+
+      function home() {
+        const hour = 'afternoon';
+        return `<div class="a-sheet"><div class="a-hello"><p class="eyebrow">Tuesday, 22 September</p><h1>Good ${hour}, ramon</h1></div>
+          <div class="a-cols"><div class="a-left">${continueCard()}${inflight()}${repos()}</div>${progress()}</div></div>`;
+      }
+
+      /* ---------- Repository ---------- */
+
+      function mapCard(repo, m) {
+        const foot = m.closed
+          ? `<span class="grow">Completed · ${esc(m.updated)}</span><a class="ghost" href="#" ${goMap(repo, m)}>Open</a>`
+          : `<span class="grow">${m.next ? `Next up <b>#${m.next[0]}</b> ${esc(m.next[1])}` : 'Nothing next up'}</span><a class="primary" href="#" ${goMap(repo, m)}>Open${icon('arrow')}</a>`;
+        return `<article class="card a-map" data-name="#${m.number} ${esc(m.title)}"><div><p class="eyebrow">Map · #${m.number} · updated ${esc(m.updated)}${
+          m.running ? ` · <span class="a-live">${m.running} running</span>` : ''
+        }</p><h2>${esc(m.title)}</h2></div><p class="dest">${esc(m.dest)}</p>${WF.summary(m.counts)}<div class="a-map-foot">${foot}</div></article>`;
+      }
+
+      function repo(s) {
+        const r = repoOf(s.repo);
+        const active = r.maps.filter((m) => !m.closed);
+        const closed = r.maps.filter((m) => m.closed);
+        const head = `<div class="page-head"><div class="grow"><p class="eyebrow">Repository</p><h1 class="nv-h1">${repoMark(r, 30)}${esc(r.name)}</h1>
+          <p>${r.maps.length ? `${active.length} active map${active.length === 1 ? '' : 's'} · ${WF.openTickets(r)} open tickets${closed.length ? ` · ${closed.length} completed` : ''}` : 'No maps yet'}</p></div></div>`;
+        if (!r.maps.length)
+          return `<div class="a-sheet">${head}<div class="a-empty"><span class="a-icon-tile">${icon('graph')}</span><h2>Start the first map in ${esc(short(r.name))}</h2>
+            <p>Describe where you want this repository to go. T3 Code drafts the map with you and files the tickets here.</p>
+            <a class="primary" href="#" data-to="Start a new map in ${esc(r.name)} (#44)">${icon('plus')}Start a new map</a></div></div>`;
+        return `<div class="a-sheet" data-filter-scope>${head}
+          <div class="a-tools"><label class="search">${icon('lens')}<input type="search" data-filter placeholder="Filter maps" /></label></div>
+          <div class="a-maps">${active.map((m) => mapCard(r, m)).join('')}</div>
+          ${closed.length ? `<div class="a-head" style="margin:32px 0 12px"><h2>Completed</h2><span class="n">${closed.length}</span></div><div class="a-maps a-done-maps">${closed.map((m) => mapCard(r, m)).join('')}</div>` : ''}
+          <p class="a-quiet" data-filter-none hidden>No map matches “<b></b>”.</p></div>`;
+      }
+
+      /* ---------- A map's Prototypes tab ---------- */
+
+      function protos(s) {
+        const r = repoOf(s.repo);
+        const m = mapOf(r, s.map);
+        const list = WF.protosOf(r, m);
+        const waiting = list.filter((p) => p.status === 'waiting');
+        const rest = list.filter((p) => p.status !== 'waiting');
+        const head = `<div class="page-head"><div class="grow"><p class="eyebrow">Prototypes · map #${m.number}</p><h1>${list.length ? `${list.length} prototype${list.length === 1 ? '' : 's'}` : 'No prototypes yet'}</h1>
+          <p>${list.length ? `Each opens its canvas: the variants side by side, a note on each.${waiting.length ? ` ${waiting.length} is waiting on your pick.` : ''}` : 'When a prototype ticket on this map pushes its prototype branch, its canvas shows up here.'}</p></div></div>`;
+        const pick = waiting
+          .map(
+            (p) => `<section class="card a-pick"><div class="frames">${p.variants.map(([l]) => WF.frame(l)).join('')}</div><div>
+              <span class="a-flag">${icon('hand')}Waiting on your pick</span><h2>#${p.ticket} ${esc(p.title)}</h2><p>${esc(p.gist)}</p>
+              <p>${p.variants.length} variants: ${p.variants.map(([l, n]) => `${l} ${esc(n)}`).join(', ')}. You pick in #${p.decides}.</p>
+              <div class="a-actions"><a class="primary" href="#" data-to="the #${p.ticket} canvas">${icon('play')}Open the canvas</a><a class="ghost" href="#" data-to="grilling #${p.decides}">Pick in #${p.decides}</a></div></div></section>`,
+          )
+          .join('');
+        const tile = (p) => `<a class="card a-proto" href="#" data-to="the #${p.ticket} canvas">
+          ${p.variants.length ? `<span class="thumb">${WF.frame(p.picked, { img: !!p.img })}</span>` : `<span class="thumb is-empty">No canvas yet</span>`}
+          <span class="txt"><span class="a-status">${p.status === 'picked' ? `${WF.chip('done').replace('done', `picked ${esc(p.picked)}`)}` : WF.chip('claimed').replace('claimed', 'being built')}<span class="grow"></span>#${p.ticket}${p.date ? ` · ${esc(p.date)}` : ''}</span>
+          <strong>${esc(p.title)}</strong><span class="gist">${esc(p.gist)}</span></span></a>`;
+        return `<div class="a-sheet">${head}${pick}${rest.length ? `<div class="a-head" style="margin:${waiting.length ? 30 : 0}px 0 12px"><h2>Decided and in progress</h2></div><div class="a-protos">${rest.map(tile).join('')}</div>` : ''}</div>`;
+      }
+
+      WF.start({ home, repo, protos });
     </script>
   </body>
 </html>
