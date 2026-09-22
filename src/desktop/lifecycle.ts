@@ -32,3 +32,18 @@ export function isSafeExternalUrl(target: string): boolean {
     return false;
   }
 }
+
+/**
+ * localStorage is scoped to the page origin, so the desktop server needs the same port every launch
+ * or saved settings vanish on restart. Try the stable port first; only a busy port falls back to a free one.
+ */
+export const DESKTOP_PORT = 4479;
+
+export async function startOnStablePort<T>(start: (port: number) => Promise<T>, port = DESKTOP_PORT): Promise<T> {
+  try {
+    return await start(port);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | null)?.code !== 'EADDRINUSE') throw error;
+    return start(0);
+  }
+}
