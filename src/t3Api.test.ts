@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { parseServerCommand, samePath, threadCommands, threadDefaults } from './t3Api.js';
+import { T3Api, parseServerCommand, samePath, threadCommands, threadDefaults } from './t3Api.js';
 import type { T3Snapshot, T3Thread } from './t3Api.js';
 
 describe('parseServerCommand', () => {
@@ -134,5 +134,71 @@ describe('threadCommands', () => {
   it('runs in the project checkout when there is no worktree', () => {
     const { create } = threadCommands({ projectId: 'p1', title: 't', prompt: 'p', defaults, worktree: null });
     expect(create).toMatchObject({ branch: null, worktreePath: null });
+  });
+});
+
+describe('T3 shell stream', () => {
+  it('resumes after a sequence, forwards chunks, and reports a dropped connection', async () => {
+    const sockets: Array<{
+      url: URL;
+      sent: string[];
+      onopen: ((event: Event) => void) | null;
+      onmessage: ((event: MessageEvent) => void) | null;
+      onerror: (() => void) | null;
+      onclose: (() => void) | null;
+      send(data: string): void;
+      close(): void;
+    }> = [];
+    class TestSocket {
+      readonly sent: string[] = [];
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+
+      constructor(readonly url: URL) {
+        sockets.push(this);
+      }
+
+      send(data: string): void {
+        this.sent.push(data);
+      }
+
+      close(): void {
+        this.onclose?.();
+      }
+    }
+    vi.stubGlobal('WebSocket', TestSocket as unknown as typeof WebSocket);
+    const api = new T3Api('http://127.0.0.1:3773', { exe: 't3', script: 'server.mjs' });
+    vi.spyOn(api as unknown as { request: (path: string, body?: unknown) => Promise<unknown> }, 'request').mockResolvedValue({
+      ticket: 'short-lived-ticket',
+    });
+    const values: unknown[] = [];
+    const onClose = vi.fn();
+
+    try {
+      const subscribing = api.subscribeShell(23, (value) => values.push(value), onClose);
+      await vi.waitFor(() => expect(sockets).toHaveLength(1));
+      const socket = sockets[0];
+      expect(socket).toBeDefined();
+      socket?.onopen?.(new Event('open'));
+      const stop = await subscribing;
+      expect(socket?.url.searchParams.get('wsTicket')).toBe('short-lived-ticket');
+      expect(JSON.parse(socket?.sent[0] ?? '{}')).toMatchObject({
+        tag: 'orchestration.subscribeShell',
+        payload: { afterSequence: 23, requestCompletionMarker: true },
+      });
+
+      socket?.onmessage?.({
+        data: JSON.stringify({ _tag: 'Chunk', requestId: 'shell', chunk: { value: { type: 'thread-upserted', sequence: 24 } } }),
+      } as MessageEvent);
+      expect(values).toEqual([{ type: 'thread-upserted', sequence: 24 }]);
+      socket?.onclose?.();
+      expect(onClose).toHaveBeenCalledOnce();
+      stop();
+    } finally {
+      api.revoke();
+      vi.unstubAllGlobals();
+    }
   });
 });

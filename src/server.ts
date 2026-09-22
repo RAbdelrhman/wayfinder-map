@@ -24,6 +24,8 @@ import type { WorkspaceState } from './workspaces.js';
 import { WAYFINDER_VERSION } from './version.js';
 import { resolveRepoIcon, type ResolvedRepoIcon } from './repoIcon.js';
 import { ProgressError, ProgressService, ProgressSettingsStore, readCompletedTickets } from './progress.js';
+import { HandOffStore, HandOffTracker, handOffStorePath } from './handOffTracking.js';
+import type { HandOffTrackingClient } from './handOffTracking.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -60,7 +62,9 @@ const PROTOTYPE_CSP = 'sandbox allow-scripts allow-forms allow-popups allow-moda
 export const PAGE_CSP =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://github.com https://avatars.githubusercontent.com; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'self'; form-action 'self'";
 
-export type ServerT3 =Pick<T3HandOff, 'models' | 'steps' | 'projects'> & { close?: () => void };
+export type ServerT3 =
+  Pick<T3HandOff, 'models' | 'steps' | 'projects'> &
+  Partial<Pick<T3HandOff, 'readHandOffSnapshot' | 'subscribeShell'>> & { close?: () => void };
 
 export interface ServeOptions {
   config: Config;
@@ -89,6 +93,8 @@ export interface ServeOptions {
   updater?: UpdaterService;
   /** Replaces Home's progress panel data in tests, which must not touch gh or the home directory. */
   progress?: Pick<ProgressService, 'state' | 'save'>;
+  /** Lets tests use an isolated in-memory store instead of the user's home directory. */
+  handOffStore?: HandOffStore;
 }
 
 export interface UpdaterStatus {
@@ -180,6 +186,7 @@ export async function startServer({
   uiDir = join(process.cwd(), 'src', 'ui'),
   updater,
   progress,
+  handOffStore,
 }: ServeOptions): Promise<RunningServer> {
   const defaultUpdater: UpdaterService = {
     async check(): Promise<UpdaterStatus> {
@@ -235,6 +242,22 @@ export async function startServer({
       store: new ProgressSettingsStore(),
       completed: (login, since) => readCompletedTickets(login, { typePrefix: config.typePrefix, mapLabel: config.mapLabel, since }),
     });
+  const trackingClient: HandOffTrackingClient | null =
+    t3.readHandOffSnapshot === undefined
+      ? null
+      : {
+          readHandOffSnapshot: () => t3.readHandOffSnapshot?.() ?? Promise.reject(new Error('T3 Code tracking is unavailable.')),
+          ...(t3.subscribeShell === undefined
+            ? {}
+            : {
+                subscribeShell: (sequence, onValue, onClose) =>
+                  t3.subscribeShell?.(sequence, onValue, onClose) ?? Promise.reject(new Error('T3 Code tracking is unavailable.')),
+              }),
+        };
+  const handOffTracker = new HandOffTracker(
+    handOffStore ?? new HandOffStore({ filePath: handOffStorePath() }),
+    trackingClient,
+  );
 
   /** One entry per repository and map, since every prototype list costs GitHub calls. */
   const prototypeCache = new Map<string, { at: number; list: Promise<Prototype[]> }>();
@@ -285,6 +308,7 @@ export async function startServer({
       json(response, 500, { error: (error as Error).message });
     });
   });
+  server.on('close', () => handOffTracker.close());
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const requestUrl = new URL(request.url ?? '/', url);
@@ -307,6 +331,11 @@ export async function startServer({
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
+        return;
+      }
+
+      if (path === '/api/hand-offs' && request.method === 'GET') {
+        json(response, 200, await handOffTracker.snapshot());
         return;
       }
 
@@ -580,6 +609,7 @@ export async function startServer({
           json(response, 409, { error: `Choose a local clone of ${requestedRepo} before starting in T3 Code.`, prompt });
           return;
         }
+        const runtime = await detectT3();
         const result = await handOff(
           {
             title: `New map: ${goal.replace(/\s+/g, ' ').slice(0, 48)}`,
@@ -588,9 +618,32 @@ export async function startServer({
             model: parseModelChoice(body.model),
             prompt: () => prompt,
           },
-          t3.steps(await detectT3()),
+          t3.steps(runtime),
         );
-        json(response, 200, result);
+        const { tracking, ...publicResult } = result;
+        try {
+          const saved = await handOffTracker.record({
+            repo: requestedRepo,
+            mapNumber: null,
+            ticketNumber: null,
+            title: null,
+            environmentId: tracking?.environmentId ?? null,
+            t3Origin: runtime.origin,
+            projectId: tracking?.projectId ?? null,
+            branch: tracking?.branch ?? null,
+            worktreePath: tracking?.worktreePath ?? null,
+            threadId: result.threadId,
+            requestedBranch: 'wayfinder/new-map',
+            rung: result.rung,
+          });
+          json(response, 200, { ...publicResult, handOffId: saved.id });
+        } catch (error) {
+          json(response, 200, {
+            ...publicResult,
+            handOffId: null,
+            trackingWarning: `The hand-off started, but Wayfinder could not save its tracking record: ${(error as Error).message}`,
+          });
+        }
         return;
       }
 
@@ -644,11 +697,13 @@ export async function startServer({
           return;
         }
 
+        const runtime = await detectT3();
+        const requestedBranch = ticketBranch(ticket);
         const result = await handOff(
           {
             title: `#${String(ticket.number)} ${ticket.title}`,
             workspaceRoot: await clones.resolve(requestedRepo),
-            branch: ticketBranch(ticket),
+            branch: requestedBranch,
             model: parseModelChoice(body.model),
             prompt: (worktree) =>
               buildPrompt({
@@ -659,9 +714,32 @@ export async function startServer({
                 ...(worktree ? { worktree } : {}),
               }),
           },
-          t3.steps(await detectT3()),
+          t3.steps(runtime),
         );
-        json(response, 200, result);
+        const { tracking, ...publicResult } = result;
+        try {
+          const saved = await handOffTracker.record({
+            repo: requestedRepo,
+            mapNumber: map?.number ?? null,
+            ticketNumber: ticket.number,
+            title: ticket.title,
+            environmentId: tracking?.environmentId ?? null,
+            t3Origin: runtime.origin,
+            projectId: tracking?.projectId ?? null,
+            branch: tracking?.branch ?? null,
+            worktreePath: tracking?.worktreePath ?? null,
+            threadId: result.threadId,
+            requestedBranch,
+            rung: result.rung,
+          });
+          json(response, 200, { ...publicResult, handOffId: saved.id });
+        } catch (error) {
+          json(response, 200, {
+            ...publicResult,
+            handOffId: null,
+            trackingWarning: `The hand-off started, but Wayfinder could not save its tracking record: ${(error as Error).message}`,
+          });
+        }
         return;
       }
 
