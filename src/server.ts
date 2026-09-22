@@ -22,7 +22,7 @@ import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './workspaces.js';
 import type { WorkspaceState } from './workspaces.js';
 import { WAYFINDER_VERSION } from './version.js';
-import { resolveRepoIcon } from './repoIcon.js';
+import { githubOwnerAvatarUrl, resolveRepoIcon } from './repoIcon.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -505,7 +505,7 @@ export async function startServer({
 
       if (requestedRepo !== null && scoped?.action === 'icon') {
         try {
-          const icon = await resolveRepoIcon(requestedRepo, clones, t3, workspaceRoot);
+          const icon = await resolveRepoIcon(requestedRepo, fetch, githubOwnerAvatarUrl);
           if (icon === null) {
             json(response, 404, { error: 'No repository icon found.' });
             return;

@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { iconContentType, resolveRepoIcon } from './repoIcon.js';
+import { describe, expect, it, vi } from 'vitest';
+
+import { githubOwnerAvatarUrl, iconContentType, resolveRepoIcon } from './repoIcon.js';
 
 describe('iconContentType', () => {
   it('returns proper mime types', () => {
@@ -13,40 +14,33 @@ describe('iconContentType', () => {
   });
 });
 
+describe('githubOwnerAvatarUrl', () => {
+  it('reads the owner avatar URL from GitHub repository metadata', async () => {
+    const runGh = vi.fn(async () => 'https://avatars.githubusercontent.com/u/123?s=64\n');
+    await expect(githubOwnerAvatarUrl('Energy-Control-Power-Lockout/ECPL-Lockstep', runGh)).resolves.toBe('https://avatars.githubusercontent.com/u/123?s=64');
+    expect(runGh).toHaveBeenCalledWith(['api', 'repos/Energy-Control-Power-Lockout/ECPL-Lockstep', '--jq', '.owner.avatar_url']);
+  });
+
+  it('rejects non-GitHub image URLs from metadata', async () => {
+    await expect(githubOwnerAvatarUrl('owner/repo', async () => 'https://example.com/logo.png')).resolves.toBeNull();
+  });
+});
+
 describe('resolveRepoIcon', () => {
-  it('returns null when no candidate exists locally or remotely', async () => {
-    const fakeFetch = async () => new Response('Not found', { status: 404 });
-    const result = await resolveRepoIcon('owner/repo', undefined, undefined, null, fakeFetch as unknown as typeof fetch);
+  it('returns null when GitHub has no owner avatar', async () => {
+    const fetchFn = vi.fn<typeof fetch>();
+    const result = await resolveRepoIcon('owner/repo', fetchFn, async () => null);
     expect(result).toBeNull();
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 
-  it('fetches remote icon if candidate is found on GitHub', async () => {
-    const fakeFetch = async (url: string | URL | Request) => {
-      if (String(url).includes('public/favicon.ico')) {
-        return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
-      }
-      return new Response('Not found', { status: 404 });
-    };
-    const result = await resolveRepoIcon('owner/repo', undefined, undefined, null, fakeFetch as unknown as typeof fetch);
-    expect(result).not.toBeNull();
-    expect(result?.contentType).toBe('image/x-icon');
-    expect(result?.data).toEqual(Buffer.from([1, 2, 3, 4]));
-  });
-
-  it('checks the repository logo locations used by ECPL-style Next apps', async () => {
-    const requested: string[] = [];
-    const fakeFetch = async (url: string | URL | Request) => {
-      requested.push(String(url));
-      if (String(url).endsWith('/public/ecpl_logo.png')) {
-        return new Response(new Uint8Array([5, 6, 7]), { status: 200 });
-      }
-      return new Response('Not found', { status: 404 });
-    };
-
-    const result = await resolveRepoIcon('owner/repo', undefined, undefined, null, fakeFetch as unknown as typeof fetch);
-
-    expect(result?.contentType).toBe('image/png');
-    expect(result?.data).toEqual(Buffer.from([5, 6, 7]));
-    expect(requested).toContain('https://raw.githubusercontent.com/owner/repo/HEAD/public/ecpl_logo.png');
+  it('fetches the owner avatar returned by GitHub', async () => {
+    const fetchFn = vi.fn<typeof fetch>(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/png' } }));
+    const result = await resolveRepoIcon('owner/repo', fetchFn, async () => 'https://avatars.githubusercontent.com/u/123?s=64');
+    expect(result).toEqual({ contentType: 'image/png', data: Buffer.from([1, 2, 3]) });
+    expect(fetchFn).toHaveBeenCalledWith(
+      'https://avatars.githubusercontent.com/u/123?s=64',
+      expect.objectContaining({ headers: { 'User-Agent': 'Wayfinder' } }),
+    );
   });
 });

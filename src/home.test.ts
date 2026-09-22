@@ -23,10 +23,10 @@ const ready = JSON.stringify({
 
 describe('readAccount', () => {
   it('reports the active account and all switchable accounts', async () => {
-    await expect(readAccount(runner([ready]))).resolves.toMatchObject({
+    await expect(readAccount(runner([ready, 'https://avatars.githubusercontent.com/u/1?s=64']))).resolves.toMatchObject({
       status: 'ready',
       login: 'octo',
-      avatarUrl: 'https://github.com/octo.png?size=64',
+      avatarUrl: 'https://avatars.githubusercontent.com/u/1?s=64',
       accounts: ['octo', 'mona'],
       tokenSource: 'keyring',
     });
@@ -64,7 +64,7 @@ describe('discoverRepositories', () => {
           ],
         }),
     ]);
-    const account = await readAccount(runner([ready]));
+    const account = await readAccount(runner([ready, 'https://avatars.githubusercontent.com/u/1?s=64']));
 
     await expect(discoverRepositories(account, ['wayfinder:map'], runGh)).resolves.toEqual({
       repositories: ['acme/two', 'octo/one'],
@@ -74,7 +74,7 @@ describe('discoverRepositories', () => {
   });
 
   it('turns rate-limit failures into a visible Home warning', async () => {
-    const state = await loadHomeState(['wayfinder:map'], runner([ready, new Error('API rate limit exceeded')]));
+    const state = await loadHomeState(['wayfinder:map'], runner([ready, 'https://avatars.githubusercontent.com/u/1?s=64', new Error('API rate limit exceeded')]));
     expect(state.warning).toContain('rate limit');
     expect(state.account.status).toBe('ready');
   });

@@ -37,6 +37,16 @@ interface RawAuthStatus {
   hosts?: unknown;
 }
 
+async function githubAvatarUrl(host: string, runGh: HomeGh): Promise<string | null> {
+  try {
+    const args = host === 'github.com' ? ['api', 'user', '--jq', '.avatar_url'] : ['api', '--hostname', host, 'user', '--jq', '.avatar_url'];
+    const avatarUrl = (await runGh(args)).trim();
+    return avatarUrl.length > 0 ? avatarUrl : null;
+  } catch {
+    return null;
+  }
+}
+
 interface SearchIssue {
   repository_url?: unknown;
 }
@@ -95,9 +105,7 @@ export async function readAccount(runGh: HomeGh = gh): Promise<HomeAccount> {
 
   const scopes = strings(active.scopes);
   const missingScopes = REQUIRED_SCOPES.filter((scope) => !scopes.includes(scope));
-  const avatarUrl = preferredHost === 'github.com'
-    ? `https://github.com/${encodeURIComponent(active.login)}.png?size=64`
-    : `https://${preferredHost}/${encodeURIComponent(active.login)}.png?size=64`;
+  const avatarUrl = await githubAvatarUrl(preferredHost, runGh);
   return {
     status: missingScopes.length === 0 ? 'ready' : 'missing-scopes',
     host: preferredHost,
