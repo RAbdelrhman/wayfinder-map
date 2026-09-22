@@ -146,6 +146,31 @@ code {
   color: var(--text-muted);
   font-size: 12px;
 }
+.ho-where-map {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 11.5px;
+}
+.ho-where-map .ho-mark {
+  width: 15px;
+  height: 15px;
+  font-size: 7px;
+  border-radius: 4px;
+}
+.ho-where-repo {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.ho-where-sep {
+  opacity: 0.6;
+}
+.ho-where-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ho-where .i {
   width: 12px;
   height: 12px;

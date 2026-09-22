@@ -74,7 +74,7 @@
 
       // The node says it is in T3 Code, in the same words as the card.
       function badge(t) {
-        const h = AFTER.handOffs().find((x) => x.number === t.number);
+        const h = AFTER.handOffs().find((x) => x.number === t.number && !x.repo);
         return h ? `<span class="ho-nbadge">${pill(h)}<span class="grow">${esc(sinceText(h))}</span></span>` : '';
       }
 
@@ -93,7 +93,7 @@
       }
 
       function inFlightChip() {
-        const n = AFTER.handOffs().filter((h) => h.kind === 'ticket').length;
+        const n = AFTER.handOffs().filter((h) => h.kind === 'ticket' && !h.repo).length;
         return `<span class="filter-sep" role="none"></span><button type="button" class="fchip" style="--accent: var(--state-claimed)">${icon('pulse')}In T3 Code <b>${n}</b></button>`;
       }
 

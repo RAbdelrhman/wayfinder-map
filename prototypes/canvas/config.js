@@ -11,7 +11,7 @@ window.CANVAS = {
   question:
     'What do you see after pressing Open in T3 Code: the confirmation, live status, the way back to the ticket or map, and the list of everything in flight?',
   sampleState:
-    'Fake T3 Code. Open any frame and use the Prototype bar at the bottom to switch #55 between Starting, Working, Needs input, Done with PR, Failed and T3 Code not running, or press Replay hand-off to see the confirmation. Four other hand-offs stay put so the lists have something in them.',
+    'Fake T3 Code. Open any frame and use the Prototype bar at the bottom to switch #55 between Starting, Working, Needs input, Done with PR, Failed and T3 Code not running, or press Replay hand-off to see the confirmation. Five other hand-offs stay put so the lists have something in them, one of them from podcontrol.',
 
   base: {
     stylesheets: ['../../src/ui/styles.css', 'variants/after.css'],
@@ -39,7 +39,7 @@ window.CANVAS = {
               src: 'variants/after-ab.html?state=input',
               note: {
                 idea:
-                  'The ticket panel card and node pill are A, unchanged. Next to "Synced just now" sits "5 in T3 Code · 2 need you", with one dot per hand-off, most urgent first. Its border turns amber while something needs you. Handing off never opens it: the card changing in place is the confirmation.',
+                  'The ticket panel card and node pill are A, unchanged. Next to "Synced just now" sits "6 in T3 Code · 2 need you", with one dot per hand-off, most urgent first. Its border turns amber while something needs you. Handing off never opens it: the card changing in place is the confirmation.',
                 pros: ['Nothing covers the map canvas or the ticket panel', '"Needs you" is visible from every page, on any map', 'Same rows and actions as B'],
                 cons: ['Quieter than a floating pill: a count, not an interruption', 'The topbar gets busier on narrow windows'],
               },
@@ -50,7 +50,7 @@ window.CANVAS = {
               src: 'variants/after-ab.html?state=input&open=1',
               note: {
                 idea:
-                  'The button opens B’s list as a dropdown under it, grouped Waiting on you, In T3 Code, Done, across every map. Rows from another map say where they came from. Each row has its one action and a link back to the ticket or map. Clicking outside closes it.',
+                  'The button opens B’s list as a dropdown under it, grouped Waiting on you, In T3 Code, Done, across every map and repository. Every row names its repository and map, so a podcontrol hand-off sits next to wayfinder-map ones. Each row has its one action and a link back to the ticket or map. Clicking outside closes it.',
                 pros: ['One list for all maps, one click from anywhere'],
                 cons: ['Duplicates Home’s In flight strip'],
               },
@@ -96,7 +96,7 @@ window.CANVAS = {
               src: 'variants/after-b.html?state=input',
               note: {
                 idea:
-                  'Every hand-off, ticket or map, drops into a tray at the bottom right of every page, like a download manager. Closed, it reads "5 in T3 Code · 2 need you". Open, it groups hand-offs into Waiting on you, In T3 Code and Done, each with its action and a link back to the ticket. The ticket panel and node only say it is in T3 Code.',
+                  'Every hand-off, ticket or map, drops into a tray at the bottom right of every page, like a download manager. Closed, it reads "6 in T3 Code · 2 need you". Open, it groups hand-offs into Waiting on you, In T3 Code and Done, each with its action and a link back to the ticket. The ticket panel and node only say it is in T3 Code.',
                 pros: [
                   'You hear about "needs you" wherever you are',
                   'One place for everything, whatever map it came from',

@@ -86,6 +86,23 @@
 
   const OTHERS = [
     {
+      id: 'hpc',
+      kind: 'ticket',
+      number: 12,
+      type: 'T',
+      title: 'Pause and skip from the lock screen',
+      status: 'working',
+      line: 'Editing app/src/player/MediaSession.kt',
+      since: '9 min',
+      repo: 'podcontrol',
+      mark: 'PC',
+      hue: 150,
+      map: 2,
+      mapTitle: 'Control playback from the phone',
+      branch: 'wayfinder/12-pause-and-skip-from-the-lock-screen',
+      model: 'Mid · Opus 5 · high',
+    },
+    {
       id: 'h48',
       kind: 'ticket',
       number: 48,
@@ -174,9 +191,19 @@
   const focusHandOff = () => handOffs().find((h) => h.focus) ?? null;
   const waiting = (list) => list.filter((h) => h.status === 'input' || h.status === 'failed').length;
 
+  // Hand-offs default to map #35 in wayfinder-map; others name their own repo and map.
+  const repoOf = (h) => ({ name: h.repo ?? 'wayfinder-map', mark: h.mark ?? 'WM', hue: h.hue ?? 212 });
+  const mapNum = (h) => h.map ?? MAP.number;
+  const mapTitle = (h) => h.mapTitle ?? MAP.title;
   const label = (h) => (h.kind === 'map' ? `New map · ${h.title}` : `#${h.number} ${h.title}`);
-  const where = (h) => (h.kind === 'map' ? 'Being planned · wayfinder-map' : `Map #${MAP.number} · wayfinder-map`);
-  const target = (h) => (h.kind === 'map' ? `the draft map "${h.title}"` : `ticket #${h.number} on map #${MAP.number}`);
+  const where = (h) => (h.kind === 'map' ? `${repoOf(h).name} · new map, being planned` : `${repoOf(h).name} · #${mapNum(h)} ${mapTitle(h)}`);
+  /** Which repo and map a hand-off belongs to: the repo mark, the repo, then the map. */
+  const whereHtml = (h) => {
+    const r = repoOf(h);
+    const map = h.kind === 'map' ? 'New map, being planned' : `#${mapNum(h)} ${mapTitle(h)}`;
+    return `<span class="ho-where ho-where-map"><span class="ho-mark" style="--h:${r.hue}">${esc(r.mark)}</span><span class="ho-where-repo">${esc(r.name)}</span><span class="ho-where-sep">/</span><span class="ho-where-title">${esc(map)}</span></span>`;
+  };
+  const target = (h) => (h.kind === 'map' ? `the draft map "${h.title}"` : `ticket #${h.number} on map #${mapNum(h)} in ${repoOf(h).name}`);
 
   /* ---------- small pieces ---------- */
 
@@ -331,7 +358,7 @@
   function flightCard(h) {
     return `<div class="card ho-fcard" style="--tone:${STATUS[h.status].tone}">
       <div class="ho-fcard-top">${pill(h)}<span class="ho-when">${esc(sinceText(h))}</span></div>
-      <strong>${esc(label(h))}</strong><p class="ho-line">${esc(h.line)}</p><span class="ho-where">${h.kind === 'map' ? icon('map') : icon('graph')}${esc(where(h))}</span>
+      <strong>${esc(label(h))}</strong><p class="ho-line">${esc(h.line)}</p>${whereHtml(h)}
       <div class="ho-row">${actions(h, { compact: true })}</div></div>`;
   }
 
@@ -476,6 +503,7 @@
     waiting,
     label,
     where,
+    whereHtml,
     target,
     pill,
     dot,

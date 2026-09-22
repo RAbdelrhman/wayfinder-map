@@ -165,7 +165,7 @@
 
       // Nodes carry only a dot: the tray is where you read status.
       function badge(t) {
-        const h = AFTER.handOffs().find((x) => x.number === t.number);
+        const h = AFTER.handOffs().find((x) => x.number === t.number && !x.repo);
         return h ? `<span class="ho-nbadge">${dot(h)}<span class="grow">In T3 Code</span></span>` : '';
       }
 

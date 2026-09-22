@@ -193,8 +193,8 @@
         margin: 0;
         font-size: 12px;
       }
-      .ho-drow .ho-where {
-        font-size: 11.5px;
+      .ho-drow .ho-where-map {
+        margin: 1px 0 2px;
       }
       .ho-drow .ho-row {
         grid-column: 2;
@@ -218,7 +218,7 @@
 
       // A: the node says it is in T3 Code, in the same words as the card.
       function badge(t) {
-        const h = AFTER.handOffs().find((x) => x.number === t.number);
+        const h = AFTER.handOffs().find((x) => x.number === t.number && !x.repo);
         return h ? `<span class="ho-nbadge">${pill(h)}<span class="grow">${esc(sinceText(h))}</span></span>` : '';
       }
 
@@ -258,10 +258,9 @@
       ];
 
       function row(h, s) {
-        const here = s.view === 'map' && h.kind === 'ticket';
         return `<div class="ho-drow">${dot(h)}
           <div><div class="ho-drow-top"><strong>${esc(AFTER.label(h))}</strong><span class="ho-when">${esc(sinceText(h))}</span></div>
-          <p class="ho-line">${h.stale ? `${AFTER.STATUS[h.status].word} · ` : ''}${esc(h.line)}</p>${here ? '' : `<span class="ho-where">${esc(AFTER.where(h))}</span>`}</div>
+          ${AFTER.whereHtml(h)}<p class="ho-line">${h.stale ? `${AFTER.STATUS[h.status].word} · ` : ''}${esc(h.line)}</p></div>
           <div class="ho-row">${actions(h, { compact: true })}</div></div>`;
       }
 
@@ -279,7 +278,7 @@
       }
 
       function inFlightChip() {
-        const n = AFTER.handOffs().filter((h) => h.kind === 'ticket').length;
+        const n = AFTER.handOffs().filter((h) => h.kind === 'ticket' && !h.repo).length;
         return n ? `<span class="filter-sep" role="none"></span><button type="button" class="fchip" style="--accent: var(--state-claimed)">${icon('pulse')}In T3 Code <b>${n}</b></button>` : '';
       }
 
