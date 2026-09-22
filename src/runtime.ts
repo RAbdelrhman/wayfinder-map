@@ -64,6 +64,9 @@ async function closeServer(server: Server): Promise<void> {
       if (error === undefined || (error as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING') resolveClose();
       else rejectClose(error);
     });
+    // A desktop quit must not wait for renderer keep-alive requests to expire.
+    // This is available on the supported Node runtime and is optional in tests.
+    server.closeAllConnections?.();
   });
 }
 

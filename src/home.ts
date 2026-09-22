@@ -9,6 +9,7 @@ export interface HomeAccount {
   status: AccountStatus;
   host: string;
   login: string | null;
+  avatarUrl?: string | null;
   accounts: string[];
   missingScopes: string[];
   tokenSource: string | null;
@@ -34,6 +35,16 @@ interface RawAccount {
 
 interface RawAuthStatus {
   hosts?: unknown;
+}
+
+async function githubAvatarUrl(host: string, runGh: HomeGh): Promise<string | null> {
+  try {
+    const args = host === 'github.com' ? ['api', 'user', '--jq', '.avatar_url'] : ['api', '--hostname', host, 'user', '--jq', '.avatar_url'];
+    const avatarUrl = (await runGh(args)).trim();
+    return avatarUrl.length > 0 ? avatarUrl : null;
+  } catch {
+    return null;
+  }
 }
 
 interface SearchIssue {
@@ -63,6 +74,7 @@ function unavailableAccount(status: AccountStatus, message: string): HomeAccount
     status,
     host: 'github.com',
     login: null,
+    avatarUrl: null,
     accounts: [],
     missingScopes: [],
     tokenSource: null,
@@ -93,10 +105,12 @@ export async function readAccount(runGh: HomeGh = gh): Promise<HomeAccount> {
 
   const scopes = strings(active.scopes);
   const missingScopes = REQUIRED_SCOPES.filter((scope) => !scopes.includes(scope));
+  const avatarUrl = await githubAvatarUrl(preferredHost, runGh);
   return {
     status: missingScopes.length === 0 ? 'ready' : 'missing-scopes',
     host: preferredHost,
     login: active.login,
+    avatarUrl,
     accounts,
     missingScopes,
     tokenSource: typeof active.tokenSource === 'string' ? active.tokenSource : null,
@@ -168,4 +182,10 @@ export async function loadHomeState(mapLabels: readonly string[], runGh: HomeGh 
         : `Repository discovery failed. ${message}`,
     };
   }
+}
+
+/** Every repository the signed-in account can open, most recently pushed first. */
+export async function listRepositories(runGh: HomeGh = gh): Promise<string[]> {
+  const output = await runGh(['api', '--paginate', 'user/repos?per_page=100&sort=pushed', '--jq', '.[].full_name']);
+  return [...new Set(output.split(/\r?\n/).map((repo) => repo.trim()).filter(Boolean))];
 }

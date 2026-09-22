@@ -48,17 +48,26 @@ Once you are in the dedicated worktree, claim the ticket before doing ticket
 work. Close it when work is completed.
 `;
 
-export const DEFAULT_NEW_MAP_TEMPLATE = `You are helping plan a new Wayfinder map for the repository {{repo}}.
+export const DEFAULT_NEW_MAP_TEMPLATE = `Start a new wayfinder map in {{repo}}.
 
-Destination / Goal:
+What the user wants to accomplish:
 {{goal}}
 
-Please interview me one question at a time to clarify requirements, scope, decisions, and fog before drafting the proposed map and ticket structure.
-Break down the work into discrete Wayfinder tickets:
-- research tickets for unknowns and docs investigation
-- prototype tickets for throwaway experiments
-- grilling tickets for key user/architectural decisions
-- task tickets for concrete implementation units
+Run the wayfinder workflow to turn this into a map:
+1. Interview the user as needed, one question at a time with your recommended
+   answer, until the destination, scope, decisions so far, and fog are clear.
+   The user is in this thread; never invent their answers.
+2. Draft the map and its tickets and show them to the user before creating
+   anything. Tickets are research, prototype, grilling, or task, each one small
+   enough to close on its own, with the tickets that block it named.
+3. Once the user agrees, create the GitHub issues with \`gh\`:
+   - one map issue labeled \`{{mapLabel}}\` with Destination, Notes,
+     Decisions so far, Fog, and Out of scope sections;
+   - one issue per ticket labeled \`{{typePrefix}}<type>\`, added as a sub-issue
+     of the map, with its blockers recorded as blocked-by relationships.
+4. Reply with the map's link and the ticket numbers.
+
+Do not start work on any ticket. Planning the map is the whole job here.
 `;
 
 const STATE_WORDS: Record<Ticket['state'], string> = {
@@ -85,6 +94,9 @@ export interface PromptInput {
 export interface NewMapPromptInput {
   repo: string;
   goal: string;
+  /** The labels the map and its tickets get, so Wayfinder can find them afterwards. */
+  mapLabel: string;
+  typePrefix: string;
   template?: string | null | undefined;
 }
 
@@ -112,7 +124,19 @@ const TYPE_STEPS: Partial<Record<TicketType, string>> = {
 Show them the prototype and let them react before settling anything.
 When you capture the prototype, commit it to the branch {{prototypeBranch}}
 and push it. That exact name is how wayfinder-map finds it later, so do not
-pick another. Keep a logic prototype to one self-contained HTML file.`,
+pick another. When the question is visual or UX, build the prototype as a
+design canvas: a board showing the options side by side (pages, styles,
+components, palettes, moodboards) with a note on each. If the repo already
+has prototypes/canvas, build on it. If not, and you have the design-canvas
+skill, run node ~/.claude/skills/design-canvas/scaffold.mjs. Either way,
+follow prototypes/canvas/README.md, and make node
+prototypes/canvas/tools/check.mjs pass before you show the user.
+wayfinder-map opens a canvas (an index.html with its config.js beside it)
+before any other file. For any other prototype, commit
+prototype-snapshot.html at the branch root: the prototype as one HTML file
+with its CSS and JavaScript inlined, no paths starting with /, and no calls
+to a server. That file is what people click to see the prototype running
+later, long after the app has moved on.`,
 };
 
 function indent(text: string, prefix = '  '): string {
@@ -210,11 +234,7 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
   }).trim();
 }
 
-/** Build an interview prompt for starting a new Wayfinder map in T3 Code. */
-export function buildNewMapPrompt({ repo, goal, template }: NewMapPromptInput): string {
-  const chosenTemplate = template ?? DEFAULT_NEW_MAP_TEMPLATE;
-  return renderTemplate(chosenTemplate, {
-    repo,
-    goal: indent(goal),
-  }).trim();
+/** The prompt `Start a new map` hands to T3 Code: plan the map with the user, then create it on GitHub. */
+export function buildNewMapPrompt({ repo, goal, mapLabel, typePrefix, template }: NewMapPromptInput): string {
+  return renderTemplate(template ?? DEFAULT_NEW_MAP_TEMPLATE, { repo, goal: indent(goal), mapLabel, typePrefix }).trim();
 }

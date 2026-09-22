@@ -52,6 +52,7 @@ describe('sortPrototypes', () => {
     updatedAt,
     files: [],
     openable: [],
+    preview: null,
     verdict: null,
   });
 

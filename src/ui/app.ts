@@ -1,7 +1,6 @@
 import { DEFAULT_LAYOUT, layoutTickets } from '../layout.js';
 import type { PositionedNode } from '../layout.js';
 import { prototypeBranch } from '../prompt.js';
-import { prototypeFileUrl } from '../prototypes.js';
 import { TICKET_TYPES } from '../types.js';
 import type { MapSections, MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
 import {
@@ -22,13 +21,15 @@ import {
 } from './models.js';
 import type { ModelChoice, Tier } from './models.js';
 import { AutoRefresh } from './autoRefresh.js';
+import { fitPrototypeThumbs, prototypeTileHtml } from './prototypeTile.js';
+import type { TileText } from './prototypeTile.js';
 import { lineage, matchesFilter, matchesQuery, onLineage, syncedLabel } from './focus.js';
 import type { Lineage, TicketFilter } from './focus.js';
 import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { mapPath, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindTheme, countStates, paintIcons, progressRing } from './chrome.js';
+import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing, repoIconHtml } from './chrome.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -103,7 +104,6 @@ const els = {
   toast: need('toast'),
   modelsDialog: need<HTMLDialogElement>('models-dialog'),
   tierRows: need('tier-rows'),
-  refresh: need('refresh'),
 };
 
 paintIcons();
@@ -147,7 +147,7 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
   if (loadInFlight !== null) return loadInFlight;
   const force = mode !== 'initial';
   if (mode === 'initial') els.repo.textContent = 'reading GitHub…';
-  if (mode === 'manual') els.refresh.classList.add('is-busy');
+  if (mode === 'manual') els.synced.classList.add('is-busy');
 
   loadInFlight = (async () => {
     try {
@@ -184,7 +184,7 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       return false;
     } finally {
       loadInFlight = null;
-      els.refresh.classList.remove('is-busy');
+      els.synced.classList.remove('is-busy');
     }
   })();
   return loadInFlight;
@@ -246,7 +246,7 @@ function render(): void {
 function renderHead(): void {
   if (snapshot === null) return;
   const [owner, name] = snapshot.repo.includes('/') ? snapshot.repo.split('/', 2) : ['', snapshot.repo];
-  els.repo.innerHTML = `<a href="/">Home</a><span class="crumb-sep">/</span><a class="is-repo" href="${repoPath(snapshot.repo)}">${owner ? `${escapeHtml(owner)}/${escapeHtml(name ?? '')}` : escapeHtml(name ?? '')}</a><span class="crumb-sep">/</span>`;
+  els.repo.innerHTML = `<a href="/">Home</a><span class="crumb-sep">/</span><a class="is-repo" href="${repoPath(snapshot.repo)}">${repoIconHtml(snapshot.repo, 'sm')}<span>${owner ? `${escapeHtml(owner)}/${escapeHtml(name ?? '')}` : escapeHtml(name ?? '')}</span></a><span class="crumb-sep">/</span>`;
 
   const map = currentMap();
   els.mapSwitch.hidden = false;
@@ -276,7 +276,10 @@ function renderHead(): void {
 function renderSynced(): void {
   if (snapshot === null) return;
   const fetched = Date.parse(snapshot.fetchedAt);
-  els.synced.textContent = Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched);
+  const text = Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched);
+  const label = els.synced.querySelector<HTMLElement>('.synced-label') ?? els.synced;
+  label.textContent = text;
+  els.synced.hidden = !text;
 }
 
 function renderFilters(): void {
@@ -451,46 +454,13 @@ function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
   return loading;
 }
 
-function fileName(file: string): string {
-  return file.slice(file.lastIndexOf('/') + 1);
-}
-
-function dateLabel(iso: string | null): string {
-  if (iso === null) return '';
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime())
-    ? ''
-    : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-/** Open buttons for the HTML files, a link to the branch, and the full file list. */
-function prototypeBodyHtml(prototype: Prototype, ticket: Ticket | undefined): string {
-  const viewable = prototype.openable;
-  const opens = viewable
-    .map(
-      (file, index) =>
-        `<a class="${index === 0 ? 'primary' : 'ghost'}" href="${escapeHtml(prototypeFileUrl(repoName(), prototype.branch, file))}" target="_blank" rel="noreferrer" title="${escapeHtml(file)}">${icon(icons.PLAY)}Open ${escapeHtml(fileName(file))}</a>`,
-    )
-    .join('');
-  const verdict =
-    prototype.verdict !== null
-      ? `<div class="proto-verdict"><span class="eyebrow">Verdict</span><div class="prose">${renderMarkdown(prototype.verdict)}</div></div>`
-      : ticket?.open === false
-        ? ''
-        : '<p class="hint">Still open, so there is no verdict yet.</p>';
-  return `${verdict}
-    <div class="proto-actions">
-      ${opens}
-      <a class="ghost" href="${escapeHtml(prototype.url)}" target="_blank" rel="noreferrer">${icon(icons.EXTERNAL)}Branch on GitHub</a>
-    </div>
-    ${
-      viewable.length === 0
-        ? `<p class="hint">Nothing to open on its own: it runs inside the app. Check out <code>${escapeHtml(prototype.branch)}</code> and start it.</p>`
-        : ''
-    }
-    <details class="sec"><summary>${String(prototype.files.length)} ${prototype.files.length === 1 ? 'file' : 'files'} on <code>${escapeHtml(prototype.branch)}</code></summary>
-      <ul class="proto-files">${prototype.files.map((file) => `<li>${escapeHtml(file)}</li>`).join('')}</ul>
-    </details>`;
+/** The words under a tile on this map: the ticket, and a way to open it. */
+function tileText(prototype: Prototype, ticket: Ticket | undefined): TileText {
+  return {
+    eyebrow: `#${String(prototype.ticketNumber)}${ticket === undefined ? '' : ` · ${STATE_STYLE[ticket.state].label}`}`,
+    title: ticket?.title ?? prototype.branch,
+    links: `<button type="button" class="linkish" data-jump="${String(prototype.ticketNumber)}">Ticket</button><a href="${escapeHtml(prototype.url)}" target="_blank" rel="noreferrer">Branch ↗</a>`,
+  };
 }
 
 function renderPrototypes(): void {
@@ -519,28 +489,24 @@ function renderPrototypes(): void {
     return;
   }
 
-  const cards = load.list
-    .map((prototype) => {
-      const ticket = map.tickets.find((candidate) => candidate.number === prototype.ticketNumber);
-      const updated = dateLabel(prototype.updatedAt);
-      return `<article class="proto">
-        <header class="proto-head">
-          ${typeGlyph(ticket?.type ?? null)}
-          <button type="button" class="proto-title" data-jump="${String(prototype.ticketNumber)}" title="Open the ticket">
-            <span class="num">#${String(prototype.ticketNumber)}</span>${escapeHtml(ticket?.title ?? prototype.branch)}
-          </button>
-          ${ticket === undefined ? '' : stateChip(ticket.state)}
-          ${updated === '' ? '' : `<span class="proto-date">${escapeHtml(updated)}</span>`}
-        </header>
-        ${prototypeBodyHtml(prototype, ticket)}
-      </article>`;
-    })
+  const tiles = load.list
+    .map((prototype) =>
+      prototypeTileHtml(
+        repoName(),
+        prototype,
+        tileText(
+          prototype,
+          map.tickets.find((candidate) => candidate.number === prototype.ticketNumber),
+        ),
+      ),
+    )
     .join('');
 
-  els.protoWrap.innerHTML = `<div class="protolist">
-    <p class="eyebrow">${String(load.list.length)} ${load.list.length === 1 ? 'prototype' : 'prototypes'} on ${escapeHtml(map.title)}</p>
-    ${cards}
+  els.protoWrap.innerHTML = `<div class="protogallery">
+    <p class="eyebrow">${String(load.list.length)} ${load.list.length === 1 ? 'prototype' : 'prototypes'} on ${escapeHtml(map.title)} · click one to open it</p>
+    <div class="proto-grid">${tiles}</div>
   </div>`;
+  fitPrototypeThumbs(els.protoWrap);
 }
 
 /** The ticket panel's prototype block, filled in place once the list arrives. */
@@ -555,8 +521,8 @@ function ticketPrototypeHtml(map: WayfinderMap, ticket: Ticket): string {
         ? `<p class="hint">${escapeHtml(`Could not read the prototypes: ${load.error}`)}</p>`
         : mine.length === 0
           ? `<p class="hint">No prototype yet. It will be kept on <code>${escapeHtml(prototypeBranch(ticket))}</code>.</p>`
-          : mine.map((prototype) => prototypeBodyHtml(prototype, ticket)).join('');
-  return `<section class="ticket-proto"><span class="eyebrow">Prototype</span>${body}</section>`;
+          : mine.map((prototype) => prototypeTileHtml(repoName(), prototype, { eyebrow: 'Prototype', title: ticket.title })).join('');
+  return `<section class="ticket-proto">${mine.length === 0 ? '<span class="eyebrow">Prototype</span>' : ''}${body}</section>`;
 }
 
 function renderTicketPrototype(): void {
@@ -565,6 +531,7 @@ function renderTicketPrototype(): void {
   const ticket = map?.tickets.find((candidate) => candidate.number === selected);
   if (slot === null || map === null || ticket === undefined) return;
   slot.innerHTML = ticketPrototypeHtml(map, ticket);
+  fitPrototypeThumbs(slot);
 }
 
 /**
@@ -676,6 +643,7 @@ function renderInspector(): void {
 
   const panel = els.inspector.querySelector('.insp-panel');
   if (panel !== null) panel.scrollTop = scrollTop;
+  fitPrototypeThumbs(els.inspector);
 }
 
 function briefHtml(map: WayfinderMap): string {
@@ -1213,7 +1181,7 @@ document.addEventListener('keydown', (event) => {
 
 void loadCatalog().then(refreshTicketPicker);
 
-els.refresh.addEventListener('click', () => {
+els.synced.addEventListener('click', () => {
   void load('manual').then(() => {
     const map = currentMap();
     prototypeLoads.clear();
@@ -1227,6 +1195,8 @@ els.refresh.addEventListener('click', () => {
 });
 
 bindTheme(need('theme'));
+bindUpdater(need('updater'), toast);
+bindAccountMark(document.getElementById('account-mark'));
 
 function setView(next: View): void {
   view = next;
@@ -1265,9 +1235,19 @@ els.zoomReset.addEventListener('click', () => setZoom(1));
 els.canvasWrap.addEventListener(
   'wheel',
   (event) => {
-    if (!event.ctrlKey) return;
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      setZoom(zoom + (event.deltaY > 0 ? -0.1 : 0.1));
+      return;
+    }
     event.preventDefault();
-    setZoom(zoom + (event.deltaY > 0 ? -0.1 : 0.1));
+    let delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (event.deltaMode === 1) {
+      delta *= 32;
+    } else if (event.deltaMode === 2) {
+      delta *= els.canvasWrap.clientWidth;
+    }
+    els.canvasWrap.scrollLeft += delta;
   },
   { passive: false },
 );

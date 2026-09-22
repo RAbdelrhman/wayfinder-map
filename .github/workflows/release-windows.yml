@@ -19,7 +19,8 @@ jobs:
         arch: [x64, arm64]
     env:
       WAYFINDER_BUILD_ARCH: ${{ matrix.arch }}
-      WAYFINDER_SIGNED_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+      WAYFINDER_STABLE_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') && '1' || '0' }}
+      WAYFINDER_SIGNED_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') && '1' || '0' }}
       WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
       WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
     steps:
@@ -34,7 +35,7 @@ jobs:
           bun-version: 1.1.0
 
       - name: Require signing credentials for a stable tag
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.WAYFINDER_STABLE_RELEASE == '1'
         shell: pwsh
         run: |
           if (-not $env:WIN_CSC_LINK -or -not $env:WIN_CSC_KEY_PASSWORD) {
@@ -54,13 +55,17 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
       - run: bun run package:win -- ${{ matrix.arch }}
+      # windows-2025 is x64; ARM64 is cross-packaged here and must be installed and
+      # exercised on a real Windows ARM64 machine before stable support is claimed.
+      - run: bun run smoke:win -- x64
+        if: matrix.arch == 'x64'
 
       - name: Write SHA-256 checksums
         shell: pwsh
         run: |
           $folder = "release/${{ matrix.arch }}"
           $lines = Get-ChildItem $folder -File |
-            Where-Object Name -NotLike 'SHA256SUMS-*' |
+            Where-Object { $_.Name -notlike 'SHA256SUMS-*' -and $_.Name -ne 'builder-debug.yml' } |
             Sort-Object Name |
             ForEach-Object { "{0} *{1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name }
           Set-Content -LiteralPath "$folder/SHA256SUMS-${{ matrix.arch }}.txt" -Value $lines -Encoding ascii
@@ -68,20 +73,60 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: wayfinder-windows-${{ matrix.arch }}
-          path: release/${{ matrix.arch }}/*
+          # Only the release carries: the installer, update metadata, blockmap, and checksum.
+          path: |
+            release/${{ matrix.arch }}/*.exe
+            release/${{ matrix.arch }}/*.blockmap
+            release/${{ matrix.arch }}/latest-*.yml
+            release/${{ matrix.arch }}/SHA256SUMS-*.txt
+          if-no-files-found: error
+
+  cli:
+    name: CLI package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.1.0
+
+      - name: Match the tag to package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
+
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run typecheck
+      # Includes the packaged-CLI smoke test, here on POSIX where it also checks SIGINT shutdown.
+      - run: bun run test
+
+      - name: Pack the CLI
+        run: |
+          mkdir release-cli
+          npm pack --pack-destination release-cli
+          cd release-cli && sha256sum *.tgz > SHA256SUMS-cli.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wayfinder-cli
+          path: release-cli/*
           if-no-files-found: error
 
   release:
-    name: Signed GitHub release
+    name: GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, cli]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: wayfinder-windows-*
+          pattern: wayfinder-*
           path: release-assets
 
       - uses: softprops/action-gh-release@v2
@@ -89,3 +134,4 @@ jobs:
           files: release-assets/**/*
           fail_on_unmatched_files: true
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
