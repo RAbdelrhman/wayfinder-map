@@ -100,7 +100,7 @@
     </svg>`;
   }
 
-  const chip = (state) => `<span class="chip" style="--accent: var(${STATES[state].v})">${icon(STATES[state].icon)}${STATES[state].label}</span>`;
+  const chip = (state, label = STATES[state].label) => `<span class="chip" style="--accent: var(${STATES[state].v})">${icon(STATES[state].icon)}${esc(label)}</span>`;
 
   const go = (view, extra = '') => `data-view="${view}"${extra}`;
   const goRepo = (repo) => go('repo', ` data-repo="${esc(repo.name)}"`);

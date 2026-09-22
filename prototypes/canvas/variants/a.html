@@ -736,7 +736,7 @@
           .join('');
         const tile = (p) => `<a class="card a-proto" href="#" data-to="the #${p.ticket} canvas">
           ${p.variants.length ? `<span class="thumb">${WF.frame(p.picked, { img: !!p.img })}</span>` : `<span class="thumb is-empty">No canvas yet</span>`}
-          <span class="txt"><span class="a-status">${p.status === 'picked' ? `${WF.chip('done').replace('done', `picked ${esc(p.picked)}`)}` : WF.chip('claimed').replace('claimed', 'being built')}<span class="grow"></span>#${p.ticket}${p.date ? ` · ${esc(p.date)}` : ''}</span>
+          <span class="txt"><span class="a-status">${p.status === 'picked' ? WF.chip('done', `picked ${p.picked}`) : WF.chip('blocked', 'being built')}<span class="grow"></span>#${p.ticket}${p.date ? ` · ${esc(p.date)}` : ''}</span>
           <strong>${esc(p.title)}</strong><span class="gist">${esc(p.gist)}</span></span></a>`;
         return `<div class="a-sheet">${head}${pick}${rest.length ? `<div class="a-head" style="margin:${waiting.length ? 30 : 0}px 0 12px"><h2>Decided and in progress</h2></div><div class="a-protos">${rest.map(tile).join('')}</div>` : ''}</div>`;
       }
