@@ -115,8 +115,19 @@ export async function resolveRepoIcon(
       'favicon.ico',
       'public/favicon.png',
       'public/favicon.svg',
+      'public/ecpl_logo.png',
+      'public/ecpl_mobile_logo.png',
+      'public/icons/icon-512.png',
+      'public/icons/icon-192.png',
+      'public/icons/icon-maskable-512.png',
       'assets/icon.png',
+      'assets/icon.svg',
+      'assets/logo.png',
+      'assets/logo.svg',
       'public/logo.png',
+      'public/logo.svg',
+      'src/app/icon.png',
+      'app/icon.png',
     ];
     for (const remoteFile of remoteCandidates) {
       try {

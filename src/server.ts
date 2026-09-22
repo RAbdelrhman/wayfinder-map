@@ -57,7 +57,7 @@ const PROTOTYPE_CSP = 'sandbox allow-scripts allow-forms allow-popups allow-moda
  * by PROTOTYPE_CSP on the response and by the iframe's own `sandbox` attribute.
  */
 export const PAGE_CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'self'; form-action 'self'";
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://github.com https://avatars.githubusercontent.com; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'self'; form-action 'self'";
 
 export type ServerT3 =Pick<T3HandOff, 'models' | 'steps' | 'projects'> & { close?: () => void };
 

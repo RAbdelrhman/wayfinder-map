@@ -32,4 +32,21 @@ describe('resolveRepoIcon', () => {
     expect(result?.contentType).toBe('image/x-icon');
     expect(result?.data).toEqual(Buffer.from([1, 2, 3, 4]));
   });
+
+  it('checks the repository logo locations used by ECPL-style Next apps', async () => {
+    const requested: string[] = [];
+    const fakeFetch = async (url: string | URL | Request) => {
+      requested.push(String(url));
+      if (String(url).endsWith('/public/ecpl_logo.png')) {
+        return new Response(new Uint8Array([5, 6, 7]), { status: 200 });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    const result = await resolveRepoIcon('owner/repo', undefined, undefined, null, fakeFetch as unknown as typeof fetch);
+
+    expect(result?.contentType).toBe('image/png');
+    expect(result?.data).toEqual(Buffer.from([5, 6, 7]));
+    expect(requested).toContain('https://raw.githubusercontent.com/owner/repo/HEAD/public/ecpl_logo.png');
+  });
 });

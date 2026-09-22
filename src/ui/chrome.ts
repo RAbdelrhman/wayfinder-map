@@ -319,7 +319,7 @@ export function repoIconHtml(repo: string, size: 'sm' | 'md' | 'lg' = 'md'): str
   const sizeClass = size === 'sm' ? ' is-sm' : size === 'lg' ? ' is-lg' : '';
   const monoSvg = repoMonogramSvg(trimmed);
   const imgTag = normalized
-    ? `<img class="repo-icon-img" src="${escapeHtml(scopedApiPath(normalized, 'icon'))}" alt="" loading="lazy" style="display:none" />`
+    ? `<img class="repo-icon-img" src="${escapeHtml(scopedApiPath(normalized, 'icon'))}" alt="" style="display:none" />`
     : '';
 
   return `<span class="repo-icon-badge${sizeClass}" data-repo="${escapeHtml(repo)}" aria-hidden="true"><span class="repo-monogram">${monoSvg}</span>${imgTag}</span>`;
