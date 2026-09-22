@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.10](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.9...v0.2.10) (2026-09-22)
+
+
+### Bug Fixes
+
+* show monogram for personal repos and stop serving stale repo icons ([68b8882](https://github.com/RAbdelrhman/wayfinder-map/commit/68b8882c39a3470eb4f4736fabde0e1de88a3815))
+
 ## [0.2.9](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.8...v0.2.9) (2026-09-22)
 
 
