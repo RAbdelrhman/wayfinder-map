@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A · Stays on the ticket</title>
+    <!-- PROTOTYPE (#45), direction A: the hand-off lives where you started it. The button turns into a live card, the node carries the status, and Home's In flight strip is the only list. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="after.css" />
+    <style>
+      .ho-card {
+        margin-bottom: 16px;
+        padding: 12px;
+        border: 1px solid var(--hairline);
+        border-left: 3px solid var(--tone);
+        border-radius: 12px;
+        background: var(--wash);
+      }
+      .ho-card.is-fresh {
+        animation: ho-arrive 1.2s ease-out;
+      }
+      @keyframes ho-arrive {
+        from {
+          box-shadow: 0 0 0 4px color-mix(in srgb, var(--state-claimed) 35%, transparent);
+        }
+      }
+      .ho-card-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .ho-card-head .ho-when {
+        margin-left: auto;
+      }
+      .ho-card .ho-line {
+        margin: 0 0 10px;
+      }
+      .ho-card .ho-sent {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0 0 8px;
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .ho-card .ho-sent .i {
+        color: var(--state-frontier);
+      }
+      .ho-card details {
+        margin-top: 10px;
+        border-top: 1px solid var(--hairline);
+        padding-top: 8px;
+        font-size: 12.5px;
+      }
+      .ho-card summary {
+        cursor: pointer;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+      }
+      .ho-card .ho-offline {
+        margin-bottom: 10px;
+        padding: 7px 10px;
+        font-size: 12.5px;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="after.js"></script>
+    <script>
+      const { state, icon, esc, pill, sinceText, actions, facts, timeline } = AFTER;
+
+      // The node says it is in T3 Code, in the same words as the card.
+      function badge(t) {
+        const h = AFTER.handOffs().find((x) => x.number === t.number);
+        return h ? `<span class="ho-nbadge">${pill(h)}<span class="grow">${esc(sinceText(h))}</span></span>` : '';
+      }
+
+      // The launch block turns into this card when you press Open in T3 Code, and stays live.
+      function card() {
+        if (!state.handedOff) return AFTER.launchBlock();
+        const h = AFTER.focusHandOff();
+        return `<div class="ho-card${state.justHandedOff ? ' is-fresh' : ''}" style="--tone:${AFTER.STATUS[h.status].tone}">
+          ${state.justHandedOff ? `<p class="ho-sent">${icon('check')}Sent to T3 Code. You can keep working here: this card stays live.</p>` : ''}
+          <div class="ho-card-head">${pill(h, { size: 'lg' })}<span class="ho-when">${esc(sinceText(h))}</span></div>
+          ${AFTER.offline() ? `<div class="ho-offline">${icon('plug')}<span class="grow">T3 Code isn't running. This is its last report.</span></div>` : ''}
+          <p class="ho-line">${esc(h.line)}</p>
+          <div class="ho-row">${actions(h, { back: false })}</div>
+          <details${h.status === 'failed' ? ' open' : ''}><summary>Branch, worktree and what happened</summary>${facts(h)}${timeline(h)}</details>
+        </div>`;
+      }
+
+      function inFlightChip() {
+        const n = AFTER.handOffs().filter((h) => h.kind === 'ticket').length;
+        return `<span class="filter-sep" role="none"></span><button type="button" class="fchip" style="--accent: var(--state-claimed)">${icon('pulse')}In T3 Code <b>${n}</b></button>`;
+      }
+
+      AFTER.start((s) => {
+        if (s.view === 'home')
+          return `<div class="app has-side">${AFTER.side(s)}<div class="main">${AFTER.topbar(s)}${AFTER.homePage()}</div></div>`;
+        return `<div class="app">${AFTER.rail(s)}<div class="main">${AFTER.topbar(s)}${AFTER.mapPage({ badge, slot: card(), filterExtra: inFlightChip() })}</div></div>`;
+      });
+    </script>
+  </body>
+</html>

@@ -1,31 +1,20 @@
 /*
-  Wayfinder's canvas for ticket #39. README.md documents every field; this uses all of them.
+  Wayfinder's canvas for ticket #45: what the user sees after handing off to T3 Code.
   Paths are relative to index.html. Check with: node prototypes/canvas/tools/check.mjs
 */
 
-// Snippets reused below. Component HTML uses the app's own classes from src/ui/styles.css.
-const BUTTONS = `<div style="display:flex;gap:10px;flex-wrap:wrap">
-  <button class="primary">Start a new map</button>
-  <button class="ghost">Refresh</button>
-  <button class="primary" disabled>Handing off…</button>
-</div>`;
-const FIELD = `<div class="field" style="margin:0"><label>Open a repository</label>
-  <div class="row"><input class="input" placeholder="owner/name" /><button class="primary">Open</button></div></div>`;
-const REPO_CARD = `<a class="card repo-card" style="margin:0">
-  <span class="grow">RAbdelrhman/wayfinder-map</span><span style="color:var(--text-muted);font-size:12px">2 maps</span></a>`;
-const PANEL = `<div class="panel" style="margin:0"><span class="avatar">R</span>
-  <span class="grow"><strong>ramon</strong><p>github.com</p></span></div>`;
+const G2 = 'Tracking per #41: live thread status, branch and PR links, stale (not failed) when T3 Code is off.';
 
 window.CANVAS = {
-  ticket: 39,
-  title: 'Prototype canvas',
+  ticket: 45,
+  title: 'After the hand-off',
   question:
-    'Is this the right board for design decisions? Every prototype on map #35 will be shown like this: full pages, and also style directions, component sheets, palettes, type and moodboards.',
-  sampleState: 'Placeholder content on fake data. Real directions come in P1–P4.',
+    'What do you see after pressing Open in T3 Code: the confirmation, live status, the way back to the ticket or map, and the list of everything in flight?',
+  sampleState:
+    'Fake T3 Code. Open any frame and use the Prototype bar at the bottom to switch #55 between Starting, Working, Needs input, Done with PR, Failed and T3 Code not running, or press Replay hand-off to see the confirmation. Four other hand-offs stay put so the lists have something in them.',
 
-  // What every item renders on: Wayfinder's real stylesheet, its token root, and its surfaces for the canvas's sheets.
   base: {
-    stylesheets: ['../../src/ui/styles.css'],
+    stylesheets: ['../../src/ui/styles.css', 'variants/after.css'],
     bodyClass: 'viz-root',
     surfaces: {
       plane: 'var(--plane)',
@@ -36,165 +25,124 @@ window.CANVAS = {
     },
   },
 
-  // Named token sets. `vars` override the app's CSS variables (light), `dark` overrides in dark mode.
-  styles: {
-    app: { label: 'Wayfinder today', vars: {} },
-    warm: {
-      label: 'Warm paper',
-      font: "Georgia, 'Iowan Old Style', serif",
-      vars: {
-        '--surface-1': '#fffdf8',
-        '--plane': '#f3efe6',
-        '--text-primary': '#1f1b16',
-        '--text-secondary': '#5b5347',
-        '--text-muted': '#8c8375',
-        '--hairline': 'rgba(60, 40, 10, 0.12)',
-        '--state-claimed': '#c2552d',
-      },
-      dark: {
-        '--surface-1': '#211e1a',
-        '--plane': '#171512',
-        '--text-primary': '#f5efe4',
-        '--text-secondary': '#cfc5b4',
-        '--hairline': 'rgba(255, 240, 210, 0.12)',
-        '--state-claimed': '#e07a52',
-      },
-    },
-    crisp: {
-      label: 'Crisp',
-      vars: {
-        '--surface-1': '#ffffff',
-        '--plane': '#eef1f5',
-        '--text-primary': '#0a0f1a',
-        '--text-secondary': '#3d4657',
-        '--text-muted': '#7a8496',
-        '--hairline': 'rgba(10, 15, 26, 0.12)',
-        '--state-claimed': '#4f46e5',
-      },
-      dark: {
-        '--surface-1': '#141821',
-        '--plane': '#0b0e14',
-        '--text-primary': '#f4f6fb',
-        '--text-secondary': '#b6bfcf',
-        '--hairline': 'rgba(255, 255, 255, 0.1)',
-        '--state-claimed': '#818cf8',
-      },
-      css: '.primary, .ghost, .input { border-radius: 999px; }',
-    },
-  },
-
   pages: [
     {
-      title: 'Home directions',
+      title: 'Directions',
       sections: [
         {
-          title: 'Pages',
-          note: 'Full pages you can click through. Each is an HTML file under variants/.',
+          title: 'Three directions',
+          note: `Each covers confirmation, live status, the way back and the in-flight list. ${G2} All three keep Home's In flight strip from #40.`,
           items: [
             {
               id: 'A',
-              name: 'Directory',
-              src: 'variants/a.html',
+              name: 'Stays on the ticket',
+              src: 'variants/after-a.html?state=working',
               note: {
-                idea: "Today's Home, tidied up: account, a search box, then every repository as a card with its open maps and progress.",
-                pros: ['Familiar: nothing moves', 'Scales to many repositories'],
-                cons: ["Doesn't say what to do next", 'In-flight work is invisible'],
+                idea:
+                  'Nothing moves. Open in T3 Code turns into a live card in the ticket panel: the status, the last thing T3 Code did, the one action that fits (Answer, Open PR, Try again), and branch, worktree and timeline behind a fold. The node on the map carries the same pill, and an "In T3 Code" filter finds them all. The only list is Home\'s In flight strip. A map hand-off works the same way: the card sits on top of the draft map (#44).',
+                pros: [
+                  'Smallest change, and the way back is free: you never leave',
+                  'Status sits right where the work is on the map',
+                  'Least new UI to build for #56',
+                ],
+                cons: [
+                  'On another map or page you only find out from Home',
+                  'The panel fills with hand-off detail, pushing the ticket body down',
+                ],
               },
             },
             {
               id: 'B',
-              name: 'Pick up where you left off',
-              src: 'variants/b.html',
+              name: 'A tray that follows you',
+              src: 'variants/after-b.html?state=input',
               note: {
-                idea: 'Home leads with the map you were last on and what is in flight in T3 Code.',
-                pros: ['One obvious next action', 'Hand-offs are visible from the start'],
-                cons: ['Needs hand-off tracking (G2)'],
+                idea:
+                  'Every hand-off, ticket or map, drops into a tray at the bottom right of every page, like a download manager. Closed, it reads "5 in T3 Code · 2 need you". Open, it groups hand-offs into Waiting on you, In T3 Code and Done, each with its action and a link back to the ticket. The ticket panel and node only say it is in T3 Code.',
+                pros: [
+                  'You hear about "needs you" wherever you are',
+                  'One place for everything, whatever map it came from',
+                  'The confirmation is the new row arriving',
+                ],
+                cons: [
+                  'Something floats over every page, including the map canvas',
+                  'Duplicates Home\'s In flight strip',
+                  'Status is one click away from the ticket, not on it',
+                ],
+              },
+            },
+            {
+              id: 'C',
+              name: 'Each hand-off gets a page',
+              src: 'variants/after-c.html?state=done',
+              note: {
+                idea:
+                  'Open in T3 Code takes you to the hand-off\'s own page: a big status callout with its action, a timeline of what the thread did, branch, PR and worktree, and a card back to the ticket. The sidebar (#42) grows an In flight group with one dot per hand-off, and All hand-offs lists them in a table. The draft map from #44 would be this page for a map hand-off.',
+                pros: [
+                  'Room for the whole story: questions asked, failures, the PR',
+                  'The sidebar always shows what is in flight and what needs you',
+                  'Each hand-off has a link you can come back to',
+                ],
+                cons: [
+                  'Takes you away from the map you were working on',
+                  'A new page type and route to build',
+                  'The sidebar gets longer with every hand-off',
+                ],
               },
             },
           ],
         },
+        {
+          title: 'The same directions on Home',
+          note: 'Home keeps #40\'s In flight strip in every direction: cards ordered by what waits on you, each with its action and a link back.',
+          items: [
+            {
+              id: 'H',
+              name: 'Home · In flight strip',
+              src: 'variants/after-a.html?view=home&state=failed',
+              note: {
+                idea: 'The shared Home strip, here with #55 failed. It sorts Needs you, Failed, PR ready, Working, Starting.',
+                pros: ['The same cards in every direction'],
+                cons: ['In A it is the only list'],
+              },
+            },
+            {
+              id: 'CL',
+              name: 'C · All hand-offs',
+              src: 'variants/after-c.html?view=flight&state=working',
+              note: { idea: "C's list page, reached from the sidebar's In flight group or the rail's plane button on the map." },
+            },
+          ],
+        },
       ],
     },
     {
-      title: 'Style directions',
-      question: 'Which look should Wayfinder move towards? Same components, three token sets.',
+      title: 'States',
+      question: 'Do the six states read right? The words, icons, tones and actions are the same in every direction.',
       sections: [
         {
-          title: 'Components',
-          note: 'The same component sheet under each style. One item with `styles: [...]` expands into one frame per style.',
+          title: 'Shared vocabulary',
           items: [
             {
               id: 'S',
-              kind: 'components',
-              name: 'Core components',
-              styles: ['app', 'warm', 'crisp'],
-              note: 'Buttons, a field, a card and a panel: enough to feel a style.',
-              columns: 2,
-              items: [
-                { label: 'Buttons', html: BUTTONS, span: 2 },
-                { label: 'Field', html: FIELD, span: 2 },
-                { label: 'Repository card', html: REPO_CARD },
-                { label: 'Account panel', html: PANEL },
-              ],
+              name: 'The six states',
+              src: 'variants/states.html',
+              height: 620,
+              note: {
+                idea:
+                  'Starting and Working share the claimed blue, Needs you uses the amber of blocked, PR ready the green of next, Failed a new red. When T3 Code is off the last status stays, drawn dashed and marked stale.',
+                pros: ['Hue always comes with an icon and a word', 'Offline never reads as failure'],
+                cons: ['Failed adds a red the map page does not use yet'],
+              },
             },
           ],
         },
         {
-          title: 'Palette and type',
+          title: 'T3 Code not running, per direction',
+          note: 'The same moment in each direction: the last report stays, dashed and marked stale.',
           items: [
-            { id: 'P', kind: 'swatches', name: 'Warm paper palette', style: 'warm', note: 'Pulled straight from the style’s colour tokens.' },
-            {
-              id: 'T',
-              kind: 'type',
-              name: 'Warm paper type',
-              style: 'warm',
-              text: 'Pick up where you left off',
-              note: 'A serif gives Home a calmer, editorial voice.',
-            },
-            {
-              kind: 'note',
-              name: 'Why a palette?',
-              text: 'Palettes and type sit next to the pages that use them, so a style is judged on real screens, not swatches alone.',
-            },
-          ],
-        },
-      ],
-    },
-    {
-      title: 'Moodboard',
-      question: 'Compositions: screenshots, shapes, text and real components layered on an artboard.',
-      sections: [
-        {
-          title: 'Composition',
-          note: 'Layered images, shapes, text and HTML placed on an artboard: for moodboards, hero ideas and annotated screenshots.',
-          items: [
-            {
-              id: 'M',
-              kind: 'compose',
-              name: 'Annotated screenshot',
-              width: 1200,
-              height: 720,
-              background: '#1c1b19',
-              layers: [
-                { type: 'image', src: 'assets/home-b.png', x: 60, y: 60, w: 800, h: 500, radius: 10, shadow: '0 30px 60px -20px rgba(0,0,0,.6)' },
-                { type: 'rect', x: 165, y: 283, w: 385, h: 95, fill: 'transparent', border: '3px solid #f59e0b', radius: 12 },
-                { type: 'text', text: 'The next action lives here', x: 900, y: 290, w: 260, size: 26, weight: 650, color: '#fbbf24' },
-                {
-                  type: 'text',
-                  text: 'Frontier tickets start right from Home, one click to T3 Code.',
-                  x: 900,
-                  y: 360,
-                  w: 250,
-                  size: 15,
-                  color: '#d6d3cd',
-                  lineHeight: 1.5,
-                },
-                { type: 'image', src: '../../assets/wayfinder-icon.svg', x: 1080, y: 600, w: 64, h: 64, fit: 'contain', opacity: 0.9 },
-                { type: 'html', x: 60, y: 610, w: 520, style: 'color:#d6d3cd', html: '<button class="primary">Real app button, layered in</button>' },
-              ],
-              note: { idea: 'Screenshot, highlight box, callout text, a logo and a real app button, all as layers.' },
-            },
-            { id: 'I', kind: 'image', name: 'Plain image', src: 'assets/home-b.png', width: 800, note: 'Any screenshot or reference image.' },
+            { id: 'A-off', name: 'A · offline', src: 'variants/after-a.html?state=offline', note: 'The canvas banner and the card both say T3 Code is off; the card keeps its last status.' },
+            { id: 'B-off', name: 'B · offline', src: 'variants/after-b.html?state=offline', note: 'The tray button swaps its dots for a plug and every row turns stale.' },
+            { id: 'C-off', name: 'C · offline', src: 'variants/after-c.html?state=offline', note: 'The callout becomes "T3 Code isn\'t running" with the last report under it.' },
           ],
         },
       ],
