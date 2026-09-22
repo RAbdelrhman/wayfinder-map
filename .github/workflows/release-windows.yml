@@ -55,7 +55,10 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
       - run: bun run package:win -- ${{ matrix.arch }}
-      - run: bun run smoke:win -- ${{ matrix.arch }}
+      # windows-2025 is x64; ARM64 is cross-packaged here and must be installed and
+      # exercised on a real Windows ARM64 machine before stable support is claimed.
+      - run: bun run smoke:win -- x64
+        if: matrix.arch == 'x64'
 
       - name: Write SHA-256 checksums
         shell: pwsh

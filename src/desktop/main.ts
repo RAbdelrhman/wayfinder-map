@@ -229,7 +229,13 @@ async function completeSmokeTest(homeUrl: string): Promise<void> {
     JSON.stringify({ route: new URL(homeUrl).pathname || '/', homeStatus, port, version: app.getVersion() }),
     'utf8',
   );
-  setTimeout(() => void quitApplication(), 100);
+  setTimeout(() => {
+    void quitApplication().finally(() => {
+      // The smoke launch has no user-owned tray session to preserve. Once the normal
+      // close path has stopped the runtime, force the test process to leave promptly.
+      app.exit(0);
+    });
+  }, 100);
 }
 
 app.setAppUserModelId('com.rabdelrhman.wayfinder');

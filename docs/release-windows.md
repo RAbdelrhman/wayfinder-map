@@ -25,8 +25,10 @@ checks that the loopback port is closed:
 bun run smoke:win -- x64
 ```
 
-CI runs this gate for both architectures after packaging. It does not require Node or
-Bun on the installed machine; those tools are only used by the build runner.
+CI runs this gate for x64 after packaging. The same matrix cross-packages ARM64, but
+the x64 runner cannot execute that binary; a real Windows ARM64 install remains a
+release gate. The installed app does not require Node or Bun; those tools are only
+used by the build runner.
 
 ## Stable release
 

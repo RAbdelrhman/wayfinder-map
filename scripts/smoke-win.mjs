@@ -99,6 +99,7 @@ try {
   await run(installer, ['/S', '/currentuser', `/D=${installDir}`]);
   const executable = join(installDir, 'Wayfinder.exe');
   await access(executable);
+  await access(join(installDir, 'Uninstall Wayfinder.exe'));
   const appEnvironment = { ...process.env, WAYFINDER_SMOKE_FILE: markerPath };
   // T3 Code sets this for Electron-hosted Node commands; a packaged desktop launch
   // must not inherit it or Electron exits as a Node process without opening the app.

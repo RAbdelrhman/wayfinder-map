@@ -29,6 +29,7 @@ describe('Windows packaging contract', () => {
     expect(builder).toContain('createStartMenuShortcut: true');
     expect(builder).toContain("shortcutName: 'Wayfinder'");
     expect(builder).toContain("uninstallDisplayName: 'Wayfinder'");
+    expect(builder).toContain('verifyUpdateCodeSignature: signedRelease');
     expect(builder).toContain('artifactSuffix');
   });
 
@@ -38,13 +39,15 @@ describe('Windows packaging contract', () => {
 
     expect(workflow).toContain('arch: [x64, arm64]');
     expect(workflow).toContain('bun run package:win -- ${{ matrix.arch }}');
-    expect(workflow).toContain('bun run smoke:win -- ${{ matrix.arch }}');
+    expect(workflow).toContain('bun run smoke:win -- x64');
+    expect(workflow).toContain("if: matrix.arch == 'x64'");
     expect(workflow).toContain('SHA256SUMS-*.txt');
     expect(workflow).toContain('softprops/action-gh-release@v2');
     expect(workflow).toContain('WIN_CSC_LINK');
     expect(workflow).toContain("prerelease: ${{ contains(github.ref_name, '-') }}");
     expect(smoke).toContain('WAYFINDER_SMOKE_FILE');
     expect(smoke).toContain("'/currentuser'");
+    expect(smoke).toContain("Uninstall Wayfinder.exe");
     expect(smoke).toContain('delete appEnvironment.ELECTRON_RUN_AS_NODE');
     expect(smoke).toContain("marker.route !== '/' || marker.homeStatus !== 200");
     expect(smoke).toContain('Wayfinder left its loopback server listening');

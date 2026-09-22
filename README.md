@@ -38,7 +38,7 @@ current page, go Home, start a new map, or quit. Quit stops the loopback server
 and revokes the in-memory T3 Code session.
 
 The first public release targets Windows 10 and Windows 11. Stable installers must
-be signed and supports x64 and ARM64. `gh` remains an explicit prerequisite; if it
+be signed and support x64 and ARM64. `gh` remains an explicit prerequisite; if it
 is missing or signed out, Home stays available and shows the diagnostic with a link
 to install or sign in to GitHub CLI. Architecture-specific installed-flow gates are documented in
 [`docs/release-windows.md`](docs/release-windows.md).
