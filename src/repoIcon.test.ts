@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { githubOwnerAvatarUrl, iconContentType, resolveRepoIcon } from './repoIcon.js';
+import { githubRepoImageUrl, iconContentType, resolveRepoIcon } from './repoIcon.js';
 
 describe('iconContentType', () => {
   it('returns proper mime types', () => {
@@ -14,15 +14,19 @@ describe('iconContentType', () => {
   });
 });
 
-describe('githubOwnerAvatarUrl', () => {
-  it('reads the owner avatar URL from GitHub repository metadata', async () => {
+describe('githubRepoImageUrl', () => {
+  it('reads the organization avatar URL from GitHub repository metadata', async () => {
     const runGh = vi.fn(async () => 'https://avatars.githubusercontent.com/u/123?s=64\n');
-    await expect(githubOwnerAvatarUrl('Energy-Control-Power-Lockout/ECPL-Lockstep', runGh)).resolves.toBe('https://avatars.githubusercontent.com/u/123?s=64');
-    expect(runGh).toHaveBeenCalledWith(['api', 'repos/Energy-Control-Power-Lockout/ECPL-Lockstep', '--jq', '.owner.avatar_url']);
+    await expect(githubRepoImageUrl('Energy-Control-Power-Lockout/ECPL-Lockstep', runGh)).resolves.toBe('https://avatars.githubusercontent.com/u/123?s=64');
+    expect(runGh).toHaveBeenCalledWith(['api', 'repos/Energy-Control-Power-Lockout/ECPL-Lockstep', '--jq', 'if .owner.type == "Organization" then .owner.avatar_url else "" end']);
+  });
+
+  it('returns null for personal repositories so the monogram shows', async () => {
+    await expect(githubRepoImageUrl('someone/repo', async () => '\n')).resolves.toBeNull();
   });
 
   it('rejects non-GitHub image URLs from metadata', async () => {
-    await expect(githubOwnerAvatarUrl('owner/repo', async () => 'https://example.com/logo.png')).resolves.toBeNull();
+    await expect(githubRepoImageUrl('owner/repo', async () => 'https://example.com/logo.png')).resolves.toBeNull();
   });
 });
 

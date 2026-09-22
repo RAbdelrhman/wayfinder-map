@@ -9,10 +9,14 @@ export interface ResolvedRepoIcon {
 
 export type RepoAvatarUrlFetcher = (repo: string) => Promise<string | null>;
 
-/** GitHub's repository API exposes the owner or organization avatar for a repository. */
-export async function githubOwnerAvatarUrl(repo: string, runGh: typeof gh = gh): Promise<string | null> {
+/**
+ * A repository's image is its organization's avatar. Personal repositories have no image of
+ * their own (the owner avatar is the person, often GitHub's default identicon), so they get none
+ * and the UI keeps the monogram.
+ */
+export async function githubRepoImageUrl(repo: string, runGh: typeof gh = gh): Promise<string | null> {
   try {
-    const value = (await runGh(['api', `repos/${repo}`, '--jq', '.owner.avatar_url'])).trim();
+    const value = (await runGh(['api', `repos/${repo}`, '--jq', 'if .owner.type == "Organization" then .owner.avatar_url else "" end'])).trim();
     return isGithubImageUrl(value) ? value : null;
   } catch {
     return null;
@@ -54,11 +58,11 @@ function responseContentType(response: Response, imageUrl: string): string | nul
   return inferred.startsWith('image/') ? inferred : 'image/png';
 }
 
-/** Fetch the GitHub owner avatar as a same-origin image for the app's strict CSP. */
+/** Fetch the repository image as a same-origin image for the app's strict CSP. */
 export async function resolveRepoIcon(
   repo: string,
   fetchFn: typeof fetch = fetch,
-  avatarUrlFetcher: RepoAvatarUrlFetcher = (value) => githubOwnerAvatarUrl(value),
+  avatarUrlFetcher: RepoAvatarUrlFetcher = (value) => githubRepoImageUrl(value),
 ): Promise<ResolvedRepoIcon | null> {
   const avatarUrl = await avatarUrlFetcher(repo).catch(() => null);
   if (avatarUrl === null || !isGithubImageUrl(avatarUrl)) return null;

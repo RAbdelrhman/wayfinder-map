@@ -22,7 +22,7 @@ import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './workspaces.js';
 import type { WorkspaceState } from './workspaces.js';
 import { WAYFINDER_VERSION } from './version.js';
-import { githubOwnerAvatarUrl, resolveRepoIcon } from './repoIcon.js';
+import { resolveRepoIcon, type ResolvedRepoIcon } from './repoIcon.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -218,6 +218,7 @@ export async function startServer({
   });
   const loadHome = homeLoader ?? ((labels: readonly string[]) => loadHomeState(labels));
   let homeState: HomeState | null = null;
+  const repoIcons = new Map<string, Promise<ResolvedRepoIcon | null>>();
   let repoList: Promise<string[]> | null = null;
   const authFlow = new AuthFlow();
 
@@ -505,7 +506,12 @@ export async function startServer({
 
       if (requestedRepo !== null && scoped?.action === 'icon') {
         try {
-          const icon = await resolveRepoIcon(requestedRepo, fetch, githubOwnerAvatarUrl);
+          let pending = repoIcons.get(requestedRepo);
+          if (pending === undefined) {
+            pending = resolveRepoIcon(requestedRepo);
+            repoIcons.set(requestedRepo, pending);
+          }
+          const icon = await pending;
           if (icon === null) {
             json(response, 404, { error: 'No repository icon found.' });
             return;
@@ -513,7 +519,7 @@ export async function startServer({
           response.writeHead(200, {
             'content-type': icon.contentType,
             'content-length': icon.data.length,
-            'cache-control': 'public, max-age=3600',
+            'cache-control': 'no-cache',
           });
           response.end(icon.data);
           return;
