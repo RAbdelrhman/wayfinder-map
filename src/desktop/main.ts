@@ -219,7 +219,11 @@ async function completeSmokeTest(homeUrl: string): Promise<void> {
 
   let homeStatus = 0;
   try {
-    homeStatus = (await fetch(new URL('/api/home', homeUrl))).status;
+    const response = await fetch(new URL('/api/home', homeUrl));
+    homeStatus = response.status;
+    // Drain the response before closing the server so the smoke request cannot
+    // leave an active keep-alive socket behind.
+    await response.arrayBuffer();
   } catch {
     homeStatus = 0;
   }
