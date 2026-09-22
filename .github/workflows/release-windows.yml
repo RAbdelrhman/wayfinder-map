@@ -19,7 +19,8 @@ jobs:
         arch: [x64, arm64]
     env:
       WAYFINDER_BUILD_ARCH: ${{ matrix.arch }}
-      WAYFINDER_SIGNED_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+      WAYFINDER_STABLE_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') && '1' || '0' }}
+      WAYFINDER_SIGNED_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') && '1' || '0' }}
       WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
       WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
     steps:
@@ -33,12 +34,13 @@ jobs:
         with:
           bun-version: 1.1.0
 
-      # Until a signing route is set up (Azure Artifact Signing is the plan), releases ship
-      # unsigned, the same as a local package:win build. Windows warns before installing.
-      - name: Note unsigned builds
-        if: env.WIN_CSC_LINK == '' || env.WIN_CSC_KEY_PASSWORD == ''
+      - name: Require signing credentials for a stable tag
+        if: env.WAYFINDER_STABLE_RELEASE == '1'
         shell: pwsh
-        run: Write-Output '::warning::No signing certificate configured; building an unsigned installer.'
+        run: |
+          if (-not $env:WIN_CSC_LINK -or -not $env:WIN_CSC_KEY_PASSWORD) {
+            throw 'Stable releases require WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD.'
+          }
 
       - name: Match the tag to package.json
         if: startsWith(github.ref, 'refs/tags/v')
@@ -53,6 +55,10 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
       - run: bun run package:win -- ${{ matrix.arch }}
+      # windows-2025 is x64; ARM64 is cross-packaged here and must be installed and
+      # exercised on a real Windows ARM64 machine before stable support is claimed.
+      - run: bun run smoke:win -- x64
+        if: matrix.arch == 'x64'
 
       - name: Write SHA-256 checksums
         shell: pwsh
@@ -67,7 +73,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: wayfinder-windows-${{ matrix.arch }}
-          # Only what the release carries: not win-unpacked/ or builder-debug.yml.
+          # Only the release carries: the installer, update metadata, blockmap, and checksum.
           path: |
             release/${{ matrix.arch }}/*.exe
             release/${{ matrix.arch }}/*.blockmap
@@ -128,3 +134,4 @@ jobs:
           files: release-assets/**/*
           fail_on_unmatched_files: true
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

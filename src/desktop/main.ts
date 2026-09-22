@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, session, shell } from 'electron';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { DEFAULTS } from '../config.js';
@@ -182,6 +183,7 @@ async function startRuntime(): Promise<void> {
       );
       runtimeOrigin = new URL(runtime.url).origin;
       await mainWindow.loadURL(runtime.url);
+      await completeSmokeTest(runtime.url);
       updaterHandle = startAutoUpdates({
         window: mainWindow,
         enabled: shouldEnableUpdates(app.isPackaged, app.getVersion(), AUTO_UPDATE_ENABLED),
@@ -204,6 +206,40 @@ async function startRuntime(): Promise<void> {
     startupPromise = null;
   });
   return startupPromise;
+}
+
+/**
+ * The Windows package smoke test opts in through an environment variable. Keeping the
+ * hook here means it exercises the real packaged Electron entry point, runtime, server,
+ * and Home route without changing ordinary launches.
+ */
+async function completeSmokeTest(homeUrl: string): Promise<void> {
+  const markerPath = process.env.WAYFINDER_SMOKE_FILE;
+  if (markerPath === undefined || runtime === null) return;
+
+  let homeStatus = 0;
+  try {
+    const response = await fetch(new URL('/api/home', homeUrl));
+    homeStatus = response.status;
+    // Drain the response before closing the server so the smoke request cannot
+    // leave an active keep-alive socket behind.
+    await response.arrayBuffer();
+  } catch {
+    homeStatus = 0;
+  }
+  const port = Number(new URL(homeUrl).port);
+  await writeFile(
+    markerPath,
+    JSON.stringify({ route: new URL(homeUrl).pathname || '/', homeStatus, port, version: app.getVersion() }),
+    'utf8',
+  );
+  setTimeout(() => {
+    void quitApplication().finally(() => {
+      // The smoke launch has no user-owned tray session to preserve. Once the normal
+      // close path has stopped the runtime, force the test process to leave promptly.
+      app.exit(0);
+    });
+  }, 100);
 }
 
 app.setAppUserModelId('com.rabdelrhman.wayfinder');
