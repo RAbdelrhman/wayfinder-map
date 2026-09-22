@@ -87,14 +87,14 @@ window.CANVAS = {
   pages: [
     {
       title: 'D · Your mix',
-      question: 'Your mix: C’s sidebar tree everywhere, B’s scope switcher and tabs on the repository, Prototypes and map pages, and a redesigned folded sidebar. Is this the shell?',
+      question: 'Chosen (#42): C’s sidebar tree everywhere, B’s scope switcher on the repository and map pages, the map’s Map | Table | Prototypes tabs, and a compact folded sidebar.',
       sections: [
         {
           title: 'Open sidebar',
           note: 'Home and /new-map are C1 and C4. The repository and map pages get B’s topbar next to the sidebar. Prototypes belong to a map: they are a tab on the map, not a repository page.',
           items: [
             { id: 'D1', name: 'D · Home', src: 'variants/nav-d.html?view=home', note: 'C1 as it was.' },
-            { id: 'D2', name: 'D · Repository', src: 'variants/nav-d.html?view=repo', note: { idea: 'The sidebar shows the repository as your location; the topbar has the repository switcher and no tabs, since a repository is just its maps.', cons: ['Two blue buttons: the sidebar’s “Start a new map” and B’s “New map in wayfinder-map”'] } },
+            { id: 'D2', name: 'D · Repository', src: 'variants/nav-d.html?view=repo', note: 'The sidebar shows the repository as your location; the topbar has the repository switcher and no tabs, since a repository is just its maps. No topbar button: starting a map is the sidebar’s job.' },
             { id: 'D3', name: 'D · Map prototypes', src: 'variants/nav-d.html?view=map&mapview=prototypes&side=open', note: 'Prototypes live with their map: the map’s Prototypes tab, counting only that map’s prototypes. There is no repository-level Prototypes row or page.' },
             { id: 'D4', name: 'D · New map', src: 'variants/nav-d.html?view=new', note: 'C4 as it was: the sidebar button stays put and the tree keeps your repository open.' },
             { id: 'D6', name: 'D · Map, sidebar open', src: 'variants/nav-d.html?view=map&side=open', note: 'B5’s topbar with the sidebar open. The tree lights the map; the views are topbar tabs, so the tree no longer lists them.' },

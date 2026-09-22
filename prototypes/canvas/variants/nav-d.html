@@ -478,10 +478,9 @@
           <div class="menu" data-menu-for="maps" hidden>${NAV.mapMenu(s)}</div></span>`;
       }
 
-      // B's context-following button, kept as built so it can be judged next to the sidebar's own "Start a new map".
+      // Only the map page gets a topbar action (its next ticket); starting a map is the sidebar's job everywhere.
       function cta(s) {
-        const repo = repoOf(s.repo);
-        if (s.view === 'repo') return `<a class="primary" href="#" ${goRepo(repo, 'new')}>${icon('plus')}New map in ${esc(short(repo.name))}</a>`;
+        if (s.view !== 'map') return '';
         const next = NAV.nextTicket(s);
         return next ? `<a class="primary" href="#" data-to="T3 Code with ticket #${next.number}" title="${esc(next.title)}">${icon('play')}Start #${next.number} in T3 Code</a>` : '';
       }
