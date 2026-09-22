@@ -22,7 +22,7 @@ const CLONE_CHOOSE = `<div class="nm-clone is-choose">${FOLDER}<span class="grow
   <div class="nm-row"><button type="button" class="primary">Use this clone</button><button type="button" class="ghost">${FOLDER}Another folder…</button></div></div>`;
 const CLONE_MISSING = `<div class="nm-clone is-missing">${ALERT}<span class="grow">No local clone of ecpl-lockstep yet. T3 Code needs one to work in.</span></div>
   <div class="nm-clone-pick"><div class="nm-row"><button type="button" class="primary">${FOLDER}Choose a folder…</button><button type="button" class="ghost">Clone it for me</button></div>
-  <p class="nm-hint">You can still copy the prompt and run it yourself.</p></div>`;
+  <p class="nm-hint">You can still copy the prompt and run it yourself. "Clone it for me" asks where the clone goes, every time.</p></div>`;
 
 const HANDING_OFF = `<div class="nm-result is-working"><div class="nm-result-head"><span class="nm-spin"></span><strong>Handing off to T3 Code…</strong></div>
   <ol class="nm-steps"><li class="is-done">${CHECK}Writing the prompt</li><li class="is-now"><span class="nm-bullet"></span>Opening a worktree in wayfinder-map</li>
@@ -30,7 +30,7 @@ const HANDING_OFF = `<div class="nm-result is-working"><div class="nm-result-hea
 const HANDED_OFF = `<div class="nm-result is-done"><div class="nm-result-head">${CHECK}<strong>Planning thread started</strong><span class="nm-when">just now</span></div>
   <p>T3 Code is interviewing you about the goal. Answer there; the map shows up in Wayfinder once the issues exist.</p>
   <dl class="nm-facts"><dt>Repository</dt><dd>RAbdelrhman/wayfinder-map</dd><dt>Worktree</dt><dd><code>C:\\Users\\ramon\\code\\wayfinder-map</code></dd>
-  <dt>Branch</dt><dd><code>wayfinder/new-map-draft-mode</code></dd><dt>Model</dt><dd>Balanced</dd></dl>
+  <dt>Branch</dt><dd><code>wayfinder/new-map-draft-mode</code></dd><dt>Model</dt><dd>Mid · Opus 5 · high</dd></dl>
   <div class="nm-row"><a class="primary" href="#">${EXTERNAL}Open in T3 Code</a><button type="button" class="ghost">${COPY}Copy prompt</button><span class="grow"></span><a class="linkish" href="#">Back to Home</a></div></div>`;
 
 const R1 = 'R1 (#36) on this flow:';
@@ -41,7 +41,7 @@ window.CANVAS = {
   question:
     'What should starting a new map feel like? Three flows, each covering the repo, the local clone (#32), the goal, ticket vs. map (#31), and the moment of handing off.',
   sampleState:
-    'Fake data. Try the repos: wayfinder-map has a clone ready, podcontrol has two to pick from, ecpl-lockstep has none. Try #42 or #61 for a single ticket.',
+    'Fake data. Try the repos: wayfinder-map has a clone ready, podcontrol has two to pick from, ecpl-lockstep has none.',
 
   // Wayfinder's real stylesheet (R2's tokens) plus the pieces the three flows share.
   base: {
@@ -61,8 +61,39 @@ window.CANVAS = {
       title: 'Flows',
       sections: [
         {
-          title: 'Three ways to start',
-          note: 'Every flow is clickable end to end, including the hand-off. Press ▶ to try one full size.',
+          title: 'Chosen: goal first',
+          note: 'C, updated with the decisions so far. Maps only: a single ticket is not started from here. Press ▶ to try it full size.',
+          items: [
+            {
+              id: 'C',
+              name: 'From the + button',
+              src: 'variants/new-map-c.html',
+              note: {
+                idea:
+                  'A composer like a chat box. Nothing is preselected: the repo chip reads "Choose a repository" and Start says why it is disabled. With exactly one clone it settles by itself; otherwise the clone line opens under the composer and collapses into a green chip once settled. The model is a quiet chip with the same Simple / Mid / Hard tiers as a ticket.',
+                pros: [
+                  'Familiar chat-box shape; type, Ctrl+Enter',
+                  'Only one thing to decide up front: the goal',
+                  `${R1} map-first, model tucked away, one repo context, durable hand-off result`,
+                ],
+                cons: ['"Clone it for me" is new server work', 'The hand-off steps need progress events (#55)'],
+              },
+            },
+            {
+              id: 'R',
+              name: 'From a repository page',
+              src: 'variants/new-map-c.html?repo=RAbdelrhman/wayfinder-map',
+              note: {
+                idea: 'The same page opened from a repository: that repo is preselected and its clone is checked straight away.',
+                pros: ['The only case where a repo is preselected'],
+                cons: [],
+              },
+            },
+          ],
+        },
+        {
+          title: 'Not chosen',
+          note: 'Kept for comparison. These still show the single-ticket path that C dropped.',
           items: [
             {
               id: 'A',
@@ -74,7 +105,7 @@ window.CANVAS = {
                 pros: [
                   'Closest to what exists; smallest build',
                   'Everything visible at once, action never below the fold',
-                  `${R1} map path is primary, model is behind "Model: Balanced", one repo context, disabled reason next to the action`,
+                  `${R1} map path is primary, model is behind "Model: Mid", one repo context, disabled reason next to the action`,
                 ],
                 cons: ['Single tickets feel like an afterthought', 'Still a form: says little about what happens next until you press it'],
               },
@@ -92,21 +123,6 @@ window.CANVAS = {
                   `${R1} one question at a time, map vs. ticket asked once, streamed readiness per step`,
                 ],
                 cons: ['Five clicks for the common case (repo with a clone ready)', 'Heaviest to build, and slow for repeat use'],
-              },
-            },
-            {
-              id: 'C',
-              name: 'Goal first',
-              src: 'variants/new-map-c.html',
-              note: {
-                idea:
-                  'A composer like a chat box: type the goal first. The repo, clone and model are chips under it, defaulting to the last repo used. Paste #42 or an issue link and it becomes a single-ticket hand-off, with a link to start a map about it instead. Sending turns the page into your message plus a live hand-off card.',
-                pros: [
-                  'Fastest path: type, Ctrl+Enter',
-                  'Map vs. ticket is inferred, not a choice up front',
-                  `${R1} no forked card system, context lives in chips, the clone chip turns amber and fixes in place`,
-                ],
-                cons: ['Chips hide the clone decision if you are not looking', 'Inferring ticket vs. map could surprise people'],
               },
             },
           ],

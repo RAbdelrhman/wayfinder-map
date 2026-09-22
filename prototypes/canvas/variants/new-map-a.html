@@ -75,7 +75,7 @@
                 </div>
 
                 <details class="a-custom">
-                  <summary><span data-icon="sliders"></span>Model: <strong id="model-name">Balanced</strong><span data-icon="chevron"></span></summary>
+                  <summary><span data-icon="sliders"></span>Model: <strong id="model-name">Mid</strong><span data-icon="chevron"></span></summary>
                   <div><div class="nm-seg" id="models"></div><span class="nm-why" id="model-detail"></span></div>
                 </details>
               </div>
@@ -102,7 +102,7 @@
     <script>
       const $ = (id) => document.getElementById(id);
       const F = FIXTURES;
-      const s = { repo: 'RAbdelrhman/wayfinder-map', clone: null, mode: 'map', model: 'balanced', ticket: null };
+      const s = { repo: 'RAbdelrhman/wayfinder-map', clone: null, mode: 'map', model: 'mid', ticket: null };
 
       $('recents').innerHTML = F.recents.map((r) => `<button type="button" data-repo="${NM.esc(r)}">${NM.repoMark(r)}${NM.esc(NM.short(r))}</button>`).join('');
       $('recents').onclick = (e) => {

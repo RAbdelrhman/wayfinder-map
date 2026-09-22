@@ -32,9 +32,10 @@ window.FIXTURES = {
     61: { number: 61, title: 'Crash when the clone path has a space in it', map: null, state: 'frontier', assignee: null },
   },
   models: [
-    { id: 'fast', label: 'Fast', detail: 'Quick answers, cheaper' },
-    { id: 'balanced', label: 'Balanced', detail: 'Default for planning' },
-    { id: 'deep', label: 'Deep', detail: 'Slow, for hard maps' },
+    // The same three tiers as a ticket's "Run as", each with its default model from Settings.
+    { id: 'simple', label: 'Simple', detail: 'Small, well-scoped changes', model: 'Sonnet 5 · medium' },
+    { id: 'mid', label: 'Mid', detail: 'Most tickets', model: 'Opus 5 · high' },
+    { id: 'hard', label: 'Hard', detail: 'Research, design, gnarly bugs', model: 'Fable 5 · xhigh' },
   ],
 };
 
@@ -143,9 +144,21 @@ window.NM = (() => {
       const act = event.target.closest('[data-act]')?.dataset.act;
       if (act === 'use') settle(el.querySelector('input:checked').value);
       if (act === 'browse') settle(`C:\\Users\\ramon\\code\\${short(repo)}`);
+      // "Clone it for me" asks where, every time; nothing is remembered.
       if (act === 'clone') {
-        el.innerHTML = `<div class="nm-clone is-checking"><span class="nm-spin"></span><span class="grow">Cloning ${esc(repo)}…</span></div>`;
-        setTimeout(() => settle(`C:\\Users\\ramon\\code\\${short(repo)}`), 900);
+        el.innerHTML = `<div class="nm-clone is-choose">${icon('folder')}<span class="grow">Where should the clone go?</span></div>
+          <div class="nm-clone-pick"><div class="nm-row"><code class="nm-where grow">C:\\Users\\ramon\\code\\${esc(short(repo))}</code>
+          <button type="button" class="ghost" data-act="where">Change…</button></div>
+          <div class="nm-row"><button type="button" class="primary" data-act="clone-here">Clone here</button>
+          <button type="button" class="linkish" data-act="back">Back</button></div></div>`;
+        Kit.fillIcons(el);
+      }
+      if (act === 'where') Kit.toast('Would open a folder picker');
+      if (act === 'back') paint();
+      if (act === 'clone-here') {
+        const path = el.querySelector('.nm-where').textContent;
+        el.innerHTML = `<div class="nm-clone is-checking"><span class="nm-spin"></span><span class="grow">Cloning ${esc(repo)} into <code>${esc(path)}</code>…</span></div>`;
+        setTimeout(() => settle(path), 900);
       }
       if (act === 'change') {
         info = { status: 'choose', candidates: [info.path, `D:\\work\\${short(repo)}`] };
