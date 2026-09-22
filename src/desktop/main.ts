@@ -8,7 +8,7 @@ import { startWayfinder } from '../runtime.js';
 import type { WayfinderRuntime } from '../runtime.js';
 import { startServer } from '../server.js';
 import { AUTO_UPDATE_ENABLED } from '../version.js';
-import { DesktopLifecycle, isInternalUrl, isSafeExternalUrl } from './lifecycle.js';
+import { DESKTOP_PORT, DesktopLifecycle, isInternalUrl, isSafeExternalUrl, startOnStablePort } from './lifecycle.js';
 import { startAutoUpdates } from './updater.js';
 import type { DesktopUpdaterHandle } from './updater.js';
 import { shouldEnableUpdates } from './updaterPolicy.js';
@@ -156,25 +156,28 @@ async function startRuntime(): Promise<void> {
     if (mainWindow === null) return;
     await mainWindow.loadURL(statePage('Preparing your Home', 'Starting the local server and checking this machine.'));
     showWindow();
-    const config: Config = { ...DEFAULTS, repo: null, cwd: process.cwd(), port: 0, open: false };
+    const config: Config = { ...DEFAULTS, repo: null, cwd: process.cwd(), port: DESKTOP_PORT, open: false };
     try {
       let updaterHandle: DesktopUpdaterHandle | null = null;
       runtime = await startWayfinder(
         config,
         {
           startServer: (options) =>
-            startServer({
-              ...options,
-              chooseDirectory,
-              updater: {
-                check: async () => (updaterHandle ? updaterHandle.check() : { status: 'disabled', currentVersion: app.getVersion() }),
-                install: async () => {
-                  if (updaterHandle) await updaterHandle.install();
+            startOnStablePort((port) =>
+              startServer({
+                ...options,
+                config: { ...options.config, port },
+                chooseDirectory,
+                updater: {
+                  check: async () => (updaterHandle ? updaterHandle.check() : { status: 'disabled', currentVersion: app.getVersion() }),
+                  install: async () => {
+                    if (updaterHandle) await updaterHandle.install();
+                  },
+                  status: () => (updaterHandle ? updaterHandle.status() : { status: 'disabled', currentVersion: app.getVersion() }),
                 },
-                status: () => (updaterHandle ? updaterHandle.status() : { status: 'disabled', currentVersion: app.getVersion() }),
-              },
-              onShutdown: () => void quitApplication(),
-            }),
+                onShutdown: () => void quitApplication(),
+              }),
+            ),
         },
         { resolveCurrentRepository: false, uiDir: join(app.getAppPath(), 'dist', 'ui') },
       );

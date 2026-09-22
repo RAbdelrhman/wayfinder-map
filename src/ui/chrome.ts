@@ -163,15 +163,18 @@ export function bindUpdater(button: HTMLElement, showToast: (message: string, ms
 }
 
 export interface AccountProfile {
-  status?: 'ready' | 'missing-scopes' | 'logged-out' | 'missing-gh' | 'signed-out' | 'unavailable';
+  status: 'ready' | 'missing-scopes' | 'logged-out' | 'missing-gh';
   login: string | null;
-  name?: string | null;
+  name: string | null;
   avatarUrl?: string | null;
   scopes?: string[];
-  missingScopes?: string[];
+  missingScopes: string[];
 }
 
-export function renderAccountMarkContent(profile: AccountProfile | null | undefined): string {
+/** All the account mark needs, so both the chrome's profile and Home's account can draw it. */
+export type AccountMark = Pick<AccountProfile, 'login' | 'avatarUrl'>;
+
+export function renderAccountMarkContent(profile: AccountMark | null | undefined): string {
   const login = profile?.login?.trim();
   if (!login) {
     return `<span class="avatar-initial" data-icon="person">${icon(icons.PERSON)}</span>`;
@@ -183,7 +186,7 @@ export function renderAccountMarkContent(profile: AccountProfile | null | undefi
 
 export function updateAccountMark(
   element: HTMLElement | null,
-  profile: AccountProfile | null | undefined,
+  profile: AccountMark | null | undefined,
 ): void {
   if (!element) return;
   const login = profile?.login?.trim();

@@ -30,11 +30,21 @@ Bun on the installed machine; those tools are only used by the build runner.
 
 ## Stable release
 
-Push a tag that exactly matches the root package version, such as `v0.1.0`. The
-Windows workflow builds x64 and ARM64, writes SHA-256 checksum files, and attaches
-the installers and update metadata to the GitHub release. A tag containing a
-prerelease suffix, such as `v0.1.0-beta.1`, is published as an explicitly marked
-unsigned test release; stable tags fail closed until signing credentials are present.
+Nobody edits the version by hand. The **Release** workflow
+(`.github/workflows/release-please.yml`) keeps one `chore: release x.y.z` PR open.
+It collects everything merged to `main` and works out the bump from the conventional
+commits: while the version is below 1.0, `feat:` and `fix:` both bump the patch
+number, and a breaking change bumps the minor. It also writes `CHANGELOG.md`.
+Merging that PR sets the version in `package.json`, creates the tag and GitHub
+release, and then starts the Windows workflow on that tag. Merging anything else
+into `main` does not release anything.
+
+The Windows workflow can also run from a tag you push yourself, as long as the tag
+exactly matches the root package version, such as `v0.1.0`. It builds x64 and ARM64,
+writes SHA-256 checksum files, and attaches the installers and update metadata to the
+GitHub release. A tag containing a prerelease suffix, such as `v0.1.0-beta.1`, is
+published as an explicitly marked unsigned test release; stable tags fail closed until
+signing credentials are present.
 
 The same release carries the CLI as `wayfinder-map-<version>.tgz`, an `npm pack` of
 the same tag with its own `SHA256SUMS-cli.txt`. It has no runtime dependencies and
@@ -49,13 +59,13 @@ Stable tags fail closed unless these repository secrets exist:
   electron-builder.
 - `WIN_CSC_KEY_PASSWORD`: the certificate password.
 
-Azure Artifact Signing Basic remains the preferred future signing route if the
-release owner is eligible. The workflow does not create Azure resources or weaken
-the stable signing gate while those external credentials are unavailable.
+Azure Artifact Signing Basic remains the preferred future signing route if the release
+owner is eligible. The workflow does not create Azure resources or weaken the stable
+signing gate while those external credentials are unavailable.
 
-Signed stable builds check the architecture-specific GitHub Releases channel at
-launch and every 24 hours. They download in the background and ask before restart.
-Unsigned local builds and prerelease versions do not check for updates.
+Signed stable builds check the architecture-specific GitHub Releases channel at launch
+and every 24 hours. They download in the background and ask before restart. Unsigned
+local builds and prerelease versions do not check for updates.
 
 ## Release gates
 

@@ -3,7 +3,7 @@ import type { AuthFlowState } from '../authFlow.js';
 import { mapPath, normalizeRepo, parseRepoPagePath, prototypesPath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import type { MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
 import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, bindUpdater, countStates, paintIcons, progressRing, renderAccountMarkContent, repoIconHtml, updateAccountMark } from './chrome.js';
-import type { AccountProfile } from './chrome.js';
+import type { AccountMark, AccountProfile } from './chrome.js';
 import * as icons from './icons.js';
 import { currentCatalog, loadCatalog, modelSelectHtml, readChoice, tierDefaults } from './models.js';
 import { syncedLabel } from './focus.js';
@@ -171,9 +171,9 @@ async function beginAuth(action: 'login' | 'refresh'): Promise<void> {
 /* ---------- pages ---------- */
 
 
-let cachedAccount: AccountProfile | null = null;
+let cachedAccount: AccountMark | null = null;
 
-async function syncAccountMark(): Promise<AccountProfile | null> {
+async function syncAccountMark(): Promise<AccountMark | null> {
   if (cachedAccount) {
     updateAccountMark(els.accountMark, cachedAccount);
     return cachedAccount;

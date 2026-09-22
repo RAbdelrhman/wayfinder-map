@@ -1,0 +1,553 @@
+/* The board around the variants. Deliberately not the app's look, so a frame never blends into it. */
+:root {
+  color-scheme: dark;
+  --board: #1f1e1c;
+  --dot: rgba(255, 255, 255, 0.06);
+  --chrome: #262523;
+  --chrome-line: #353431;
+  --ink: #ecebe7;
+  --ink-2: #b4b1aa;
+  --ink-3: #85827b;
+  --note: #fbf0a4;
+  --note-ink: #3a2f0c;
+  --note-line: rgba(58, 47, 12, 0.14);
+  --accent: #d97757;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--board);
+  color: var(--ink);
+  font: 13px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  overflow: hidden;
+}
+
+button,
+a.btn {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- top bar ---------- */
+
+.bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 12px 0 16px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--chrome-line);
+}
+
+.brand {
+  color: var(--accent);
+  font-size: 16px;
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.count {
+  color: var(--ink-3);
+}
+
+/* ---------- pages ---------- */
+
+.pages {
+  position: relative;
+  margin-left: 6px;
+}
+
+.pages-btn[hidden] {
+  display: none;
+}
+
+.pages-btn {
+  font-weight: 600;
+}
+
+.pages-btn .caret {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.page-title {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.pages-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 260px;
+  padding: 6px;
+  border: 1px solid var(--chrome-line);
+  border-radius: 10px;
+  background: var(--chrome);
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.7);
+}
+
+.pages-menu[hidden] {
+  display: none;
+}
+
+.pages-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pages-menu button:hover,
+.pages-menu button:focus-visible {
+  background: rgba(255, 255, 255, 0.07);
+  outline: none;
+}
+
+.pages-menu .check {
+  width: 14px;
+  color: var(--ink);
+}
+
+.pages-menu .page-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pages-menu .page-count {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--chrome-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.icon-btn,
+.zoom-label {
+  height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.zoom-label {
+  min-width: 56px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--chrome-line);
+  border-radius: 8px;
+  background: none;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.icon-btn:hover,
+.zoom-label:hover,
+.btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.btn.is-primary {
+  border-color: transparent;
+  background: var(--ink);
+  color: #1a1a19;
+  font-weight: 600;
+}
+
+.btn.is-primary:hover {
+  background: #fff;
+}
+
+.btn[aria-pressed='false'] {
+  color: var(--ink-3);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- board ---------- */
+
+.board {
+  flex: 1;
+  overflow: auto;
+  background-color: var(--board);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+  cursor: grab;
+}
+
+.board.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.stage {
+  width: max-content;
+  padding: 56px 64px 96px;
+}
+
+.note {
+  background: var(--note);
+  color: var(--note-ink);
+  border-radius: 3px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2), 0 10px 24px -14px rgba(0, 0, 0, 0.7);
+  cursor: auto;
+}
+
+.note p {
+  margin: 0;
+}
+
+.note .kicker {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.note ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note li {
+  padding-left: 16px;
+  text-indent: -16px;
+}
+
+.note li::before {
+  display: inline-block;
+  width: 16px;
+  text-indent: 0;
+  font-weight: 700;
+}
+
+.note li.pro::before {
+  content: '+';
+  color: #2c6b16;
+}
+
+.note li.con::before {
+  content: '−';
+  color: #a1331b;
+}
+
+.banner {
+  max-width: 900px;
+  margin-bottom: 44px;
+  padding: 14px 18px;
+  font-size: 14px;
+}
+
+.banner .sample {
+  margin-top: 6px;
+  font-size: 12.5px;
+  opacity: 0.8;
+}
+
+.section + .section {
+  margin-top: 72px;
+}
+
+.section-title {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.section-note {
+  max-width: 72ch;
+  margin: 0 0 20px;
+  color: var(--ink-2);
+  font-size: 13.5px;
+}
+
+.section-title + .frames {
+  margin-top: 20px;
+}
+
+.frames {
+  display: flex;
+  align-items: flex-start;
+  gap: 48px;
+}
+
+.free-note {
+  padding: 14px 16px;
+  font-size: 13px;
+  transform: rotate(-1deg);
+}
+
+.frame {
+  margin: 0;
+}
+
+.frame-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  margin-bottom: 8px;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+.frame-head .tag {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.frame-head .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.frame-head .kind {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid var(--chrome-line);
+  border-radius: 999px;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.frame-head .icon-btn,
+.frame-head a {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  color: var(--ink-3);
+  text-decoration: none;
+}
+
+.frame-head .icon-btn:hover,
+.frame-head a:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+}
+
+.viewport {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 24px 48px -24px rgba(0, 0, 0, 0.8);
+  transition: box-shadow 0.15s;
+}
+
+.viewport iframe {
+  display: block;
+  border: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+/* The whole frame is one button: the iframe inside it stays inert on the board. */
+.viewport .hit {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.viewport:hover {
+  box-shadow: 0 0 0 2px var(--accent), 0 24px 48px -24px rgba(0, 0, 0, 0.8);
+}
+
+.frame > .note {
+  margin-top: 18px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+}
+
+/* ---------- present ---------- */
+
+.present {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--board);
+  z-index: 10;
+}
+
+.present[hidden] {
+  display: none;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin-left: 8px;
+}
+
+.tabs button {
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.tabs button b {
+  margin-right: 6px;
+  color: var(--ink);
+}
+
+.tabs button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.tabs button[aria-current='true'] {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+}
+
+.present-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.present-body iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.side-note {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  width: 300px;
+  padding: 14px 16px;
+  font-size: 12.5px;
+}
+
+.side-note[hidden],
+#new-tab[hidden] {
+  display: none;
+}
+
+.tabs {
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs button {
+  flex: none;
+}
+
+/* ---------- help ---------- */
+
+.help {
+  width: min(460px, calc(100vw - 32px));
+  padding: 22px 24px;
+  border: 1px solid var(--chrome-line);
+  border-radius: 12px;
+  background: var(--chrome);
+  color: var(--ink);
+}
+
+.help::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.help h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.help p {
+  margin: 0 0 14px;
+  color: var(--ink-2);
+}
+
+.help dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  margin: 0 0 16px;
+}
+
+.help dd {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.help .fine {
+  font-size: 12px;
+}
+
+kbd,
+.help code {
+  padding: 1px 6px;
+  border: 1px solid var(--chrome-line);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  font: 12px ui-monospace, 'Cascadia Code', monospace;
+}

@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { parseBlockedByLine, parseChildNumbers, parseMapBody } from './mapBody.js';
-import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, pickPreview, prototypeTicketNumber } from './prototypes.js';
+import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, pickPreview, prototypeTicketNumber, unlistedCanvasBoards } from './prototypes.js';
 import { TICKET_TYPES } from './types.js';
 import type { Prototype, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
 
@@ -386,8 +386,14 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): 
 
 /** What the branch can show running: its standalone HTML files, and the one to lead with. */
 async function previewOf(repo: string, branch: string, files: readonly string[]): Promise<{ openable: string[]; preview: string | null }> {
-  const [openable, hasSnapshot] = await Promise.all([openableFiles(repo, branch, files), snapshotExists(repo, branch)]);
-  return { openable, preview: pickPreview(hasSnapshot, openable) };
+  const boards = unlistedCanvasBoards(files);
+  const [changed, boardsOnBranch, hasSnapshot] = await Promise.all([
+    openableFiles(repo, branch, files),
+    openableFiles(repo, branch, boards),
+    snapshotExists(repo, branch),
+  ]);
+  const openable = [...boardsOnBranch, ...changed];
+  return { openable, preview: pickPreview(hasSnapshot, openable, [...files, ...boardsOnBranch]) };
 }
 
 /** Whether the branch carries a runnable snapshot. Read directly, since the diff may not list it. */
