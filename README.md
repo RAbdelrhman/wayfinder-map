@@ -6,55 +6,41 @@ and T3 Code starts a thread on it, in its own worktree, already working.
 Works against any repo that keeps its wayfinder maps in GitHub Issues. Nothing about
 it is specific to one project.
 
-## What a wayfinder map is
-
-A **map** is a GitHub issue labelled `wayfinder:map`. It holds the destination, the
-notes, the decisions so far, and the fog. Its **tickets** are sub-issues, each
-labelled `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling` or
-`wayfinder:task`. Tickets wait on each other through GitHub's native issue
-dependencies.
-
-This tool reads that structure and draws it.
-
-## Run it
-
-Wayfinder has two entry points over the same local server: the desktop app, which
-is how most people should launch it, and the `wayfinder-map` command for terminal
-use and automation. Both need [`gh`](https://cli.github.com) on your PATH and logged
-in. That is the only credential involved: no token to paste, no GitHub App, no config.
-
-Home shows the active `gh` account and discovers repositories that contain maps.
-You can always enter `owner/name` when discovery misses one. Repository and map
-pages have bookmarkable URLs, and snapshots are isolated per repository in memory.
-
-### Desktop app
+## Desktop app (recommended)
 
 Install Wayfinder from the Windows installer on the
-[releases page](https://github.com/RAbdelrhman/wayfinder-map/releases) and open it
-from the Start menu or the desktop shortcut. No terminal needed: it opens on Home.
-
-Closing its window keeps Wayfinder in the system tray. The tray can reopen the
-current page, go Home, start a new map, or quit. Quit stops the loopback server
-and revokes the in-memory T3 Code session.
-
-The first public release targets Windows 10 and Windows 11. Stable installers must
-be signed and support x64 and ARM64. `gh` remains an explicit prerequisite; if it
-is missing or signed out, Home stays available and shows the diagnostic with a link
-to install or sign in to GitHub CLI. Architecture-specific installed-flow gates are documented in
+[releases page](https://github.com/RAbdelrhman/wayfinder-map/releases), then open it
+from the Start menu or the desktop shortcut. No terminal is needed: the app opens on
+Home, where you can choose a repository and map. Both Windows 10 and Windows 11 are
+supported targets; the architecture-specific installed-flow gates are recorded in
 [`docs/release-windows.md`](docs/release-windows.md).
 
-### Terminal
+Wayfinder still needs [`gh`](https://cli.github.com) on your PATH and logged in. That
+is the only credential involved: no token to paste, GitHub App, or Wayfinder config.
+If `gh` is missing or signed out, Home remains available and shows a diagnostic with
+a link to install or sign in to GitHub CLI.
 
-The command needs Node 22 or newer. Each release attaches it as an npm package,
-`wayfinder-map-<version>.tgz`; install that straight from the release (it is not on
-the npm registry, so `npx wayfinder-map` does not work):
+Closing the window keeps Wayfinder in the system tray. The tray can reopen the current
+page, go Home, start a new map, or quit. Quit stops the loopback server and revokes the
+in-memory T3 Code session.
+
+Home shows the active `gh` account and discovers repositories that contain maps. You can
+always enter `owner/name` when discovery misses one. Repository and map pages have
+bookmarkable URLs, and snapshots are isolated per repository in memory.
+
+## CLI (power users)
+
+The CLI uses the same local server as the desktop app and is intended for terminal
+use and automation. It needs Node 22 or newer. Each release attaches a dependency-free
+`wayfinder-map-<version>.tgz`; install that asset directly (the package is not on the
+npm registry, so `npx wayfinder-map` does not work):
 
 ```bash
-npm install --global https://github.com/RAbdelrhman/wayfinder-map/releases/download/v0.1.0/wayfinder-map-0.1.0.tgz
+npm install --global https://github.com/RAbdelrhman/wayfinder-map/releases/download/v<version>/wayfinder-map-<version>.tgz
 ```
 
-Swap in the version you want. The command reports the same version as the desktop
-app it was released with.
+Replace `<version>` with the release version. `wayfinder-map --version` reports the
+same SemVer as the desktop app in that release.
 
 ```bash
 wayfinder-map                        # opens Home; inside a checkout, opens that repository
@@ -66,7 +52,9 @@ wayfinder-map --version
 It prints the address it serves on and runs until Ctrl+C. It never loads the desktop
 shell.
 
-### From a clone
+## Develop or verify locally
+
+From a clone, build the shared runtime and choose either entry point:
 
 ```bash
 bun install
@@ -89,6 +77,14 @@ and confirms that quitting leaves no loopback server behind:
 ```powershell
 bun run smoke:win -- x64
 ```
+
+## What a wayfinder map is
+
+A **map** is a GitHub issue labelled `wayfinder:map`. It holds the destination, the
+notes, the decisions so far, and the fog. Its **tickets** are sub-issues, each labelled
+`wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling` or `wayfinder:task`.
+Tickets wait on each other through GitHub's native issue dependencies. This tool reads
+that structure and draws it.
 
 ## What you see
 
