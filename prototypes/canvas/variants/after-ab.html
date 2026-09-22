@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A + B · Card on the ticket, hand-offs in the topbar</title>
+    <!-- PROTOTYPE (#45), A + B: A's live card and node pill, with B's list behind a topbar button that only exists while something is in T3 Code. Nothing floats over the canvas. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="after.css" />
+    <style>
+      /* A's card */
+      .ho-card {
+        margin-bottom: 16px;
+        padding: 12px;
+        border: 1px solid var(--hairline);
+        border-left: 3px solid var(--tone);
+        border-radius: 12px;
+        background: var(--wash);
+      }
+      .ho-card.is-fresh {
+        animation: ho-glow 1.2s ease-out;
+      }
+      @keyframes ho-glow {
+        from {
+          box-shadow: 0 0 0 4px color-mix(in srgb, var(--state-claimed) 35%, transparent);
+        }
+      }
+      .ho-card-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .ho-card-head .ho-when {
+        margin-left: auto;
+      }
+      .ho-card .ho-line {
+        margin: 0 0 10px;
+      }
+      .ho-card .ho-sent {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0 0 8px;
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .ho-card .ho-sent .i {
+        color: var(--state-frontier);
+      }
+      .ho-card details {
+        margin-top: 10px;
+        border-top: 1px solid var(--hairline);
+        padding-top: 8px;
+        font-size: 12.5px;
+      }
+      .ho-card summary {
+        cursor: pointer;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+      }
+      .ho-card .ho-offline {
+        margin-bottom: 10px;
+        padding: 7px 10px;
+        font-size: 12.5px;
+      }
+
+      /* the topbar button */
+      .ho-hbtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 32px;
+        padding: 0 10px 0 12px;
+        margin-right: 12px;
+        border: 1px solid var(--hairline);
+        border-radius: 9px;
+        background: var(--plane);
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .ho-hbtn:hover,
+      .ho-hbtn[aria-expanded='true'] {
+        background: var(--wash);
+        border-color: var(--baseline);
+      }
+      .ho-hbtn.is-waiting {
+        border-color: color-mix(in srgb, var(--state-blocked) 55%, transparent);
+      }
+      .ho-hbtn.is-new {
+        animation: ho-pop 0.9s ease-out;
+      }
+      @keyframes ho-pop {
+        0% {
+          transform: scale(0.85);
+          opacity: 0;
+        }
+        40% {
+          transform: scale(1.06);
+          opacity: 1;
+          box-shadow: 0 0 0 5px color-mix(in srgb, var(--state-claimed) 30%, transparent);
+        }
+      }
+      .ho-hbtn .ho-dots {
+        display: inline-flex;
+        gap: 3px;
+      }
+      .ho-hbtn .ho-dot {
+        width: 7px;
+        height: 7px;
+      }
+      .ho-hbtn .ho-wait {
+        color: color-mix(in srgb, var(--state-blocked) 75%, var(--text-primary));
+      }
+      .ho-hbtn .i {
+        width: 14px;
+        height: 14px;
+        color: var(--text-muted);
+      }
+
+      /* the dropdown */
+      .ho-drop {
+        position: fixed;
+        z-index: 80;
+        top: 50px;
+        right: 157px;
+        width: 420px;
+        max-height: 620px;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--hairline);
+        border-radius: 14px;
+        background: var(--surface-1);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .ho-drop-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--hairline);
+      }
+      .ho-drop-head b {
+        font-size: 14px;
+      }
+      .ho-drop-body {
+        overflow: auto;
+        padding: 4px 0 8px;
+      }
+      .ho-drop-body > .ho-offline {
+        margin: 8px 12px 4px;
+        font-size: 12.5px;
+      }
+      .ho-group {
+        padding: 10px 14px 4px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .ho-drow {
+        display: grid;
+        grid-template-columns: 12px minmax(0, 1fr);
+        gap: 4px 10px;
+        padding: 9px 14px;
+      }
+      .ho-drow:hover {
+        background: var(--wash);
+      }
+      .ho-drow .ho-dot {
+        margin-top: 6px;
+      }
+      .ho-drow.is-here {
+        background: color-mix(in srgb, var(--state-claimed) 8%, transparent);
+      }
+      .ho-drow-top {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .ho-drow-top strong {
+        flex: 1;
+        min-width: 0;
+        font-size: 13px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .ho-drow .ho-line {
+        margin: 0;
+        font-size: 12px;
+      }
+      .ho-drow .ho-where {
+        font-size: 11.5px;
+      }
+      .ho-drow .ho-row {
+        grid-column: 2;
+        margin-top: 4px;
+      }
+      .ho-drow .ho-row .ho-sm {
+        height: 26px;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="after.js"></script>
+    <script>
+      const { state, icon, esc, pill, dot, sinceText, actions } = AFTER;
+      const params = new URLSearchParams(location.search);
+      state.open = params.get('open') === '1';
+      let shown = null; // was the button there on the last paint? For the pop when it appears.
+
+      // A: the node says it is in T3 Code, in the same words as the card.
+      function badge(t) {
+        const h = AFTER.handOffs().find((x) => x.number === t.number);
+        return h ? `<span class="ho-nbadge">${pill(h)}<span class="grow">${esc(sinceText(h))}</span></span>` : '';
+      }
+
+      // A: the launch block turns into this card when you press Open in T3 Code, and stays live.
+      function card() {
+        if (!state.handedOff) return AFTER.launchBlock();
+        const h = AFTER.focusHandOff();
+        return `<div class="ho-card${state.justHandedOff ? ' is-fresh' : ''}" style="--tone:${AFTER.STATUS[h.status].tone}">
+          ${state.justHandedOff ? `<p class="ho-sent">${icon('check')}Sent to T3 Code. You can keep working here: this card stays live.</p>` : ''}
+          <div class="ho-card-head">${pill(h, { size: 'lg' })}<span class="ho-when">${esc(sinceText(h))}</span></div>
+          ${AFTER.offline() ? `<div class="ho-offline">${icon('plug')}<span class="grow">T3 Code isn't running. This is its last report.</span></div>` : ''}
+          <p class="ho-line">${esc(h.line)}</p>
+          <div class="ho-row">${actions(h, { back: false })}</div>
+          <details${h.status === 'failed' ? ' open' : ''}><summary>Branch, worktree and what happened</summary>${AFTER.facts(h)}${AFTER.timeline(h)}</details>
+        </div>`;
+      }
+
+      // B, in the topbar: only there while something is in T3 Code.
+      function button() {
+        const list = AFTER.handOffs();
+        if (list.length === 0) {
+          shown = false;
+          return '';
+        }
+        const isNew = shown === false;
+        shown = true;
+        const waiting = AFTER.waiting(list);
+        return `<button type="button" class="ho-hbtn${waiting && !AFTER.offline() ? ' is-waiting' : ''}${isNew ? ' is-new' : ''}" data-toggle aria-expanded="${state.open}" aria-haspopup="true">
+          ${AFTER.offline() ? icon('plug') : `<span class="ho-dots">${AFTER.byUrgency(list).map(dot).join('')}</span>`}
+          ${list.length} in T3 Code${waiting ? `<span class="ho-wait">· ${waiting} need${waiting === 1 ? 's' : ''} you</span>` : ''}${icon('chevron')}</button>`;
+      }
+
+      const GROUPS = [
+        ['Waiting on you', ['input', 'failed']],
+        ['In T3 Code', ['starting', 'working']],
+        ['Done', ['done']],
+      ];
+
+      function row(h, s) {
+        const here = s.view === 'map' && h.kind === 'ticket';
+        return `<div class="ho-drow">${dot(h)}
+          <div><div class="ho-drow-top"><strong>${esc(AFTER.label(h))}</strong><span class="ho-when">${esc(sinceText(h))}</span></div>
+          <p class="ho-line">${h.stale ? `${AFTER.STATUS[h.status].word} · ` : ''}${esc(h.line)}</p>${here ? '' : `<span class="ho-where">${esc(AFTER.where(h))}</span>`}</div>
+          <div class="ho-row">${actions(h, { compact: true })}</div></div>`;
+      }
+
+      function dropdown(s) {
+        const list = AFTER.handOffs();
+        if (!state.open || list.length === 0) return '';
+        const body = GROUPS.map(([title, st]) => {
+          const rows = list.filter((h) => st.includes(h.status));
+          return rows.length ? `<div class="ho-group">${title}</div>${rows.map((h) => row(h, s)).join('')}` : '';
+        }).join('');
+        return `<div class="ho-drop" role="dialog" aria-label="Hand-offs">
+          <div class="ho-drop-head">${icon('flight')}<b>Hand-offs</b><span class="ho-count">${list.length} across all maps</span><span class="grow"></span>
+            <button type="button" class="iconbtn" data-toggle aria-label="Close">${icon('up')}</button></div>
+          <div class="ho-drop-body">${AFTER.offline() ? `<div class="ho-offline">${icon('plug')}<span class="grow"><b>T3 Code isn't running.</b> Last report 14 min ago.</span></div>` : ''}${body}</div></div>`;
+      }
+
+      function inFlightChip() {
+        const n = AFTER.handOffs().filter((h) => h.kind === 'ticket').length;
+        return n ? `<span class="filter-sep" role="none"></span><button type="button" class="fchip" style="--accent: var(--state-claimed)">${icon('pulse')}In T3 Code <b>${n}</b></button>` : '';
+      }
+
+      // Clicking outside closes the dropdown.
+      document.addEventListener('click', (e) => {
+        if (state.open && !e.target.closest('.ho-drop, [data-toggle], .ho-proto')) {
+          state.open = false;
+          AFTER.paint();
+        }
+      });
+
+      AFTER.start((s) => {
+        const right = button();
+        const page =
+          s.view === 'home'
+            ? `<div class="app has-side">${AFTER.side(s)}<div class="main">${AFTER.topbar(s, { right })}${AFTER.homePage()}</div></div>`
+            : `<div class="app">${AFTER.rail(s)}<div class="main">${AFTER.topbar(s, { right })}${AFTER.mapPage({ badge, slot: card(), filterExtra: inFlightChip() })}</div></div>`;
+        return page + dropdown(s);
+      });
+    </script>
+  </body>
+</html>

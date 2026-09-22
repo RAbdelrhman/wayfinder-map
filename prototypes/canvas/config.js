@@ -30,8 +30,47 @@ window.CANVAS = {
       title: 'Directions',
       sections: [
         {
-          title: 'Three directions',
-          note: `Each covers confirmation, live status, the way back and the in-flight list. ${G2} All three keep Home's In flight strip from #40.`,
+          title: 'A + B, with the list in the topbar',
+          note: 'What you picked: A’s live card and node pill, and B’s list behind a topbar button (placement 2). The button only exists while something is in T3 Code (rule 3). Nothing floats over the canvas.',
+          items: [
+            {
+              id: 'AB',
+              name: 'Closed: the topbar button',
+              src: 'variants/after-ab.html?state=input',
+              note: {
+                idea:
+                  'The ticket panel card and node pill are A, unchanged. Next to "Synced just now" sits "5 in T3 Code · 2 need you", with one dot per hand-off, most urgent first. Its border turns amber while something needs you. Handing off never opens it: the card changing in place is the confirmation.',
+                pros: ['Nothing covers the map canvas or the ticket panel', '"Needs you" is visible from every page, on any map', 'Same rows and actions as B'],
+                cons: ['Quieter than a floating pill: a count, not an interruption', 'The topbar gets busier on narrow windows'],
+              },
+            },
+            {
+              id: 'AB-open',
+              name: 'Open: every hand-off',
+              src: 'variants/after-ab.html?state=input&open=1',
+              note: {
+                idea:
+                  'The button opens B’s list as a dropdown under it, grouped Waiting on you, In T3 Code, Done, across every map. Rows from another map say where they came from. Each row has its one action and a link back to the ticket or map. Clicking outside closes it.',
+                pros: ['One list for all maps, one click from anywhere'],
+                cons: ['Duplicates Home’s In flight strip'],
+              },
+            },
+            {
+              id: 'AB-quiet',
+              name: 'Nothing in flight yet',
+              src: 'variants/after-ab.html?others=0&fresh=1',
+              note: {
+                idea:
+                  'Rule 3: with nothing in T3 Code there is no button at all. Press Open in T3 Code in the ticket panel: the card goes live and the button pops into the topbar. Toggle "Only #55" in the Prototype bar to bring the other hand-offs back.',
+                pros: ['No empty chrome on a quiet day'],
+                cons: ['The topbar shifts when the button appears'],
+              },
+            },
+          ],
+        },
+        {
+          title: 'The three directions',
+          note: `A and B are combined above. C is not chosen: it takes you away from the map. ${G2} All three keep Home's In flight strip from #40.`,
           items: [
             {
               id: 'A',
@@ -72,7 +111,7 @@ window.CANVAS = {
             },
             {
               id: 'C',
-              name: 'Each hand-off gets a page',
+              name: 'Each hand-off gets a page (not chosen)',
               src: 'variants/after-c.html?state=done',
               note: {
                 idea:
@@ -107,7 +146,7 @@ window.CANVAS = {
             },
             {
               id: 'CL',
-              name: 'C · All hand-offs',
+              name: 'C · All hand-offs (not chosen)',
               src: 'variants/after-c.html?view=flight&state=working',
               note: { idea: "C's list page, reached from the sidebar's In flight group or the rail's plane button on the map." },
             },

@@ -141,6 +141,7 @@
     view: params.get('view') ?? 'map',
     handedOff: params.get('fresh') !== '1',
     open: params.get('open') !== '0', // variant-owned panels (B's tray)
+    others: params.get('others') !== '0', // the four other hand-offs; off shows an empty start
   };
   let lastFake = state.fake === 'offline' ? 'working' : state.fake;
 
@@ -164,7 +165,8 @@
       model: 'Mid · Opus 5 · high',
       focus: true,
     };
-    const list = state.handedOff ? [focus, ...OTHERS] : OTHERS.slice();
+    const rest = state.others ? OTHERS : [];
+    const list = state.handedOff ? [focus, ...rest] : rest.slice();
     return list.map((h) => ({ ...h, stale: offline() }));
   }
   /** Ordered by what is waiting on you: needs you, failed, PR ready, working, starting. */
@@ -340,7 +342,7 @@
       <a class="card ho-continue" href="#" data-view="map"><span class="ho-cont-ic">${icon('graph')}</span><span class="grow"><span class="eyebrow">Continue · wayfinder-map</span><strong>#35 ${esc(MAP.title)}</strong><span class="ho-line">4 next up · 5 claimed</span></span>${icon('arrow')}</a>
       ${offlineBanner()}
       <section class="section"><div class="section-head"><h2>In flight</h2><span class="ho-count">${list.length}${waiting(list) ? ` · ${waiting(list)} waiting on you` : ''}</span></div>
-        ${strip ? strip(list) : `<div class="ho-strip">${list.map(flightCard).join('')}</div>`}</section>
+        ${list.length === 0 ? '<p class="ho-line">Nothing in T3 Code right now.</p>' : strip ? strip(list) : `<div class="ho-strip">${list.map(flightCard).join('')}</div>`}</section>
     </div></main>`;
   }
 
@@ -388,7 +390,7 @@
   function protoBar() {
     return `<div class="ho-proto" role="group" aria-label="Prototype: fake T3 Code state"><span class="ho-proto-tag">Prototype</span><span class="ho-proto-lbl">#55 in T3 Code:</span>
       ${FAKE_STATES.map(([k, l]) => `<button type="button" class="${state.fake === k ? 'is-on' : ''}" data-fake="${k}">${l}</button>`).join('')}
-      <span class="ho-proto-sep"></span><button type="button" data-replay title="Undo the hand-off and press Open in T3 Code again">${icon('retry')}Replay hand-off</button></div>`;
+      <span class="ho-proto-sep"></span><button type="button" class="${state.others ? '' : 'is-on'}" data-others title="Hide the four other hand-offs, to see a quiet start">Only #55</button><button type="button" data-replay title="Undo the hand-off and press Open in T3 Code again">${icon('retry')}Replay hand-off</button></div>`;
   }
 
   /* ---------- state and rendering ---------- */
@@ -426,6 +428,10 @@
       clearTimeout(timer);
       state.justHandedOff = false;
       return setFake(fake.dataset.fake);
+    }
+    if (e.target.closest('[data-others]')) {
+      state.others = !state.others;
+      return paint();
     }
     if (e.target.closest('[data-replay]')) {
       clearTimeout(timer);
