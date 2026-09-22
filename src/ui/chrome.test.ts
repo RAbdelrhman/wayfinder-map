@@ -61,9 +61,9 @@ describe('renderAccountMarkContent', () => {
     expect(html).toContain('<span class="avatar-initial">O</span>');
   });
 
-  it('falls back to github user url if avatarUrl is omitted', () => {
+  it('falls back to the account initial if GitHub did not return an avatar', () => {
     const html = renderAccountMarkContent({ login: 'RAbdelrhman' });
-    expect(html).toContain('src="https://github.com/RAbdelrhman.png?size=64"');
+    expect(html).not.toContain('<img');
     expect(html).toContain('<span class="avatar-initial">R</span>');
   });
 
@@ -84,7 +84,7 @@ describe('updateAccountMark', () => {
       getAttribute: (k: string) => attrs.get(k) ?? null,
     } as unknown as HTMLElement;
 
-    updateAccountMark(el, { login: 'RAbdelrhman' });
+    updateAccountMark(el, { login: 'RAbdelrhman', avatarUrl: 'https://avatars.githubusercontent.com/u/1?s=64' });
     expect(el.title).toBe('Signed in as RAbdelrhman');
     expect(el.getAttribute('aria-label')).toBe('GitHub account: RAbdelrhman');
     expect(el.innerHTML).toContain('avatar-img');

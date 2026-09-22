@@ -179,9 +179,11 @@ export function renderAccountMarkContent(profile: AccountMark | null | undefined
   if (!login) {
     return `<span class="avatar-initial" data-icon="person">${icon(icons.PERSON)}</span>`;
   }
-  const avatarUrl = profile?.avatarUrl ?? `https://github.com/${encodeURIComponent(login)}.png?size=64`;
+  const avatarUrl = profile?.avatarUrl?.trim();
   const initial = login.slice(0, 1).toUpperCase();
-  return `<img class="avatar-img" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(login)}" onerror="this.remove()" /><span class="avatar-initial">${escapeHtml(initial)}</span>`;
+  return avatarUrl
+    ? `<img class="avatar-img" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(login)}" onerror="this.remove()" /><span class="avatar-initial">${escapeHtml(initial)}</span>`
+    : `<span class="avatar-initial">${escapeHtml(initial)}</span>`;
 }
 
 export function updateAccountMark(
@@ -319,7 +321,7 @@ export function repoIconHtml(repo: string, size: 'sm' | 'md' | 'lg' = 'md'): str
   const sizeClass = size === 'sm' ? ' is-sm' : size === 'lg' ? ' is-lg' : '';
   const monoSvg = repoMonogramSvg(trimmed);
   const imgTag = normalized
-    ? `<img class="repo-icon-img" src="${escapeHtml(scopedApiPath(normalized, 'icon'))}" alt="" loading="lazy" style="display:none" />`
+    ? `<img class="repo-icon-img" src="${escapeHtml(scopedApiPath(normalized, 'icon'))}" alt="" style="display:none" />`
     : '';
 
   return `<span class="repo-icon-badge${sizeClass}" data-repo="${escapeHtml(repo)}" aria-hidden="true"><span class="repo-monogram">${monoSvg}</span>${imgTag}</span>`;

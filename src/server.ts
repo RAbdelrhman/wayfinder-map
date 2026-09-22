@@ -22,7 +22,7 @@ import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './workspaces.js';
 import type { WorkspaceState } from './workspaces.js';
 import { WAYFINDER_VERSION } from './version.js';
-import { resolveRepoIcon } from './repoIcon.js';
+import { githubOwnerAvatarUrl, resolveRepoIcon } from './repoIcon.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -57,7 +57,7 @@ const PROTOTYPE_CSP = 'sandbox allow-scripts allow-forms allow-popups allow-moda
  * by PROTOTYPE_CSP on the response and by the iframe's own `sandbox` attribute.
  */
 export const PAGE_CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'self'; form-action 'self'";
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://github.com https://avatars.githubusercontent.com; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'self'; form-action 'self'";
 
 export type ServerT3 =Pick<T3HandOff, 'models' | 'steps' | 'projects'> & { close?: () => void };
 
@@ -505,7 +505,7 @@ export async function startServer({
 
       if (requestedRepo !== null && scoped?.action === 'icon') {
         try {
-          const icon = await resolveRepoIcon(requestedRepo, clones, t3, workspaceRoot);
+          const icon = await resolveRepoIcon(requestedRepo, fetch, githubOwnerAvatarUrl);
           if (icon === null) {
             json(response, 404, { error: 'No repository icon found.' });
             return;

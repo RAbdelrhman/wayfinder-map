@@ -156,5 +156,7 @@ describe('the app page policy', () => {
     expect(PAGE_CSP).toContain("frame-src 'self'");
     expect(PAGE_CSP).not.toContain('frame-src *');
     expect(PAGE_CSP).toContain("object-src 'none'");
+    expect(PAGE_CSP).toContain('https://github.com');
+    expect(PAGE_CSP).toContain('https://avatars.githubusercontent.com');
   });
 });
