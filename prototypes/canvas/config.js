@@ -89,6 +89,17 @@ window.CANVAS = {
                 cons: [],
               },
             },
+            {
+              id: 'P',
+              name: 'After Start: the map being planned',
+              src: 'variants/new-map-planning.html',
+              note: {
+                idea:
+                  'Start takes you straight to the new map. It lives at a temporary route (/repos/<repo>/maps/draft-<id>) until T3 Code creates the map issue, then moves to the real one. The hand-off card sits on top and the tickets fill in as they are drafted. Use the prototype button at the bottom right to see them arrive.',
+                pros: ['You land where the map will be, not on a dead-end result', 'Home can list it as "Being planned"'],
+                cons: ['Needs a temporary route and a draft record keyed by the planning thread', 'Overlaps #45 (what you see after leaving)'],
+              },
+            },
           ],
         },
         {
@@ -159,7 +170,7 @@ window.CANVAS = {
         },
         {
           title: 'The moment of handing off',
-          note: 'Replaces the toast. The result stays until you leave the page; #45 decides what you see after that.',
+          note: 'Replaces the toast. It sits at the top of the new map while it is being planned (P).',
           items: [
             {
               id: 'H',
@@ -170,7 +181,7 @@ window.CANVAS = {
               note: {
                 idea: 'Steps tick off while T3 Code starts, then a result with the thread, worktree, branch and a way back.',
                 pros: ['R1 P0: a durable result with a thread link, not a toast', 'One verb across the app: "Open in T3 Code"'],
-                cons: ['The step list needs progress events from the server (#55)'],
+                cons: ['The step list needs progress events from the server (#55). Until then it ships as one spinner line.'],
               },
               items: [
                 { label: 'Handing off', html: HANDING_OFF },

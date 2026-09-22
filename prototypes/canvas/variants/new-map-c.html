@@ -46,9 +46,6 @@
       .c-menu ul { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; }
       .c-menu li .c-opt { grid-template-columns: 18px 1fr auto; }
 
-      .c-sent { display: grid; gap: 12px; }
-      .c-bubble { justify-self: end; max-width: 80%; padding: 10px 14px; border-radius: 12px 12px 4px 12px; background: var(--wash); font-size: 14px; }
-      .c-bubble small { display: block; color: var(--text-muted); font-size: 12px; margin-top: 4px; }
     </style>
   </head>
   <body class="viz-root">
@@ -275,13 +272,10 @@
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !$('go').disabled) $('go').click();
       };
       $('copy').onclick = () => Kit.toast('Copied the prompt. Paste it into any T3 Code thread.');
-      $('go').onclick = async () => {
-        const text = $('goal').value.trim();
-        const model = `${tier().label} · ${tier().model}`;
+      // Start goes straight to the new map's page, which shows the hand-off while it is planned.
+      $('go').onclick = () => {
         closeMenu();
-        $('stage').innerHTML = `<div class="c-sent"><div class="c-bubble">${NM.esc(text)}<small>${NM.esc(s.repo)} · ${NM.esc(tier().label)}</small></div><div id="result"></div>
-          <button type="button" class="linkish" style="justify-self:center" onclick="location.reload()">Start another map</button></div>`;
-        await NM.handOff($('result'), { kind: 'map', repo: s.repo, clone: s.clone, subject: text, model });
+        NM.planning(document.querySelector('.main'), { repo: s.repo, clone: s.clone, goal: $('goal').value.trim(), tier: `${tier().label} · ${tier().model}` });
       };
 
       paint();

@@ -28,7 +28,7 @@ function inlinePage(file) {
 }
 
 const pages = {};
-for (const name of ['new-map-a', 'new-map-b', 'new-map-c']) pages[`variants/${name}.html`] = inlinePage(join(CANVAS, `variants/${name}.html`));
+for (const name of ['new-map-a', 'new-map-b', 'new-map-c', 'new-map-planning']) pages[`variants/${name}.html`] = inlinePage(join(CANVAS, `variants/${name}.html`));
 
 const sheets = {
   '../../src/ui/styles.css': read(join(ROOT, 'src/ui/styles.css')),

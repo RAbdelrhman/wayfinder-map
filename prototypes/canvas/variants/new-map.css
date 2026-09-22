@@ -89,3 +89,24 @@ a.primary, a.ghost { text-decoration: none; display: inline-flex; align-items: c
 button.primary, button.ghost { display: inline-flex; align-items: center; gap: 6px; }
 .linkish { border: 0; background: none; padding: 0; font: inherit; font-size: 12px; color: var(--state-claimed); cursor: pointer; text-decoration: none; }
 .linkish:hover { text-decoration: underline; }
+
+/* The map being planned: the new map's own page, at a temporary route until its issue exists. */
+.nm-plan { position: relative; flex: 1; min-height: 0; overflow: auto; background-image: radial-gradient(var(--gridline) 1px, transparent 1px); background-size: 22px 22px; }
+.nm-plan-inner { max-width: 760px; margin: 0 auto; padding: 32px 24px 64px; display: grid; gap: 20px; }
+.nm-plan-head h1 { margin: 6px 0 0; font-size: 19px; line-height: 1.3; font-weight: 650; letter-spacing: -0.01em; }
+.nm-plan-head p { margin: 6px 0 0; font-size: 13px; color: var(--text-secondary); }
+.nm-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); padding: 2px 8px; border-radius: 999px; border: 1px solid var(--hairline); background: var(--surface-1); }
+.nm-state::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--state-claimed); }
+.nm-state.is-live::before { background: var(--state-frontier); }
+.nm-route { font-size: 11px; color: var(--text-muted); }
+.nm-graph { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 20px; border: 1px dashed var(--baseline); border-radius: 12px; background: color-mix(in srgb, var(--surface-1) 55%, transparent); }
+.nm-graph > p { grid-column: 1 / -1; margin: 0; text-align: center; font-size: 13px; color: var(--text-muted); }
+.nm-node { display: grid; gap: 6px; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--hairline); background: var(--surface-1); font-size: 13px; animation: nm-in 240ms ease-out both; }
+.nm-node small { color: var(--text-muted); font-size: 11px; }
+.nm-node.is-ghost { border-style: dashed; background: none; animation: none; }
+.nm-node.is-ghost span { height: 8px; border-radius: 4px; background: var(--wash); }
+.nm-node.is-ghost span:last-child { width: 60%; }
+.nm-node .nm-dot { margin: 0; }
+@keyframes nm-in { from { opacity: 0; transform: translateY(4px); } }
+.nm-slim { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--hairline); border-radius: 9px; background: var(--surface-1); font-size: 13px; color: var(--text-secondary); }
+.nm-demo { position: fixed; right: 14px; bottom: 14px; z-index: 30; font-size: 12px; }

@@ -209,7 +209,7 @@ window.NM = (() => {
    * The moment of handing off, then a result that stays on the page until you leave.
    * kind: 'map' | 'ticket'. Resolves when the fake thread has started.
    */
-  async function handOff(el, { kind, repo, clone, subject, model }) {
+  async function handOff(el, { kind, repo, clone, subject, model, onMap = false }) {
     const steps = [
       'Writing the prompt',
       `Opening a worktree in ${short(repo)}`,
@@ -224,14 +224,15 @@ window.NM = (() => {
       await wait(550);
     }
     const branch = kind === 'map' ? 'wayfinder/new-map-draft-mode' : `wayfinder/${subject}-ticket`;
-    el.innerHTML = resultHtml({ kind, repo, clone, subject, model, branch });
+    el.innerHTML = resultHtml({ kind, repo, clone, subject, model, branch, onMap });
     Kit.fillIcons(el);
   }
 
-  function resultHtml({ kind, repo, clone, subject, model, branch }) {
+  function resultHtml({ kind, repo, clone, subject, model, branch, onMap = false }) {
     const title = kind === 'map' ? 'Planning thread started' : `#${subject} is with T3 Code`;
-    const next =
-      kind === 'map'
+    const next = onMap
+      ? 'T3 Code is interviewing you about the goal. Answer there; tickets show up below as it drafts them.'
+      : kind === 'map'
         ? 'T3 Code is interviewing you about the goal. Answer there; the map shows up in Wayfinder once the issues exist.'
         : 'T3 Code claimed the ticket and is working in its own worktree. It will open a PR when it is done.';
     return `<div class="nm-result is-done" role="status">
@@ -247,10 +248,50 @@ window.NM = (() => {
         <a class="primary" href="#" data-to="the thread in T3 Code">${icon('external')}Open in T3 Code</a>
         <button type="button" class="ghost" onclick="Kit.toast('Copied the prompt')">${icon('copy')}Copy prompt</button>
         <span class="grow"></span>
-        <a class="linkish" href="#" data-to="${kind === 'map' ? 'Home, where this thread is listed as in flight' : `map #35 with #${subject} highlighted`}">${kind === 'map' ? 'Back to Home' : 'Back to the map'}</a>
+        ${onMap ? '' : `<a class="linkish" href="#" data-to="${kind === 'map' ? 'Home, where this thread is listed as in flight' : `map #35 with #${subject} highlighted`}">${kind === 'map' ? 'Back to Home' : 'Back to the map'}</a>`}
       </div>
     </div>`;
   }
 
-  return { esc, icon, wait, short, known, repoMark, workspace, parseTicket, ticketCard, cloneLine, repoPicker, handOff, resultHtml };
+  /**
+   * The new map's page while it is being planned. It lives at a temporary route until T3 Code
+   * creates the map issue, then takes the map's real route. Replaces the contents of main.
+   */
+  async function planning(main, { repo, clone, goal, tier }) {
+    const route = `/repos/${repo}/maps/draft-7f3a`;
+    const title = goal.length > 90 ? `${goal.slice(0, 88)}…` : goal;
+    const crumbs = (state, path) => `<span class="crumbs"><a href="#" data-to="Home">Home</a><span class="crumb-sep">/</span>
+      <a href="#" class="is-repo" data-to="${esc(repo)}">${esc(short(repo))}</a><span class="crumb-sep">/</span><span>${esc(title.length > 40 ? `${title.slice(0, 38)}…` : title)}</span></span>
+      <span class="topbar-spacer"></span><code class="nm-route" title="Temporary route until the map issue exists">${esc(path)}</code>${state}`;
+    main.innerHTML = `<header class="topbar">${crumbs('<span class="nm-state">Being planned</span>', route)}</header>
+      <div class="nm-plan"><div class="nm-plan-inner">
+        <div class="nm-plan-head"><span class="nm-state">Being planned</span><h1>${esc(title)}</h1><p>${esc(repo)} · ${esc(tier)}</p></div>
+        <div id="nm-handoff"></div>
+        <div class="nm-graph" id="nm-graph"><p>Tickets appear here as T3 Code drafts them.</p>
+          ${'<div class="nm-node is-ghost"><span></span><span></span></div>'.repeat(3)}</div>
+      </div></div>
+      <button type="button" class="ghost nm-demo" id="nm-demo" disabled>Prototype: T3 Code drafts the first tickets</button>`;
+    main.querySelector('.nm-plan-head .nm-state').remove();
+    Kit.fillIcons(main);
+    await handOff(main.querySelector('#nm-handoff'), { kind: 'map', repo, clone, subject: goal, model: tier, onMap: true });
+    const demo = main.querySelector('#nm-demo');
+    demo.disabled = false;
+    demo.onclick = () => {
+      demo.remove();
+      // The map issue exists now: the page takes its real route and the hand-off card slims down.
+      main.querySelector('.topbar').innerHTML = crumbs('<span class="nm-state is-live">Map #62</span>', `/repos/${repo}/maps/62`);
+      main.querySelector('#nm-handoff').innerHTML = `<div class="nm-slim"><span class="nm-spin"></span><span class="grow">T3 Code is still planning. More tickets may appear.</span>
+        <a class="linkish" href="#" data-to="the thread in T3 Code">Open in T3 Code</a></div>`;
+      const drafted = [
+        ['What should a draft look like offline?', 'frontier', 'Grilling'],
+        ['Store drafts locally', 'blocked', 'AFK · blocked by the first'],
+        ['Sync drafts when the network is back', 'blocked', 'AFK · blocked by the second'],
+      ];
+      main.querySelector('#nm-graph').innerHTML = drafted
+        .map(([name, state, kind], i) => `<div class="nm-node" style="animation-delay:${i * 180}ms"><strong><span class="nm-dot" style="--c:var(--state-${state})"></span> #${63 + i} ${esc(name)}</strong><small>${esc(kind)}</small></div>`)
+        .join('');
+    };
+  }
+
+  return { esc, icon, wait, short, known, repoMark, workspace, parseTicket, ticketCard, cloneLine, repoPicker, handOff, resultHtml, planning };
 })();

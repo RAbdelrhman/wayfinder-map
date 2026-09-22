@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A map being planned</title>
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="new-map.css" />
+  </head>
+  <body class="viz-root">
+    <div class="app">
+      <nav class="rail" aria-label="App">
+        <a class="logo" href="#" data-to="Home" data-icon="compass" aria-label="Wayfinder Home"></a>
+        <a class="rail-btn" href="#" data-to="Home" data-icon="home" aria-label="Home"></a>
+        <a class="rail-btn" href="#" data-to="Start a new map" data-icon="plus" aria-label="Start a new map"></a>
+        <span class="rail-spacer"></span>
+        <button type="button" class="rail-btn" data-to="the theme switch" data-icon="moon" aria-label="Theme"></button>
+        <span class="rail-mark">R</span>
+      </nav>
+      <div class="main" id="main"></div>
+    </div>
+    <script src="../kit/kit.js"></script>
+    <script src="wayfinder.js"></script>
+    <script>
+      // What C's Start button lands on, on its own so the canvas can show it.
+      Kit.fillIcons();
+      NM.planning(document.getElementById('main'), {
+        repo: 'RAbdelrhman/wayfinder-map',
+        clone: FIXTURES.repositories['RAbdelrhman/wayfinder-map'].clone.path,
+        goal: 'Offline draft mode: drafts save locally and sync in the background when the network is back.',
+        tier: 'Mid · Opus 5 · high',
+      });
+    </script>
+  </body>
+</html>
