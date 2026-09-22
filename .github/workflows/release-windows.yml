@@ -19,7 +19,8 @@ jobs:
         arch: [x64, arm64]
     env:
       WAYFINDER_BUILD_ARCH: ${{ matrix.arch }}
-      WAYFINDER_SIGNED_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+      WAYFINDER_STABLE_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') && '1' || '0' }}
+      WAYFINDER_SIGNED_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') && '1' || '0' }}
       WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
       WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
     steps:
@@ -34,7 +35,7 @@ jobs:
           bun-version: 1.1.0
 
       - name: Require signing credentials for a stable tag
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.WAYFINDER_STABLE_RELEASE == '1'
         shell: pwsh
         run: |
           if (-not $env:WIN_CSC_LINK -or -not $env:WIN_CSC_KEY_PASSWORD) {
@@ -54,13 +55,14 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
       - run: bun run package:win -- ${{ matrix.arch }}
+      - run: bun run smoke:win -- ${{ matrix.arch }}
 
       - name: Write SHA-256 checksums
         shell: pwsh
         run: |
           $folder = "release/${{ matrix.arch }}"
           $lines = Get-ChildItem $folder -File |
-            Where-Object Name -NotLike 'SHA256SUMS-*' |
+            Where-Object { $_.Name -notlike 'SHA256SUMS-*' -and $_.Name -ne 'builder-debug.yml' } |
             Sort-Object Name |
             ForEach-Object { "{0} *{1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name }
           Set-Content -LiteralPath "$folder/SHA256SUMS-${{ matrix.arch }}.txt" -Value $lines -Encoding ascii
@@ -68,7 +70,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: wayfinder-windows-${{ matrix.arch }}
-          path: release/${{ matrix.arch }}/*
+          # Only the release carries: the installer, update metadata, blockmap, and checksum.
+          path: |
+            release/${{ matrix.arch }}/*.exe
+            release/${{ matrix.arch }}/*.blockmap
+            release/${{ matrix.arch }}/latest-*.yml
+            release/${{ matrix.arch }}/SHA256SUMS-*.txt
           if-no-files-found: error
 
   cli:
@@ -107,7 +114,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Signed GitHub release
+    name: GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build, cli]
     runs-on: ubuntu-latest
@@ -124,3 +131,4 @@ jobs:
           files: release-assets/**/*
           fail_on_unmatched_files: true
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

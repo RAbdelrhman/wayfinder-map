@@ -22,6 +22,7 @@
     "desktop": "node scripts/desktop.mjs",
     "icons": "node scripts/create-icons.mjs",
     "package:win": "node scripts/package-win.mjs",
+    "smoke:win": "node scripts/smoke-win.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "tsc --noEmit",

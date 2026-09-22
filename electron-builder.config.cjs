@@ -1,4 +1,6 @@
 const arch = process.env.WAYFINDER_BUILD_ARCH === 'arm64' ? 'arm64' : 'x64';
+const signedRelease = process.env.WAYFINDER_SIGNED_RELEASE === '1';
+const artifactSuffix = signedRelease ? 'Setup' : 'Test-Setup';
 
 module.exports = {
   appId: 'com.rabdelrhman.wayfinder',
@@ -16,13 +18,15 @@ module.exports = {
   win: {
     icon: '.generated/Wayfinder.ico',
     target: [{ target: 'nsis', arch: [arch] }],
-    artifactName: `Wayfinder-\${version}-${arch}-Setup.\${ext}`,
+    artifactName: `Wayfinder-\${version}-${arch}-${artifactSuffix}.\${ext}`,
     verifyUpdateCodeSignature: false,
   },
   nsis: {
     oneClick: false,
     perMachine: false,
-    allowElevation: true,
+    // This is a per-user installer. Avoid an elevation prompt so unattended CI smoke
+    // installs exercise the same path a normal user gets from the Start menu.
+    allowElevation: false,
     allowToChangeInstallationDirectory: true,
     createDesktopShortcut: true,
     createStartMenuShortcut: true,

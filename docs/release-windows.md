@@ -11,15 +11,30 @@ bun run package:win -- x64
 ```
 
 The output is under `release/x64/`. It is intentionally unsigned and may trigger a
-Windows warning. Use the ARM64 argument to cross-package that architecture; an ARM64
-artifact is not considered verified until it has been installed and exercised on a
-real Windows ARM64 machine.
+Windows warning. The installer is named `Wayfinder-<version>-x64-Test-Setup.exe` so
+it cannot be mistaken for a signed public installer. Use the ARM64 argument to
+cross-package that architecture; an ARM64 artifact is not considered verified until
+it has been installed and exercised on a real Windows ARM64 machine.
+
+The package smoke gate installs that test artifact into a temporary per-user folder,
+launches the installed `Wayfinder.exe`, verifies the Home route (including the
+friendly `gh` diagnostic when GitHub CLI is absent), waits for the app to quit, and
+checks that the loopback port is closed:
+
+```powershell
+bun run smoke:win -- x64
+```
+
+CI runs this gate for both architectures after packaging. It does not require Node or
+Bun on the installed machine; those tools are only used by the build runner.
 
 ## Stable release
 
 Push a tag that exactly matches the root package version, such as `v0.1.0`. The
 Windows workflow builds x64 and ARM64, writes SHA-256 checksum files, and attaches
-the signed artifacts and update metadata to the GitHub release.
+the installers and update metadata to the GitHub release. A tag containing a
+prerelease suffix, such as `v0.1.0-beta.1`, is published as an explicitly marked
+unsigned test release; stable tags fail closed until signing credentials are present.
 
 The same release carries the CLI as `wayfinder-map-<version>.tgz`, an `npm pack` of
 the same tag with its own `SHA256SUMS-cli.txt`. It has no runtime dependencies and

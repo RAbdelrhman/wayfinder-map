@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, session, shell } from 'electron';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { DEFAULTS } from '../config.js';
@@ -179,6 +180,7 @@ async function startRuntime(): Promise<void> {
       );
       runtimeOrigin = new URL(runtime.url).origin;
       await mainWindow.loadURL(runtime.url);
+      await completeSmokeTest(runtime.url);
       updaterHandle = startAutoUpdates({
         window: mainWindow,
         enabled: shouldEnableUpdates(app.isPackaged, app.getVersion(), AUTO_UPDATE_ENABLED),
@@ -201,6 +203,30 @@ async function startRuntime(): Promise<void> {
     startupPromise = null;
   });
   return startupPromise;
+}
+
+/**
+ * The Windows package smoke test opts in through an environment variable. Keeping the
+ * hook here means it exercises the real packaged Electron entry point, runtime, server,
+ * and Home route without changing ordinary launches.
+ */
+async function completeSmokeTest(homeUrl: string): Promise<void> {
+  const markerPath = process.env.WAYFINDER_SMOKE_FILE;
+  if (markerPath === undefined || runtime === null) return;
+
+  let homeStatus = 0;
+  try {
+    homeStatus = (await fetch(new URL('/api/home', homeUrl))).status;
+  } catch {
+    homeStatus = 0;
+  }
+  const port = Number(new URL(homeUrl).port);
+  await writeFile(
+    markerPath,
+    JSON.stringify({ route: new URL(homeUrl).pathname || '/', homeStatus, port, version: app.getVersion() }),
+    'utf8',
+  );
+  setTimeout(() => void quitApplication(), 100);
 }
 
 app.setAppUserModelId('com.rabdelrhman.wayfinder');

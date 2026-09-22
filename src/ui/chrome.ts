@@ -163,12 +163,12 @@ export function bindUpdater(button: HTMLElement, showToast: (message: string, ms
 }
 
 export interface AccountProfile {
-  status: 'ready' | 'missing-scopes' | 'logged-out' | 'missing-gh';
+  status?: 'ready' | 'missing-scopes' | 'logged-out' | 'missing-gh' | 'signed-out' | 'unavailable';
   login: string | null;
-  name: string | null;
+  name?: string | null;
   avatarUrl?: string | null;
   scopes?: string[];
-  missingScopes: string[];
+  missingScopes?: string[];
 }
 
 export function renderAccountMarkContent(profile: AccountProfile | null | undefined): string {

@@ -38,7 +38,9 @@ current page, go Home, start a new map, or quit. Quit stops the loopback server
 and revokes the in-memory T3 Code session.
 
 The first public release targets Windows 10 and Windows 11. Stable installers must
-be signed; architecture-specific installed-flow gates are documented in
+be signed and supports x64 and ARM64. `gh` remains an explicit prerequisite; if it
+is missing or signed out, Home stays available and shows the diagnostic with a link
+to install or sign in to GitHub CLI. Architecture-specific installed-flow gates are documented in
 [`docs/release-windows.md`](docs/release-windows.md).
 
 ### Terminal
@@ -73,11 +75,19 @@ node dist/cli.js --repo owner/name   # the terminal command
 bun run desktop                      # the desktop shell
 ```
 
-Unsigned owner-test installers can be built for Windows x64 or ARM64:
+Unsigned owner-test installers can be built for Windows x64 or ARM64. They are named
+`Test-Setup.exe` and are not public stable releases:
 
 ```powershell
 bun run package:win -- x64
 bun run package:win -- arm64
+```
+
+On Windows, the packaged smoke gate installs and launches the artifact, verifies Home,
+and confirms that quitting leaves no loopback server behind:
+
+```powershell
+bun run smoke:win -- x64
 ```
 
 ## What you see
