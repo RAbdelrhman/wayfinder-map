@@ -95,6 +95,7 @@ export interface T3Snapshot {
 export class T3Api {
   private session: Promise<{ id: string; token: string }> | null = null;
   private issuedId: string | null = null;
+  private readonly streams = new Set<WebSocket>();
 
   constructor(
     private readonly origin: string,
@@ -118,18 +119,18 @@ export class T3Api {
     return this.session;
   }
 
-  private async request(path: string, body?: unknown, retried = false): Promise<unknown> {
+  private async request(path: string, body?: unknown, retried = false, timeoutMs = 120_000): Promise<unknown> {
     const { token } = await this.issue();
     const response = await fetch(new URL(path, this.origin), {
       method: body === undefined ? 'GET' : 'POST',
       headers: { authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (response.status === 401 && !retried) {
       // Expired or revoked. Mint a fresh one once.
       this.session = null;
-      return this.request(path, body, true);
+      return this.request(path, body, true, timeoutMs);
     }
     const text = await response.text();
     if (!response.ok) throw new Error(`T3 Code answered ${String(response.status)}: ${text.slice(0, 300)}`);
@@ -138,6 +139,18 @@ export class T3Api {
 
   snapshot(): Promise<T3Snapshot> {
     return this.request('/api/orchestration/snapshot') as Promise<T3Snapshot>;
+  }
+
+  shell(): Promise<unknown> {
+    return this.request('/api/orchestration/shell', undefined, false, 20_000);
+  }
+
+  async environment(): Promise<unknown> {
+    const response = await fetch(new URL('/.well-known/t3/environment', this.origin), {
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) throw new Error(`T3 Code environment answered ${String(response.status)}`);
+    return (await response.json()) as unknown;
   }
 
   dispatch(command: Record<string, unknown>): Promise<unknown> {
@@ -180,8 +193,114 @@ export class T3Api {
     });
   }
 
+  /** Keep a resumable shell subscription open and forward every streamed chunk. */
+  async subscribeShell(
+    afterSequence: number | null,
+    onValue: (value: unknown) => void,
+    onClose: () => void,
+  ): Promise<() => void> {
+    const ticketResult = await this.request('/api/auth/websocket-ticket', {}, false, 20_000);
+    const ticket = (ticketResult as { ticket?: unknown } | null)?.ticket;
+    if (typeof ticket !== 'string') throw new Error('T3 Code issued no WebSocket ticket');
+    const url = new URL('/ws', this.origin);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.searchParams.set('wsTicket', ticket);
+
+    return new Promise<() => void>((resolve, reject) => {
+      const socket = new WebSocket(url);
+      this.streams.add(socket);
+      let opened = false;
+      let stopped = false;
+      const timer = setTimeout(() => {
+        stop();
+        if (!opened) reject(new Error('T3 Code WebSocket timed out'));
+      }, 20_000);
+      const stop = (): void => {
+        if (stopped) return;
+        stopped = true;
+        clearTimeout(timer);
+        this.streams.delete(socket);
+        socket.close();
+      };
+      const closeFromServer = (): void => {
+        if (stopped) return;
+        const wasOpened = opened;
+        stop();
+        if (wasOpened) onClose();
+        else reject(new Error('T3 Code closed the WebSocket'));
+      };
+
+      socket.onopen = () => {
+        opened = true;
+        try {
+          socket.send(
+            JSON.stringify({
+              _tag: 'Request',
+              id: 'shell',
+              tag: 'orchestration.subscribeShell',
+              payload: { ...(afterSequence === null ? {} : { afterSequence }), requestCompletionMarker: true },
+              headers: [],
+            }),
+          );
+          clearTimeout(timer);
+          resolve(stop);
+        } catch {
+          stop();
+          reject(new Error('Could not start the T3 Code shell subscription'));
+        }
+      };
+      socket.onmessage = (event) => {
+        let message: Record<string, unknown>;
+        try {
+          const parsed: unknown = JSON.parse(String(event.data));
+          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return;
+          message = parsed as Record<string, unknown>;
+        } catch {
+          return;
+        }
+        if (message['_tag'] === 'Ping') {
+          socket.send(JSON.stringify({ _tag: 'Pong' }));
+          return;
+        }
+        if (message['_tag'] === 'Exit' && message['requestId'] === 'shell') {
+          closeFromServer();
+          return;
+        }
+        if (message['_tag'] !== 'Chunk' || message['requestId'] !== 'shell') return;
+        const emit = (value: unknown): void => {
+          if (Array.isArray(value)) {
+            for (const item of value) onValue(item);
+          } else {
+            onValue(value);
+          }
+        };
+        const chunk = message['chunk'];
+        if (Array.isArray(chunk)) {
+          emit(chunk);
+        } else if (typeof chunk === 'object' && chunk !== null && !Array.isArray(chunk)) {
+          const chunkRecord = chunk as Record<string, unknown>;
+          if (Array.isArray(chunkRecord['values'])) {
+            emit(chunkRecord['values']);
+          } else if ('value' in chunkRecord) {
+            emit(chunkRecord['value']);
+          } else {
+            emit(chunk);
+          }
+        } else if ('value' in message) {
+          emit(message['value']);
+        } else if (Array.isArray(message['values'])) {
+          emit(message['values']);
+        }
+      };
+      socket.onerror = () => closeFromServer();
+      socket.onclose = () => closeFromServer();
+    });
+  }
+
   /** Revoke the session synchronously, so it also works from an exit handler. */
   revoke(): void {
+    for (const stream of this.streams) stream.close();
+    this.streams.clear();
     if (this.issuedId === null) return;
     try {
       execFileSync(this.command.exe, [this.command.script, 'auth', 'session', 'revoke', this.issuedId], {

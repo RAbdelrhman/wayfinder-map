@@ -12,6 +12,7 @@ import type { ServerCommand } from './t3Api.js';
 import { hiddenModelsFromSettings, toCatalog, toModelSelection } from './models.js';
 import type { HiddenModels, ModelCatalog, ModelChoice } from './models.js';
 import type { PreparedWorktree } from './prompt.js';
+import type { T3HandOffSnapshot } from './handOffTracking.js';
 
 const run = promisify(execFile);
 
@@ -107,6 +108,15 @@ export interface HandOffResult {
   notice: string | null;
   /** Filled when even the clipboard failed. */
   error: string | null;
+  /** Server-only metadata for durable tracking; callers should keep it out of the renderer response. */
+  tracking: T3HandOffMetadata | null;
+}
+
+export interface T3HandOffMetadata {
+  environmentId: string | null;
+  projectId: string;
+  branch: string | null;
+  worktreePath: string | null;
 }
 
 export interface HandOffInput {
@@ -122,7 +132,11 @@ export interface HandOffInput {
 
 /** Each rung of the ladder, injectable so the fallback order can be tested without T3 Code. */
 export interface HandOffSteps {
-  startThread: (input: HandOffInput & { workspaceRoot: string }) => Promise<{ threadId: string; prompt: string }>;
+  startThread: (input: HandOffInput & { workspaceRoot: string }) => Promise<{
+    threadId: string;
+    prompt: string;
+    tracking?: T3HandOffMetadata;
+  }>;
   openApp: (workspaceRoot: string) => Promise<void>;
   copy: (text: string) => Promise<void>;
 }
@@ -140,8 +154,8 @@ export async function handOff(input: HandOffInput, steps: HandOffSteps): Promise
     notice = 'T3 Code needs a local clone of this repo to start a thread.';
   } else {
     try {
-      const { threadId, prompt } = await steps.startThread({ ...input, workspaceRoot: input.workspaceRoot });
-      return { rung: 'thread', copied: false, threadId, prompt, notice: null, error: null };
+      const { threadId, prompt, tracking } = await steps.startThread({ ...input, workspaceRoot: input.workspaceRoot });
+      return { rung: 'thread', copied: false, threadId, prompt, notice: null, error: null, tracking: tracking ?? null };
     } catch (error) {
       notice = `Could not start the thread (${(error as Error).message}).`;
     }
@@ -159,13 +173,13 @@ export async function handOff(input: HandOffInput, steps: HandOffSteps): Promise
   if (input.workspaceRoot !== null) {
     try {
       await steps.openApp(input.workspaceRoot);
-      return { rung: 'app', copied, threadId: null, prompt: plain, notice: `${notice} Opened a new thread; paste the prompt.`, error };
+      return { rung: 'app', copied, threadId: null, prompt: plain, notice: `${notice} Opened a new thread; paste the prompt.`, error, tracking: null };
     } catch {
       // Desktop app not running or too old for the control socket. The clipboard still has it.
     }
   }
 
-  return { rung: copied ? 'clipboard' : null, copied, threadId: null, prompt: plain, notice, error };
+  return { rung: copied ? 'clipboard' : null, copied, threadId: null, prompt: plain, notice, error, tracking: null };
 }
 
 /** Bring T3 Code forward. A second launch of the desktop app just focuses the first. */
@@ -247,6 +261,28 @@ export class T3HandOff {
       .map((project) => project.workspaceRoot);
   }
 
+  async readHandOffSnapshot(): Promise<T3HandOffSnapshot> {
+    const runtime = await detectT3();
+    const { api, origin } = await this.connect(runtime);
+    const [snapshot, descriptor] = await Promise.all([
+      api.shell(),
+      api.environment().catch(() => null),
+    ]);
+    const environment = typeof descriptor === 'object' && descriptor !== null ? descriptor as Record<string, unknown> : null;
+    const environmentId = typeof environment?.['environmentId'] === 'string' ? environment['environmentId'] : null;
+    return { environmentId, origin, snapshot };
+  }
+
+  async subscribeShell(
+    afterSequence: number | null,
+    onValue: (value: unknown) => void,
+    onClose: () => void,
+  ): Promise<() => void> {
+    const runtime = await detectT3();
+    const { api } = await this.connect(runtime);
+    return api.subscribeShell(afterSequence, onValue, onClose);
+  }
+
   steps(runtime: T3Runtime): HandOffSteps {
     return {
       startThread: async (input) => {
@@ -301,7 +337,18 @@ export class T3HandOff {
           throw error;
         }
         reveal(command, origin);
-        return { threadId, prompt };
+        const descriptor = await api.environment().catch(() => null);
+        const environment = typeof descriptor === 'object' && descriptor !== null ? descriptor as Record<string, unknown> : null;
+        return {
+          threadId,
+          prompt,
+          tracking: {
+            environmentId: typeof environment?.['environmentId'] === 'string' ? environment['environmentId'] : null,
+            projectId,
+            branch: worktree?.branch ?? null,
+            worktreePath: worktree?.path ?? null,
+          },
+        };
       },
       openApp: (workspaceRoot) =>
         openWorkspace(

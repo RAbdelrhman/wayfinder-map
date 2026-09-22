@@ -8,6 +8,7 @@ import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver } from './workspaces.js';
 import type { WorkspaceDependencies } from './workspaces.js';
 import type { Ticket, WayfinderMap } from './types.js';
+import { HandOffStore } from './handOffTracking.js';
 
 const config: Config = {
   repo: null,
@@ -358,6 +359,7 @@ describe('local clone for a hand-off', () => {
       t3,
       fetcher: async () => ({ maps: [sampleMap], warnings: [] }),
       homeLoader: async () => home,
+      handOffStore: new HandOffStore({ filePath: null }),
       ...options,
     });
   }
@@ -443,6 +445,101 @@ describe('local clone for a hand-off', () => {
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({ rung: 'thread' });
       expect(startThread).toHaveBeenCalledWith(expect.objectContaining({ workspaceRoot: '/clone' }));
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('records ticket hand-offs and exposes current T3 status through /api/hand-offs', async () => {
+    const trackingT3: ServerT3 = {
+      ...t3,
+      steps: () => ({
+        startThread: async () => ({ threadId: 'tracked-thread', prompt: 'do not expose this prompt' }),
+        openApp: async () => undefined,
+        copy: async () => undefined,
+      }),
+      readHandOffSnapshot: async () => ({
+        environmentId: 't3-env',
+        origin: 'http://127.0.0.1:3773',
+        snapshot: {
+          snapshotSequence: 8,
+          threads: [
+            {
+              id: 'tracked-thread',
+              projectId: 't3-project',
+              branch: 'wayfinder/11-retire-api-agents-2',
+              session: { status: 'running' },
+              pullRequests: [{ number: 42, url: 'https://github.com/octo/one/pull/42', state: 'open' }],
+            },
+          ],
+        },
+      }),
+      subscribeShell: async () => () => undefined,
+    };
+    const running = await serve({ t3: trackingT3, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+
+    try {
+      const handOffResponse = await fetch(`${running.url}/api/repos/octo/one/hand-off`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ map: 5, ticket: 11 }),
+      });
+      expect(handOffResponse.status).toBe(200);
+      await expect(handOffResponse.json()).resolves.toMatchObject({ rung: 'thread', threadId: 'tracked-thread', handOffId: expect.any(String) });
+
+      const statusResponse = await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } });
+      const status = (await statusResponse.json()) as { handOffs: Array<Record<string, unknown>>; t3: { available: boolean } };
+      expect(statusResponse.status).toBe(200);
+      expect(status.t3.available).toBe(true);
+      expect(status.handOffs).toMatchObject([
+        {
+          repo: 'octo/one',
+          mapNumber: 5,
+          ticketNumber: 11,
+          threadId: 'tracked-thread',
+          status: 'running',
+          stale: false,
+          branch: 'wayfinder/11-retire-api-agents-2',
+          pullRequests: [{ number: 42, url: 'https://github.com/octo/one/pull/42' }],
+        },
+      ]);
+      expect(JSON.stringify(status)).not.toContain('do not expose this prompt');
+      expect(status.handOffs[0]).not.toHaveProperty('worktreePath');
+      expect(status.handOffs[0]).not.toHaveProperty('environmentId');
+      expect(status.handOffs[0]).not.toHaveProperty('projectId');
+      expect(status.handOffs[0]).not.toHaveProperty('lastError');
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('records a T3-down hand-off as untracked without failing the copy fallback', async () => {
+    const steps = {
+      startThread: async (): Promise<never> => {
+        throw new Error('T3 Code is not running');
+      },
+      openApp: async (): Promise<never> => {
+        throw new Error('desktop app is not running');
+      },
+      copy: async () => undefined,
+    };
+    const running = await serve({
+      t3: { ...t3, steps: () => steps },
+      workspaces: resolver({ '/clone': '/clone' }, ['/clone']),
+    });
+
+    try {
+      const handOffResponse = await fetch(`${running.url}/api/repos/octo/one/hand-off`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ map: 5, ticket: 11 }),
+      });
+      await expect(handOffResponse.json()).resolves.toMatchObject({ rung: 'clipboard', handOffId: expect.any(String) });
+      const statusResponse = await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } });
+      await expect(statusResponse.json()).resolves.toMatchObject({
+        t3: { available: false },
+        handOffs: [{ status: 'untracked', stale: false, threadId: null }],
+      });
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }
