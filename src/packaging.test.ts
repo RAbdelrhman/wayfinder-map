@@ -44,6 +44,8 @@ describe('Windows packaging contract', () => {
     expect(workflow).toContain('WIN_CSC_LINK');
     expect(workflow).toContain("prerelease: ${{ contains(github.ref_name, '-') }}");
     expect(smoke).toContain('WAYFINDER_SMOKE_FILE');
+    expect(smoke).toContain("'/currentuser'");
+    expect(smoke).toContain('delete appEnvironment.ELECTRON_RUN_AS_NODE');
     expect(smoke).toContain("marker.route !== '/' || marker.homeStatus !== 200");
     expect(smoke).toContain('Wayfinder left its loopback server listening');
   });

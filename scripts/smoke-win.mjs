@@ -20,11 +20,21 @@ const installer = join(releaseDir, installerName);
 const installDir = join(tmpdir(), `wayfinder-smoke-${process.pid}`);
 const markerPath = join(tmpdir(), `wayfinder-smoke-${process.pid}.json`);
 
-function run(command, args) {
+function run(command, args, timeoutMs = 120_000) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd: root, stdio: 'inherit', windowsHide: true });
-    child.once('error', reject);
-    child.once('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${command} exited with ${String(code)}`))));
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error(`${command} did not finish within ${String(timeoutMs)}ms.`));
+    }, timeoutMs);
+    child.once('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once('exit', (code) => {
+      clearTimeout(timeout);
+      code === 0 ? resolve() : reject(new Error(`${command} exited with ${String(code)}`));
+    });
   });
 }
 
@@ -38,7 +48,13 @@ function waitForExit(child, timeoutMs) {
   });
 }
 
-async function waitForMarker(timeoutMs) {
+async function waitForMarker(child, timeoutMs, diagnostics) {
+  const exited = new Promise((_, reject) => {
+    child.once('exit', (code, signal) => {
+      reject(new Error(`Wayfinder exited before reaching Home (code=${String(code)}, signal=${String(signal)}): ${diagnostics()}`));
+    });
+  });
+  const poll = (async () => {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     try {
@@ -48,6 +64,8 @@ async function waitForMarker(timeoutMs) {
     }
   }
   throw new Error('Wayfinder did not report reaching Home.');
+  })();
+  return Promise.race([poll, exited]);
 }
 
 async function assertPortClosed(port) {
@@ -70,20 +88,31 @@ async function assertPortClosed(port) {
   });
 }
 
+async function removeTemporaryDirectory(path) {
+  await rm(path, { recursive: true, force: true, maxRetries: 20, retryDelay: 500 });
+}
+
 let appProcess;
 try {
-  await rm(installDir, { recursive: true, force: true });
+  await removeTemporaryDirectory(installDir);
   await rm(markerPath, { force: true });
-  await run(installer, ['/S', `/D=${installDir}`]);
+  await run(installer, ['/S', '/currentuser', `/D=${installDir}`]);
   const executable = join(installDir, 'Wayfinder.exe');
   await access(executable);
+  const appEnvironment = { ...process.env, WAYFINDER_SMOKE_FILE: markerPath };
+  // T3 Code sets this for Electron-hosted Node commands; a packaged desktop launch
+  // must not inherit it or Electron exits as a Node process without opening the app.
+  delete appEnvironment.ELECTRON_RUN_AS_NODE;
   appProcess = spawn(executable, [], {
     cwd: installDir,
-    env: { ...process.env, WAYFINDER_SMOKE_FILE: markerPath },
-    stdio: 'ignore',
+    env: appEnvironment,
+    stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
-  const marker = await waitForMarker(90_000);
+  const output = [];
+  appProcess.stdout.on('data', (chunk) => output.push(chunk.toString()));
+  appProcess.stderr.on('data', (chunk) => output.push(chunk.toString()));
+  const marker = await waitForMarker(appProcess, 90_000, () => output.join('').trim().slice(-2_000));
   if (marker.route !== '/' || marker.homeStatus !== 200) {
     throw new Error(`Packaged app reached an unexpected Home state: ${JSON.stringify(marker)}`);
   }
@@ -98,6 +127,6 @@ try {
   if (appProcess !== undefined && appProcess.exitCode === null) appProcess.kill();
   throw error;
 } finally {
-  await rm(installDir, { recursive: true, force: true });
+  await removeTemporaryDirectory(installDir);
   await rm(markerPath, { force: true });
 }
