@@ -91,11 +91,11 @@ window.CANVAS = {
       sections: [
         {
           title: 'Open sidebar',
-          note: 'Home and /new-map are C1 and C4. Repository, Prototypes and the map get B’s topbar (B2, B3, B5) next to the sidebar.',
+          note: 'Home and /new-map are C1 and C4. The repository and map pages get B’s topbar next to the sidebar. Prototypes belong to a map: they are a tab on the map, not a repository page.',
           items: [
             { id: 'D1', name: 'D · Home', src: 'variants/nav-d.html?view=home', note: 'C1 as it was.' },
-            { id: 'D2', name: 'D · Repository', src: 'variants/nav-d.html?view=repo', note: { idea: 'The sidebar shows the repository as your location; the topbar adds the repository switcher and Maps | Prototypes tabs.', cons: ['Two blue buttons: the sidebar’s “Start a new map” and B’s “New map in wayfinder-map”'] } },
-            { id: 'D3', name: 'D · Prototypes', src: 'variants/nav-d.html?view=protos', note: 'B3’s Prototypes tab, with the repository’s Prototypes row lit in the tree.' },
+            { id: 'D2', name: 'D · Repository', src: 'variants/nav-d.html?view=repo', note: { idea: 'The sidebar shows the repository as your location; the topbar has the repository switcher and no tabs, since a repository is just its maps.', cons: ['Two blue buttons: the sidebar’s “Start a new map” and B’s “New map in wayfinder-map”'] } },
+            { id: 'D3', name: 'D · Map prototypes', src: 'variants/nav-d.html?view=map&mapview=prototypes&side=open', note: 'Prototypes live with their map: the map’s Prototypes tab, counting only that map’s prototypes. There is no repository-level Prototypes row or page.' },
             { id: 'D4', name: 'D · New map', src: 'variants/nav-d.html?view=new', note: 'C4 as it was: the sidebar button stays put and the tree keeps your repository open.' },
             { id: 'D6', name: 'D · Map, sidebar open', src: 'variants/nav-d.html?view=map&side=open', note: 'B5’s topbar with the sidebar open. The tree lights the map; the views are topbar tabs, so the tree no longer lists them.' },
           ],

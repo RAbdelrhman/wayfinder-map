@@ -394,7 +394,7 @@
           const kids = open
             ? `<div class="kids">${r.maps
                 .map((m) => row(goMap(r, m), `${NAV.miniRing(m.counts)}<span class="grow">#${m.number} ${esc(m.title)}</span>`, here && s.view === 'map' && s.map === m.number ? ' is-on' : ''))
-                .join('')}${row(goRepo(r, 'protos'), `${icon('beaker')}<span class="grow">Prototypes</span><span class="nv-meta">${r.prototypes.length}</span>`, here && s.view === 'protos' ? ' is-on' : '')}</div>`
+                .join('')}</div>`
             : '';
           return row(goRepo(r), `${twist}${repoMark(r)}<span class="grow">${esc(short(r.name))}</span>`, here && s.view === 'repo' ? ' is-on' : here ? ' is-trail' : '') + kids;
         }).join('');
@@ -429,8 +429,7 @@
                 (m) =>
                   `<button type="button" class="menu-item${here && s.view === 'map' && s.map === m.number ? ' is-on' : ''}" ${goMap(r, m)}>${NAV.miniRing(m.counts)}<span class="grow">#${m.number} ${esc(m.title)}</span></button>`,
               )
-              .join('')}
-            <button type="button" class="menu-item${here && s.view === 'protos' ? ' is-on' : ''}" ${goRepo(r, 'protos')}>${icon('beaker')}<span class="grow">Prototypes</span><span class="nv-meta">${r.prototypes.length}</span></button>`;
+              .join('')}`;
           return `<span class="menu-anchor"><button type="button" class="rail-btn${here ? ' is-here' : ''}" data-menu="mini-${esc(r.mark)}" data-tip="${esc(short(r.name))}" aria-label="${esc(r.name)}" aria-haspopup="menu" aria-expanded="false">${repoMark(r)}</button>
             <div class="menu is-side" data-menu-for="mini-${esc(r.mark)}" hidden>${items}</div></span>`;
         }).join('');
@@ -455,20 +454,15 @@
         const repo = repoOf(s.repo);
         const tab = (label, ic, attrs, on, badge = '') =>
           `<a class="seg${on ? ' is-on' : ''}" href="#" ${attrs}${on ? ' aria-current="page"' : ''}>${icon(ic)}${label}${badge}</a>`;
-        if (s.view === 'repo' || s.view === 'protos')
-          return `<nav class="segmented" aria-label="Repository views">${tab('Maps', 'graph', goRepo(repo), s.view === 'repo', ` <span class="badge">${repo.maps.length}</span>`)}${tab(
-            'Prototypes',
-            'beaker',
-            goRepo(repo, 'protos'),
-            s.view === 'protos',
-            ` <span class="badge">${repo.prototypes.length}</span>`,
-          )}</nav>`;
+        // Prototypes belong to a map, so only a map has views; a repository is just its maps.
+        if (s.view !== 'map') return '';
         const map = mapOf(repo, s.map);
         return `<nav class="segmented" aria-label="Map views">${tab('Map', 'graph', goMap(repo, map, 'map'), s.mapView === 'map')}${tab('Table', 'table', goMap(repo, map, 'table'), s.mapView === 'table')}${tab(
           'Prototypes',
           'beaker',
           goMap(repo, map, 'prototypes'),
           s.mapView === 'prototypes',
+          ` <span class="badge">${repo.prototypes.filter((p) => p.map === map.number).length}</span>`,
         )}</nav>`;
       }
 
@@ -476,7 +470,7 @@
         const repo = repoOf(s.repo);
         const repoBtn = `<span class="menu-anchor"><button type="button" class="scope${s.view === 'map' ? ' is-quiet' : ''}" data-menu="repos" aria-haspopup="menu" aria-expanded="false">
           ${repoMark(repo, 20)}<span class="t">${esc(s.view === 'map' ? short(repo.name) : repo.name)}</span>${icon('chevron')}</button>
-          <div class="menu" data-menu-for="repos" hidden><div class="menu-label">Switch repository</div>${NAV.repoMenu(s, s.view === 'protos' ? 'protos' : 'repo')}</div></span>`;
+          <div class="menu" data-menu-for="repos" hidden><div class="menu-label">Switch repository</div>${NAV.repoMenu(s)}</div></span>`;
         if (s.view !== 'map') return repoBtn;
         const map = mapOf(repo, s.map);
         return `${repoBtn}<span class="crumb-sep">/</span><span class="menu-anchor"><button type="button" class="scope" data-menu="maps" aria-haspopup="menu" aria-expanded="false">
@@ -487,7 +481,7 @@
       // B's context-following button, kept as built so it can be judged next to the sidebar's own "Start a new map".
       function cta(s) {
         const repo = repoOf(s.repo);
-        if (s.view === 'repo' || s.view === 'protos') return `<a class="primary" href="#" ${goRepo(repo, 'new')}>${icon('plus')}New map in ${esc(short(repo.name))}</a>`;
+        if (s.view === 'repo') return `<a class="primary" href="#" ${goRepo(repo, 'new')}>${icon('plus')}New map in ${esc(short(repo.name))}</a>`;
         const next = NAV.nextTicket(s);
         return next ? `<a class="primary" href="#" data-to="T3 Code with ticket #${next.number}" title="${esc(next.title)}">${icon('play')}Start #${next.number} in T3 Code</a>` : '';
       }
@@ -503,7 +497,7 @@
 
       NAV.start((s, body) => {
         const open = !isFolded(s);
-        const content = s.view === 'map' ? body : `<main class="page">${s.view === 'repo' || s.view === 'protos' ? NAV.body(s, { head: false }) : body}</main>`;
+        const content = s.view === 'map' ? body : `<main class="page">${s.view === 'repo' ? NAV.body(s, { head: false }) : body}</main>`;
         return `<div class="app${open ? ' has-side' : ''}">${open ? side(s) : mini(s)}<div class="main">${topbar(s)}${content}</div></div>`;
       });
     </script>
