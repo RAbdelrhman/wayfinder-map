@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>C · Ledger</title>
+    <!-- PROTOTYPE (#43), direction C: Ledger. Dense, list-first and keyboard-led: one line per thing with its action
+         at the end of the line, tables for maps, list-detail for prototypes. Progress is a fog bar plus a 12-week strip. -->
+    <link rel="stylesheet" href="../assets/app.css" />
+    <link rel="stylesheet" href="shell.css" />
+    <style>
+      .c-sheet {
+        width: min(1120px, 100%);
+        margin: 0 auto;
+        padding: 22px 28px 80px;
+        box-sizing: border-box;
+      }
+      .c-cols {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 300px;
+        gap: 28px;
+        align-items: start;
+      }
+      .c-left {
+        display: grid;
+        gap: 26px;
+      }
+      .c-h {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 28px;
+        margin-bottom: 4px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+      .c-h .n {
+        font-weight: 500;
+        color: var(--text-muted);
+      }
+      .c-h .grow {
+        flex: 1;
+      }
+      .c-h .hint {
+        margin: 0;
+        font-weight: 400;
+        font-size: 11.5px;
+        color: var(--text-muted);
+      }
+      kbd.c-k {
+        display: inline-grid;
+        place-items: center;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 4px;
+        box-sizing: border-box;
+        border: 1px solid var(--hairline);
+        border-bottom-width: 2px;
+        border-radius: 5px;
+        background: var(--surface-1);
+        font: 600 10.5px system-ui, sans-serif;
+        color: var(--text-secondary);
+      }
+      .c-list {
+        border-top: 1px solid var(--hairline);
+      }
+      .c-row {
+        display: grid;
+        grid-template-columns: 22px minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 12px;
+        min-height: 40px;
+        padding: 0 8px;
+        border-bottom: 1px solid var(--hairline);
+        color: inherit;
+        text-decoration: none;
+        font-size: 13px;
+      }
+      .c-row:hover,
+      .c-row.is-cursor {
+        background: var(--wash);
+      }
+      .c-row.is-cursor {
+        box-shadow: inset 2px 0 0 var(--state-claimed);
+      }
+      .c-row .i {
+        width: 15px;
+        height: 15px;
+      }
+      .c-row .t {
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .c-row .t b {
+        font-weight: 600;
+      }
+      .c-row .t span {
+        color: var(--text-muted);
+      }
+      .c-row .m {
+        font-size: 12px;
+        color: var(--text-muted);
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      .c-act {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 24px;
+        padding: 0 8px;
+        border: 1px solid var(--hairline);
+        border-radius: 6px;
+        background: var(--surface-1);
+        font-size: 12px;
+        font-weight: 550;
+        color: var(--text-primary);
+        white-space: nowrap;
+      }
+      .c-row:hover .c-act {
+        border-color: var(--state-claimed);
+        color: var(--state-claimed);
+      }
+      .c-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        justify-self: center;
+        background: var(--c);
+      }
+      .c-dot.is-live {
+        animation: c-blink 1.6s ease-in-out infinite;
+      }
+      @keyframes c-blink {
+        50% {
+          opacity: 0.3;
+        }
+      }
+      .c-group {
+        padding: 10px 8px 4px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--hairline);
+      }
+      .c-quiet {
+        padding: 12px 8px;
+        color: var(--text-muted);
+        font-size: 12.5px;
+        border-bottom: 1px solid var(--hairline);
+      }
+
+      /* Continue: one strong line */
+      .c-continue {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 16px;
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        background: var(--surface-1);
+        color: inherit;
+        text-decoration: none;
+      }
+      a.c-continue:hover {
+        border-color: var(--state-claimed);
+      }
+      .c-continue .t {
+        min-width: 0;
+      }
+      .c-continue .t p {
+        margin: 0;
+        font-size: 11.5px;
+        color: var(--text-muted);
+      }
+      .c-continue .t strong {
+        display: block;
+        margin-top: 3px;
+        font-size: 15px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .c-continue .t span {
+        display: block;
+        margin-top: 3px;
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .c-continue .go {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .c-continue .nv-ring-sm,
+      .c-continue .nv-ring-sm svg {
+        width: 40px;
+        height: 40px;
+      }
+      .c-warn {
+        border-color: color-mix(in srgb, var(--state-blocked) 60%, transparent);
+        background: color-mix(in srgb, var(--state-blocked) 9%, var(--surface-1));
+      }
+      .c-warn code {
+        padding: 2px 6px;
+        border-radius: 5px;
+        background: var(--surface-1);
+        border: 1px solid var(--hairline);
+        font-size: 12px;
+      }
+
+      .c-search {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .c-search .search {
+        flex: 1;
+        width: auto;
+        height: 34px;
+      }
+      .c-search .ghost {
+        height: 34px;
+      }
+
+      /* Progress */
+      .c-prog {
+        position: sticky;
+        top: 20px;
+      }
+      .c-nums {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border: 1px solid var(--hairline);
+        border-radius: 10px;
+        background: var(--surface-1);
+        overflow: hidden;
+      }
+      .c-nums div {
+        padding: 10px 12px;
+        border-right: 1px solid var(--hairline);
+      }
+      .c-nums div:last-child {
+        border-right: 0;
+      }
+      .c-nums b {
+        display: block;
+        font-size: 20px;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+      }
+      .c-nums span {
+        font-size: 11.5px;
+        color: var(--text-muted);
+      }
+      /* the fog bar: the goal is the width; done tickets burn the fog off from the left */
+      .c-fogbar {
+        position: relative;
+        height: 34px;
+        margin-top: 12px;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--hairline);
+        background:
+          repeating-linear-gradient(90deg, transparent 0 calc(20% - 1px), var(--hairline) calc(20% - 1px) 20%),
+          linear-gradient(90deg, color-mix(in srgb, var(--state-frontier) 60%, var(--surface-1)), color-mix(in srgb, var(--state-frontier) 35%, var(--surface-1)));
+      }
+      .c-fogbar::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        right: 0;
+        left: calc(var(--p) * 100% - 18px);
+        background: linear-gradient(90deg, transparent, var(--plane) 18px);
+        opacity: 0.96;
+      }
+      .c-fogbar span {
+        position: absolute;
+        z-index: 1;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .c-weeks {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        grid-auto-flow: column;
+        grid-template-rows: repeat(7, 1fr);
+        gap: 3px;
+        margin-top: 16px;
+      }
+      .c-weeks i {
+        aspect-ratio: 1;
+        border-radius: 2px;
+        background: color-mix(in srgb, var(--state-frontier) calc(var(--v) * 75%), var(--wash));
+      }
+      .c-weeks i.is-today {
+        outline: 1.5px solid var(--state-claimed);
+      }
+      .c-cap {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 6px;
+        font-size: 11.5px;
+        color: var(--text-muted);
+      }
+      .c-goal {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid var(--hairline);
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .c-goal .grow {
+        flex: 1;
+      }
+
+      /* Repository page: a table */
+      .c-top {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .c-top h1 {
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: -0.01em;
+      }
+      .c-top .grow {
+        flex: 1;
+      }
+      .c-top .search {
+        width: 260px;
+        height: 32px;
+      }
+      .c-seg {
+        display: inline-flex;
+        gap: 2px;
+        padding: 2px;
+        border-radius: 8px;
+        background: var(--wash);
+      }
+      .c-seg button {
+        height: 26px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        font: inherit;
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .c-seg button.is-on {
+        background: var(--surface-1);
+        color: var(--text-primary);
+        font-weight: 600;
+        box-shadow: var(--shadow-segment);
+      }
+      .c-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      .c-table th {
+        height: 32px;
+        padding: 0 10px;
+        text-align: left;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--hairline);
+      }
+      .c-table td {
+        height: 52px;
+        padding: 0 10px;
+        border-bottom: 1px solid var(--hairline);
+        vertical-align: middle;
+      }
+      .c-table tr[data-view] {
+        cursor: pointer;
+      }
+      .c-table tbody tr:hover {
+        background: var(--wash);
+      }
+      .c-table .num {
+        color: var(--text-muted);
+        font-variant-numeric: tabular-nums;
+        width: 44px;
+      }
+      .c-table .title b {
+        display: block;
+        font-weight: 600;
+      }
+      .c-table .title span {
+        display: block;
+        margin-top: 2px;
+        max-width: 380px;
+        font-size: 12px;
+        color: var(--text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .c-bar {
+        display: flex;
+        width: 120px;
+        height: 6px;
+        border-radius: 3px;
+        overflow: hidden;
+        background: var(--wash);
+      }
+      .c-bar i {
+        display: block;
+        height: 100%;
+      }
+      .c-prog-cell {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--text-secondary);
+        font-variant-numeric: tabular-nums;
+      }
+      .c-next {
+        max-width: 240px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--text-secondary);
+        font-size: 12.5px;
+      }
+      .c-muted {
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+      .c-table tr.is-closed td {
+        color: var(--text-muted);
+      }
+      .c-blank {
+        padding: 40px 16px;
+        text-align: center;
+        border: 1px dashed var(--baseline);
+        border-radius: 12px;
+      }
+      .c-blank p {
+        margin: 6px 0 16px;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      .c-blank .primary {
+        text-decoration: none;
+      }
+
+      /* Prototypes tab: list and detail */
+      .c-split {
+        display: grid;
+        grid-template-columns: 340px minmax(0, 1fr);
+        height: 100%;
+        min-height: 0;
+      }
+      .c-split > nav {
+        overflow: auto;
+        border-right: 1px solid var(--hairline);
+        background: var(--surface-1);
+      }
+      .c-split > nav .c-h {
+        padding: 12px 14px 4px;
+        height: auto;
+      }
+      .c-pl {
+        display: grid;
+        grid-template-columns: 10px minmax(0, 1fr);
+        gap: 4px 10px;
+        padding: 11px 14px;
+        border-bottom: 1px solid var(--hairline);
+        color: inherit;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .c-pl:hover {
+        background: var(--wash);
+      }
+      .c-pl.is-on {
+        background: color-mix(in srgb, var(--state-claimed) 10%, transparent);
+        box-shadow: inset 3px 0 0 var(--state-claimed);
+      }
+      .c-pl .c-dot {
+        margin-top: 5px;
+      }
+      .c-pl b {
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.35;
+      }
+      .c-pl span:not(.c-dot) {
+        grid-column: 2;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .c-detail {
+        overflow: auto;
+        padding: 22px 28px 60px;
+      }
+      .c-detail h2 {
+        margin: 6px 0 0;
+        font-size: 19px;
+        line-height: 1.3;
+      }
+      .c-detail .gist {
+        margin: 8px 0 0;
+        max-width: 70ch;
+        color: var(--text-secondary);
+        font-size: 13.5px;
+        line-height: 1.5;
+      }
+      .c-detail .acts {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      .c-detail .acts a {
+        text-decoration: none;
+      }
+      .c-vars {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 16px;
+        margin-top: 22px;
+      }
+      .c-vars a {
+        display: grid;
+        gap: 8px;
+        color: inherit;
+        text-decoration: none;
+        font-size: 13px;
+      }
+      .c-vars a:hover .wf-frame {
+        border-color: var(--state-claimed);
+      }
+      .c-vars .is-picked .wf-frame {
+        outline: 2px solid var(--state-frontier);
+        outline-offset: 2px;
+      }
+      .c-vars .lbl {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .c-vars .lbl .i {
+        width: 13px;
+        height: 13px;
+        color: var(--state-frontier);
+      }
+      .c-facts {
+        display: grid;
+        grid-template-columns: 120px 1fr;
+        gap: 8px 16px;
+        margin-top: 26px;
+        padding-top: 16px;
+        border-top: 1px solid var(--hairline);
+        font-size: 13px;
+      }
+      .c-facts dt {
+        color: var(--text-muted);
+      }
+      .c-facts dd {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="data.js"></script>
+    <script src="shell.js"></script>
+    <script>
+      const { icon, esc, repoOf, mapOf, short, repoMark, go, goRepo, goMap, goItem, KINDS, REPOS, STATES } = WF;
+      const k = (key) => `<kbd class="c-k">${key}</kbd>`;
+
+      /* ---------- Home ---------- */
+
+      function continueLine() {
+        if (!WF.SIGNED_IN)
+          return `<div class="c-continue c-warn" role="alert"><span style="color:color-mix(in srgb, var(--state-blocked) 70%, var(--text-primary))">${icon('warn')}</span>
+            <span class="t"><p>Action needed</p><strong>gh is signed out</strong><span>Run <code>gh auth login</code>, then check again. Maps, in-flight work and progress need it; repositories are from the last sync.</span></span>
+            <button type="button" class="primary" data-to="a new gh check">${icon('refresh')}Check again</button></div>`;
+        const c = WF.CONTINUE;
+        if (!c)
+          return `<a class="c-continue" href="#" data-to="Start a new map (#44)"><span style="color:var(--state-claimed)">${icon('plus')}</span>
+            <span class="t"><p>Nothing to continue yet</p><strong>Start your first map</strong><span>Describe a destination. T3 Code drafts the tickets with you.</span></span><span class="go">${k('N')}</span></a>`;
+        const repo = repoOf(c.repo);
+        const map = mapOf(repo, c.map);
+        if (c.kind === 'handoff')
+          return `<a class="c-continue" href="#" data-to="the T3 Code thread for #${c.ticket}"><span class="c-dot is-live" style="--c: var(--state-frontier);width:10px;height:10px"></span>
+            <span class="t"><p>Continue · your latest hand-off · ${esc(c.since)}</p><strong>#${c.ticket} ${esc(c.title)}</strong><span>${esc(c.status)} · ${esc(short(repo.name))} · map #${map.number}</span></span>
+            <span class="go">Open in T3 Code ${k('↵')}</span></a>`;
+        return `<a class="c-continue" href="#" ${goMap(repo, map)}><span class="ring nv-ring-sm">${WF.ring(map.counts, 40, 5)}</span>
+          <span class="t"><p>Continue · ${esc(short(repo.name))} · opened ${esc(c.since)}</p><strong>#${map.number} ${esc(map.title)}</strong><span>Next up #${map.next[0]} ${esc(map.next[1])}</span></span>
+          <span class="go">Open ${k('↵')}</span></a>`;
+      }
+
+      const ACTION = { pick: 'Pick', review: 'Review', input: 'Answer', decide: 'Decide', running: 'Watch' };
+      function flyRow(it, i) {
+        const kd = KINDS[it.kind];
+        return `<a class="c-row${i === 0 ? ' is-cursor' : ''}" href="#" ${goItem(it)}><span class="c-dot${kd.needs ? '' : ' is-live'}" style="--c: var(${kd.needs ? '--state-claimed' : '--state-frontier'})"></span>
+          <span class="t"><b>${esc(it.title)}</b> <span>· ${esc(it.detail)} · ${esc(short(it.repo))} #${it.ticket}</span></span><span class="m">${esc(it.age)}</span><span class="c-act">${ACTION[it.kind]}</span></a>`;
+      }
+
+      function inflight() {
+        const list = WF.INFLIGHT;
+        const needs = list.filter((i) => KINDS[i.kind].needs);
+        const running = list.filter((i) => !KINDS[i.kind].needs);
+        const body = !WF.SIGNED_IN
+          ? '<div class="c-quiet">Needs gh. Nothing to show while signed out.</div>'
+          : list.length
+            ? `${needs.length ? `<div class="c-group">Needs you · ${needs.length}</div>${needs.map(flyRow).join('')}` : ''}${running.length ? `<div class="c-group">Running · ${running.length}</div>${running.map((r) => flyRow(r, 1)).join('')}` : ''}`
+            : '<div class="c-quiet">Nothing in flight.</div>';
+        return `<section><div class="c-h">In flight <span class="n">${list.length || ''}</span><span class="grow"></span><p class="hint">${k('J')} ${k('K')} move · ${k('↵')} open</p></div><div class="c-list">${body}</div></section>`;
+      }
+
+      function repos() {
+        const rows = REPOS.map(
+          (r) => `<a class="c-row" href="#" ${goRepo(r)} data-name="${esc(r.name)}">${repoMark(r, 20)}<span class="t"><b>${esc(r.name)}</b></span>
+            <span class="m">${r.maps.length ? `${r.maps.length} map${r.maps.length === 1 ? '' : 's'} · ${WF.openTickets(r)} open` : 'no maps'}</span><span class="m" style="width:84px;text-align:right">${esc(r.opened)}</span></a>`,
+        ).join('');
+        return `<section data-filter-scope><div class="c-h">Repositories <span class="n">${REPOS.length || ''}</span><span class="grow"></span><p class="hint">${k('/')} search · ${k('N')} new map</p></div>
+          <div class="c-search"><label class="search">${icon('lens')}<input type="search" data-filter placeholder="Filter, or owner/name ↵ to open any repository" /></label><a class="ghost" href="#" data-to="Start a new map (#44)">${icon('plus')}New map</a></div>
+          <div class="c-list">${REPOS.length ? rows : '<div class="c-quiet">No repositories yet. Type owner/name above and press Enter.</div>'}<div class="c-quiet" data-filter-none hidden>Nothing matches “<b></b>”. Press Enter to open it.</div></div></section>`;
+      }
+
+      function progress() {
+        const blank = WF.TODAY === null;
+        const goal = WF.GOAL;
+        const done = WF.TODAY ?? 0;
+        const hist = WF.HISTORY ?? [];
+        const week = hist.slice(-7).reduce((a, b) => a + b, 0);
+        const all = [...Array(84 - hist.length).fill(null), ...hist];
+        const cells = all.map((n, i) => `<i style="--v:${n === null ? 0 : Math.min(1, n / goal).toFixed(2)}"${i === 83 && !blank ? ' class="is-today"' : ''}></i>`).join('');
+        return `<aside class="c-prog"><div class="c-h">Progress<span class="grow"></span><span class="hint" style="font-weight:400;color:var(--text-muted);font-size:11.5px">Wayfinder tickets you closed</span></div>
+          <div class="c-nums"><div><b>${blank ? '–' : done}</b><span>today</span></div><div><b>${blank ? '–' : week}</b><span>this week</span></div><div><b>${blank ? '–' : WF.STREAK}</b><span>day streak</span></div></div>
+          <div class="c-fogbar" style="--p:${blank ? 0 : Math.min(1, done / goal)}" role="img" aria-label="${done} of ${goal} cleared"><span>${blank ? 'Sign in to count' : done >= goal ? 'Fog cleared' : `${goal - done} to clear`}</span></div>
+          <div class="c-weeks" aria-label="12 weeks">${cells}</div><div class="c-cap"><span>12 weeks ago</span><span>Today</span></div>
+          <div class="c-goal"><span class="grow">Daily goal</span><span class="c-seg">${[3, 5, 8].map((g) => `<button type="button" class="${g === goal ? 'is-on' : ''}" data-to="a goal of ${g}">${g}</button>`).join('')}</span></div></aside>`;
+      }
+
+      function home() {
+        return `<div class="c-sheet"><div class="c-cols"><div class="c-left">${continueLine()}${inflight()}${repos()}</div>${progress()}</div></div>`;
+      }
+
+      /* ---------- Repository ---------- */
+
+      function bar(c) {
+        const all = WF.total(c);
+        return `<span class="c-bar">${['done', 'claimed', 'frontier', 'blocked'].map((s) => `<i style="width:${(c[s] / all) * 100}%;background:var(${STATES[s].v})"></i>`).join('')}</span>`;
+      }
+
+      function repo(s) {
+        const r = repoOf(s.repo);
+        const active = r.maps.filter((m) => !m.closed);
+        const top = `<div class="c-top">${repoMark(r, 28)}<h1>${esc(r.name)}</h1><span class="grow"></span>${
+          r.maps.length ? `<span class="c-seg"><button class="is-on" type="button">Active ${active.length}</button><button type="button" data-to="completed maps">Completed ${r.maps.length - active.length}</button><button type="button" data-to="all maps">All</button></span><label class="search">${icon('lens')}<input type="search" data-filter placeholder="Filter maps" /></label>` : ''
+        }</div>`;
+        if (!r.maps.length)
+          return `<div class="c-sheet">${top}<div class="c-blank"><strong>No maps in ${esc(short(r.name))}</strong><p>Start one and it’s listed here with its progress and next ticket.</p><a class="primary" href="#" data-to="Start a new map in ${esc(r.name)} (#44)">${icon('plus')}Start a new map ${k('N')}</a></div></div>`;
+        const row = (m) => `<tr ${goMap(r, m)} data-name="#${m.number} ${esc(m.title)}" class="${m.closed ? 'is-closed' : ''}"><td class="num">#${m.number}</td>
+          <td class="title"><b>${esc(m.title)}</b><span>${esc(m.dest)}</span></td>
+          <td><span class="c-prog-cell">${bar(m.counts)}${m.counts.done}/${WF.total(m.counts)}</span></td>
+          <td><div class="c-next">${m.closed ? '<span class="c-muted">Completed</span>' : m.next ? `<span style="color:var(--state-frontier)">→</span> #${m.next[0]} ${esc(m.next[1])}` : '<span class="c-muted">Nothing next up</span>'}</div></td>
+          <td>${m.running ? `<span class="c-prog-cell"><span class="c-dot is-live" style="--c: var(--state-frontier)"></span>${m.running}</span>` : '<span class="c-muted">–</span>'}</td>
+          <td class="c-muted">${esc(m.updated)}</td><td><span class="c-act">Open ${k('↵')}</span></td></tr>`;
+        return `<div class="c-sheet" data-filter-scope>${top}<table class="c-table"><thead><tr><th>#</th><th>Map</th><th>Progress</th><th>Next up</th><th>Running</th><th>Updated</th><th></th></tr></thead>
+          <tbody>${active.map(row).join('')}</tbody></table><div class="c-quiet" data-filter-none hidden>No map matches “<b></b>”.</div></div>`;
+      }
+
+      /* ---------- A map's Prototypes tab: list and detail ---------- */
+
+      let selected = null;
+      document.addEventListener('click', (e) => {
+        const el = e.target.closest('[data-proto]');
+        if (!el) return;
+        e.preventDefault();
+        selected = Number(el.dataset.proto);
+        WF.render();
+      });
+
+      function protos(s) {
+        const r = repoOf(s.repo);
+        const m = mapOf(r, s.map);
+        const order = { waiting: 0, building: 1, picked: 2 };
+        const list = [...WF.protosOf(r, m)].sort((a, b) => order[a.status] - order[b.status]);
+        if (!list.length) return `<div class="c-sheet"><div class="c-blank"><strong>No prototypes on map #${m.number}</strong><p>A prototype ticket’s canvas appears here once its prototype branch is pushed.</p></div></div>`;
+        const p = list.find((x) => x.ticket === selected) ?? list[0];
+        const color = (x) => (x.status === 'waiting' ? '--state-claimed' : x.status === 'picked' ? '--state-done' : '--state-blocked');
+        const label = (x) => (x.status === 'waiting' ? 'Waiting on your pick' : x.status === 'picked' ? `Picked ${x.picked}` : 'Being built');
+        const nav = list
+          .map((x) => `<a class="c-pl${x === p ? ' is-on' : ''}" href="#" data-proto="${x.ticket}"><span class="c-dot" style="--c: var(${color(x)})"></span><b>#${x.ticket} ${esc(x.title)}</b><span>${label(x)}${x.date ? ` · ${esc(x.date)}` : ''}</span></a>`)
+          .join('');
+        const vars = p.variants.length
+          ? `<div class="c-vars">${p.variants
+              .map(([l, n, shot]) => `<a href="#" class="${p.picked === l ? 'is-picked' : ''}" data-to="variant ${l} of #${p.ticket}, full size">${WF.frame(l, { shot })}<span class="lbl">${p.picked === l ? icon('check') : ''}<b>${l}</b> ${esc(n)}</span></a>`)
+              .join('')}</div>`
+          : '<div class="c-blank" style="margin-top:22px"><strong>No canvas yet</strong><p>The variants show up here when the prototype branch is pushed.</p></div>';
+        return `<div class="c-split"><nav aria-label="Prototypes"><div class="c-h">Prototypes <span class="n">${list.length}</span></div>${nav}</nav>
+          <div class="c-detail"><p class="eyebrow" style="color:var(${color(p)})">${label(p)}</p><h2>#${p.ticket} ${esc(p.title)}</h2><p class="gist">${esc(p.gist)}</p>
+          ${p.variants.length ? `<div class="acts"><a class="primary" href="#" data-to="the #${p.ticket} canvas">${icon('play')}Open the canvas</a>${p.status === 'waiting' ? `<a class="ghost" href="#" data-to="grilling #${p.decides}">Pick in #${p.decides}</a>` : ''}</div>` : ''}
+          ${vars}
+          <dl class="c-facts"><dt>Branch</dt><dd><code>prototype/${p.ticket}-…</code></dd><dt>Variants</dt><dd>${p.variants.length || 'none yet'}</dd><dt>Decision</dt><dd>${p.status === 'picked' ? `Direction ${p.picked}` : p.status === 'waiting' ? `Open, you pick in #${p.decides}` : 'Not ready'}</dd></dl></div></div>`;
+      }
+
+      WF.start({ home, repo, protos });
+    </script>
+  </body>
+</html>

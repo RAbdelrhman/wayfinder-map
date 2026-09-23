@@ -1,0 +1,1161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>B · Terrain</title>
+    <!-- PROTOTYPE (#43), direction B: Terrain. Home-owned pages borrow the map page's node cards and state chips and
+         show a mini ticket graph for every map. The dotted canvas stays on the map page only. Progress has three looks
+         the user can switch between (?fog=trail|hex|bar): A's fog trail (default), B's hex fog-of-war, C's fog bar. -->
+    <link rel="stylesheet" href="../assets/app.css" />
+    <link rel="stylesheet" href="shell.css" />
+    <style>
+      .b-page {
+        min-height: 100%;
+      }
+      .b-sheet {
+        width: min(1160px, 100%);
+        margin: 0 auto;
+        padding: 26px 30px 80px;
+        box-sizing: border-box;
+      }
+      .b-cols {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 22px;
+        align-items: start;
+      }
+      .b-left {
+        display: grid;
+        gap: 22px;
+      }
+      .b-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 10px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .b-label .grow {
+        flex: 1;
+      }
+      .b-label a {
+        text-transform: none;
+        letter-spacing: 0;
+        font-weight: 500;
+        color: var(--state-claimed);
+        text-decoration: none;
+      }
+      /* the map page's node card, reused for everything you can open */
+      .b-node {
+        position: relative;
+        display: block;
+        background: var(--surface-1);
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        box-shadow: var(--shadow-preview);
+        color: inherit;
+        text-decoration: none;
+      }
+      .b-node::before {
+        content: '';
+        position: absolute;
+        left: -1px;
+        top: 10px;
+        bottom: 10px;
+        width: 3px;
+        border-radius: 0 3px 3px 0;
+        background: var(--accent, transparent);
+      }
+      a.b-node:hover {
+        border-color: var(--accent, var(--state-claimed));
+      }
+
+      /* Continue: the map's own graph, with the frontier lit */
+      .b-continue {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 300px;
+        overflow: hidden;
+      }
+      .b-continue .txt {
+        padding: 20px 22px;
+      }
+      .b-continue h2 {
+        margin: 6px 0 0;
+        font-size: 18px;
+        line-height: 1.3;
+        letter-spacing: -0.01em;
+      }
+      .b-continue .next {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 14px;
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+      .b-continue .next .chip {
+        margin: 0;
+      }
+      .b-continue .go {
+        display: flex;
+        gap: 8px;
+        margin-top: 18px;
+      }
+      .b-continue .go a {
+        text-decoration: none;
+      }
+      .b-continue .graph {
+        position: relative;
+        background: var(--plane);
+        border-left: 1px solid var(--hairline);
+      }
+      .b-graph {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .b-graph .is-frontier {
+        animation: b-glow 2.2s ease-in-out infinite;
+      }
+      @keyframes b-glow {
+        50% {
+          opacity: 0.45;
+        }
+      }
+      .b-alert {
+        display: flex;
+        gap: 16px;
+        padding: 20px 22px;
+        --accent: var(--state-blocked);
+        background: color-mix(in srgb, var(--state-blocked) 7%, var(--surface-1));
+      }
+      .b-alert .ic {
+        width: 40px;
+        height: 40px;
+        flex: none;
+        display: grid;
+        place-items: center;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--state-blocked) 22%, transparent);
+      }
+      .b-alert h2 {
+        margin: 2px 0 0;
+        font-size: 17px;
+      }
+      .b-alert p {
+        margin: 6px 0 0;
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .b-alert code {
+        display: inline-block;
+        margin-top: 10px;
+        padding: 5px 10px;
+        border-radius: 7px;
+        background: var(--surface-1);
+        border: 1px solid var(--hairline);
+        font-size: 13px;
+      }
+      .b-alert .go {
+        display: flex;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      /* In flight: two lanes of node cards */
+      .b-lanes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      .b-lane {
+        display: grid;
+        gap: 8px;
+        align-content: start;
+      }
+      .b-lane-h {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+      .b-lane-h b {
+        margin-left: auto;
+        font-weight: 600;
+        color: var(--text-muted);
+      }
+      .b-lane-h .i {
+        width: 14px;
+        height: 14px;
+      }
+      .b-fly {
+        padding: 11px 13px 12px 15px;
+      }
+      .b-fly .top {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .b-fly .top .i {
+        width: 13px;
+        height: 13px;
+        color: var(--accent);
+      }
+      .b-fly .top .num {
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+      .b-fly .top .age {
+        margin-left: auto;
+      }
+      .b-fly strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 13.5px;
+        line-height: 1.35;
+        font-weight: 600;
+      }
+      .b-fly .meta {
+        display: block;
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+      .b-none {
+        padding: 14px 16px;
+        border: 1px dashed var(--baseline);
+        border-radius: 12px;
+        color: var(--text-muted);
+        font-size: 12.5px;
+        background: var(--surface-1);
+      }
+
+      /* Repositories: search over a grid of tiles */
+      .b-find {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .b-find .search {
+        flex: 1;
+        width: auto;
+        height: 38px;
+        background: var(--surface-1);
+      }
+      .b-find .ghost {
+        height: 38px;
+        background: var(--surface-1);
+      }
+      .b-tiles {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .b-tile {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 4px 11px;
+        padding: 10px 12px;
+      }
+      .b-tile .name {
+        font-size: 13.5px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .b-tile .when {
+        font-size: 11.5px;
+        color: var(--text-muted);
+      }
+      .b-tile .bar {
+        grid-column: 2 / 4;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11.5px;
+        color: var(--text-secondary);
+      }
+      .b-stack {
+        flex: 1;
+        display: flex;
+        height: 5px;
+        border-radius: 3px;
+        overflow: hidden;
+        background: var(--wash);
+      }
+      .b-stack i {
+        display: block;
+        height: 100%;
+      }
+      .b-tile .nv-mark {
+        grid-row: span 2;
+      }
+
+      /* Progress: a hex fog-of-war */
+      .b-fog {
+        position: sticky;
+        top: 20px;
+        padding: 18px;
+        overflow: hidden;
+      }
+      .b-today {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      .b-today b {
+        font-size: 30px;
+        letter-spacing: -0.02em;
+      }
+      .b-today span {
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      .b-flags {
+        display: flex;
+        gap: 6px;
+        margin: 12px 0 4px;
+      }
+      .b-flags i {
+        flex: 1;
+        height: 8px;
+        border-radius: 4px;
+        background: var(--wash);
+        border: 1px dashed var(--baseline);
+      }
+      .b-flags i.on {
+        background: var(--state-frontier);
+        border: 1px solid transparent;
+      }
+      .b-flags i.over {
+        background: color-mix(in srgb, var(--state-frontier) 55%, var(--surface-1));
+        border: 1px solid transparent;
+        flex: 0.6;
+      }
+      .b-hex {
+        display: block;
+        width: 100%;
+        margin: 14px 0 6px;
+      }
+      .b-hex .fog {
+        fill: var(--plane);
+      }
+      .b-hex .land {
+        fill: color-mix(in srgb, var(--state-frontier) 42%, var(--surface-1));
+      }
+      .b-hex .edge {
+        fill: none;
+        stroke: var(--surface-1);
+        stroke-width: 2;
+      }
+      .b-hex .today {
+        fill: none;
+        stroke: var(--state-claimed);
+        stroke-width: 2.5;
+      }
+      .b-hex .contour {
+        fill: none;
+        stroke: color-mix(in srgb, var(--state-frontier) 70%, var(--text-primary));
+        stroke-opacity: 0.35;
+        stroke-width: 1;
+      }
+      /* A's repository list, with B's progress bar under each name */
+      .b-list {
+        padding: 6px;
+      }
+      .b-repo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 9px 12px;
+        border-radius: 9px;
+        color: inherit;
+        text-decoration: none;
+        font-size: 13.5px;
+      }
+      .b-repo:hover {
+        background: var(--wash);
+      }
+      .b-repo .who {
+        flex: 1;
+        min-width: 0;
+        display: grid;
+        gap: 6px;
+      }
+      .b-repo .name {
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .b-repo .b-stack {
+        flex: none;
+        width: min(240px, 100%);
+      }
+      .b-repo .stat {
+        font-size: 12.5px;
+        color: var(--text-secondary);
+        white-space: nowrap;
+      }
+      .b-repo .when {
+        width: 88px;
+        text-align: right;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .b-more {
+        display: block;
+        padding: 8px 12px 6px;
+        font-size: 12.5px;
+        color: var(--state-claimed);
+        text-decoration: none;
+      }
+      .b-quiet {
+        margin: 0;
+        padding: 18px 16px;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      /* C's goal selector and A's streak */
+      .b-goal {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .b-goal .grow {
+        flex: 1;
+      }
+      .b-goals {
+        display: inline-flex;
+        gap: 2px;
+        padding: 2px;
+        border-radius: 8px;
+        background: var(--wash);
+      }
+      .b-goals button {
+        height: 26px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        font: inherit;
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .b-goals button.is-on {
+        background: var(--surface-1);
+        color: var(--text-primary);
+        font-weight: 600;
+        box-shadow: var(--shadow-segment);
+      }
+      .b-streak {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid var(--hairline);
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .b-streak .i {
+        width: 14px;
+        height: 14px;
+        color: var(--state-blocked);
+      }
+      .b-foot {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-top: 12px;
+        margin-top: 6px;
+        border-top: 1px solid var(--hairline);
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .b-foot .grow {
+        flex: 1;
+      }
+      .b-foot .i {
+        width: 14px;
+        height: 14px;
+      }
+      .b-style {
+        display: inline-flex;
+        gap: 2px;
+        margin-left: auto;
+        padding: 2px;
+        border-radius: 8px;
+        background: var(--wash);
+      }
+      .b-style button {
+        height: 24px;
+        padding: 0 8px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        font: inherit;
+        font-size: 11.5px;
+        color: var(--text-secondary);
+      }
+      .b-style button.is-on {
+        background: var(--surface-1);
+        color: var(--text-primary);
+        font-weight: 600;
+        box-shadow: var(--shadow-segment);
+      }
+      .b-fog-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .b-fog-head .eyebrow {
+        margin: 0;
+      }
+      .b-fog .wf-fog {
+        display: block;
+        margin: 14px 0 6px;
+        border-radius: 10px;
+        border: 1px solid var(--hairline);
+      }
+      .b-cal {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 5px;
+        margin: 12px 0 6px;
+      }
+      .b-cal i {
+        aspect-ratio: 1;
+        border-radius: 5px;
+        background:
+          linear-gradient(color-mix(in srgb, var(--plane) calc(var(--f) * 100%), transparent), color-mix(in srgb, var(--plane) calc(var(--f) * 100%), transparent)),
+          color-mix(in srgb, var(--state-frontier) 55%, var(--surface-1));
+        border: 1px solid var(--hairline);
+      }
+      .b-cal i.is-today {
+        outline: 2px solid var(--state-claimed);
+        outline-offset: 1px;
+      }
+      .b-cal i.is-pad {
+        visibility: hidden;
+      }
+      .b-cal i.is-blank {
+        background: transparent;
+        border-style: dashed;
+      }
+      .b-fogbar {
+        position: relative;
+        height: 34px;
+        margin: 14px 0 0;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--hairline);
+        background:
+          repeating-linear-gradient(90deg, transparent 0 calc(20% - 1px), var(--hairline) calc(20% - 1px) 20%),
+          linear-gradient(90deg, color-mix(in srgb, var(--state-frontier) 60%, var(--surface-1)), color-mix(in srgb, var(--state-frontier) 35%, var(--surface-1)));
+      }
+      .b-fogbar::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        right: 0;
+        left: calc(var(--p) * 100% - 18px);
+        background: linear-gradient(90deg, transparent, var(--plane) 18px);
+        opacity: 0.96;
+      }
+      .b-weeks {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        grid-auto-flow: column;
+        grid-template-rows: repeat(7, 1fr);
+        gap: 3px;
+        margin: 14px 0 4px;
+      }
+      .b-weeks i {
+        aspect-ratio: 1;
+        border-radius: 2px;
+        background: color-mix(in srgb, var(--state-frontier) calc(var(--v) * 75%), var(--wash));
+      }
+      .b-weeks i.is-today {
+        outline: 1.5px solid var(--state-claimed);
+      }
+      .b-cap {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 6px;
+        font-size: 11.5px;
+        color: var(--text-muted);
+      }
+      .b-foot button {
+        border: 1px solid var(--hairline);
+        background: var(--surface-1);
+        border-radius: 7px;
+        height: 26px;
+        padding: 0 8px;
+        font: inherit;
+        color: var(--text-secondary);
+      }
+
+      /* Repository page: each map is its graph plus the words */
+      .b-head {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 18px;
+      }
+      .b-head h1 {
+        margin: 0;
+        font-size: var(--font-page-title);
+        letter-spacing: -0.02em;
+        font-weight: 650;
+      }
+      .b-head p {
+        margin: 4px 0 0;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      .b-head .grow {
+        flex: 1;
+      }
+      .b-filters {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 14px;
+      }
+      .b-filters .search {
+        width: 260px;
+        height: 32px;
+        margin-left: auto;
+        background: var(--surface-1);
+      }
+      .b-maps {
+        display: grid;
+        gap: 12px;
+      }
+      .b-map {
+        display: grid;
+        grid-template-columns: 320px minmax(0, 1fr);
+        overflow: hidden;
+      }
+      .b-map .graph {
+        min-height: 170px;
+        background: var(--plane);
+        border-right: 1px solid var(--hairline);
+      }
+      .b-map .txt {
+        display: flex;
+        flex-direction: column;
+        padding: 16px 20px;
+      }
+      .b-map h2 {
+        margin: 6px 0 0;
+        font-size: 16px;
+        line-height: 1.32;
+      }
+      .b-map .dest {
+        margin: 6px 0 0;
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .b-map .row2 {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: auto;
+        padding-top: 14px;
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .b-map .row2 .grow {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .b-map .row2 .chip {
+        margin: 0;
+      }
+      .b-map .row2 .primary,
+      .b-map .row2 .ghost {
+        height: 30px;
+        text-decoration: none;
+      }
+      .b-map.is-closed {
+        opacity: 0.75;
+      }
+      .b-counts {
+        display: flex;
+        gap: 12px;
+        margin-top: 10px;
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+      .b-counts span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .b-counts i {
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+        background: var(--c);
+      }
+      .b-empty {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        overflow: hidden;
+      }
+      .b-empty .graph {
+        min-height: 220px;
+        display: grid;
+        place-items: center;
+        background: var(--plane);
+        border-right: 1px solid var(--hairline);
+      }
+      .b-empty .ghostnode {
+        width: 150px;
+        height: 64px;
+        border: 1.5px dashed var(--baseline);
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+      .b-empty .txt {
+        padding: 30px 28px;
+      }
+      .b-empty h2 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .b-empty p {
+        margin: 8px 0 18px;
+        color: var(--text-secondary);
+        font-size: 13.5px;
+        line-height: 1.55;
+        max-width: 48ch;
+      }
+      .b-empty .primary {
+        text-decoration: none;
+      }
+
+      /* Prototypes tab: a decision board, variants side by side like the canvas */
+      .b-board {
+        display: grid;
+        gap: 16px;
+      }
+      .b-proto {
+        padding: 16px 18px 18px;
+      }
+      .b-proto .h {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .b-proto .h .chip {
+        margin: 0;
+      }
+      .b-proto .h strong {
+        flex: 1;
+        min-width: 0;
+        font-size: 14.5px;
+      }
+      .b-proto .h .when {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .b-proto .gist {
+        margin: 6px 0 0;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      .b-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .b-var {
+        display: grid;
+        gap: 6px;
+        color: inherit;
+        text-decoration: none;
+        font-size: 12.5px;
+      }
+      .b-var .wf-frame {
+        transition: transform 0.15s;
+      }
+      .b-var:hover .wf-frame {
+        transform: translateY(-2px);
+        border-color: var(--state-claimed);
+      }
+      .b-var .lbl {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-secondary);
+      }
+      .b-var.is-picked .wf-frame {
+        outline: 2px solid var(--state-frontier);
+        outline-offset: 2px;
+      }
+      .b-var.is-picked .lbl {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      .b-var.is-picked .lbl .i {
+        width: 13px;
+        height: 13px;
+        color: var(--state-frontier);
+      }
+      .b-var.is-dim {
+        opacity: 0.55;
+      }
+      .b-proto.is-waiting {
+        --accent: var(--state-claimed);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--state-claimed) 10%, transparent);
+      }
+      .b-proto.is-waiting .b-var .wf-frame {
+        outline: 1.5px dashed color-mix(in srgb, var(--state-claimed) 55%, transparent);
+        outline-offset: 2px;
+      }
+      .b-proto .acts {
+        display: flex;
+        gap: 8px;
+      }
+      .b-proto .acts a {
+        text-decoration: none;
+        height: 30px;
+      }
+      .b-slot {
+        display: grid;
+        place-items: center;
+        aspect-ratio: 16 / 10;
+        border: 1.5px dashed var(--baseline);
+        border-radius: 8px;
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="data.js"></script>
+    <script src="shell.js"></script>
+    <script>
+      const { icon, esc, repoOf, mapOf, short, repoMark, go, goRepo, goMap, goItem, KINDS, REPOS, STATES } = WF;
+
+      /** A mini ticket graph: the real map when we have it, otherwise the counts laid out left to right. */
+      function miniGraph(m, w = 300, h = 170) {
+        let tickets = m.tickets;
+        if (!tickets) {
+          const order = ['done', 'done', 'claimed', 'frontier', 'blocked'];
+          const pool = [...Array(m.counts.done).fill('done'), ...Array(m.counts.claimed).fill('claimed'), ...Array(m.counts.frontier).fill('frontier'), ...Array(m.counts.blocked).fill('blocked')];
+          const cols = Math.min(5, Math.max(2, Math.ceil(pool.length / 4)));
+          const per = Math.ceil(pool.length / cols);
+          tickets = pool.map((state, i) => ({ state, col: Math.floor(i / per), blockers: [] }));
+          void order;
+        }
+        const colsN = Math.max(...tickets.map((t) => t.col)) + 1;
+        const rows = {};
+        const pw = Math.min(42, (w - 30) / colsN - 12);
+        const ph = 9;
+        const laid = tickets.map((t) => {
+          const r = (rows[t.col] = (rows[t.col] ?? -1) + 1);
+          return { ...t, r };
+        });
+        const maxRows = Math.max(...Object.values(rows)) + 1;
+        const gapY = Math.min(18, (h - 30) / maxRows);
+        const x = (c) => 15 + c * ((w - 30 - pw) / Math.max(1, colsN - 1));
+        const y = (t) => {
+          const n = rows[t.col] + 1;
+          return h / 2 - ((n - 1) * gapY) / 2 + t.r * gapY - ph / 2;
+        };
+        const at = Object.fromEntries(laid.filter((t) => t.number).map((t) => [t.number, t]));
+        const lines = laid
+          .flatMap((t) =>
+            t.blockers
+              .filter((b) => at[b])
+              .map((b) => {
+                const a = at[b];
+                const x1 = x(a.col) + pw;
+                const y1 = y(a) + ph / 2;
+                const x2 = x(t.col);
+                const y2 = y(t) + ph / 2;
+                return `<path d="M${x1} ${y1}C${(x1 + x2) / 2} ${y1} ${(x1 + x2) / 2} ${y2} ${x2} ${y2}"/>`;
+              }),
+          )
+          .join('');
+        const nodes = laid
+          .map(
+            (t) =>
+              `<rect class="${t.state === 'frontier' ? 'is-frontier' : ''}" x="${x(t.col)}" y="${y(t)}" width="${pw}" height="${ph}" rx="3" style="fill:${
+                t.state === 'done' ? 'var(--surface-1)' : `color-mix(in srgb, var(${STATES[t.state].v}) 30%, var(--surface-1))`
+              };stroke:var(${STATES[t.state].v});stroke-width:1.2"/>`,
+          )
+          .join('');
+        return `<svg class="b-graph" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><g style="fill:none;stroke:var(--baseline);stroke-width:1">${lines}</g>${nodes}</svg>`;
+      }
+
+      /* ---------- Home ---------- */
+
+      function continueCard() {
+        if (!WF.SIGNED_IN)
+          return `<section class="b-node b-alert" role="alert"><span class="ic">${icon('github')}</span><div>
+            <h2>Sign in to GitHub to see your work</h2><p>gh is signed out, so maps, in-flight work and today’s progress can’t load. Repositories below are from the last sync.</p>
+            <code>gh auth login</code><div class="go"><button type="button" class="primary" data-to="a new gh check">${icon('refresh')}Check again</button><button type="button" class="ghost" data-to="the clipboard">${icon('copy')}Copy command</button></div></div></section>`;
+        const c = WF.CONTINUE;
+        if (!c)
+          return `<section class="b-node b-continue" style="--accent: var(--state-frontier)"><div class="txt"><p class="eyebrow">Your first map</p><h2>Every map starts with a destination</h2>
+            <p class="dest" style="margin:8px 0 0;color:var(--text-secondary);font-size:13px;line-height:1.5">Say where you want a repository to go. T3 Code drafts the map with you, and its tickets show up here as a graph you clear one at a time.</p>
+            <div class="go"><a class="primary" href="#" data-to="Start a new map (#44)">${icon('plus')}Start a new map</a></div></div>
+            <div class="graph"><div style="display:grid;place-items:center;height:100%"><div class="b-empty"><span class="ghostnode" style="width:150px;height:64px;border:1.5px dashed var(--baseline);border-radius:10px;display:grid;place-items:center;color:var(--text-muted);font-size:12px">Your destination</span></div></div></div></section>`;
+        const repo = repoOf(c.repo);
+        const map = mapOf(repo, c.map);
+        const handoff = c.kind === 'handoff';
+        return `<section class="b-node b-continue" style="--accent: var(${handoff ? '--state-frontier' : '--state-claimed'})"><div class="txt">
+          <p class="eyebrow">${handoff ? `Continue · your latest hand-off · ${esc(c.since)}` : `Continue · ${esc(short(repo.name))} · opened ${esc(c.since)}`}</p>
+          <h2>${handoff ? `#${c.ticket} ${esc(c.title)}` : `#${map.number} ${esc(map.title)}`}</h2>
+          <div class="next">${
+            handoff
+              ? `<span class="chip" style="--accent: var(--state-frontier)">${icon('bolt')}running</span>${esc(c.status)} · on map #${map.number}`
+              : `${WF.chip('frontier')}#${map.next[0]} ${esc(map.next[1])}`
+          }</div>
+          <div class="go">${
+            handoff ? `<a class="primary" href="#" data-to="the T3 Code thread">${icon('external')}Open in T3 Code</a><a class="ghost" href="#" ${goMap(repo, map)}>Open map</a>` : `<a class="primary" href="#" ${goMap(repo, map)}>Open map${icon('arrow')}</a>`
+          }</div></div>
+          <a class="graph" href="#" ${goMap(repo, map)} aria-label="Open map #${map.number}">${miniGraph(map, 300, 190)}</a></section>`;
+      }
+
+      function fly(it) {
+        const k = KINDS[it.kind];
+        const accent = k.needs ? '--state-claimed' : '--state-frontier';
+        return `<a class="b-node b-fly" href="#" ${goItem(it)} style="--accent: var(${accent})"><span class="top">${icon(k.icon)}<span class="num">#${it.ticket}</span>${esc(short(it.repo))}<span class="age">${esc(it.age)}</span></span>
+          <strong>${esc(it.title)}</strong><span class="meta">${esc(it.detail)}</span></a>`;
+      }
+
+      function inflight() {
+        if (!WF.SIGNED_IN) return `<section><div class="b-label">In flight</div><div class="b-none">Needs gh. Sign in to see what’s waiting on you and what T3 Code is running.</div></section>`;
+        const needs = WF.INFLIGHT.filter((i) => KINDS[i.kind].needs);
+        const running = WF.INFLIGHT.filter((i) => !KINDS[i.kind].needs);
+        const lane = (title, ic, list, empty) =>
+          `<div class="b-lane"><div class="b-lane-h">${icon(ic)}${title}<b>${list.length}</b></div>${list.length ? list.slice(0, 3).map(fly).join('') : `<div class="b-none">${empty}</div>`}</div>`;
+        return `<section><div class="b-label">In flight<span class="grow"></span>${WF.INFLIGHT.length > 5 ? `<a href="#" ${goRepo(REPOS[0])}>See all ${WF.INFLIGHT.length}</a>` : ''}</div>
+          <div class="b-lanes">${lane('Needs you', 'hand', needs, 'Nothing is waiting on you.')}${lane('Running in T3 Code', 'bolt', running, 'Hand a ticket to T3 Code and it runs here.')}</div></section>`;
+      }
+
+      function stack(r) {
+        const c = r.maps.reduce((a, m) => ({ done: a.done + m.counts.done, claimed: a.claimed + m.counts.claimed, frontier: a.frontier + m.counts.frontier, blocked: a.blocked + m.counts.blocked }), {
+          done: 0,
+          claimed: 0,
+          frontier: 0,
+          blocked: 0,
+        });
+        const all = WF.total(c);
+        return all ? ['done', 'claimed', 'frontier', 'blocked'].map((s) => `<i style="width:${(c[s] / all) * 100}%;background:var(${STATES[s].v})"></i>`).join('') : '';
+      }
+
+      // A's list of recent repositories, each row with B's progress bar. No New map button: that's the sidebar's job (#42).
+      function repos() {
+        const shown = 6;
+        const rows = REPOS.map(
+          (r, i) => `<a class="b-repo" href="#" ${goRepo(r)} data-name="${esc(r.name)}"${i >= shown ? ' data-overflow hidden' : ''}>${repoMark(r, 26)}
+            <span class="who"><span class="name">${esc(r.name)}</span><span class="b-stack">${stack(r)}</span></span>
+            <span class="stat">${r.maps.length ? `${r.maps.length} map${r.maps.length === 1 ? '' : 's'} · ${WF.openTickets(r)} open` : 'No maps yet'}</span><span class="when">${esc(r.opened)}</span></a>`,
+        ).join('');
+        const more = REPOS.length > shown ? `<a class="b-more" href="#" data-filter-more data-to="every repository">Show all ${REPOS.length}</a>` : '';
+        return `<section data-filter-scope><div class="b-label">Repositories</div>
+          <div class="b-find"><label class="search">${icon('lens')}<input type="search" data-filter placeholder="Search your repositories, or type owner/name" /></label></div>
+          <div class="b-node b-list">${
+            REPOS.length
+              ? `${rows}<p class="b-quiet" data-filter-none hidden>No recent repository matches “<b></b>”. Press Enter to open it as owner/name.</p>${more}`
+              : '<p class="b-quiet">Repositories you open show up here, most recent first.</p>'
+          }</div></section>`;
+      }
+
+      function hexes() {
+        const goal = WF.GOAL;
+        const days = WF.HISTORY;
+        const r = 20;
+        const hw = Math.sqrt(3) * r;
+        const cols = 7;
+        const rowsN = 5;
+        const cells = Array.from({ length: cols * rowsN }, (_, i) => (days ? (i < cols * rowsN - days.length ? undefined : days[i - (cols * rowsN - days.length)]) : null));
+        const poly = (cx, cy) =>
+          Array.from({ length: 6 }, (_, k) => {
+            const a = (Math.PI / 180) * (60 * k - 30);
+            return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
+          }).join(' ');
+        const out = cells
+          .map((n, i) => {
+            const row = Math.floor(i / cols);
+            const col = i % cols;
+            const cx = hw / 2 + 2 + col * hw + (row % 2 ? hw / 2 : 0);
+            const cy = r + 2 + row * r * 1.5;
+            if (n === undefined) return '';
+            const clear = n === null ? 0 : Math.min(1, n / goal);
+            const today = i === cells.length - 1 && n !== null;
+            return `<g><title>${n === null ? 'No data' : `${n} done`}</title><polygon class="land" points="${poly(cx, cy)}"/>
+              ${clear > 0 ? `<ellipse class="contour" cx="${cx - 3}" cy="${cy + 2}" rx="${r * 0.55}" ry="${r * 0.32}"/><ellipse class="contour" cx="${cx - 3}" cy="${cy + 2}" rx="${r * 0.28}" ry="${r * 0.16}"/>` : ''}
+              <polygon class="fog" points="${poly(cx, cy)}" style="opacity:${(1 - clear).toFixed(2)}"/><polygon class="${today ? 'today' : 'edge'}" points="${poly(cx, cy)}"/></g>`;
+          })
+          .join('');
+        const W = cols * hw + hw / 2 + 4;
+        const H = r * 1.5 * (rowsN - 1) + 2 * r + 4;
+        return `<svg class="b-hex" viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" role="img" aria-label="Five weeks of cleared fog">${out}</svg>`;
+      }
+
+      // The user picks how progress looks (#43): A's fog trail is the default, B's hexes and C's bar are the others.
+      const FOG_STYLES = { trail: 'Trail', hex: 'Hexes', bar: 'Bar' };
+      let fogStyle = FOG_STYLES[new URLSearchParams(location.search).get('fog')] ? new URLSearchParams(location.search).get('fog') : 'trail';
+      document.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-fog]');
+        if (!b) return;
+        fogStyle = b.dataset.fog;
+        WF.render();
+      });
+
+      function trail(blank, done, goal) {
+        const days = WF.HISTORY ?? Array(33).fill(null);
+        const cells = [...Array(35 - days.length).fill(undefined), ...days]
+          .map((n, i) =>
+            n === undefined
+              ? '<i class="is-pad"></i>'
+              : n === null
+                ? '<i class="is-blank"></i>'
+                : `<i style="--f:${(1 - Math.min(1, n / goal)).toFixed(2)}"${i === 34 ? ' class="is-today"' : ''} title="${n} done"></i>`,
+          )
+          .join('');
+        return `${WF.fog({ w: 300, h: 150, done, goal, blank })}<div class="b-cal" aria-label="Last 5 weeks">${cells}</div><div class="b-cap"><span>5 weeks ago</span><span>Today</span></div>`;
+      }
+
+      function bar(blank, done, goal) {
+        const hist = WF.HISTORY ?? [];
+        const all = [...Array(84 - hist.length).fill(null), ...hist];
+        const cells = all.map((n, i) => `<i style="--v:${n === null ? 0 : Math.min(1, n / goal).toFixed(2)}"${i === 83 && !blank ? ' class="is-today"' : ''}></i>`).join('');
+        return `<div class="b-fogbar" style="--p:${blank ? 0 : Math.min(1, done / goal)}" role="img" aria-label="${done} of ${goal} cleared"></div>
+          <div class="b-weeks" aria-label="12 weeks">${cells}</div><div class="b-cap"><span>12 weeks ago</span><span>Today</span></div>`;
+      }
+
+      function progress() {
+        const blank = WF.TODAY === null;
+        const goal = WF.GOAL;
+        const done = WF.TODAY ?? 0;
+        const flags =
+          fogStyle === 'hex'
+            ? `<div class="b-flags" aria-hidden="true">${
+                blank ? Array(goal).fill('<i></i>').join('') : [...Array(goal)].map((_, i) => `<i class="${i < done ? 'on' : ''}"></i>`).join('') + '<i class="over"></i>'.repeat(Math.max(0, done - goal))
+              }</div>`
+            : '';
+        const art = fogStyle === 'hex' ? hexes() : fogStyle === 'bar' ? bar(blank, done, goal) : trail(blank, done, goal);
+        const style = `<span class="b-style" role="group" aria-label="Progress style">${Object.entries(FOG_STYLES)
+          .map(([k, label]) => `<button type="button" data-fog="${k}" class="${k === fogStyle ? 'is-on' : ''}" aria-pressed="${k === fogStyle}">${label}</button>`)
+          .join('')}</span>`;
+        return `<aside class="b-node b-fog"><div class="b-fog-head"><p class="eyebrow">Fog cleared</p>${style}</div>
+          <div class="b-today">${blank ? '<b>–</b><span>Sign in to count today</span>' : `<b>${done}/${goal}</b><span>${done >= goal ? (done > goal ? `goal met, ${done - goal} extra` : 'goal met') : `${goal - done} more to clear today`}</span>`}</div>
+          ${flags}${art}
+          <div class="b-goal"><span class="grow">Daily goal</span><span class="b-goals" role="group" aria-label="Daily goal">${[3, 5, 8]
+            .map((g) => `<button type="button" class="${g === goal ? 'is-on' : ''}" aria-pressed="${g === goal}" data-to="a daily goal of ${g}">${g}</button>`)
+            .join('')}</span></div>
+          ${blank ? '' : `<div class="b-streak">${icon('flame')}${WF.STREAK ? `${WF.STREAK}-day streak` : 'Clear one ticket to start a streak'}</div>`}</aside>`;
+      }
+
+      function home() {
+        return `<div class="b-page"><div class="b-sheet"><div class="b-cols"><div class="b-left">${continueCard()}${inflight()}${repos()}</div>${progress()}</div></div></div>`;
+      }
+
+      /* ---------- Repository ---------- */
+
+      function mapRow(r, m) {
+        const counts = ['frontier', 'claimed', 'blocked', 'done']
+          .filter((s) => m.counts[s])
+          .map((s) => `<span><i style="--c: var(${STATES[s].v})"></i>${m.counts[s]} ${STATES[s].long.toLowerCase()}</span>`)
+          .join('');
+        return `<article class="b-node b-map${m.closed ? ' is-closed' : ''}" data-name="#${m.number} ${esc(m.title)}" style="--accent: var(${m.closed ? '--state-done' : '--state-claimed'})">
+          <a class="graph" href="#" ${goMap(r, m)} aria-label="Open map #${m.number}">${miniGraph(m, 320, 170)}</a>
+          <div class="txt"><p class="eyebrow">Map · #${m.number}${m.closed ? ' · completed' : ''} · ${esc(m.updated)}</p><h2>${esc(m.title)}</h2><p class="dest">${esc(m.dest)}</p><div class="b-counts">${counts}</div>
+          <div class="row2">${
+            m.closed
+              ? `<span class="grow">All ${WF.total(m.counts)} tickets done</span><a class="ghost" href="#" ${goMap(r, m)}>Open</a>`
+              : `<span class="grow">${m.next ? `${WF.chip('frontier')} #${m.next[0]} ${esc(m.next[1])}` : 'Nothing next up'}</span>${m.running ? `<span class="chip" style="--accent: var(--state-frontier);margin:0">${icon('bolt')}${m.running} running</span>` : ''}<a class="primary" href="#" ${goMap(r, m)}>Open${icon('arrow')}</a>`
+          }</div></div></article>`;
+      }
+
+      function repo(s) {
+        const r = repoOf(s.repo);
+        const active = r.maps.filter((m) => !m.closed);
+        const head = `<div class="b-head">${repoMark(r, 40)}<div class="grow"><h1>${esc(short(r.name))}</h1><p>${esc(r.name)} · ${r.maps.length ? `${active.length} active, ${r.maps.length - active.length} completed` : 'no maps yet'}</p></div></div>`;
+        if (!r.maps.length)
+          return `<div class="b-page"><div class="b-sheet">${head}<section class="b-node b-empty" style="--accent: var(--state-frontier)"><div class="graph"><span class="ghostnode">Destination</span></div>
+            <div class="txt"><h2>No maps in ${esc(short(r.name))} yet</h2><p>A map is a graph of tickets toward one destination. Start one and T3 Code drafts it with you, right here.</p>
+            <a class="primary" href="#" data-to="Start a new map in ${esc(r.name)} (#44)">${icon('plus')}Start a new map</a></div></section></div></div>`;
+        const fchip = (label, n, on) => `<button type="button" class="fchip${on ? ' is-on' : ''}" data-to="the ${label.toLowerCase()} filter">${label} <b>${n}</b></button>`;
+        return `<div class="b-page"><div class="b-sheet" data-filter-scope>${head}
+          <div class="b-filters">${fchip('All', r.maps.length, true)}${fchip('Active', active.length)}${fchip('Completed', r.maps.length - active.length)}<label class="search">${icon('lens')}<input type="search" data-filter placeholder="Filter maps" /></label></div>
+          <div class="b-maps">${[...active, ...r.maps.filter((m) => m.closed)].map((m) => mapRow(r, m)).join('')}</div>
+          <div class="b-none" data-filter-none hidden>No map matches “<b></b>”.</div></div></div>`;
+      }
+
+      /* ---------- A map's Prototypes tab ---------- */
+
+      function protoRow(p) {
+        const waiting = p.status === 'waiting';
+        const chipHtml = waiting
+          ? `<span class="chip" style="--accent: var(--state-claimed)">${icon('hand')}your pick</span>`
+          : p.status === 'picked'
+            ? `<span class="chip" style="--accent: var(--state-done)">${icon('check')}picked ${esc(p.picked)}</span>`
+            : `<span class="chip" style="--accent: var(--state-blocked)">${icon('clock')}being built</span>`;
+        const strip = p.variants.length
+          ? p.variants
+              .map(
+                ([l, n, shot]) =>
+                  `<a class="b-var${p.picked === l ? ' is-picked' : p.picked ? ' is-dim' : ''}" href="#" data-to="variant ${l} of #${p.ticket}, full size">${WF.frame(l, { shot })}<span class="lbl">${p.picked === l ? icon('check') : ''}${l} · ${esc(n)}</span></a>`,
+              )
+              .join('')
+          : '<span class="b-slot">A</span><span class="b-slot">B</span><span class="b-slot">C</span>';
+        return `<section class="b-node b-proto${waiting ? ' is-waiting' : ''}" style="--accent: var(${waiting ? '--state-claimed' : p.status === 'picked' ? '--state-done' : '--state-blocked'})">
+          <div class="h">${chipHtml}<strong>#${p.ticket} ${esc(p.title)}</strong><span class="when">${esc(p.date)}</span>
+          ${p.variants.length ? `<span class="acts">${waiting ? `<a class="ghost" href="#" data-to="grilling #${p.decides}">Pick in #${p.decides}</a>` : ''}<a class="${waiting ? 'primary' : 'ghost'}" href="#" data-to="the #${p.ticket} canvas">${icon('play')}Canvas</a></span>` : ''}</div>
+          <p class="gist">${esc(p.gist)}</p><div class="b-strip">${strip}</div></section>`;
+      }
+
+      function protos(s) {
+        const r = repoOf(s.repo);
+        const m = mapOf(r, s.map);
+        const list = WF.protosOf(r, m);
+        const order = { waiting: 0, building: 1, picked: 2 };
+        const sorted = [...list].sort((a, b) => order[a.status] - order[b.status]);
+        const body = list.length
+          ? `<div class="b-board">${sorted.map(protoRow).join('')}</div>`
+          : `<div class="page-head"><div class="grow"><p class="eyebrow">Prototypes · map #${m.number}</p><h1>No prototypes yet</h1>
+              <p>When a prototype ticket on this map pushes its prototype branch, its canvas shows up here.</p></div></div>`;
+        return `<div class="b-page"><div class="b-sheet">${body}</div></div>`;
+      }
+
+      WF.start({ home, repo, protos });
+    </script>
+  </body>
+</html>

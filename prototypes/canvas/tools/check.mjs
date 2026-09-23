@@ -63,6 +63,9 @@ export function checkCanvas(cfg, { exists, read }) {
     (style.stylesheets ?? []).forEach((href, i) => checkFile(`styles.${key}.stylesheets[${i}]`, href));
 
   pages.forEach((page, p) => {
+    if (page.ticket !== undefined && !(Number.isInteger(page.ticket) && page.ticket > 0)) {
+      errors.push(`pages[${p}].ticket: use a positive ticket number`);
+    }
     if (
       page.round !== undefined &&
       !(typeof page.round === 'string' && page.round.trim() !== '') &&

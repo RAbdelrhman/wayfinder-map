@@ -368,7 +368,8 @@
     $('pages-label').textContent = `${pages.length} pages`;
     $('pages-btn').hidden = !multi;
     $('page-title').textContent = multi ? `${roundLabel(page) ? `${roundLabel(page)} · ` : ''}${page.title}` : '';
-    $('count').textContent = `${cfg.ticket ? `#${cfg.ticket} · ` : ''}${page.presentable.length} item${page.presentable.length === 1 ? '' : 's'}`;
+    const pageTicket = page.ticket ?? cfg.ticket;
+    $('count').textContent = `${pageTicket ? `#${pageTicket} · ` : ''}${page.presentable.length} item${page.presentable.length === 1 ? '' : 's'}`;
     const question = page.question ?? cfg.question;
     const sample = page.sampleState ?? cfg.sampleState;
     $('banner').hidden = !question;
@@ -536,7 +537,8 @@
       const action = disposition.value;
       const detail = details.value.trim();
       const round = roundLabel(state.page) || state.page.title || 'Current round';
-      const ticket = cfg.ticket ? `Ticket #${cfg.ticket} | ` : '';
+      const pageTicket = state.page.ticket ?? cfg.ticket;
+      const ticket = pageTicket ? `Ticket #${pageTicket} | ` : '';
       const option = `${item.id ?? 'Option'}${item.name ? ` (${item.name})` : ''}`;
       output.value = action ? `${ticket}${round} | ${option} | ${action}${detail ? `: ${detail}` : ''}` : '';
     };

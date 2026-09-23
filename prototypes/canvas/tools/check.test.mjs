@@ -114,6 +114,7 @@ test('named remix rounds and recorded feedback metadata pass', () => {
       pages: [
         {
           title: 'Second pass',
+          ticket: 43,
           round: 'Round 2 · Navigation pass',
           sections: [
             {
@@ -141,6 +142,7 @@ test('invalid remix round and feedback metadata are errors', () => {
       pages: [
         {
           title: 'Broken pass',
+          ticket: 0,
           round: 0,
           sections: [{ items: [{ id: 'A', kind: 'type', note: { basedOn: [], disposition: 'retain', feedback: 42 } }] }],
         },
@@ -148,6 +150,7 @@ test('invalid remix round and feedback metadata are errors', () => {
     },
     disk,
   );
+  assert.match(errors.join('\n'), /pages\[0\]\.ticket/);
   assert.match(errors.join('\n'), /pages\[0\]\.round/);
   assert.match(errors.join('\n'), /note\.basedOn/);
   assert.match(errors.join('\n'), /note\.disposition/);
