@@ -855,6 +855,7 @@ async function renderNewMap(): Promise<void> {
   let activeResolvedTicket: { ticket: Ticket; map: { number: number; title: string } | null } | null = null;
   let activeTicketPrompt: string | null = null;
   let mapWorkspace: WorkspaceView | 'loading' | null = 'loading';
+  const mapCloneLines = new Map<string, { text: string; busy: boolean; error: boolean }>();
   /** Why the last hand-off fell short of a running thread, until the inputs change. */
   let mapNotice: string | null = null;
   let workspaceAsk = 0;
@@ -874,22 +875,30 @@ async function renderNewMap(): Promise<void> {
     mapNote.textContent = note ?? '';
 
     const workspace = mapWorkspace;
+    const cloneLine = repo === null ? undefined : mapCloneLines.get(repo);
+    const cloneStatus =
+      cloneLine === undefined
+        ? ''
+        : `<p class="hint clone-hint clone-status${cloneLine.error ? ' is-error' : ''}" role="status"${cloneLine.busy ? ' aria-busy="true"' : ''}>${cloneLine.busy ? '<span class="clone-spinner" aria-hidden="true"></span>' : ''}${escapeHtml(cloneLine.text)}</p>`;
     if (repo === null || workspace === null || workspace === 'loading' || workspace.status === 'ready') {
-      mapClone.innerHTML = '';
+      mapClone.innerHTML = cloneStatus;
       return;
     }
     const picker = workspace.canChoose
-      ? `<button type="button" class="${workspace.candidates.length === 0 ? 'primary' : 'ghost'}" id="map-choose-clone">${icon(icons.FOLDER)}Choose local clone</button>`
+      ? `<button type="button" class="${workspace.candidates.length === 0 ? 'primary' : 'ghost'}" id="map-choose-clone"${cloneLine?.busy ? ' disabled' : ''}>${icon(icons.FOLDER)}Choose local clone</button>`
       : '';
     const list =
       workspace.candidates.length === 0
         ? ''
         : `<div class="clone-row">
             <select id="map-clone-path" aria-label="Local clone">${workspace.candidates.map((path) => `<option value="${escapeHtml(path)}">${escapeHtml(path)}</option>`).join('')}</select>
-            <button type="button" class="primary" id="map-use-clone">Use this clone</button>
+            <button type="button" class="primary" id="map-use-clone"${cloneLine?.busy ? ' disabled' : ''}>Use this clone</button>
           </div>`;
     const cli = workspace.canChoose || workspace.candidates.length > 0 ? '' : '<p class="hint">Run wayfinder-map inside a clone, or pick a folder in the desktop app.</p>';
-    mapClone.innerHTML = `${list}${cli}${picker ? `<div class="add-new-actions">${picker}</div>` : ''}`;
+    const clone = workspace.canChoose && workspace.candidates.length === 0
+      ? `<button type="button" class="ghost" id="map-clone-repo"${cloneLine?.busy ? ' disabled' : ''}>${icon(icons.FOLDER)}Clone it for me</button>`
+      : '';
+    mapClone.innerHTML = `${cloneStatus}${list}${cli}${picker || clone ? `<div class="add-new-actions">${picker}${clone}</div>` : ''}`;
     paintIcons(mapClone);
   }
 
@@ -932,9 +941,60 @@ async function renderNewMap(): Promise<void> {
     syncMapComposer();
   }
 
+  async function cloneMapRepository(): Promise<void> {
+    const repo = selectedRepo();
+    if (repo === null || mapCloneLines.get(repo)?.busy) return;
+
+    mapCloneLines.set(repo, { text: 'Choose an empty folder for the clone.', busy: true, error: false });
+    syncMapComposer();
+    try {
+      const picked = await fetch(scopedApiPath(repo, 'workspace'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ cloneTarget: true }),
+      });
+      const folder = (await picked.json()) as { target?: unknown; cancelled?: boolean; error?: string };
+      if (!picked.ok || typeof folder.error === 'string') {
+        mapCloneLines.set(repo, { text: folder.error ?? 'Could not open the folder picker.', busy: false, error: true });
+        return;
+      }
+      if (folder.cancelled === true) {
+        mapCloneLines.delete(repo);
+        return;
+      }
+      if (typeof folder.target !== 'string' || folder.target.trim().length === 0) {
+        mapCloneLines.set(repo, { text: 'Choose a folder for the clone, then try again.', busy: false, error: true });
+        return;
+      }
+
+      mapCloneLines.set(repo, { text: `Cloning ${repo}…`, busy: true, error: false });
+      if (selectedRepo() === repo) syncMapComposer();
+      const response = await fetch(scopedApiPath(repo, 'clone'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ target: folder.target }),
+      });
+      const result = (await response.json()) as Partial<WorkspaceView> & { error?: string };
+      if (result.status !== undefined && selectedRepo() === repo) mapWorkspace = result as WorkspaceView;
+      if (!response.ok || typeof result.error === 'string') {
+        mapCloneLines.set(repo, { text: result.error ?? `Could not clone ${repo}. Try again.`, busy: false, error: true });
+        return;
+      }
+      mapCloneLines.delete(repo);
+      if (result.status === 'ready' && selectedRepo() === repo) toast(`Clone ready in ${result.path}.`, 5000);
+    } catch {
+      mapCloneLines.set(repo, { text: 'Could not finish the clone. Check Wayfinder and try again.', busy: false, error: true });
+    } finally {
+      const line = mapCloneLines.get(repo);
+      if (line?.busy) mapCloneLines.set(repo, { ...line, busy: false });
+      if (selectedRepo() === repo) syncMapComposer();
+    }
+  }
+
   mapClone.addEventListener('click', (event) => {
     const target = event.target as HTMLElement;
     if (target.closest('#map-choose-clone') !== null) void setMapClone({ choose: true });
+    if (target.closest('#map-clone-repo') !== null) void cloneMapRepository();
     if (target.closest('#map-use-clone') !== null) {
       const path = mapClone.querySelector<HTMLSelectElement>('#map-clone-path')?.value;
       if (path) void setMapClone({ path });

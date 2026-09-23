@@ -8,6 +8,7 @@ describe('repository routes', () => {
     expect(parseRepoPagePath(mapPath('owner/repo', 14))).toEqual({ repo: 'owner/repo', mapNumber: 14 });
     expect(scopedApiPath('owner/repo', 'snapshot')).toBe('/api/repos/owner/repo/snapshot');
     expect(scopedApiPath('owner/repo', 'ticket')).toBe('/api/repos/owner/repo/ticket');
+    expect(scopedApiPath('owner/repo', 'clone')).toBe('/api/repos/owner/repo/clone');
   });
 
   it.each(['owner', '/repo', 'owner/', 'owner/repo/extra', 'owner name/repo'])(

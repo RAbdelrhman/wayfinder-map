@@ -7,6 +7,7 @@ import type { ServerT3 } from './server.js';
 import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver } from './workspaces.js';
 import type { WorkspaceDependencies } from './workspaces.js';
+import { RepositoryCloneError } from './clone.js';
 import type { Ticket, WayfinderMap } from './types.js';
 import { HandOffStore } from './handOffTracking.js';
 
@@ -410,6 +411,100 @@ describe('local clone for a hand-off', () => {
       });
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({ cancelled: true, status: 'choose' });
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('asks for a fresh clone destination on each request', async () => {
+    const destinations = ['C:/projects/one', 'D:/work/one'];
+    const chooseDirectory = vi.fn(async (_purpose: 'workspace' | 'clone'): Promise<string | null> => destinations.shift() ?? null);
+    const running = await serve({ workspaces: resolver({}, []), chooseDirectory });
+
+    try {
+      for (const target of ['C:/projects/one', 'D:/work/one']) {
+        const response = await fetch(`${running.url}/api/repos/octo/one/workspace`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', origin: running.url },
+          body: JSON.stringify({ cloneTarget: true }),
+        });
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({ target });
+      }
+      expect(chooseDirectory).toHaveBeenNthCalledWith(1, 'clone');
+      expect(chooseDirectory).toHaveBeenNthCalledWith(2, 'clone');
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('clones into the selected destination and makes it the hand-off workspace', async () => {
+    const chooseDirectory = vi.fn(async () => '/destination');
+    const cloneRepository = vi.fn(async (_repo: string, target: string) => target);
+    const running = await serve({
+      workspaces: resolver({ '/destination': '/destination' }, []),
+      chooseDirectory,
+      cloneRepository,
+    });
+
+    try {
+      const picker = await fetch(`${running.url}/api/repos/octo/one/workspace`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ cloneTarget: true }),
+      });
+      await expect(picker.json()).resolves.toEqual({ target: '/destination' });
+
+      const response = await fetch(`${running.url}/api/repos/octo/one/clone`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ target: '/destination' }),
+      });
+      expect(response.status).toBe(201);
+      await expect(response.json()).resolves.toEqual({ status: 'ready', path: '/destination', canChoose: true });
+      expect(chooseDirectory).toHaveBeenCalledWith('clone');
+      expect(cloneRepository).toHaveBeenCalledWith('octo/one', '/destination');
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  const cloneFailures = [
+    {
+      name: 'a non-empty destination',
+      failure: new RepositoryCloneError('destination', 'Choose an empty folder for the clone.', 400),
+      status: 400,
+      message: 'Choose an empty folder for the clone.',
+    },
+    {
+      name: 'GitHub authentication failure',
+      failure: new RepositoryCloneError('authentication', 'GitHub could not access octo/one. Check your GitHub sign-in and repository access.', 502),
+      status: 502,
+      message: 'GitHub could not access octo/one. Check your GitHub sign-in and repository access.',
+    },
+    {
+      name: 'GitHub network failure',
+      failure: new RepositoryCloneError('network', 'Could not reach GitHub. Check your network and try again.', 502),
+      status: 502,
+      message: 'Could not reach GitHub. Check your network and try again.',
+    },
+  ];
+
+  it.each(cloneFailures)('reports $name on the clone endpoint', async ({ failure, status, message }) => {
+    const cloneRepository = vi.fn(async () => {
+      throw failure;
+    });
+    const running = await serve({ workspaces: resolver({}, []), cloneRepository });
+
+    try {
+      const response = await fetch(`${running.url}/api/repos/octo/one/clone`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ target: '/destination' }),
+      });
+      expect(response.status).toBe(status);
+      await expect(response.json()).resolves.toMatchObject({ error: message, status: 'choose', canChoose: false });
+      expect(cloneRepository).toHaveBeenCalledWith('octo/one', '/destination');
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }

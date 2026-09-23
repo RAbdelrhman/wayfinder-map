@@ -21,6 +21,7 @@ import { RepositoryStore } from './repositoryStore.js';
 import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './workspaces.js';
 import type { WorkspaceState } from './workspaces.js';
+import { cloneRepository as cloneRepo, RepositoryCloneError } from './clone.js';
 import { WAYFINDER_VERSION } from './version.js';
 import { resolveRepoIcon, type ResolvedRepoIcon } from './repoIcon.js';
 import { HandOffStore, HandOffTracker, handOffStorePath } from './handOffTracking.js';
@@ -77,7 +78,9 @@ export interface ServeOptions {
    * Ask the user for a folder, for the repositories no verified clone was found for.
    * Only the desktop shell can raise a native picker, so the CLI leaves this out.
    */
-  chooseDirectory?: () => Promise<string | null>;
+  chooseDirectory?: (purpose: 'workspace' | 'clone') => Promise<string | null>;
+  /** Clone runner override for server tests. The selected destination is never cached as a default. */
+  cloneRepository?: (repo: string, destination: string) => Promise<string>;
   /** Replaces the clone lookup in tests, which must not touch T3 Code or the home directory. */
   workspaces?: WorkspaceResolver;
   fetcher?: RepositoryFetcher;
@@ -176,6 +179,7 @@ export async function startServer({
   workspaceRoot,
   t3,
   chooseDirectory,
+  cloneRepository = cloneRepo,
   workspaces,
   fetcher,
   homeLoader,
@@ -529,14 +533,27 @@ export async function startServer({
           return;
         }
         if (request.method === 'POST') {
-          const body = (await readBody(request)) as { path?: unknown; choose?: unknown };
+          const body = (await readBody(request)) as { path?: unknown; choose?: unknown; cloneTarget?: unknown };
+          if (body.cloneTarget === true) {
+            if (chooseDirectory === undefined) {
+              json(response, 409, { error: 'This window cannot open a folder picker.' });
+              return;
+            }
+            const target = await chooseDirectory('clone');
+            if (target === null) {
+              json(response, 200, { cancelled: true });
+              return;
+            }
+            json(response, 200, { target });
+            return;
+          }
           let picked = typeof body.path === 'string' && body.path.trim().length > 0 ? body.path.trim() : null;
           if (picked === null && body.choose === true) {
             if (chooseDirectory === undefined) {
               json(response, 409, { error: 'This window cannot open a folder picker.', ...(await workspaceView(requestedRepo)) });
               return;
             }
-            picked = await chooseDirectory();
+            picked = await chooseDirectory('workspace');
             if (picked === null) {
               json(response, 200, { cancelled: true, ...(await workspaceView(requestedRepo)) });
               return;
@@ -555,6 +572,25 @@ export async function startServer({
           json(response, 200, await workspaceView(requestedRepo));
           return;
         }
+      }
+
+      if (requestedRepo !== null && scoped?.action === 'clone' && request.method === 'POST') {
+        const body = (await readBody(request)) as { target?: unknown };
+        const target = typeof body.target === 'string' ? body.target.trim() : '';
+        if (target.length === 0) {
+          json(response, 400, { error: 'Choose a folder for the clone.', ...(await workspaceView(requestedRepo)) });
+          return;
+        }
+        try {
+          const clonedPath = await cloneRepository(requestedRepo, target);
+          await clones.choose(requestedRepo, clonedPath);
+        } catch (error) {
+          const status = error instanceof RepositoryCloneError ? error.statusCode : 502;
+          json(response, status, { error: (error as Error).message, ...(await workspaceView(requestedRepo)) });
+          return;
+        }
+        json(response, 201, await workspaceView(requestedRepo));
+        return;
       }
 
       if (requestedRepo !== null && scoped?.action === 'icon') {
@@ -814,7 +850,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|icon)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;
