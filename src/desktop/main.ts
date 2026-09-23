@@ -139,12 +139,12 @@ function createTray(): Tray {
   return appTray;
 }
 
-/** The native folder picker behind "Choose local clone". Cancelling answers null. */
-async function chooseDirectory(): Promise<string | null> {
+/** Native folder picker for an existing checkout or a new clone destination. */
+async function chooseDirectory(purpose: 'workspace' | 'clone'): Promise<string | null> {
   const options: Electron.OpenDialogOptions = {
-    title: 'Choose a local clone',
-    buttonLabel: 'Use this clone',
-    properties: ['openDirectory'],
+    title: purpose === 'clone' ? 'Choose where to clone the repository' : 'Choose a local clone',
+    buttonLabel: purpose === 'clone' ? 'Clone into this folder' : 'Use this clone',
+    properties: purpose === 'clone' ? ['openDirectory', 'createDirectory'] : ['openDirectory'],
   };
   const picked = mainWindow === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(mainWindow, options);
   return picked.canceled ? null : (picked.filePaths[0] ?? null);
