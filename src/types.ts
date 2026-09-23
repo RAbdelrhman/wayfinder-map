@@ -78,6 +78,18 @@ export interface Prototype {
   preview: string | null;
   /** The closed ticket's last comment, which the wayfinder flow writes as its answer. Null while open. */
   verdict: string | null;
+  /** The variants its canvas lays out side by side, named as the canvas names them. */
+  variants?: PrototypeVariant[];
+}
+
+/** One variant of a prototype: its letter, its name, and what to show and open for it. */
+export interface PrototypeVariant {
+  id: string;
+  title: string;
+  /** The variant's page on the prototype branch, with any query, or null. */
+  page: string | null;
+  /** Its screenshot's file name among the default branch's prototype shots, or null. */
+  shot: string | null;
 }
 
 export interface MapSnapshot {

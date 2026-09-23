@@ -2,7 +2,7 @@ import { draftMapPath, mapPath, repoPath } from '../repoRoutes.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import type { LastOpenedMap } from './homeRecency.js';
 import { draftToMapPath, isNewMapHandOff } from './newMap.js';
-import type { MapSnapshot, Ticket, WayfinderMap } from '../types.js';
+import type { MapSnapshot, Ticket, TicketState, WayfinderMap } from '../types.js';
 
 export interface RepositorySummary {
   repo: string;
@@ -10,6 +10,8 @@ export interface RepositorySummary {
   openTicketCount: number;
   ticketCount: number;
   doneTicketCount: number;
+  /** Tickets per state across every map, for the repository's progress bar. */
+  stateCounts: Record<TicketState, number>;
   latestMap: WayfinderMap | null;
 }
 
@@ -18,6 +20,8 @@ export interface HomeWorkItem {
   lane: 'needs-you' | 'running';
   kind: 'handoff' | 'ticket' | 'pull-request';
   repo: string;
+  /** The ticket or pull request number the card leads with, when there is one. */
+  number: number | null;
   title: string;
   detail: string;
   timestamp: string;
@@ -35,6 +39,8 @@ export interface ContinueDestination {
   href: string;
   timestamp: string;
   handOffId: string | null;
+  /** The map Continue leads to, for its graph and next ticket, when its snapshot is loaded. */
+  map: WayfinderMap | null;
 }
 
 function sameRepo(left: string, right: string): boolean {
@@ -82,8 +88,11 @@ export function summarizeRepository(repo: string, snapshot: MapSnapshot | null |
     (latest, map) => (latest === null || map.number > latest.number ? map : latest),
     null,
   );
+  const stateCounts: Record<TicketState, number> = { frontier: 0, claimed: 0, blocked: 0, done: 0 };
+  for (const ticket of tickets) stateCounts[ticket.state] += 1;
   return {
     repo,
+    stateCounts,
     mapCount: maps.length,
     openTicketCount: tickets.filter((ticket) => ticket.open).length,
     ticketCount: tickets.length,
@@ -146,6 +155,7 @@ function issueItem(
     lane,
     kind,
     repo,
+    number: ticket.number,
     title: ticket.title,
     detail: `${repo} · Map #${String(map.number)} · ${kind === 'pull-request' ? 'Review requested' : ticket.type === 'grilling' ? 'Decision needed' : 'Prototype request'}`,
     timestamp,
@@ -176,6 +186,7 @@ export function buildHomeWorkItems(
         lane,
         kind: 'handoff',
         repo: handOff.repo,
+        number: handOff.ticketNumber,
         title: handOff.title ?? (handOff.ticketNumber === null ? 'T3 Code hand-off' : `Ticket #${String(handOff.ticketNumber)}`),
         detail: handOffDetail(handOff),
         timestamp: handOff.updatedAt,
@@ -193,6 +204,7 @@ export function buildHomeWorkItems(
         lane: 'needs-you',
         kind: 'pull-request',
         repo: handOff.repo,
+        number: pullRequest.number,
         title: `Review ${numberLabel.toLocaleLowerCase()}`,
         detail: `${handOff.repo} · ${numberLabel} · Review changes`,
         timestamp: pullRequest.syncedAt ?? handOff.updatedAt,
@@ -246,6 +258,7 @@ function handOffContinueTarget(handOff: HandOffStatusDto, snapshot: MapSnapshot 
     href: matchingMap === null ? handOffMapHref(handOff, snapshot) : mapPath(handOff.repo, matchingMap.number),
     timestamp: handOff.updatedAt,
     handOffId: handOff.threadId === null ? null : handOff.id,
+    map: matchingMap ?? snapshot?.maps.find((map) => map.number === handOff.mapNumber) ?? null,
   };
 }
 
@@ -275,6 +288,7 @@ export function chooseContinueDestination(
       href: mapPath(lastOpenedMap.repo, map.number),
       timestamp: lastOpenedMap.openedAt,
       handOffId: null,
+      map,
     };
   }
   return {
@@ -285,6 +299,7 @@ export function chooseContinueDestination(
     href: mapPath(lastOpenedMap.repo, lastOpenedMap.mapNumber),
     timestamp: lastOpenedMap.openedAt,
     handOffId: null,
+    map: null,
   };
 }
 

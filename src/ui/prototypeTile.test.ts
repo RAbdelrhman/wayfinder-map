@@ -28,7 +28,7 @@ describe('verdictGist', () => {
   });
 
   it('trims a long line', () => {
-    expect(verdictGist('x'.repeat(400))).toHaveLength(161);
+    expect(verdictGist('x'.repeat(400))).toHaveLength(181);
   });
 });
 

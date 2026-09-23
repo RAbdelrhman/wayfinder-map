@@ -52,6 +52,12 @@ const STATIC_ICONS: Record<string, string> = {
   chevron: icons.CHEVRON,
   download: icons.DOWNLOAD,
   update: icons.DOWNLOAD,
+  home: icons.HOME,
+  right: icons.CHEVRON_RIGHT,
+  arrow: icons.ARROW,
+  bolt: icons.BOLT,
+  hand: icons.HAND,
+  flame: icons.FLAME,
 };
 
 /** Fills every `data-icon` element under `root`, so static markup can name an icon. */
@@ -400,4 +406,28 @@ export function progressRing(counts: Record<TicketState, number>, total: number)
           })
           .join('');
   return `<svg viewBox="0 0 ${String(size)} ${String(size)}" aria-hidden="true">${arcs}</svg>`;
+}
+
+/** The same ring at 16px, for a map's row in the sidebar tree and the map switcher. */
+export function miniRing(map: WayfinderMap): string {
+  const counts = countStates(map);
+  const total = allTickets(map).length;
+  const size = 16;
+  const stroke = 3;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  const arcs =
+    total === 0
+      ? `<circle cx="8" cy="8" r="${String(radius)}" fill="none" stroke="var(--baseline)" stroke-width="${String(stroke)}"/>`
+      : PROGRESS_ORDER.filter((state) => counts[state] > 0)
+          .map((state) => {
+            const length = (counts[state] / total) * circumference;
+            const gap = counts[state] === total ? 0 : 1.5;
+            const arc = `<circle cx="8" cy="8" r="${String(radius)}" fill="none" stroke="var(${STATE_STYLE[state].variable})" stroke-width="${String(stroke)}" stroke-dasharray="${String(Math.max(0, length - gap))} ${String(circumference)}" stroke-dashoffset="${String(-offset)}"/>`;
+            offset += length;
+            return arc;
+          })
+          .join('');
+  return `<span class="mini-ring" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16">${arcs}</svg></span>`;
 }

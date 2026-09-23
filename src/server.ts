@@ -7,14 +7,14 @@ import { parseModelChoice, TIERS } from './models.js';
 import type { Tier } from './models.js';
 import { copyToClipboard } from './clipboard.js';
 import { DEFAULT_TEMPLATE, buildNewMapPrompt, buildPrompt, ticketBranch } from './prompt.js';
-import { parsePrototypeFilePath } from './prototypes.js';
+import { PROTOTYPE_SHOTS_DIR, parsePrototypeFilePath, parsePrototypeShotPath } from './prototypes.js';
 import { detectT3, handOff } from './t3.js';
 import type { T3HandOff } from './t3.js';
 import type { Config } from './config.js';
 import type { MapSnapshot, Prototype, Ticket, WayfinderMap } from './types.js';
 import { listRepositories, loadHomeState, readAccount } from './home.js';
 import type { HomeState } from './home.js';
-import { fetchAllPrototypes, fetchBranchFile, fetchPrototypes, fetchTicket, gh } from './github.js';
+import { fetchAllPrototypes, fetchBranchFile, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, gh } from './github.js';
 import { AuthFlow } from './authFlow.js';
 import { parseRepoPagePath } from './repoRoutes.js';
 import type { ScopedApiAction } from './repoRoutes.js';
@@ -841,6 +841,28 @@ export async function startServer({
       } catch (error) {
         response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
         response.end(`Not on ${prototypeFile.branch}: ${prototypeFile.file}\n\n${(error as Error).message}`);
+      }
+      return;
+    }
+
+    const shot = parsePrototypeShotPath(path);
+    if (shot !== null) {
+      if (!hostAllowed(request)) {
+        response.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end('Forbidden');
+        return;
+      }
+      try {
+        const bytes = await fetchDefaultBranchFile(shot.repo, `${PROTOTYPE_SHOTS_DIR}/${shot.file}`);
+        response.writeHead(200, {
+          'content-type': MIME[extensionOf(shot.file)] ?? 'application/octet-stream',
+          'x-content-type-options': 'nosniff',
+          'cache-control': 'max-age=300',
+        });
+        response.end(bytes);
+      } catch (error) {
+        response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end(`No screenshot ${shot.file}\n\n${(error as Error).message}`);
       }
       return;
     }

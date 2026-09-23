@@ -472,7 +472,7 @@ function bindRepositoryFilters(maps: readonly WayfinderMap[]): void {
     for (const candidate of root.querySelectorAll<HTMLButtonElement>('[data-map-filter]')) {
       const selected = candidate === button;
       candidate.setAttribute('aria-pressed', String(selected));
-      candidate.classList.toggle('is-selected', selected);
+      candidate.classList.toggle('is-on', selected);
     }
     update();
   });
@@ -489,7 +489,8 @@ async function loadRepositoryHandOffCounts(repo: string, root: HTMLElement): Pro
       const mapNumber = Number(badge.dataset['mapHandoffs']);
       if (!Number.isSafeInteger(mapNumber)) continue;
       const count = counts.get(mapNumber) ?? 0;
-      badge.textContent = count === 0 ? '' : `${String(count)} running in T3 Code`;
+      badge.innerHTML = count === 0 ? '' : `<span data-icon="bolt" aria-hidden="true"></span>${String(count)} running in T3 Code`;
+      paintIcons(badge);
       badge.hidden = count === 0;
     }
   } catch {

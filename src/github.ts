@@ -2,9 +2,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { parseBlockedByLine, parseChildNumbers, parseMapBody } from './mapBody.js';
-import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, pickPreview, prototypeTicketNumber, unlistedCanvasBoards } from './prototypes.js';
+import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SHOTS_DIR, PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, pickPreview, prototypeTicketNumber, prototypeVariantInfo, unlistedCanvasBoards, verdictComment } from './prototypes.js';
 import { TICKET_TYPES } from './types.js';
-import type { OutsideTicket, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
+import type { OutsideTicket, Prototype, PrototypeVariant, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
 
 const run = promisify(execFile);
 
@@ -466,7 +466,10 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): 
   ).flatMap((entry) => entry.branches.map((branch) => ({ map: entry.map, branch })));
   if (work.length === 0) return [];
 
-  const base = (await gh(['api', `repos/${repo}`, '-q', '.default_branch'])).trim();
+  const [base, shots] = await Promise.all([
+    gh(['api', `repos/${repo}`, '-q', '.default_branch']).then((name) => name.trim()),
+    prototypeShots(repo),
+  ]);
 
   const prototypes = await pool(work, 6, async ({ map, branch }): Promise<Prototype> => {
     const ticketNumber = prototypeTicketNumber(branch) ?? 0;
@@ -482,6 +485,7 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): 
         ? null
         : await ghJson<RawCommit>(['api', `repos/${repo}/commits/${encodeURIComponent(branch)}`]).catch(() => null);
     const { updatedAt, files } = branchFacts(compare, tip);
+    const preview = await previewOf(repo, branch, files);
     return {
       branch,
       ticketNumber,
@@ -489,12 +493,47 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): 
       url: `https://github.com/${repo}/tree/${branch}`,
       updatedAt,
       files,
-      ...(await previewOf(repo, branch, files)),
-      verdict: comments.at(-1)?.body?.trim() || null,
+      ...preview,
+      verdict: verdictComment(comments.map((comment) => comment.body)),
+      variants: await variantsOf(repo, branch, ticketNumber, files, preview, shots),
     };
   });
 
   return sortPrototypes(prototypes);
+}
+
+/** The variant screenshots a repository keeps on its default branch (#81), or none. */
+async function prototypeShots(repo: string): Promise<string[]> {
+  try {
+    const entries = await ghJson<Array<{ name?: string; type?: string }>>(['api', `repos/${repo}/contents/${PROTOTYPE_SHOTS_DIR}`]);
+    return entries.filter((entry) => entry.type === 'file' && typeof entry.name === 'string').map((entry) => entry.name as string);
+  } catch {
+    return [];
+  }
+}
+
+/** The prototype's variants, named from its design canvas's config when it has one. */
+async function variantsOf(
+  repo: string,
+  branch: string,
+  ticketNumber: number,
+  files: readonly string[],
+  preview: { openable: string[]; preview: string | null },
+  shots: readonly string[],
+): Promise<PrototypeVariant[]> {
+  const configFile =
+    files.find((file) => /(?:^|\/)config\.js$/.test(file)) ??
+    (preview.preview !== null && /(?:^|\/)index\.html$/i.test(preview.preview) ? preview.preview.replace(/index\.html$/i, 'config.js') : null);
+  const configSource = configFile === null ? null : await fetchBranchFile(repo, branch, configFile).then((bytes) => bytes.toString('utf8'), () => null);
+  const canvasDir = configFile === null ? '' : configFile.replace(/config\.js$/, '');
+  const pages = [...new Set([...preview.openable, ...files.filter(isHtml)])];
+  return prototypeVariantInfo(ticketNumber, shots, configSource, canvasDir, pages);
+}
+
+/** One file off the default branch, as raw bytes. */
+export async function fetchDefaultBranchFile(repo: string, file: string): Promise<Buffer> {
+  const path = file.split('/').map(encodeURIComponent).join('/');
+  return ghBytes(['api', '-H', 'Accept: application/vnd.github.raw', `repos/${repo}/contents/${path}`]);
 }
 
 /** What the branch can show running: its standalone HTML files, and the one to lead with. */

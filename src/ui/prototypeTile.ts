@@ -23,9 +23,18 @@ export function verdictGist(verdict: string): string {
   const rows = verdict.split(/\r?\n/).map((row) => row.trim());
   const prose = rows.filter((row) => row.length > 0 && !row.startsWith('#') && !/^-{3,}$/.test(row));
   const line = (prose.length > 0 ? prose : rows.filter((row) => row.length > 0))
-    .map((row) => row.replace(/^[#>*-]+\s*/, '').replace(/[*`_[\]]/g, '').trim())
+    .map((row) =>
+      row
+        .replace(/^[#>*-]+\s*/, '')
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/\(?https?:\/\/\S+\)?/g, '')
+        .replace(/[*`_[\]]/g, '')
+        .trim(),
+    )
     .find((row) => row.length > 0);
-  return line === undefined ? '' : line.length > 160 ? `${line.slice(0, 160)}…` : line;
+  if (line === undefined) return '';
+  const sentence = /^.{40,}?[.!?](?=\s|$)/.exec(line)?.[0] ?? line;
+  return sentence.length > 180 ? `${sentence.slice(0, 180)}…` : sentence;
 }
 
 function dateLabel(iso: string | null): string {

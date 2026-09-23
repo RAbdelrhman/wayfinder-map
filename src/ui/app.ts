@@ -1277,7 +1277,10 @@ els.protoWrap.addEventListener('click', (event) => {
     return;
   }
   const jump = target.closest<HTMLElement>('[data-jump]');
-  if (jump !== null) select(Number(jump.dataset['jump']));
+  if (jump === null) return;
+  // The board has no ticket panel beside it, so a ticket link opens the ticket on the map.
+  setView('map');
+  select(Number(jump.dataset['jump']));
 });
 
 els.protoWrap.addEventListener('error', (event) => {

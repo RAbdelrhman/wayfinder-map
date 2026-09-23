@@ -76,5 +76,7 @@ await esbuild.build({
 for (const file of ['index.html', 'styles.css', 'home.html']) {
   await cp(join(root, 'src', 'ui', file), join(dist, 'ui', file));
 }
+// The app logo: the sidebar's brand mark and every page's favicon.
+await cp(join(root, 'assets', 'wayfinder-icon.svg'), join(dist, 'ui', 'wayfinder-icon.svg'));
 
 process.stdout.write('built dist/\n');

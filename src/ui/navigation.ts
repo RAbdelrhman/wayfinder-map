@@ -1,7 +1,7 @@
 import type { MapSnapshot, WayfinderMap } from '../types.js';
 import { mapPath, normalizeRepo, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { escapeHtml } from './markdown.js';
-import { allTickets, paintIcons } from './chrome.js';
+import { allTickets, miniRing, paintIcons, repoIconHtml } from './chrome.js';
 
 export type NavigationView = 'map' | 'table' | 'prototypes';
 export type NavigationPage = 'home' | 'repository' | 'new-map' | 'map';
@@ -43,14 +43,6 @@ function iconName(name: string): string {
   return `<span class="i" data-icon="${name}" aria-hidden="true"></span>`;
 }
 
-function initials(repo: string): string {
-  return repo
-    .split('/')
-    .map((part) => part.trim().slice(0, 1))
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
 
 export function viewFromQuery(value: string | null): NavigationView {
   return value === 'table' || value === 'prototypes' ? value : 'map';
@@ -135,13 +127,20 @@ function requireElement<T extends Element>(element: T | null, selector: string):
   return element;
 }
 
+/** A repository's name without its owner, unless another listed repository shares it. */
+export function repoLabel(repo: string, repositories: readonly string[]): string {
+  const name = repo.split('/')[1] ?? repo;
+  const clashes = repositories.filter((candidate) => (candidate.split('/')[1] ?? candidate).toLocaleLowerCase() === name.toLocaleLowerCase()).length > 1;
+  return clashes ? repo : name;
+}
+
 function mapListMarkup(repo: string, maps: readonly WayfinderMap[], currentMapNumber: number | null, view: NavigationView): string {
   if (maps.length === 0) return '<li class="nav-tree-status">No maps yet</li>';
   return maps
     .map((map) => {
       const selected = currentMapNumber === map.number;
-      return `<li><a class="nav-map-link${selected ? ' is-current' : ''}" href="${mapHref(repo, map, view)}"${selected ? ' aria-current="page"' : ''} title="${escapeHtml(map.title)}">
-        ${iconName('compass')}<span>${escapeHtml(map.title)}</span>
+      return `<li><a class="row${selected ? ' is-on' : ''}" href="${mapHref(repo, map, view)}"${selected ? ' aria-current="page"' : ''} title="#${String(map.number)} ${escapeHtml(map.title)}">
+        ${miniRing(map)}<span class="grow">#${String(map.number)} ${escapeHtml(map.title)}</span>
       </a></li>`;
     })
     .join('');
@@ -151,11 +150,11 @@ function scopeMenuMarkup(id: string, label: string, repositories: readonly strin
   const items = repositories.length === 0
     ? '<li class="nav-tree-status">No repositories found</li>'
     : repositories
-        .map((repo) => `<li><a class="nav-scope-option${repo === currentRepo ? ' is-current' : ''}" href="${repoPath(repo)}"${repo === currentRepo ? ' aria-current="page"' : ''}>
-          <span class="nav-repo-mark" aria-hidden="true">${escapeHtml(initials(repo))}</span><span class="nav-scope-option-name">${escapeHtml(repo)}</span>${repo === currentRepo ? '<span class="nav-current-check" aria-hidden="true">✓</span>' : ''}
+        .map((repo) => `<li><a class="menu-item${repo === currentRepo ? ' is-on' : ''}" href="${repoPath(repo)}"${repo === currentRepo ? ' aria-current="page"' : ''}>
+          ${repoIconHtml(repo, 'sm')}<span class="grow">${escapeHtml(repo)}</span>${repo === currentRepo ? '<span class="nav-current-check" aria-hidden="true">✓</span>' : ''}
         </a></li>`)
         .join('');
-  return `<div class="nav-popover" id="nav-menu-${id}" data-nav-menu="${id}" aria-label="${escapeHtml(label)}"${open ? '' : ' hidden'}><ul>${items}</ul></div>`;
+  return `<div class="menu nav-popover" id="nav-menu-${id}" data-nav-menu="${id}" aria-label="${escapeHtml(label)}"${open ? '' : ' hidden'}><div class="menu-label">Switch repository</div><ul>${items}</ul></div>`;
 }
 
 export function mountNavigation(options: NavigationOptions): NavigationController {
@@ -176,6 +175,8 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   let searchStarted = false;
   let searchPending = 0;
   let expanded = readExpandedPreference(page);
+  /** The tree scrolls to your location once, then keeps wherever the user scrolls it. */
+  let revealedLocation = page === 'home' || page === 'new-map';
   let mapSnapshots = new Map<string, MapSnapshot>();
   let snapshotErrors = new Set<string>();
   const snapshotRequests = new Map<string, Promise<MapSnapshot | null>>();
@@ -216,6 +217,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
       }
     }
     renderSidebar();
+    renderTopbar();
   }
 
   function getMapSnapshot(repo: string): Promise<MapSnapshot | null> {
@@ -315,30 +317,28 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   function renderRepoRows(): string {
     if (!repositoryListLoaded) return '<li class="nav-tree-status">Loading repositories…</li>';
     if (repositories.length === 0) {
-      return `<li class="nav-tree-status">${repositoryListFailed ? 'Repositories are unavailable.' : 'No repositories found.'}</li>`;
+      return `<li class="nav-tree-status">${repositoryListFailed ? 'Repositories are unavailable.' : 'No repositories yet. Open one from Home.'}</li>`;
     }
     return repositories
       .map((repo, index) => {
-        const isContext = repo === currentRepo;
+        const isContext = repo === currentRepo && page !== 'home';
         const currentPage = isContext && page === 'repository';
         const expandedRepo = expandedRepos.has(repo);
         const snapshot = mapSnapshots.get(repo);
         const treeId = `nav-repo-maps-${String(index)}`;
         const mapRows = !expandedRepo
-          ? `<ul class="nav-map-list" id="${treeId}" hidden></ul>`
+          ? `<ul class="kids" id="${treeId}" hidden></ul>`
           : snapshot !== undefined
-            ? `<ul class="nav-map-list" id="${treeId}">${mapListMarkup(repo, snapshot.maps, page === 'map' && repo === currentRepo ? currentMapNumber : null, activeView)}</ul>`
-            : snapshotRequests.has(repo)
-              ? `<ul class="nav-map-list" id="${treeId}"><li class="nav-tree-status">Loading maps…</li></ul>`
-              : snapshotErrors.has(repo)
-                ? `<ul class="nav-map-list" id="${treeId}"><li class="nav-tree-status">Could not load maps.</li><li><button type="button" class="nav-retry" data-nav-retry="${String(index)}">Retry</button></li></ul>`
-                : `<ul class="nav-map-list" id="${treeId}"><li class="nav-tree-status">Loading maps…</li></ul>`;
-        return `<li class="nav-repo-row${isContext ? ' is-context' : ''}"><div class="nav-repo-main">
-          <a class="nav-repo-link${currentPage ? ' is-current' : ''}" href="${repoPath(repo)}"${currentPage ? ' aria-current="page"' : ''} title="${escapeHtml(repo)}">
-            <span class="nav-repo-mark" aria-hidden="true">${escapeHtml(initials(repo))}</span><span class="nav-repo-name">${escapeHtml(repo)}</span>
-          </a>
-          <button type="button" class="nav-tree-toggle" data-nav-disclose="${String(index)}" aria-expanded="${String(expandedRepo)}" aria-controls="${treeId}" aria-label="${expandedRepo ? 'Collapse' : 'Expand'} maps in ${escapeHtml(repo)}" title="${expandedRepo ? 'Collapse' : 'Expand'} maps in ${escapeHtml(repo)}">${iconName('chevron')}</button>
-        </div>${mapRows}</li>`;
+            ? `<ul class="kids" id="${treeId}">${mapListMarkup(repo, snapshot.maps, page === 'map' && repo === currentRepo ? currentMapNumber : null, activeView)}</ul>`
+            : snapshotErrors.has(repo)
+              ? `<ul class="kids" id="${treeId}"><li class="nav-tree-status">Could not load maps.</li><li><button type="button" class="nav-retry" data-nav-retry="${String(index)}">Retry</button></li></ul>`
+              : `<ul class="kids" id="${treeId}"><li class="nav-tree-status">Loading maps…</li></ul>`;
+        const label = repoLabel(repo, repositories);
+        return `<li class="nav-repo">
+          <div class="row${currentPage ? ' is-on' : isContext ? ' is-trail' : ''}">
+            <button type="button" class="twist${expandedRepo ? ' is-open' : ''}" data-nav-disclose="${String(index)}" aria-expanded="${String(expandedRepo)}" aria-controls="${treeId}" aria-label="${expandedRepo ? 'Collapse' : 'Expand'} maps in ${escapeHtml(repo)}" title="${expandedRepo ? 'Collapse' : 'Expand'} maps">${iconName('right')}</button>
+            <a class="row-link" href="${repoPath(repo)}"${currentPage ? ' aria-current="page"' : ''} title="${escapeHtml(repo)}">${repoIconHtml(repo, 'sm')}<span class="grow">${escapeHtml(label)}</span></a>
+          </div>${mapRows}</li>`;
       })
       .join('');
   }
@@ -348,21 +348,23 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
       .map((repo, index) => {
         const menu = `flyout-${String(index)}`;
         const opened = openMenu === menu;
-        const current = repo === currentRepo;
+        const current = repo === currentRepo && page !== 'home';
         const snapshot = mapSnapshots.get(repo);
         const items = snapshot === undefined
-          ? snapshotRequests.has(repo)
-            ? '<li class="nav-tree-status">Loading maps…</li>'
-            : snapshotErrors.has(repo)
-              ? '<li class="nav-tree-status">Could not load maps.</li>'
-              : '<li class="nav-tree-status">Maps are not loaded.</li>'
+          ? snapshotErrors.has(repo)
+            ? '<li class="nav-tree-status">Could not load maps.</li>'
+            : '<li class="nav-tree-status">Loading maps…</li>'
           : snapshot.maps.length === 0
             ? '<li class="nav-tree-status">No maps yet</li>'
             : snapshot.maps
-                .map((map) => `<li><a class="nav-flyout-map" href="${mapHref(repo, map, activeView)}"${current && page === 'map' && map.number === currentMapNumber ? ' aria-current="page"' : ''}>${escapeHtml(map.title)}</a></li>`)
+                .map((map) => {
+                  const on = current && page === 'map' && map.number === currentMapNumber;
+                  return `<li><a class="menu-item${on ? ' is-on' : ''}" href="${mapHref(repo, map, activeView)}"${on ? ' aria-current="page"' : ''}>${miniRing(map)}<span class="grow">#${String(map.number)} ${escapeHtml(map.title)}</span></a></li>`;
+                })
                 .join('');
-        return `<li class="nav-mark-item"><button type="button" class="nav-repo-mark-button${current ? ' is-current' : ''}" data-nav-flyout-trigger="${menu}" aria-expanded="${String(opened)}" aria-controls="nav-menu-${menu}" aria-label="Open ${escapeHtml(repo)} maps" title="${escapeHtml(repo)}"><span class="nav-repo-mark" aria-hidden="true">${escapeHtml(initials(repo))}</span></button>
-          <div class="nav-popover nav-flyout" id="nav-menu-${menu}" data-nav-menu="${menu}" aria-label="${escapeHtml(repo)} maps"${opened ? '' : ' hidden'}><a class="nav-flyout-repo" href="${repoPath(repo)}">${escapeHtml(repo)}</a><ul>${items}</ul></div></li>`;
+        const mapCount = snapshot === undefined ? '' : `<span class="nav-meta">${String(snapshot.maps.length)}</span>`;
+        return `<li class="nav-mark-item"><button type="button" class="rail-btn${current ? ' is-here' : ''}" data-nav-flyout-trigger="${menu}" data-tip="${escapeHtml(repoLabel(repo, repositories))}" aria-expanded="${String(opened)}" aria-controls="nav-menu-${menu}" aria-label="Open ${escapeHtml(repo)} maps">${repoIconHtml(repo, 'sm')}</button>
+          <div class="menu nav-popover nav-flyout" id="nav-menu-${menu}" data-nav-menu="${menu}" aria-label="${escapeHtml(repo)} maps"${opened ? '' : ' hidden'}><div class="menu-label">${escapeHtml(repo)}</div><ul><li><a class="menu-item${current && page === 'repository' ? ' is-on' : ''}" href="${repoPath(repo)}">${iconName('graph')}<span class="grow">All maps</span>${mapCount}</a></li>${items}</ul></div></li>`;
       })
       .join('');
   }
@@ -370,33 +372,53 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   function renderSidebar(): void {
     const homeCurrent = page === 'home';
     const newMapCurrent = page === 'new-map';
-    const newMapHref = currentRepo === null ? '/new-map' : `/new-map?repo=${encodeURIComponent(currentRepo)}`;
+    const newMapHref = page === 'repository' && currentRepo !== null ? `/new-map?repo=${encodeURIComponent(currentRepo)}` : '/new-map';
     const repoRows = renderRepoRows();
     const compactMarks = renderCompactRepoMarks();
     const existingFooter = sidebar.querySelector<HTMLElement>('.nav-footer');
+    const treeScroll = sidebar.querySelector<HTMLElement>('.tree')?.scrollTop ?? null;
+    const railScroll = sidebar.querySelector<HTMLElement>('.mini-repos')?.scrollTop ?? null;
+    const logo = '<img class="app-logo" src="/wayfinder-icon.svg" alt="" width="30" height="30" />';
     sidebar.innerHTML = `<nav class="navigation" aria-label="Primary">
-      <div class="nav-header"><a class="nav-brand" href="/" aria-label="Wayfinder Home">${iconName('compass')}<span class="nav-brand-name">Wayfinder</span></a><button class="nav-fold" type="button" id="nav-fold" aria-expanded="${String(expanded)}" aria-controls="nav-content" aria-label="${expanded ? 'Collapse sidebar' : 'Expand sidebar'}" title="${expanded ? 'Collapse sidebar' : 'Expand sidebar'}">${iconName('panel')}<span class="nav-fold-compact">${iconName('compass')}</span><span class="sr-only">${expanded ? 'Collapse sidebar' : 'Expand sidebar'}</span></button></div>
-      <div class="nav-open-content" id="nav-content"${expanded ? '' : ' hidden'}>
-        <a class="nav-primary${newMapCurrent ? ' is-current' : ''}" href="${newMapHref}"${newMapCurrent ? ' aria-current="page"' : ''}>${iconName('plus')}<span>Start a new map</span></a>
-        <button type="button" class="nav-jump" data-nav-action="jump">${iconName('lens')}<span>Jump to</span><kbd>Ctrl K</kbd></button>
-        <ul class="nav-primary-list"><li><a class="nav-home-link${homeCurrent ? ' is-current' : ''}" href="/"${homeCurrent ? ' aria-current="page"' : ''}>${iconName('compass')}<span>Home</span></a></li></ul>
-        <section class="nav-repositories" aria-labelledby="nav-repositories-title"><h2 id="nav-repositories-title">Repositories</h2><ul class="nav-tree">${repoRows}</ul></section>
+      <div class="nav-open-content side" id="nav-content"${expanded ? '' : ' hidden'}>
+        <div class="side-head"><a class="nav-brand" href="/" aria-label="Wayfinder Home">${logo}</a><b>Wayfinder</b><button class="fold" type="button" id="nav-fold" aria-expanded="true" aria-controls="nav-content" aria-label="Fold the sidebar" title="Fold the sidebar">${iconName('panel')}</button></div>
+        <div class="side-actions">
+          <a class="primary${newMapCurrent ? ' is-current' : ''}" href="${newMapHref}"${newMapCurrent ? ' aria-current="page"' : ''}>${iconName('plus')}Start a new map</a>
+          <button type="button" class="search" data-nav-action="jump">${iconName('lens')}<span class="ph">Jump to…</span><kbd>Ctrl K</kbd></button>
+        </div>
+        <div class="tree">
+          <a class="row${homeCurrent ? ' is-on' : ''}" href="/"${homeCurrent ? ' aria-current="page"' : ''}>${iconName('home')}<span class="grow">Home</span></a>
+          <h2 class="tree-label" id="nav-repositories-title">Repositories</h2>
+          <ul class="nav-tree" aria-labelledby="nav-repositories-title">${repoRows}</ul>
+        </div>
       </div>
-      <div class="nav-compact-content"${expanded ? ' hidden' : ''}>
-        <a class="nav-compact-action" href="${newMapHref}" aria-label="Start a new map" title="Start a new map">${iconName('plus')}</a>
-        <button type="button" class="nav-compact-action" data-nav-action="jump" aria-label="Jump to" title="Jump to · Ctrl K">${iconName('lens')}</button>
-        <a class="nav-compact-action${homeCurrent ? ' is-current' : ''}" href="/"${homeCurrent ? ' aria-current="page"' : ''} aria-label="Home" title="Home">${iconName('compass')}</a>
-        <div class="nav-compact-divider" role="separator"></div><ul class="nav-repo-marks" aria-label="Repositories">${compactMarks}</ul>
+      <div class="nav-compact-content mini"${expanded ? ' hidden' : ''}>
+        <div class="mini-head"><button type="button" class="fold mini-logo" id="nav-unfold" aria-expanded="false" aria-controls="nav-content" aria-label="Open the sidebar" title="Open the sidebar">${logo}${iconName('panel')}</button></div>
+        <a class="new${newMapCurrent ? ' is-current' : ''}" href="${newMapHref}" data-tip="Start a new map" aria-label="Start a new map">${iconName('plus')}</a>
+        <button type="button" class="rail-btn" data-nav-action="jump" data-tip="Jump to… Ctrl K" aria-label="Jump to">${iconName('lens')}</button>
+        <a class="rail-btn${homeCurrent ? ' is-on' : ''}" href="/"${homeCurrent ? ' aria-current="page"' : ''} data-tip="Home" aria-label="Home">${iconName('home')}</a>
+        <span class="mini-sep" role="separator"></span>
+        <ul class="mini-repos" aria-label="Repositories">${compactMarks}</ul>
       </div>
       <div class="nav-footer">
-        ${page === 'map' ? `<button type="button" id="models" class="nav-footer-action" aria-label="Model defaults" title="Pick a T3 Code model for each task tier">${iconName('sliders')}<span>Model defaults</span></button>` : ''}
-        <button type="button" id="updater" class="nav-footer-action" aria-label="Check for updates" title="Check for updates">${iconName('download')}<span>Updates</span></button>
-        <button type="button" id="synced" class="nav-footer-action synced" aria-label="Resync from GitHub" title="Click to resync from GitHub"><span data-icon="refresh" class="synced-icon"></span><span class="synced-label">Synced just now</span></button>
-        <button type="button" id="theme" class="nav-footer-action" aria-label="Switch light and dark" title="Switch light and dark">${iconName('moon')}<span>Theme</span></button>
-        <div class="nav-account-row"><span class="nav-account" id="account-mark" role="img" aria-label="GitHub account, loading" title="GitHub account">…</span><span class="nav-account-label" id="account-label">GitHub account</span></div>
+        <span class="rail-mark nav-account" id="account-mark" role="img" aria-label="GitHub account, loading" title="GitHub account">…</span><span class="nav-account-label grow" id="account-label">GitHub account</span>
+        ${page === 'map' ? `<button type="button" id="models" class="rail-btn" aria-label="Model defaults" data-tip="Model defaults" title="Pick a T3 Code model for each task tier">${iconName('sliders')}</button>` : ''}
+        <button type="button" id="updater" class="rail-btn" aria-label="Check for updates" data-tip="Updates">${iconName('download')}</button>
+        <button type="button" id="theme" class="rail-btn" aria-label="Switch light and dark" data-tip="Theme">${iconName('moon')}</button>
       </div>
     </nav>`;
     if (existingFooter !== null) sidebar.querySelector('.nav-footer')?.replaceWith(existingFooter);
+    const tree = sidebar.querySelector<HTMLElement>('.tree');
+    const rail = sidebar.querySelector<HTMLElement>('.mini-repos');
+    if (tree !== null && treeScroll !== null) tree.scrollTop = treeScroll;
+    if (rail !== null && railScroll !== null) rail.scrollTop = railScroll;
+    if (!revealedLocation && repositoryListLoaded) {
+      const here = sidebar.querySelector<HTMLElement>(expanded ? '.tree .row.is-on, .tree .row.is-trail' : '.mini-repos .is-here');
+      if (here !== null) {
+        here.scrollIntoView({ block: 'center' });
+        revealedLocation = true;
+      }
+    }
     shell.classList.toggle('is-nav-expanded', expanded);
     shell.classList.toggle('is-nav-collapsed', !expanded);
     paintIcons(sidebar);
@@ -406,25 +428,24 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   function renderTopbar(): void {
     const snapshot = currentRepo === null ? undefined : mapSnapshots.get(currentRepo);
     const map = currentMap(snapshot, currentMapNumber);
-    const repoScope = (menuId: string, repo: string): string => `<div class="nav-scope-control"><button type="button" class="nav-scope-button" data-nav-menu-trigger="${menuId}" aria-haspopup="true" aria-expanded="${String(openMenu === menuId)}" aria-controls="nav-menu-${menuId}" aria-label="Switch repository, current is ${escapeHtml(repo)}" title="Switch repository">${escapeHtml(repo)}${iconName('chevron')}</button>${scopeMenuMarkup(menuId, 'Repositories', repositories, currentRepo, openMenu === menuId)}</div>`;
+    const repoScope = (menuId: string, repo: string, quiet: boolean): string => `<div class="nav-scope-control"><button type="button" class="scope${quiet ? ' is-quiet' : ''}" data-nav-menu-trigger="${menuId}" aria-haspopup="true" aria-expanded="${String(openMenu === menuId)}" aria-controls="nav-menu-${menuId}" aria-label="Switch repository, current is ${escapeHtml(repo)}" title="Switch repository">${repoIconHtml(repo, 'sm')}<span class="t">${escapeHtml(quiet ? repoLabel(repo, repositories) : repo)}</span>${iconName('chevron')}</button>${scopeMenuMarkup(menuId, 'Repositories', repositories, currentRepo, openMenu === menuId)}</div>`;
     const mapScope = (menuId: string, repo: string, current: WayfinderMap | null): string => {
-      const label = current?.title ?? (currentMapNumber === null ? 'Choose a map' : `Map #${String(currentMapNumber)}`);
+      const label = current === null ? (currentMapNumber === null ? 'Choose a map' : `Map #${String(currentMapNumber)}`) : `#${String(current.number)} ${current.title}`;
       const menuMaps = snapshot?.maps.length
-        ? `<ul>${snapshot.maps.map((candidate) => `<li><a class="nav-scope-option${candidate.number === currentMapNumber ? ' is-current' : ''}" href="${mapHref(repo, candidate, activeView)}"${candidate.number === currentMapNumber ? ' aria-current="page"' : ''}><span class="nav-scope-option-name">${escapeHtml(candidate.title)}</span><span class="badge">#${String(candidate.number)}</span></a></li>`).join('')}<li><a class="nav-scope-option nav-all-maps" href="${repoPath(repo)}">All maps</a></li></ul>`
+        ? `<div class="menu-label">Maps in ${escapeHtml(repoLabel(repo, repositories))}</div><ul>${snapshot.maps.map((candidate) => `<li><a class="menu-item${candidate.number === currentMapNumber ? ' is-on' : ''}" href="${mapHref(repo, candidate, activeView)}"${candidate.number === currentMapNumber ? ' aria-current="page"' : ''}>${miniRing(candidate)}<span class="grow">#${String(candidate.number)} ${escapeHtml(candidate.title)}</span></a></li>`).join('')}<li><a class="menu-item nav-all-maps" href="${repoPath(repo)}">${iconName('graph')}<span class="grow">All maps</span></a></li></ul>`
         : `<ul><li class="nav-tree-status">${snapshotRequests.has(repo) ? 'Loading maps…' : snapshotErrors.has(repo) ? 'Could not load maps.' : 'No maps yet'}</li></ul>`;
-      return `<div class="nav-scope-control"><button type="button" class="nav-scope-button nav-map-scope" data-nav-menu-trigger="${menuId}" aria-haspopup="true" aria-expanded="${String(openMenu === menuId)}" aria-controls="nav-menu-${menuId}"${snapshot?.maps.length ? '' : ' disabled'} title="Choose a map"><span class="nav-scope-label">${escapeHtml(label)}</span>${iconName('chevron')}</button><div class="nav-popover" id="nav-menu-${menuId}" data-nav-menu="${menuId}" aria-label="Maps in ${escapeHtml(repo)}"${openMenu === menuId ? '' : ' hidden'}>${menuMaps}</div></div>`;
+      return `<div class="nav-scope-control"><button type="button" class="scope" data-nav-menu-trigger="${menuId}" aria-haspopup="true" aria-expanded="${String(openMenu === menuId)}" aria-controls="nav-menu-${menuId}"${snapshot?.maps.length ? '' : ' disabled'} title="Choose a map">${current === null ? '' : miniRing(current)}<span class="t">${escapeHtml(label)}</span>${iconName('chevron')}</button><div class="menu nav-popover" id="nav-menu-${menuId}" data-nav-menu="${menuId}" aria-label="Maps in ${escapeHtml(repo)}"${openMenu === menuId ? '' : ' hidden'}>${menuMaps}</div></div>`;
     };
     const separator = '<span class="crumb-sep" aria-hidden="true">/</span>';
     if (page === 'map' && currentRepo !== null) {
       const repo = currentRepo;
-      topbar.innerHTML = `<div class="nav-map-strip"><nav class="nav-map-scopes" aria-label="Map location"><a class="nav-home-crumb" href="/" title="Home">Home</a>${separator}${repoScope('repo-scope', repo)}${separator}${mapScope('map-scope', repo, map)}</nav><nav class="nav-map-tabs" aria-label="Map views">${VIEWS.map((view) => `<a class="nav-map-tab${activeView === view ? ' is-current' : ''}" href="${map ? mapHref(repo, map, view) : '#'}" data-nav-view="${view}"${activeView === view ? ' aria-current="page"' : ''}>${iconName(VIEW_ICON[view])}<span>${VIEW_LABEL[view]}</span>${view === 'prototypes' ? prototypeCountBadge(prototypeCount) : ''}</a>`).join('')}</nav></div>`;
+      topbar.innerHTML = `<div class="nav-map-strip"><nav class="nav-map-scopes" aria-label="Map location">${repoScope('repo-scope', repo, true)}${separator}${mapScope('map-scope', repo, map)}</nav><nav class="segmented nav-map-tabs" aria-label="Map views">${VIEWS.map((view) => `<a class="seg${activeView === view ? ' is-on' : ''}" href="${map ? mapHref(repo, map, view) : '#'}" data-nav-view="${view}"${activeView === view ? ' aria-current="page"' : ''}>${iconName(VIEW_ICON[view])}<span>${VIEW_LABEL[view]}</span>${view === 'prototypes' ? prototypeCountBadge(prototypeCount) : ''}</a>`).join('')}</nav></div>`;
     } else if (page === 'repository' && currentRepo !== null) {
-      topbar.innerHTML = `<nav class="nav-breadcrumbs" aria-label="Breadcrumb"><a href="/">Home</a>${separator}${repoScope('repo-scope', currentRepo)}</nav>`;
+      topbar.innerHTML = `<nav class="nav-scopes" aria-label="Repository">${repoScope('repo-scope', currentRepo, false)}</nav>`;
     } else if (page === 'new-map') {
-      const repoCrumb = currentRepo === null ? '' : `<a href="${repoPath(currentRepo)}">${escapeHtml(currentRepo)}</a>${separator}`;
-      topbar.innerHTML = `<nav class="nav-breadcrumbs" aria-label="Breadcrumb"><a href="/">Home</a>${separator}${repoCrumb}<span aria-current="page">Start a new map</span></nav>`;
+      topbar.innerHTML = '<span class="page-title" aria-current="page">Start a new map</span>';
     } else {
-      topbar.innerHTML = '<nav class="nav-breadcrumbs" aria-label="Breadcrumb"><span aria-current="page">Home</span></nav>';
+      topbar.innerHTML = '<span class="page-title" aria-current="page">Home</span>';
     }
     paintIcons(topbar);
     const startTicket = map?.tickets.find((ticket) => ticket.state === 'frontier');
@@ -433,12 +454,12 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
       if (startTicket !== undefined) {
         mapStartButton.dataset['ticket'] = String(startTicket.number);
         mapStartButton.setAttribute('aria-label', `Start #${String(startTicket.number)} in T3 Code`);
-        mapStartButton.title = `Start #${String(startTicket.number)} in T3 Code`;
+        mapStartButton.title = `Start #${String(startTicket.number)} in T3 Code: ${startTicket.title}`;
         const label = mapStartButton.querySelector<HTMLElement>('.topbar-action-label');
         if (label !== null) label.textContent = `Start #${String(startTicket.number)} in T3 Code`;
       }
     }
-    if (topbarActionJump !== null) topbarActionJump.hidden = page !== 'map';
+    if (topbarActionJump !== null) topbarActionJump.hidden = page !== 'map' || expanded;
     repositionOpenMenu();
   }
 
@@ -538,10 +559,10 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
 
   sidebar.addEventListener('click', (event) => {
     const target = event.target as HTMLElement;
-    const fold = target.closest<HTMLElement>('#nav-fold');
+    const fold = target.closest<HTMLElement>('#nav-fold, #nav-unfold');
     if (fold !== null) {
       setShellExpanded(!expanded, true);
-      sidebar.querySelector<HTMLElement>('#nav-fold')?.focus();
+      sidebar.querySelector<HTMLElement>(expanded ? '#nav-fold' : '#nav-unfold')?.focus();
       return;
     }
     const jump = target.closest<HTMLElement>('[data-nav-action="jump"]');

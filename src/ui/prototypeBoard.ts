@@ -1,5 +1,5 @@
 import type { Prototype, Ticket, WayfinderMap } from '../types.js';
-import { prototypeFileUrl } from '../prototypes.js';
+import { prototypeFileUrl, prototypeShotUrl } from '../prototypes.js';
 import { escapeHtml } from './markdown.js';
 import { previewUrl, verdictGist } from './prototypeTile.js';
 
@@ -97,22 +97,43 @@ export function prototypeCardState(map: WayfinderMap, prototype: Prototype): Pro
   return { state: ownTicket?.open === false || (ownTicket === undefined && prototype.verdict !== null) ? 'decided' : 'building', pickTicket: null };
 }
 
-export function pickedVariantIds(verdict: string, variantIds: readonly string[]): string[] {
-  const lines = verdict.split(/\r?\n/).filter((line) => ACTION_LINE.test(line));
-  const joinedIds = new Set<string>();
-  for (const line of lines) {
-    const compact = line.replace(/\b([a-z])\s*(?:\+|&|and)\s*([a-z])\b/gi, '$1$2');
-    for (const id of variantIds) {
-      if (id.length > 1 && new RegExp(`\\b${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(compact)) joinedIds.add(id);
-    }
-  }
-  if (joinedIds.size > 0) return [...joinedIds];
+/** Lines that say what was picked; a line about what was *not* picked never names a winner. */
+const REJECTED_LINE = /\bnot\s+(?:chosen|picked|selected|shipped)\b|\brejected\b/i;
+/** The verdict's own answer: "**Answer:** C, goal first", "Verdict: A + B". */
+const ANSWER_LINE = /^[\s>*_#-]*(?:answer|verdict|decision|picked|winner)\b[\s*_:]*/i;
 
-  const selected = new Set<string>();
+function idPattern(id: string): RegExp {
+  return new RegExp(`\\b${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+}
+
+function idsIn(line: string, variantIds: readonly string[]): string[] {
+  const compact = line.replace(/\b([A-Z])\s*(?:\+|&|and)\s*([A-Z])\b/g, '$1$2');
+  const joined = variantIds.filter((id) => id.length > 1 && idPattern(id).test(compact));
+  if (joined.length > 0) return joined;
+  return variantIds.filter((id) => idPattern(id).test(line));
+}
+
+/**
+ * The variants a verdict picked. The answer line wins when there is one, then an explicit
+ * "direction D", then any line that says what was picked or shipped. Letters are matched as
+ * capitals only, so "a" in prose never counts, and "C is not chosen" never makes C a winner.
+ */
+export function pickedVariantIds(verdict: string, variantIds: readonly string[]): string[] {
+  const lines = verdict.split(/\r?\n/).filter((line) => !REJECTED_LINE.test(line));
   for (const line of lines) {
-    for (const id of variantIds) {
-      if (new RegExp(`\\b${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(line)) selected.add(id);
-    }
+    if (!ANSWER_LINE.test(line)) continue;
+    const answer = line.replace(ANSWER_LINE, '').split(/[.;]\s/)[0] ?? '';
+    const ids = idsIn(answer, variantIds);
+    if (ids.length > 0) return ids;
+  }
+  for (const line of lines) {
+    const named = [...line.matchAll(/\b(?:direction|variant|option)\s+\**([A-Z]{1,2})\b/g)].map((match) => match[1] ?? '');
+    const ids = variantIds.filter((id) => named.includes(id));
+    if (ids.length > 0) return ids;
+  }
+  const selected = new Set<string>();
+  for (const line of lines.filter((candidate) => ACTION_LINE.test(candidate))) {
+    for (const id of idsIn(line, variantIds)) selected.add(id);
   }
   return [...selected];
 }
@@ -120,64 +141,88 @@ export function pickedVariantIds(verdict: string, variantIds: readonly string[])
 function dateLabel(updatedAt: string | null): string {
   if (updatedAt === null) return '';
   const date = new Date(updatedAt);
-  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function variantLink(repo: string, prototype: Prototype, variant: PrototypeVariant): string {
-  const file = variant.imageFile ?? variant.pageFile;
-  return file === null ? previewUrl(repo, prototype) ?? prototype.url : prototypeFileUrl(repo, prototype.branch, file);
+/** A variant ready to draw: its letter and name, a picture to show, and where it opens. */
+export interface BoardVariant {
+  id: string;
+  title: string;
+  image: string | null;
+  page: string | null;
 }
 
-function variantThumbnail(repo: string, prototype: Prototype, variant: PrototypeVariant): string {
-  const image = variant.imageFile === null ? '' : prototypeFileUrl(repo, prototype.branch, variant.imageFile);
-  const page = variant.pageFile === null ? '' : prototypeFileUrl(repo, prototype.branch, variant.pageFile);
-  const href = variantLink(repo, prototype, variant);
-  const label = `Open variant ${variant.id}: ${variant.title}`;
-  const content = image !== ''
-    ? `<img class="decision-variant-image" src="${escapeHtml(image)}" alt="" loading="lazy" />${page === '' ? '' : `<iframe class="decision-variant-page" src="${escapeHtml(page)}" sandbox="allow-scripts" loading="lazy" tabindex="-1" aria-hidden="true" title="" width="1280" height="800" hidden></iframe>`}<span class="decision-variant-fallback" hidden>Preview image unavailable</span>`
-    : page !== ''
-      ? `<iframe src="${escapeHtml(page)}" sandbox="allow-scripts" loading="lazy" tabindex="-1" aria-hidden="true" title="" width="1280" height="800"></iframe>`
+/** The canvas's own variants when the server read them, otherwise ones guessed from the branch's files. */
+export function boardVariants(repo: string, prototype: Prototype): BoardVariant[] {
+  if (prototype.variants !== undefined && prototype.variants.length > 0) {
+    return prototype.variants.map((variant) => ({
+      id: variant.id,
+      title: variant.title,
+      image: variant.shot === null ? null : prototypeShotUrl(repo, variant.shot),
+      page: variant.page === null ? null : prototypeFileUrl(repo, prototype.branch, variant.page),
+    }));
+  }
+  return prototypeVariants(prototype).map((variant) => ({
+    id: variant.id,
+    title: variant.title,
+    image: variant.imageFile === null ? null : prototypeFileUrl(repo, prototype.branch, variant.imageFile),
+    page: variant.pageFile === null ? null : prototypeFileUrl(repo, prototype.branch, variant.pageFile),
+  }));
+}
+
+function variantFrame(variant: BoardVariant): string {
+  const livePage = (hidden: boolean): string =>
+    variant.page === null
+      ? ''
+      : `<iframe class="decision-variant-page" src="${escapeHtml(variant.page)}" sandbox="allow-scripts" loading="lazy" tabindex="-1" aria-hidden="true" title="" width="1280" height="800"${hidden ? ' hidden' : ''}></iframe>`;
+  const picture = variant.image !== null
+    ? `<img class="decision-variant-image" src="${escapeHtml(variant.image)}" alt="" loading="lazy" />${livePage(true)}<span class="decision-variant-fallback" hidden>Preview image unavailable</span>`
+    : variant.page !== null
+      ? livePage(false)
       : '<span class="decision-variant-fallback">Preview image unavailable</span>';
-  return `<a class="proto-thumb decision-variant-thumb${image === '' && page === '' ? ' is-empty' : ''}" href="${escapeHtml(href)}" target="_blank" rel="noreferrer" aria-label="${escapeHtml(label)}">${content}<span class="proto-open">Open variant</span></a>`;
+  return `<span class="wf-frame proto-thumb${variant.image === null && variant.page === null ? ' is-empty' : ''}">${picture}<span class="tag">${escapeHtml(variant.id)}</span></span>`;
 }
 
 function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string {
   const ticket = map.tickets.find((candidate) => candidate.number === prototype.ticketNumber);
   const decision = prototypeCardState(map, prototype);
-  const variants = prototypeVariants(prototype);
-  const selected = decision.state === 'decided'
-    ? pickedVariantIds(prototype.verdict ?? '', variants.map((variant) => variant.id))
-    : [];
-  const statusText = decision.state === 'waiting' ? 'Waiting on your pick' : decision.state === 'building' ? 'Being built' : 'Decided';
+  const variants = boardVariants(repo, prototype);
+  const selected = decision.state !== 'decided'
+    ? []
+    : variants.length === 1
+      ? [variants[0]?.id ?? '']
+      : pickedVariantIds(prototype.verdict ?? '', variants.map((variant) => variant.id)).sort((a, b) => variants.findIndex((variant) => variant.id === a) - variants.findIndex((variant) => variant.id === b));
+  const ticketTitle = ticket?.title ?? prototype.branch;
+  const canvas = previewUrl(repo, prototype) ?? prototype.url;
+  const status = decision.state === 'waiting'
+    ? '<span class="chip" style="--accent: var(--state-claimed)"><span data-icon="hand" aria-hidden="true"></span>Waiting on your pick</span>'
+    : decision.state === 'building'
+      ? '<span class="chip" style="--accent: var(--state-blocked)"><span data-icon="refresh" aria-hidden="true"></span>Being built</span>'
+      : `<span class="chip" style="--accent: var(--state-done)"><span data-icon="check" aria-hidden="true"></span>${selected.length === 0 ? 'Decided' : `Picked ${escapeHtml(selected.join(' + '))}`}</span>`;
   const summarySource = prototype.verdict ?? ticket?.body ?? '';
   const summary = verdictGist(summarySource) || (decision.state === 'building' ? 'This prototype is still being built.' : 'Prototype decision recorded.');
   const date = dateLabel(prototype.updatedAt);
-  const canvas = previewUrl(repo, prototype) ?? prototype.url;
   const variantHtml = variants
     .map((variant) => {
       const isPicked = selected.includes(variant.id);
-      const isDim = selected.length > 0 && !isPicked;
-      const stateClass = isPicked ? ' is-picked' : isDim ? ' is-dim' : '';
-      const marker = isPicked ? '<span class="decision-variant-check" aria-hidden="true">✓</span><span class="sr-only">Picked winner:</span>' : '';
-      return `<div class="decision-variant${stateClass}" role="listitem">${variantThumbnail(repo, prototype, variant)}<span class="decision-variant-label">${marker}<span>${escapeHtml(`${variant.id} · ${variant.title}`)}</span></span></div>`;
+      const stateClass = isPicked ? ' is-picked' : selected.length > 0 ? ' is-dim' : '';
+      const title = variants.length === 1 && variant.title.startsWith('Variant ') ? ticketTitle : variant.title;
+      const href = variant.page ?? variant.image ?? canvas;
+      const marker = isPicked ? '<span data-icon="check" aria-hidden="true"></span><span class="sr-only">Picked winner:</span>' : '';
+      return `<a class="wf-var decision-variant${stateClass}" role="listitem" href="${escapeHtml(href)}" target="_blank" rel="noreferrer" aria-label="Open variant ${escapeHtml(variant.id)}: ${escapeHtml(title)}${isPicked ? ' (picked)' : ''}">${variantFrame(variant)}<span class="lbl">${marker}${escapeHtml(`${variant.id} · ${title}`)}</span></a>`;
     })
     .join('');
   const pickAction = decision.pickTicket === null
     ? ''
     : `<button type="button" class="ghost" data-jump="${String(decision.pickTicket.number)}">Pick in #${String(decision.pickTicket.number)}</button>`;
-  const ticketTitle = ticket?.title ?? prototype.branch;
-  const heading = ticket === undefined
-    ? `<h2>#${String(prototype.ticketNumber)} ${escapeHtml(ticketTitle)}</h2>`
-    : `<h2><button type="button" class="linkish" data-jump="${String(prototype.ticketNumber)}">#${String(prototype.ticketNumber)} ${escapeHtml(ticketTitle)}</button></h2>`;
-  return `<article class="decision-card is-${decision.state}">
-    <header class="decision-card-header">
-      <div class="decision-card-title"><span class="decision-status is-${decision.state}">${escapeHtml(statusText)}</span>${heading}</div>
-      ${date === '' ? '' : `<time class="decision-date" datetime="${escapeHtml(prototype.updatedAt ?? '')}">${escapeHtml(date)}</time>`}
-      <div class="decision-card-actions">${pickAction}<a class="${decision.state === 'waiting' ? 'primary' : 'ghost'}" href="${escapeHtml(canvas)}" target="_blank" rel="noreferrer" aria-label="Open the #${String(prototype.ticketNumber)} prototype canvas"><span data-icon="play" aria-hidden="true"></span>Canvas</a></div>
-    </header>
-    <p class="decision-summary">${escapeHtml(summary)}</p>
-    <div class="decision-variant-strip" role="list" aria-label="Variants for #${String(prototype.ticketNumber)}">${variantHtml}</div>
-  </article>`;
+  const accent = decision.state === 'waiting' ? '--state-claimed' : decision.state === 'building' ? '--state-blocked' : '--state-done';
+  return `<section class="wf-node wf-proto is-${decision.state}" style="--accent: var(${accent})">
+    <div class="h">${status}<button type="button" class="wf-proto-title" data-jump="${String(prototype.ticketNumber)}" title="Open #${String(prototype.ticketNumber)} on the map">#${String(prototype.ticketNumber)} ${escapeHtml(ticketTitle)}</button>
+      ${date === '' ? '' : `<time class="when" datetime="${escapeHtml(prototype.updatedAt ?? '')}">${escapeHtml(date)}</time>`}
+      <span class="acts">${pickAction}<a class="${decision.state === 'waiting' ? 'primary' : 'ghost'}" href="${escapeHtml(canvas)}" target="_blank" rel="noreferrer" aria-label="Open the #${String(prototype.ticketNumber)} prototype canvas"><span data-icon="play" aria-hidden="true"></span>Canvas</a></span></div>
+    <p class="gist">${escapeHtml(summary)}</p>
+    <div class="wf-strip" role="list" aria-label="Variants for #${String(prototype.ticketNumber)}">${variantHtml}</div>
+  </section>`;
 }
 
 export function sortPrototypeCards(map: WayfinderMap, prototypes: readonly Prototype[]): Prototype[] {
@@ -189,9 +234,9 @@ export function sortPrototypeCards(map: WayfinderMap, prototypes: readonly Proto
 
 export function prototypeBoardHtml(repo: string, map: WayfinderMap, prototypes: readonly Prototype[]): string {
   if (prototypes.length === 0) {
-    return `<div class="decision-board-empty"><p class="eyebrow">Prototypes · map #${String(map.number)}</p><h1>No prototypes yet</h1><p>When a prototype ticket on this map pushes its prototype branch, its canvas shows up here.</p></div>`;
+    return `<div class="wf-board-page"><div class="wf-board-empty"><p class="eyebrow">Prototypes · map #${String(map.number)}</p><h1>No prototypes yet</h1><p>When a prototype ticket on this map pushes its prototype branch, its canvas shows up here.</p></div></div>`;
   }
-  return `<div class="decision-board-sheet"><p class="eyebrow">${String(prototypes.length)} prototype${prototypes.length === 1 ? '' : 's'} · map #${String(map.number)}</p><div class="decision-board">${sortPrototypeCards(map, prototypes)
+  return `<div class="wf-board-page"><div class="wf-board">${sortPrototypeCards(map, prototypes)
     .map((prototype) => cardHtml(repo, map, prototype))
     .join('')}</div></div>`;
 }
