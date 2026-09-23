@@ -121,7 +121,18 @@ user hasn't agreed to. If you can't reach the user, stop and say so.`;
 const TYPE_STEPS: Partial<Record<TicketType, string>> = {
   grilling: HUMAN_IN_THE_LOOP_STEPS,
   prototype: `${HUMAN_IN_THE_LOOP_STEPS}
-Show them the prototype and let them react before settling anything.
+Show the canvas and collect feedback on one option at a time. For each option,
+ask whether they want to Keep, Change, or Combine it. Have them select and copy
+the generated feedback line into the thread, then record their agreed choice
+and detail in that option's note metadata fields disposition and feedback. Never
+infer a decision from a blank or unsubmitted form.
+Keep the original options. Put each remix on a named page with a round label,
+and record source option IDs in each remixed item's note basedOn metadata.
+Before presenting, inspect the real token and component sources; check both
+themes, relevant interaction states, keyboard/focus, semantics, responsive
+behavior, and contrast. Add a visible Design review note that lists sources,
+checks, findings, and anything not checked. Mark missing visual or accessibility
+evidence as Not checked in the note and handoff.
 When you capture the prototype, commit it to the branch {{prototypeBranch}}
 and push it. That exact name is how wayfinder-map finds it later, so do not
 pick another. When the question is visual or UX, build the prototype as a

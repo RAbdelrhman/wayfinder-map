@@ -1,6 +1,6 @@
 # Design canvas
 
-A board for design decisions, modelled on Claude Design artifacts. It lays out the options side by side: full pages, style directions, component sheets, palettes, type, and layered compositions. The user compares them, opens any one full size, and picks.
+An in-repo board for design decisions. It lays out options side by side: full pages, style directions, component sheets, palettes, type, and layered compositions. The user compares them, opens any one full size, and picks.
 
 It knows nothing about any project. Everything project-specific lives in `config.js`, `variants/` and `assets/`. The engine (`index.html`, `canvas.js`, `canvas.css`, `kit/`, `tools/`) stays the same everywhere.
 
@@ -37,6 +37,7 @@ window.CANVAS = {
   pages: [
     {
       title: 'Flows',
+      round: 'Baseline', // optional; a positive number is shown as "Round N"
       question: 'Optional: overrides the top-level question on this page.',
       sections: [{ title: 'Pages', note: 'Optional line under the title.', items: [/* items */] }],
     },
@@ -46,7 +47,11 @@ window.CANVAS = {
 
 One page? Skip `pages` and put `sections` at the top level. With more than one page the bar shows a page switcher (<kbd>P</kbd>, or <kbd>[</kbd> / <kbd>]</kbd>). A page's id is `id`, or its title slugified.
 
-Every item takes `id` (short, e.g. `A`: shown on the board, used for keys and `#page/A` links), `name` and `note`. A note is a string or `{ idea, pros: [], cons: [] }`. Always write one: the user decides from the notes. Optional: `style`, `styles`, `boardWidth` (board size in px, default ≤ 600), `css` (extra CSS for the item).
+Every item takes `id` (short, e.g. `A`: shown on the board, used for keys and `#page/A` links), `name` and `note`. A note is a string or `{ idea, pros: [], cons: [], basedOn, disposition, feedback }`. Use `basedOn` for source option IDs (one name or an array); use `disposition` for `keep`, `change`, or `combine`, and `feedback` for the user's recorded detail. Always write an idea and trade-offs: the user decides from the notes. Optional: `style`, `styles`, `boardWidth` (board size in px, default ≤ 600), `css` (extra CSS for the item).
+
+### Preserve iterations
+
+Keep the baseline page and options when making a remix. Add a named page for each new round, set its `round` label, and put the source option IDs in each remixed item's `note.basedOn`. Do not replace the earlier options; the page menu keeps each round available for comparison. A string round label is shown as written; a positive number is shown as `Round N`.
 
 ### Item kinds
 
@@ -120,12 +125,25 @@ A page is ordinary HTML in `variants/`. Link whatever CSS it needs (relative pat
 
 Keep fake data and icons in your own classic script next to the pages (e.g. `variants/fixtures.js`) and load it after `kit.js`.
 
+## Before presenting
+
+Inspect the actual source design system before drawing conclusions or adding tokens:
+
+1. Read the repository's token and component sources. Point `base.stylesheets` at the real stylesheet where practical, and use its component classes and semantic tokens in previews.
+2. Switch between light and dark. Check the states relevant to the design, including hover, focus, disabled, selected, loading, and error states when they exist.
+3. Review keyboard operation, visible focus, labels and semantics, responsive behavior, and text/control contrast. Fix issues that are in scope; list unresolved findings plainly.
+4. Add a visible `kind: 'note'` item named `Design review` to the canvas. Record the sources inspected, themes and states checked, accessibility checks, findings, and anything not checked. Keep the review concise and specific.
+5. Run `node <dir>/tools/check.mjs` and review the sandboxed canvas before sharing it. The checker cannot establish that the design looks right or passes accessibility review.
+
+Do not report a check as passed just because the code or config passed a source-level check. Mark unperformed visual or accessibility checks as `Not checked` in the review note and handoff.
+
 ## Using the board
 
 - **Present an item:** click a frame (or ▶) to show it full size. In present mode:
   - <kbd>←</kbd>/<kbd>→</kbd> or <kbd>1</kbd>–<kbd>9</kbd> switch items.
   - <kbd>Esc</kbd> goes back.
-  - <kbd>N</kbd> toggles the note.
+  - **Notes** or <kbd>N</kbd> toggles the note and feedback controls.
+- **Capture feedback:** choose **Keep**, **Change**, or **Combine** for the presented option, add a detail if useful, then select and copy the generated line. Paste it into the ticket or next-round request. The canvas does not save or send this text; record the user's agreed choice in that option's note metadata before building another round.
 - **Switch pages:** <kbd>P</kbd> opens the page menu. <kbd>[</kbd>/<kbd>]</kbd> step through pages.
 - **Theme:** <kbd>T</kbd> switches every frame between light and dark.
 - **Zoom and pan:** <kbd>+</kbd>/<kbd>−</kbd>/<kbd>0</kbd> zoom, or use Ctrl + wheel. Drag empty space to pan.
@@ -137,5 +155,5 @@ Keep fake data and icons in your own classic script next to the pages (e.g. `var
 | Command | Does |
 |---|---|
 | `node <dir>/tools/serve.mjs [port]` | Serves the repo root with a sandbox CSP (default port 4390) and prints the canvas URL |
-| `node <dir>/tools/check.mjs` | Validates config.js: pages, kinds, ids, styles, that every file exists, and that pages are sandbox-safe |
+| `node <dir>/tools/check.mjs` | Validates config.js: pages and round labels, kinds, ids, feedback metadata, styles, files, and sandbox safety |
 | `node --test <dir>/tools/check.test.mjs` | Tests for the checker |

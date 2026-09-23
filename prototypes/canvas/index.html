@@ -42,7 +42,7 @@
         <nav class="tabs" id="tabs" aria-label="Items"></nav>
         <span class="spacer"></span>
         <button type="button" class="btn" id="present-theme" title="Theme inside the frame (T)"></button>
-        <button type="button" class="btn" id="notes" aria-pressed="true" title="Show or hide the note (N)">Note</button>
+        <button type="button" class="btn" id="notes" aria-pressed="true" title="Show or hide notes and feedback (N)">Notes</button>
         <a class="btn" id="new-tab" target="_blank" rel="noreferrer" title="Open in a new tab">↗</a>
       </header>
       <div class="present-body">
@@ -56,7 +56,8 @@
         <h2 id="help-title">How this canvas works</h2>
         <p>
           Each frame is one option. Compare them here, click one (or <kbd>▶</kbd>) to open it full size, then say which
-          direction you want, or which parts of each.
+          direction you want, or which parts of each. Named rounds keep earlier options visible; notes can show what
+          each option came from.
         </p>
         <dl>
           <dt><kbd>P</kbd> <kbd>[</kbd> <kbd>]</kbd></dt>
@@ -70,10 +71,11 @@
           <dt><kbd>T</kbd></dt>
           <dd>Light / dark inside every frame</dd>
           <dt><kbd>N</kbd></dt>
-          <dd>Show or hide the note while presenting</dd>
+          <dd>Show or hide the option notes and feedback controls</dd>
           <dt><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd></dt>
           <dd>Zoom in, out, fit (or Ctrl + wheel). Drag empty space to pan.</dd>
         </dl>
+        <p>For each option, choose <b>Keep</b>, <b>Change</b>, or <b>Combine</b>, add a detail, then select and copy the generated feedback into the ticket or next-round request.</p>
         <p class="fine">
           Built from <code>config.js</code> next to this page. Agents: read <code>README.md</code> beside it.
         </p>
