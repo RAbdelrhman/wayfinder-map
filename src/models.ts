@@ -79,13 +79,33 @@ function effortOf(model: RawModel): EffortOption | null {
   };
 }
 
+/** Slugs the user hid in T3 Code's model picker, keyed by provider instance id. */
+export type HiddenModels = ReadonlyMap<string, ReadonlySet<string>>;
+
+/** Read `providerModelPreferences` from T3 Code's client settings. Missing or odd input hides nothing. */
+export function hiddenModelsFromSettings(raw: unknown): HiddenModels {
+  const hidden = new Map<string, ReadonlySet<string>>();
+  if (typeof raw !== 'object' || raw === null) return hidden;
+  const preferences = (raw as { providerModelPreferences?: unknown }).providerModelPreferences;
+  if (typeof preferences !== 'object' || preferences === null) return hidden;
+  for (const [instanceId, value] of Object.entries(preferences)) {
+    if (typeof value !== 'object' || value === null) continue;
+    const slugs = (value as { hiddenModels?: unknown }).hiddenModels;
+    if (!Array.isArray(slugs)) continue;
+    const kept = slugs.filter((slug): slug is string => typeof slug === 'string' && slug !== '');
+    if (kept.length > 0) hidden.set(instanceId, new Set(kept));
+  }
+  return hidden;
+}
+
 /** Turn T3 Code's `server.getConfig` providers into the picker's catalog: enabled and installed only. */
-export function toCatalog(rawProviders: readonly RawProvider[]): ModelCatalog {
+export function toCatalog(rawProviders: readonly RawProvider[], hiddenByProvider: HiddenModels = new Map()): ModelCatalog {
   const providers: CatalogProvider[] = [];
   for (const raw of rawProviders) {
     if (raw.enabled !== true || raw.installed !== true || typeof raw.instanceId !== 'string') continue;
+    const hidden = hiddenByProvider.get(raw.instanceId);
     const models = (raw.models ?? [])
-      .filter((model) => typeof model.slug === 'string' && model.hidden !== true)
+      .filter((model) => typeof model.slug === 'string' && model.hidden !== true && !hidden?.has(model.slug))
       .map((model) => ({
         slug: model.slug as string,
         name: typeof model.name === 'string' ? model.name : (model.slug as string),
