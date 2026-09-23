@@ -1,6 +1,6 @@
 import type { HomeState } from '../home.js';
 import type { AuthFlowState } from '../authFlow.js';
-import { mapPath, normalizeRepo, parseRepoPagePath, prototypesPath, repoPath, scopedApiPath } from '../repoRoutes.js';
+import { mapPath, normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import type { MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
 import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, bindUpdater, countStates, paintIcons, progressRing, renderAccountMarkContent, repoIconHtml, updateAccountMark } from './chrome.js';
 import type { AccountMark, AccountProfile } from './chrome.js';
@@ -9,10 +9,10 @@ import { currentCatalog, loadCatalog, modelSelectHtml, readChoice, tierDefaults 
 import { syncedLabel } from './focus.js';
 import { icon } from './icons.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
-import { fitPrototypeThumbs, prototypeTileHtml } from './prototypeTile.js';
-import type { TileText } from './prototypeTile.js';
-import { composerState, initialRepository, newMapPath } from './newMap.js';
+import { composerState, initialRepository } from './newMap.js';
 import type { WorkspaceView } from './newMap.js';
+import { mountNavigation } from './navigation.js';
+import type { NavigationController } from './navigation.js';
 
 const RECENT_KEY = 'wayfinder-map:recent-repositories';
 
@@ -24,18 +24,13 @@ function need<T extends HTMLElement>(id: string): T {
 
 const els = {
   main: need('main'),
-  crumbs: need('crumbs'),
-  accountMark: need('account-mark'),
-  synced: need('synced'),
   toast: need('toast'),
-  updater: need('updater'),
-  navNew: need('nav-new'),
 };
 
 function setSynced(text: string): void {
-  const label = els.synced.querySelector<HTMLElement>('.synced-label') ?? els.synced;
+  const synced = need<HTMLButtonElement>('synced');
+  const label = synced.querySelector<HTMLElement>('.synced-label') ?? synced;
   label.textContent = text;
-  els.synced.hidden = !text;
 }
 
 let toastTimer = 0;
@@ -53,19 +48,6 @@ function toast(message: string, ms = 4200): void {
 function paint(html: string): void {
   els.main.innerHTML = `<div class="sheet">${html}</div>`;
   paintIcons(els.main);
-}
-
-function crumbs(trail: readonly string[]): void {
-  const parts = [
-    '<a href="/">Home</a>',
-    ...trail.map((part, index) => {
-      const isRepo = index === 0 && trail.length > 0 && part.includes('/');
-      return isRepo
-        ? `<span class="is-repo">${repoIconHtml(part, 'sm')}<span>${escapeHtml(part)}</span></span>`
-        : `<span class="is-repo">${escapeHtml(part)}</span>`;
-    }),
-  ];
-  els.crumbs.innerHTML = parts.join('<span class="crumb-sep">/</span>');
 }
 
 function recentRepositories(): string[] {
@@ -172,31 +154,32 @@ async function beginAuth(action: 'login' | 'refresh'): Promise<void> {
 
 
 let cachedAccount: AccountMark | null = null;
+let navigation: NavigationController | null = null;
 
 async function syncAccountMark(): Promise<AccountMark | null> {
   if (cachedAccount) {
-    updateAccountMark(els.accountMark, cachedAccount);
+    updateAccountMark(document.getElementById('account-mark'), cachedAccount);
     return cachedAccount;
   }
   try {
     const res = await fetch('/api/auth/status');
     if (res.ok) {
       cachedAccount = (await res.json()) as AccountProfile;
-      updateAccountMark(els.accountMark, cachedAccount);
+      updateAccountMark(document.getElementById('account-mark'), cachedAccount);
       return cachedAccount;
     }
   } catch {
     // ignore
   }
-  updateAccountMark(els.accountMark, null);
+  updateAccountMark(document.getElementById('account-mark'), null);
   return null;
 }
 
 async function renderHome(refresh: boolean): Promise<void> {
-  crumbs([]);
+  document.title = 'Home · Wayfinder';
   const state = await getJson<HomeState>(`/api/home${refresh ? '?refresh=1' : ''}`);
   cachedAccount = state.account;
-  updateAccountMark(els.accountMark, state.account);
+  updateAccountMark(document.getElementById('account-mark'), state.account);
   setSynced(syncedLabel(0));
   const recent = recentRepositories();
   const discovered = state.repositories.filter((repo) => !recent.includes(repo));
@@ -262,7 +245,6 @@ async function renderHome(refresh: boolean): Promise<void> {
   });
   document.getElementById('stop-server')?.addEventListener('click', () => {
     void postJson('/api/shutdown').then(() => {
-      crumbs([]);
       paint('<div class="empty"><strong>Wayfinder stopped</strong><p>Your GitHub CLI account is still signed in.</p></div>');
     });
   });
@@ -429,61 +411,15 @@ async function paintPrototypeBadges(repo: string, refresh: boolean): Promise<voi
     badge.innerHTML = `<span data-icon="beaker"></span>${escapeHtml(prototypeCount(total))}`;
     badge.hidden = false;
   }
-  const link = document.getElementById('proto-link');
-  if (link !== null && list.length > 0) {
-    link.innerHTML = `<span data-icon="beaker"></span>${escapeHtml(prototypeCount(list.length))}`;
-    link.hidden = false;
-  }
   paintIcons(els.main);
 }
 
-/** The words under a tile on the repository page: which map it answered, and its ticket. */
-function tileText(repo: string, prototype: Prototype, snapshot: MapSnapshot): TileText {
-  const map = snapshot.maps.find((candidate) => candidate.number === prototype.mapNumber);
-  const ticket = map?.tickets.find((candidate) => candidate.number === prototype.ticketNumber);
-  return {
-    eyebrow: `#${String(prototype.ticketNumber)} · ${map?.title ?? `map #${String(prototype.mapNumber)}`}`,
-    title: ticket?.title ?? prototype.branch,
-    links: `<a href="${mapPath(repo, prototype.mapNumber)}?view=prototypes">On the map</a>${
-      ticket === undefined ? '' : `<a href="${escapeHtml(ticket.url)}" target="_blank" rel="noreferrer">Ticket ↗</a>`
-    }`,
-  };
-}
-
-async function renderPrototypes(repo: string, refresh: boolean): Promise<void> {
-  remember(repo);
-  crumbs([repo, 'Prototypes']);
-  void syncAccountMark();
-  const snapshot = await getJson<MapSnapshot>(scopedApiPath(repo, 'snapshot'));
-  const list = await getJson<Prototype[]>(`${scopedApiPath(repo, 'prototypes')}${refresh ? '?refresh=1' : ''}`);
-  setSynced(syncedLabel(0));
-
-  paint(`<div class="page-head">
-      <div class="grow">
-        <p class="eyebrow">Prototypes</p>
-        <div class="page-title-row">
-          ${repoIconHtml(repo, 'lg')}
-          <h1>${escapeHtml(repo)}</h1>
-        </div>
-        <p>Every prototype this repository's maps have produced, newest first. Click one to open it.</p>
-      </div>
-      <div class="page-actions">
-        <a class="ghost" href="${repoPath(repo)}"><span data-icon="arrow"></span>Maps</a>
-      </div>
-    </div>
-    ${
-      list.length === 0
-        ? '<div class="empty"><strong>No prototypes yet</strong><p>A prototype ticket keeps its prototype on a <code>prototype/&lt;ticket&gt;-&lt;slug&gt;</code> branch, and it shows up here once pushed.</p></div>'
-        : `<div class="proto-grid">${list.map((prototype) => prototypeTileHtml(repo, prototype, tileText(repo, prototype, snapshot))).join('')}</div>`
-    }`);
-  fitPrototypeThumbs(els.main);
-}
-
 async function renderRepository(repo: string, refresh: boolean): Promise<void> {
+  document.title = `${repo} · Wayfinder`;
   remember(repo);
-  crumbs([repo]);
   void syncAccountMark();
   const snapshot = await getJson<MapSnapshot>(`${scopedApiPath(repo, 'snapshot')}${refresh ? '?refresh=1' : ''}`);
+  navigation?.setSnapshot(snapshot, null);
   const fetched = Date.parse(snapshot.fetchedAt);
   setSynced(Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
   const warnings = snapshot.warnings
@@ -500,7 +436,6 @@ async function renderRepository(repo: string, refresh: boolean): Promise<void> {
       </div>
       <div class="page-actions">
         <span class="badge">${String(snapshot.maps.length)} map${snapshot.maps.length === 1 ? '' : 's'}</span>
-        <a class="ghost" id="proto-link" href="${prototypesPath(repo)}" hidden></a>
         <a class="ghost" href="https://github.com/${escapeHtml(repo)}" target="_blank" rel="noreferrer"><span data-icon="external"></span>GitHub</a>
       </div>
     </div>
@@ -532,7 +467,7 @@ function stateChip(state: TicketState): string {
 }
 
 async function renderNewMap(): Promise<void> {
-  crumbs(['Start a new map']);
+  document.title = 'Start a new map · Wayfinder';
   setSynced('');
   const account = await syncAccountMark();
 
@@ -547,6 +482,7 @@ async function renderNewMap(): Promise<void> {
   const allRepos = Array.from(new Set([...recents, ...(homeState?.repositories ?? [])]));
 
   const initialRepo = initialRepository(new URLSearchParams(window.location.search).get('repo'), recents, allRepos);
+  navigation?.setCurrentRepo(initialRepo || null);
 
   const catalogState = await loadCatalog();
   const catalog = catalogState.status === 'ready' ? catalogState.catalog : null;
@@ -926,6 +862,7 @@ async function renderNewMap(): Promise<void> {
   function switchRepo(target: string): void {
     const normalized = normalizeRepo(target);
     repoInput.value = normalized ?? target;
+    navigation?.setCurrentRepo(normalized);
     void loadMapWorkspace();
     if (normalized) {
       remember(normalized);
@@ -1083,46 +1020,55 @@ async function renderNewMap(): Promise<void> {
 /* ---------- routing ---------- */
 
 const route = parseRepoPagePath(window.location.pathname);
-const page: { kind: 'home' } | { kind: 'repository'; repo: string } | { kind: 'prototypes'; repo: string } | { kind: 'new-map' } =
+if (route?.prototypes === true) window.location.replace(repoPath(route.repo));
+const page: { kind: 'home' } | { kind: 'repository'; repo: string } | { kind: 'new-map' } =
   window.location.pathname === '/new-map'
     ? { kind: 'new-map' }
-    : route?.prototypes === true
-      ? { kind: 'prototypes', repo: route.repo }
-      : route?.mapNumber === null
-        ? { kind: 'repository', repo: route.repo }
-        : { kind: 'home' };
+    : route?.mapNumber === null
+      ? { kind: 'repository', repo: route.repo }
+      : { kind: 'home' };
+
+const navigationRepo = page.kind === 'repository'
+  ? page.repo
+  : page.kind === 'new-map'
+    ? normalizeRepo(new URLSearchParams(window.location.search).get('repo') ?? '')
+    : null;
+navigation = mountNavigation({
+  shell: need('app'),
+  sidebar: need('sidebar-shell'),
+  topbar: need('nav-topbar'),
+  topbarRoot: need('topbar'),
+  page: page.kind,
+  repo: navigationRepo,
+  mapNumber: null,
+  view: 'map',
+});
 
 async function run(work: () => Promise<void> | void): Promise<void> {
   try {
     await work();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    crumbs([]);
     paint(`<div class="empty"><strong>Wayfinder could not load this page</strong><p>${escapeHtml(message)}</p><a class="ghost" href="/">Back to Home</a></div>`);
     toast(message, 10000);
   }
 }
 
 async function show(refresh = false): Promise<void> {
-  if (refresh) els.synced.classList.add('is-busy');
+  if (refresh) need('synced').classList.add('is-busy');
   else paint('<p class="loading">Reading GitHub…</p>');
   await run(async () => {
     if (page.kind === 'new-map') await renderNewMap();
-    else if (page.kind === 'prototypes') await renderPrototypes(page.repo, refresh);
     else if (page.kind === 'repository') await renderRepository(page.repo, refresh);
     else await renderHome(refresh);
   });
-  els.synced.classList.remove('is-busy');
+  need('synced').classList.remove('is-busy');
 }
 
 paintIcons();
 bindTheme(need('theme'));
-bindUpdater(els.updater, toast);
-els.navNew.classList.toggle('is-on', page.kind === 'new-map');
-// From a repository's pages, the composer opens on that repository.
-const composerHref = newMapPath(page.kind === 'repository' || page.kind === 'prototypes' ? page.repo : null);
-els.navNew.setAttribute('href', composerHref);
-els.synced.addEventListener('click', () => void show(true));
+bindUpdater(need('updater'), toast);
+need('synced').addEventListener('click', () => void show(true));
 document.addEventListener('click', (event) => {
   const target = (event.target as HTMLElement | null)?.closest('[data-refresh-home], [data-auth]');
   if (target === null || target === undefined) return;

@@ -27,6 +27,7 @@ export const BLANK = '<circle cx="12" cy="12" r="7.4"/><path d="M8.6 12h6.8"/>';
 /* ---------- chrome ---------- */
 export const COMPASS = '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>';
 export const HOME = '<path d="m3 10.5 9-7 9 7"/><path d="M5.5 9.2V20a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V9.2"/>';
+export const PANEL = '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>';
 /** A bound book: one repository. */
 export const REPO = '<path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v18H6.5A1.5 1.5 0 0 1 5 19.5z"/><path d="M5 16.5A1.5 1.5 0 0 1 6.5 15H19"/>';
 export const SIGN_OUT = '<path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>';
