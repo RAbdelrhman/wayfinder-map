@@ -28,6 +28,7 @@ export const PROGRESS_ORDER: TicketState[] = ['done', 'claimed', 'frontier', 'bl
 
 const STATIC_ICONS: Record<string, string> = {
   compass: icons.COMPASS,
+  panel: icons.PANEL,
   graph: icons.GRAPH,
   table: icons.TABLE,
   beaker: icons.BEAKER,
@@ -64,11 +65,20 @@ export function paintIcons(root: ParentNode = document): void {
 
 /** The rail's light/dark switch. Each page stamps the saved theme before its first paint. */
 export function bindTheme(button: HTMLElement): void {
+  const updateLabel = (): void => {
+    const dark = getComputedStyle(document.body).getPropertyValue('color-scheme').trim() === 'dark';
+    const label = dark ? 'Switch to light theme' : 'Switch to dark theme';
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    button.setAttribute('aria-pressed', String(dark));
+  };
+  updateLabel();
   button.addEventListener('click', () => {
     const dark = getComputedStyle(document.body).getPropertyValue('color-scheme').trim() === 'dark';
     const next = dark ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
     localStorage.setItem('wayfinder-map:theme', next);
+    updateLabel();
   });
 }
 
@@ -192,13 +202,16 @@ export function updateAccountMark(
 ): void {
   if (!element) return;
   const login = profile?.login?.trim();
+  const accountLabel = element.parentElement?.querySelector<HTMLElement>('#account-label') ?? null;
   element.innerHTML = renderAccountMarkContent(profile);
   if (login) {
     element.title = `Signed in as ${login}`;
     element.setAttribute('aria-label', `GitHub account: ${login}`);
+    if (accountLabel !== null) accountLabel.textContent = login;
   } else {
     element.title = 'GitHub account (Not signed in)';
     element.setAttribute('aria-label', 'GitHub account: Not signed in');
+    if (accountLabel !== null) accountLabel.textContent = 'Not signed in';
   }
 }
 
