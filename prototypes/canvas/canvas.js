@@ -29,6 +29,10 @@
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '') || 'page';
+  const roundLabel = (page) => {
+    if (page.round === undefined || page.round === null || page.round === '') return '';
+    return typeof page.round === 'number' ? `Round ${page.round}` : String(page.round);
+  };
 
   const state = {
     theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
@@ -291,15 +295,46 @@
 
   function noteHtml(item) {
     const note = typeof item.note === 'string' ? { idea: item.note } : (item.note ?? {});
-    const { idea = item.text ?? '', pros = [], cons = [] } = note;
+    const { idea = item.text ?? '', pros = [], cons = [], basedOn, disposition, feedback } = note;
     const kicker = item.kind === 'note' ? (item.name ?? 'Note') : `${item.id} · ${item.name ?? KIND_LABEL[item.kind]}`;
+    const sources = Array.isArray(basedOn) ? basedOn : basedOn ? [basedOn] : [];
+    const decision = new Map([
+      ['keep', 'Keep'],
+      ['change', 'Change'],
+      ['combine', 'Combine'],
+    ]).get(disposition) ?? disposition;
     return `<p class="kicker">${esc(kicker)}</p>
       ${idea ? `<p>${esc(idea)}</p>` : ''}
       ${
         pros.length + cons.length > 0
           ? `<ul>${pros.map((p) => `<li class="pro">${esc(p)}</li>`).join('')}${cons.map((c) => `<li class="con">${esc(c)}</li>`).join('')}</ul>`
           : ''
+      }
+      ${sources.length > 0 ? `<p class="lineage"><b>Remixed from:</b> ${sources.map(esc).join(' + ')}</p>` : ''}
+      ${
+        decision || feedback
+          ? `<div class="review-feedback"><p class="kicker">Recorded feedback${decision ? ` · ${esc(decision)}` : ''}</p>${feedback ? `<p>${esc(feedback)}</p>` : ''}</div>`
+          : ''
       }`;
+  }
+
+  function feedbackComposerHtml(item) {
+    return `<section class="feedback-capture" aria-labelledby="feedback-title">
+      <p class="kicker" id="feedback-title">Feedback on ${esc(item.id ?? 'this option')}</p>
+      <label for="feedback-disposition">What should happen to this option?</label>
+      <select id="feedback-disposition">
+        <option value="">Choose one</option>
+        <option value="keep">Keep</option>
+        <option value="change">Change</option>
+        <option value="combine">Combine</option>
+      </select>
+      <label for="feedback-details">What should we keep, change, or combine?</label>
+      <textarea id="feedback-details" rows="3" maxlength="500" placeholder="Point to the part you mean."></textarea>
+      <label for="feedback-output">Feedback to paste into the ticket or next-round request</label>
+      <textarea id="feedback-output" rows="3" readonly aria-live="polite"></textarea>
+      <button class="btn feedback-select" id="feedback-select" type="button">Select feedback to copy</button>
+      <p class="feedback-status" id="feedback-status" role="status" aria-live="polite">Choose an action, then add a detail if useful.</p>
+    </section>`;
   }
 
   function itemHtml(item) {
@@ -332,7 +367,7 @@
     $('title').textContent = cfg.title;
     $('pages-label').textContent = `${pages.length} pages`;
     $('pages-btn').hidden = !multi;
-    $('page-title').textContent = multi ? page.title : '';
+    $('page-title').textContent = multi ? `${roundLabel(page) ? `${roundLabel(page)} · ` : ''}${page.title}` : '';
     $('count').textContent = `${cfg.ticket ? `#${cfg.ticket} · ` : ''}${page.presentable.length} item${page.presentable.length === 1 ? '' : 's'}`;
     const question = page.question ?? cfg.question;
     const sample = page.sampleState ?? cfg.sampleState;
@@ -442,13 +477,14 @@
 
   function renderPagesMenu() {
     $('pages-menu').innerHTML = pages
-      .map(
-        (page) => `<button type="button" role="menuitemradio" aria-checked="${page === state.page}" data-page="${esc(page.id)}">
+      .map((page) => {
+        const round = roundLabel(page);
+        return `<button type="button" role="menuitemradio" aria-checked="${page === state.page}" data-page="${esc(page.id)}">
           <span class="check" aria-hidden="true">${page === state.page ? '✓' : ''}</span>
-          <span class="page-name">${esc(page.title ?? page.id)}</span>
+          <span class="page-name">${round ? `<b class="round-label">${esc(round)}</b> · ` : ''}${esc(page.title ?? page.id)}</span>
           <span class="page-count" aria-label="${page.presentable.length} items">${page.presentable.length}</span>
-        </button>`,
-      )
+        </button>`;
+      })
       .join('');
   }
 
@@ -490,8 +526,32 @@
     frame.title = `${item.id} · ${item.name ?? KIND_LABEL[item.kind]}`;
     $('new-tab').hidden = item.kind !== 'page';
     if (item.kind === 'page') $('new-tab').href = pageSrc(item);
-    $('side-note').innerHTML = noteHtml(item);
-    $('side-note').hidden = !state.notes || item.note === undefined;
+    $('side-note').innerHTML = `${noteHtml(item)}${feedbackComposerHtml(item)}`;
+    $('side-note').hidden = !state.notes;
+    const disposition = $('feedback-disposition');
+    const details = $('feedback-details');
+    const output = $('feedback-output');
+    const status = $('feedback-status');
+    const updateFeedback = () => {
+      const action = disposition.value;
+      const detail = details.value.trim();
+      const round = roundLabel(state.page) || state.page.title || 'Current round';
+      const ticket = cfg.ticket ? `Ticket #${cfg.ticket} | ` : '';
+      const option = `${item.id ?? 'Option'}${item.name ? ` (${item.name})` : ''}`;
+      output.value = action ? `${ticket}${round} | ${option} | ${action}${detail ? `: ${detail}` : ''}` : '';
+    };
+    disposition.addEventListener('change', updateFeedback);
+    details.addEventListener('input', updateFeedback);
+    $('feedback-select').addEventListener('click', () => {
+      updateFeedback();
+      if (output.value === '') {
+        status.textContent = 'Choose Keep, Change, or Combine first. Add a detail if useful.';
+        return;
+      }
+      output.focus();
+      output.select();
+      status.textContent = 'Feedback selected. Press Ctrl+C, then paste it into the ticket or next-round request.';
+    });
     $('notes').setAttribute('aria-pressed', String(state.notes));
     $('tabs').innerHTML = state.page.presentable
       .map(

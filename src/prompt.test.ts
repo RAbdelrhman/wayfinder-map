@@ -72,6 +72,15 @@ describe('buildPrompt', () => {
     expect(buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'task' } })).not.toContain('design canvas');
   });
 
+  it('keeps variant feedback, remix lineage, and review checks in the prototype workflow', () => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
+    expect(prompt).toContain('Keep, Change, or Combine');
+    expect(prompt).toContain('note basedOn metadata');
+    expect(prompt).toContain('Design review');
+    expect(prompt).toContain('keyboard/focus');
+    expect(prompt).toContain('Not checked');
+  });
+
   it('only names a prototype branch on prototype tickets', () => {
     for (const type of ['grilling', 'research', 'task', null] as const) {
       expect(buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type } })).not.toContain('prototype/');
