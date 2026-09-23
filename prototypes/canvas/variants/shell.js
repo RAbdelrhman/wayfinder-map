@@ -52,13 +52,24 @@
     return `<div class="summary"><div class="ring">${ring(c)}<div class="lbl"><b>${c.done}/${total(c)}</b><span>done</span></div></div><div class="status-rows">${rows}</div></div>`;
   }
 
-  /** One variant's frame: its real screenshot (assets/protos/<shot>.jpg) when there is one, otherwise a sketch. */
-  const frame = (letter, { shot = null, tag = true } = {}) =>
-    `<span class="wf-frame v-${letter.toLowerCase()}">${
-      shot
-        ? `<img src="../assets/protos/${esc(shot)}.jpg" alt="Variant ${esc(letter)}" loading="lazy">`
-        : `<span class="col"><i></i><i></i><i></i><i></i></span><span class="fb"><i class="wide"></i><i></i><i></i><i></i><i></i></span>`
-    }${tag ? `<span class="tag">${esc(letter)}</span>` : ''}</span>`;
+  /** One variant's frame: its screenshot, with the sketch kept ready if the image is missing. */
+  const frame = (letter, { shot = null, tag = true } = {}) => {
+    const hasShot = typeof shot === 'string' && shot.trim() !== '';
+    const screenshot = hasShot
+      ? `<img src="../assets/protos/${esc(shot)}.jpg" alt="Variant ${esc(letter)}" loading="lazy" onerror="WF.onThumbnailError(this)">`
+      : '';
+    const sketch =
+      '<span class="col" aria-hidden="true"><i></i><i></i><i></i><i></i></span>' +
+      '<span class="fb" aria-hidden="true"><i class="wide"></i><i></i><i></i><i></i><i></i></span>';
+    return `<span class="wf-frame v-${letter.toLowerCase()}${hasShot ? ' has-shot' : ''}">${screenshot}${sketch}${tag ? `<span class="tag">${esc(letter)}</span>` : ''}</span>`;
+  };
+
+  function onThumbnailError(image) {
+    const frame = image?.parentElement;
+    if (!frame) return;
+    image.hidden = true;
+    frame.classList.add('is-fallback');
+  }
   /** The variant a prototype settled on, as [id, name, shot]. */
   const pickedVariant = (p) => p.variants.find(([id]) => id === p.picked) ?? p.variants[0];
 
@@ -494,6 +505,7 @@
     miniRing,
     summary,
     frame,
+    onThumbnailError,
     pickedVariant,
     fog,
     chip,
