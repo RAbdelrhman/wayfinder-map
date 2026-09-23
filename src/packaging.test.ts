@@ -52,4 +52,11 @@ describe('Windows packaging contract', () => {
     expect(smoke).toContain("marker.route !== '/' || marker.homeStatus !== 200");
     expect(smoke).toContain('Wayfinder left its loopback server listening');
   });
+
+  it('checks signing credentials before Release Please can publish a tag', async () => {
+    const workflow = await read('.github/workflows/release-please.yml');
+    expect(workflow.indexOf('Require Windows signing credentials')).toBeLessThan(workflow.indexOf('googleapis/release-please-action@v4'));
+    expect(workflow).toContain('secrets.WIN_CSC_LINK');
+    expect(workflow).toContain('secrets.WIN_CSC_KEY_PASSWORD');
+  });
 });

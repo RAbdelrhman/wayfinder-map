@@ -28,12 +28,31 @@ if (/^gh(\\.exe)?$/i.test(basename(process.execPath))) {
   const args = [basename(process.argv[1] ?? ''), ...process.argv.slice(2)];
   appendFileSync(process.env.FAKE_GH_LOG, JSON.stringify(args) + '\\n');
   const command = args.slice(0, 2).join(' ');
+  const write = (body) => process.stdout.write(process.env.FAKE_GH_COLOR
+    ? String.fromCharCode(27) + '[1;37m' + body + String.fromCharCode(27) + '[0m'
+    : body);
   if (command === 'auth status') {
-    process.stdout.write(JSON.stringify({ hosts: { 'github.com': [{ login: 'smoke-user', active: true, scopes: 'repo, read:org' }] } }));
+    write(JSON.stringify({ hosts: { 'github.com': [{ login: 'smoke-user', active: true, scopes: 'repo, read:org' }] } }));
     process.exit(0);
   }
   if (command === 'repo view' && process.env.FAKE_GH_REPO) {
-    process.stdout.write(process.env.FAKE_GH_REPO + '\\n');
+    write(process.env.FAKE_GH_REPO + '\\n');
+    process.exit(0);
+  }
+  if (command === 'api user' && args.includes('--jq')) {
+    write('https://avatars.githubusercontent.com/u/1\\n');
+    process.exit(0);
+  }
+  if (command === 'api --paginate' && args.includes('user/orgs')) {
+    write('');
+    process.exit(0);
+  }
+  if (command === 'api -i' && args.includes('search/issues')) {
+    write('HTTP/2 200\\r\\n\\r\\n' + JSON.stringify({ items: [] }));
+    process.exit(0);
+  }
+  if (command === 'issue list') {
+    write('[]');
     process.exit(0);
   }
   process.stderr.write('fake gh: no answer for ' + args.join(' ') + '\\n');
@@ -222,6 +241,24 @@ describe('the packaged CLI', () => {
       }
     } finally {
       await rm(join(work, 't3'), { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('loads Home and a repository when GitHub CLI decorates JSON with terminal colors', async () => {
+    const started = await startCli([], { FAKE_GH_COLOR: '1', GH_FORCE_TTY: '1' });
+    try {
+      const home = (await fetch(new URL('/api/home', started.url)).then((response) => response.json())) as {
+        account: { status: string; login: string | null };
+        warning: string | null;
+      };
+      expect(home.account).toMatchObject({ status: 'ready', login: 'smoke-user' });
+      expect(home.warning).toBeNull();
+
+      const response = await fetch(new URL(`/api/repos/${FAKE_REPO}/snapshot`, started.url));
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ repo: FAKE_REPO, maps: [] });
+    } finally {
+      await stop(started);
     }
   }, 60_000);
 
