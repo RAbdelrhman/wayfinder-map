@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MapSnapshot, OutsideTicket, Ticket, WayfinderMap } from '../types.js';
-import { createJumpDestinations, prototypeCountBadge, viewFromQuery } from './navigation.js';
+import { createJumpDestinations, prototypeCountBadge, repoLabel, viewFromQuery } from './navigation.js';
 
 function ticket(number: number, title: string): Ticket {
   return {
@@ -111,5 +111,14 @@ describe('Jump to destinations', () => {
 
     expect(createJumpDestinations(['octo/wayfinder'], [SNAPSHOT], '   ')).toEqual([]);
     expect(createJumpDestinations([], manySnapshots, 'Work map')).toHaveLength(60);
+  });
+});
+
+describe('repoLabel', () => {
+  it('drops the owner unless another listed repository has the same name', () => {
+    const repos = ['octo/wayfinder', 'octo/FRC2026', 'team/FRC2026'];
+
+    expect(repoLabel('octo/wayfinder', repos)).toBe('wayfinder');
+    expect(repoLabel('team/FRC2026', repos)).toBe('team/FRC2026');
   });
 });
