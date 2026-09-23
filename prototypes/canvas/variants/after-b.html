@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>B · A tray that follows you</title>
+    <!-- PROTOTYPE (#45), direction B: every hand-off lands in one tray at the bottom right of every page, like a download manager. The ticket only says "In T3 Code". -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="after.css" />
+    <style>
+      .ho-tray {
+        position: fixed;
+        z-index: 80;
+        right: 16px;
+        bottom: 64px;
+        width: 400px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 8px;
+      }
+      .ho-tray-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 38px;
+        padding: 0 14px;
+        border: 1px solid var(--hairline);
+        border-radius: 999px;
+        background: var(--surface-1);
+        box-shadow: var(--shadow);
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .ho-tray-btn .ho-dots {
+        display: inline-flex;
+        gap: 3px;
+      }
+      .ho-tray-btn .ho-wait {
+        color: color-mix(in srgb, var(--state-blocked) 75%, var(--text-primary));
+      }
+      .ho-tray-panel {
+        width: 100%;
+        max-height: 520px;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--hairline);
+        border-radius: 14px;
+        background: var(--surface-1);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .ho-tray-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--hairline);
+      }
+      .ho-tray-head b {
+        font-size: 14px;
+      }
+      .ho-tray-body {
+        overflow: auto;
+        padding: 4px 0 8px;
+      }
+      .ho-tray-body > .ho-offline {
+        margin: 8px 12px 4px;
+        font-size: 12.5px;
+      }
+      .ho-group {
+        padding: 10px 14px 4px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .ho-trow2 {
+        display: grid;
+        grid-template-columns: 12px minmax(0, 1fr);
+        gap: 4px 10px;
+        padding: 9px 14px;
+        border-top: 1px solid transparent;
+      }
+      .ho-trow2:hover {
+        background: var(--wash);
+      }
+      .ho-trow2 .ho-dot {
+        margin-top: 6px;
+      }
+      .ho-trow2.is-fresh {
+        background: color-mix(in srgb, var(--state-claimed) 10%, transparent);
+        animation: ho-arrive 1.4s ease-out;
+      }
+      @keyframes ho-arrive {
+        from {
+          transform: translateY(-6px);
+          opacity: 0;
+        }
+      }
+      .ho-trow2-top {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .ho-trow2-top strong {
+        flex: 1;
+        min-width: 0;
+        font-size: 13px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .ho-trow2 .ho-line {
+        margin: 0;
+        font-size: 12px;
+      }
+      .ho-trow2 .ho-row {
+        grid-column: 2;
+        margin-top: 4px;
+      }
+      .ho-trow2 .ho-row .ho-sm {
+        height: 26px;
+        font-size: 12px;
+      }
+      .ho-toastcard {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 10px 14px;
+        border-radius: 12px;
+        background: var(--text-primary);
+        color: var(--surface-1);
+        font-size: 13px;
+        box-shadow: var(--shadow);
+        animation: ho-arrive 0.4s ease-out;
+      }
+      .ho-toastcard .i {
+        color: var(--state-frontier);
+      }
+      .ho-inline {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
+        padding: 10px 12px;
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        background: var(--wash);
+        font-size: 13px;
+      }
+      .ho-inline .linkish {
+        margin-left: auto;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="after.js"></script>
+    <script>
+      const { state, icon, esc, pill, dot, sinceText, actions } = AFTER;
+
+      // Nodes carry only a dot: the tray is where you read status.
+      function badge(t) {
+        const h = AFTER.handOffs().find((x) => x.number === t.number && !x.repo);
+        return h ? `<span class="ho-nbadge">${dot(h)}<span class="grow">In T3 Code</span></span>` : '';
+      }
+
+      // The ticket panel says it's in T3 Code and points at the tray.
+      function slot() {
+        if (!state.handedOff) return AFTER.launchBlock();
+        const h = AFTER.focusHandOff();
+        return `<div class="ho-inline">${pill(h)}<span>${esc(sinceText(h))}</span><button type="button" class="linkish" data-toggle>Show in Hand-offs</button></div>`;
+      }
+
+      const GROUPS = [
+        ['Waiting on you', ['input', 'failed']],
+        ['In T3 Code', ['starting', 'working']],
+        ['Done', ['done']],
+      ];
+
+      function row(h) {
+        return `<div class="ho-trow2${h.focus && state.justHandedOff ? ' is-fresh' : ''}">${dot(h)}
+          <div><div class="ho-trow2-top"><strong>${esc(AFTER.label(h))}</strong><span class="ho-when">${esc(sinceText(h))}</span></div>
+          <p class="ho-line">${h.stale ? `${AFTER.STATUS[h.status].word} · ` : ''}${esc(h.line)}</p></div>
+          <div class="ho-row">${actions(h, { compact: true })}</div></div>`;
+      }
+
+      function tray() {
+        const list = AFTER.handOffs();
+        const waiting = AFTER.waiting(list);
+        const btn = `<button type="button" class="ho-tray-btn" data-toggle aria-expanded="${state.open}">
+          ${AFTER.offline() ? icon('plug') : `<span class="ho-dots">${AFTER.byUrgency(list).map(dot).join('')}</span>`}
+          ${list.length} in T3 Code${waiting ? `<span class="ho-wait">· ${waiting} need${waiting === 1 ? 's' : ''} you</span>` : ''}${icon(state.open ? 'chevron' : 'up')}</button>`;
+        const toast = state.justHandedOff && !state.open ? `<div class="ho-toastcard">${icon('check')}<span class="grow">Handed off #55 to T3 Code</span></div>` : '';
+        if (!state.open) return `<div class="ho-tray">${toast}${btn}</div>`;
+        const body = GROUPS.map(([title, st]) => {
+          const rows = list.filter((h) => st.includes(h.status));
+          return rows.length ? `<div class="ho-group">${title}</div>${rows.map(row).join('')}` : '';
+        }).join('');
+        return `<div class="ho-tray"><div class="ho-tray-panel" role="region" aria-label="Hand-offs">
+          <div class="ho-tray-head">${icon('flight')}<b>Hand-offs</b><span class="ho-count">${list.length}</span><span class="grow"></span>
+            <button type="button" class="iconbtn" data-to="all hand-offs, including finished ones">${icon('list')}</button><button type="button" class="iconbtn" data-toggle aria-label="Close">${icon('chevron')}</button></div>
+          <div class="ho-tray-body">${AFTER.offline() ? `<div class="ho-offline">${icon('plug')}<span class="grow"><b>T3 Code isn't running.</b> Last report 14 min ago.</span></div>` : ''}${body}</div>
+        </div>${btn}</div>`;
+      }
+
+      // Pressing Open in T3 Code opens the tray, so the new row is seen arriving.
+      document.addEventListener(
+        'click',
+        (e) => {
+          if (e.target.closest('[data-handoff]')) state.open = true;
+        },
+        true,
+      );
+
+      AFTER.start((s) => {
+        const page =
+          s.view === 'home'
+            ? `<div class="app has-side">${AFTER.side(s)}<div class="main">${AFTER.topbar(s)}${AFTER.homePage()}</div></div>`
+            : `<div class="app">${AFTER.rail(s)}<div class="main">${AFTER.topbar(s)}${AFTER.mapPage({ badge, slot: slot() })}</div></div>`;
+        return page + tray();
+      });
+    </script>
+  </body>
+</html>

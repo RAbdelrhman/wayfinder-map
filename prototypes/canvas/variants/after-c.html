@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>C · Each hand-off gets a page</title>
+    <!-- PROTOTYPE (#45), direction C: pressing Open in T3 Code takes you to the hand-off's own page, and the sidebar grows an In flight group listing every hand-off. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="after.css" />
+    <style>
+      .ho-fl-count {
+        margin-left: auto;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--state-blocked) 22%, transparent);
+        color: var(--text-primary);
+        font-size: 10.5px;
+        letter-spacing: 0;
+      }
+      .ho-trow .ho-dot {
+        margin: 0 3px;
+      }
+      .rail .ho-flbtn .ho-badge {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        min-width: 15px;
+        height: 15px;
+        padding: 0 4px;
+        border-radius: 999px;
+        background: var(--state-blocked);
+        color: #111;
+        font-size: 9.5px;
+        font-weight: 700;
+        line-height: 15px;
+      }
+      .ho-page {
+        max-width: 1000px;
+      }
+      .ho-hero {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 10px 0 16px;
+      }
+      .ho-hero .ho-when {
+        font-size: 13px;
+      }
+      .ho-callout {
+        --tone: var(--state-claimed);
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        padding: 16px 18px;
+        margin-bottom: 22px;
+        border: 1px solid color-mix(in srgb, var(--tone) 30%, var(--hairline));
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--tone) 7%, var(--surface-1));
+      }
+      .ho-callout > .i,
+      .ho-callout > .ho-spin {
+        flex: none;
+        width: 20px;
+        height: 20px;
+        margin-top: 2px;
+        color: var(--tone);
+      }
+      .ho-callout.is-stale {
+        border-style: dashed;
+        border-color: var(--baseline);
+        background: var(--wash);
+      }
+      .ho-callout.is-stale > .i {
+        color: var(--text-muted);
+      }
+      .ho-callout strong {
+        display: block;
+        font-size: 15px;
+        margin-bottom: 2px;
+      }
+      .ho-callout .ho-line {
+        font-size: 13.5px;
+        margin-bottom: 12px;
+      }
+      .ho-cols {
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+        gap: 28px;
+      }
+      .ho-cols h2 {
+        margin: 0 0 12px;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .ho-from {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 14px;
+        margin: 0 0 12px;
+        text-decoration: none;
+        color: inherit;
+      }
+      .ho-from strong {
+        display: block;
+        font-size: 13.5px;
+      }
+      .ho-sent {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        margin-bottom: 14px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--state-frontier) 12%, transparent);
+        font-size: 13px;
+        animation: ho-arrive 0.5s ease-out;
+      }
+      .ho-sent .i {
+        color: var(--state-frontier);
+      }
+      @keyframes ho-arrive {
+        from {
+          opacity: 0;
+          transform: translateY(-4px);
+        }
+      }
+      .ho-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      .ho-table th {
+        text-align: left;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--hairline);
+      }
+      .ho-table td {
+        padding: 12px 10px;
+        border-bottom: 1px solid var(--hairline);
+        vertical-align: top;
+      }
+      .ho-table tr[data-view]:hover td {
+        background: var(--wash);
+        cursor: pointer;
+      }
+      .ho-table td strong {
+        display: block;
+      }
+      .ho-inline {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
+        padding: 10px 12px;
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        background: var(--wash);
+        font-size: 13px;
+      }
+      .ho-inline .linkish {
+        margin-left: auto;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="after.js"></script>
+    <script>
+      const { state, icon, esc, pill, dot, sinceText, actions } = AFTER;
+      if (!new URLSearchParams(location.search).get('view')) state.view = 'handoff';
+
+      // The sidebar's In flight group: one row per hand-off, most urgent first.
+      function flightGroup(s) {
+        const list = AFTER.byUrgency(AFTER.handOffs());
+        const waiting = AFTER.waiting(list);
+        const rows = list
+          .map((h) => {
+            const on = s.view === 'handoff' && h.focus;
+            const text = h.kind === 'map' ? `New map · ${h.title}` : `#${h.number} ${h.title}`;
+            return `<a class="ho-trow${on ? ' is-on' : ''}" href="#" ${h.focus ? 'data-view="handoff"' : `data-to="the hand-off page for ${esc(AFTER.label(h))}"`} title="${esc(AFTER.STATUS[h.status].word)}">${dot(h)}<span class="grow">${esc(text)}</span></a>`;
+          })
+          .join('');
+        return `<div class="ho-tlabel">In flight${waiting ? `<span class="ho-fl-count">${waiting} need you</span>` : ''}</div>${rows}
+          <a class="ho-trow${s.view === 'flight' ? ' is-on' : ''}" href="#" data-view="flight">${icon('list')}<span class="grow">All hand-offs</span></a>`;
+      }
+
+      const CALLOUT = {
+        starting: ['Starting the thread', 'T3 Code is opening a worktree. This page fills in as it reports.'],
+        working: ['T3 Code is working', null],
+        input: ['T3 Code is waiting for you', null],
+        done: ['A pull request is ready', null],
+        failed: ['The thread stopped', null],
+      };
+
+      function handOffPage() {
+        const h = AFTER.focusHandOff();
+        if (!h) return `<main class="page"><div class="sheet ho-page"><div class="empty"><strong>Not handed off yet</strong><p>Go to #55 on the map and press Open in T3 Code.</p><button type="button" class="primary" data-view="map">Go to the ticket</button></div></div></main>`;
+        const [title, sub] = CALLOUT[h.status];
+        const stale = AFTER.offline();
+        return `<main class="page"><div class="sheet ho-page">
+          ${state.justHandedOff ? `<div class="ho-sent">${icon('check')}Handed off to T3 Code. The ticket is claimed; this page stays live.</div>` : ''}
+          <p class="eyebrow">Hand-off · ticket #55 · map #35</p>
+          <h1 style="margin:4px 0 0">Track hand-offs on the server</h1>
+          <div class="ho-hero">${pill(h, { size: 'lg' })}<span class="ho-when">${esc(sinceText(h))}</span></div>
+          <div class="ho-callout${stale ? ' is-stale' : ''}" style="--tone:${AFTER.STATUS[h.status].tone}">${stale ? icon('plug') : AFTER.statusIcon(h.status)}
+            <div class="grow"><strong>${stale ? "T3 Code isn't running" : title}</strong>
+            <p class="ho-line">${stale ? `Its last report, 14 min ago: ${esc(AFTER.STATUS[h.status].word.toLowerCase())}, ${esc(h.line)}. Nothing has failed; this updates when T3 Code is back.` : esc(sub ?? h.line)}</p>
+            <div class="ho-row">${actions(h, { back: false })}</div></div></div>
+          <div class="ho-cols">
+            <section><h2>What happened</h2>${AFTER.timeline(h)}</section>
+            <section><h2>Started from</h2>
+              <a class="card ho-from" href="#" data-view="map"><span class="glyph">${icon('list')}</span><span class="grow"><span class="eyebrow">Ticket #55 · map #35</span><strong>Track hand-offs on the server</strong></span>${icon('arrow')}</a>
+              ${AFTER.facts(h)}</section>
+          </div></div></main>`;
+      }
+
+      function flightPage() {
+        const list = AFTER.byUrgency(AFTER.handOffs());
+        return `<main class="page"><div class="sheet ho-page"><div class="page-head"><div class="grow"><p class="eyebrow">In flight</p><h1>Hand-offs</h1><p>Everything you've handed to T3 Code. Finished ones stay for 30 days.</p></div></div>
+          ${AFTER.offlineBanner()}
+          <table class="ho-table"><thead><tr><th>Status</th><th>What</th><th>Last report</th><th></th></tr></thead><tbody>${list
+            .map(
+              (h) =>
+                `<tr ${h.focus ? 'data-view="handoff"' : `data-to="the hand-off page for ${esc(AFTER.label(h))}"`}><td>${pill(h)}</td><td><strong>${esc(AFTER.label(h))}</strong><span class="ho-where">${esc(AFTER.where(h))}</span></td><td><span class="ho-line">${esc(h.line)}</span><span class="ho-when">${esc(sinceText(h))}</span></td><td style="text-align:right;white-space:nowrap">${actions(h, { compact: true, back: false })}</td></tr>`,
+            )
+            .join('')}</tbody></table></div></main>`;
+      }
+
+      // On the map, the ticket panel points at the hand-off page instead of repeating it.
+      function slot() {
+        if (!state.handedOff) return AFTER.launchBlock();
+        const h = AFTER.focusHandOff();
+        return `<div class="ho-inline">${pill(h)}<span>${esc(sinceText(h))}</span><button type="button" class="linkish" data-view="handoff">Open the hand-off</button></div>`;
+      }
+
+      function railFlight(s) {
+        const n = AFTER.waiting(AFTER.handOffs());
+        return `<a class="rail-btn ho-flbtn" href="#" data-view="flight" title="In flight">${icon('flight')}${n ? `<span class="ho-badge">${n}</span>` : ''}</a>`;
+      }
+
+      // Open in T3 Code takes you to the new hand-off's page.
+      document.addEventListener(
+        'click',
+        (e) => {
+          if (e.target.closest('[data-handoff]')) state.view = 'handoff';
+        },
+        true,
+      );
+
+      AFTER.start((s) => {
+        const top = flightGroup(s);
+        if (s.view === 'map')
+          return `<div class="app">${AFTER.rail(s, { extra: railFlight(s) })}<div class="main">${AFTER.topbar(s)}${AFTER.mapPage({ slot: slot() })}</div></div>`;
+        const title =
+          s.view === 'handoff'
+            ? `<span class="crumbs"><a href="#" data-view="flight">In flight</a><span class="crumb-sep">/</span></span><span class="ho-ptitle">#55 Track hand-offs on the server</span>`
+            : s.view === 'flight'
+              ? '<span class="ho-ptitle">In flight</span>'
+              : undefined;
+        const body = s.view === 'handoff' ? handOffPage() : s.view === 'flight' ? flightPage() : AFTER.homePage();
+        return `<div class="app has-side">${AFTER.side(s, { top })}<div class="main">${AFTER.topbar(s, { title })}${body}</div></div>`;
+      });
+    </script>
+  </body>
+</html>
