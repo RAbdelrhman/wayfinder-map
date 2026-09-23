@@ -29,10 +29,11 @@ import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
+import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
 import type { NavigationController, NavigationView } from './navigation.js';
 import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
+import { recordMapOpened } from './homeRecency.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -134,6 +135,13 @@ function currentMap(): WayfinderMap | null {
   return snapshot?.maps[activeMap] ?? null;
 }
 
+function rememberMapOpen(repo: string, mapNumber: number): void {
+  try {
+    recordMapOpened(repo, mapNumber, Date.now(), localStorage);
+  } catch {
+    // Recency is optional and must not block opening a map.
+  }
+}
 function planningStatusLine(handOff: HandOffStatusDto): string {
   if (handOff.threadId === null) return 'No planning thread is available.';
   switch (handOff.status) {
@@ -259,8 +267,11 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       navigation?.setSnapshot(snapshot, currentMap()?.number ?? null);
       navigation?.setActiveView(view);
       if (mode === 'initial') {
+        const openedMap = currentMap();
+        if (openedMap !== null) rememberMapOpen(snapshot.repo, openedMap.number);
         const requestedTicket = Number(new URLSearchParams(window.location.search).get('ticket'));
-        const ticket = currentMap()?.tickets.find((candidate) => candidate.number === requestedTicket);
+        const map = currentMap();
+        const ticket = map === null ? undefined : allTickets(map).find((candidate) => candidate.number === requestedTicket);
         selected = ticket?.number ?? null;
         inspectorTab = selected === null ? 'brief' : 'ticket';
       }
@@ -371,12 +382,12 @@ function renderFilters(): void {
   const counts = countStates(map);
   const states = STATE_ORDER.map((state) => chip(state, STATE_STYLE[state].long, STATE_STYLE[state].icon, counts[state], STATE_STYLE[state].variable));
   const types = TICKET_TYPES.map((type) =>
-    chip(type, TYPE_STYLE[type].label, TYPE_STYLE[type].icon, map.tickets.filter((ticket) => ticket.type === type).length, null),
+    chip(type, TYPE_STYLE[type].label, TYPE_STYLE[type].icon, allTickets(map).filter((ticket) => ticket.type === type).length, null),
   );
-  const untyped = map.tickets.filter((ticket) => ticket.type === null).length;
+  const untyped = allTickets(map).filter((ticket) => ticket.type === null).length;
   if (untyped > 0) types.push(chip('untyped', UNTYPED.label, UNTYPED.icon, untyped, null));
 
-  els.filters.innerHTML = `${chip(null, 'All', null, map.tickets.length, null)}${states.join('')}<span class="filter-sep" role="none"></span>${types.join('')}`;
+  els.filters.innerHTML = `${chip(null, 'All', null, allTickets(map).length, null)}${states.join('')}<span class="filter-sep" role="none"></span>${types.join('')}`;
 }
 
 function renderKey(): void {
@@ -522,7 +533,7 @@ function renderTable(): void {
     return;
   }
 
-  const rows = map.tickets
+  const rows = allTickets(map)
     .map((ticket) => {
       const style = STATE_STYLE[ticket.state];
       return `<tr data-number="${String(ticket.number)}">
@@ -647,21 +658,12 @@ function renderTicketPrototype(): void {
 function syncHighlights(): void {
   const map = currentMap();
   if (map === null) return;
-  const byNumber = new Map(map.tickets.map((ticket) => [ticket.number, ticket]));
+  const byNumber = new Map(allTickets(map).map((ticket) => [ticket.number, ticket]));
   const matches = (ticket: Ticket): boolean => matchesFilter(ticket, filter) && matchesQuery(ticket, query);
   const shown = (number: number): boolean => {
     const ticket = byNumber.get(number);
-    // An issue off the map stays lit while any ticket it links to does.
-    if (ticket === undefined) {
-      const outside = map.outside.find((candidate) => candidate.number === number);
-      return [...(outside?.blocks ?? []), ...(outside?.waitsOn ?? [])].some((linked) => {
-        const other = byNumber.get(linked);
-        return other !== undefined && matches(other);
-      });
-    }
-    return matches(ticket);
-  };
-  const chain: Lineage | null = hovered === null ? null : lineage(graphTickets(map), hovered);
+    return ticket !== undefined && matches(ticket);
+  };  const chain: Lineage | null = hovered === null ? null : lineage(graphTickets(map), hovered);
   const related = (number: number): boolean =>
     chain === null || number === hovered || chain.upstream.has(number) || chain.downstream.has(number);
 
@@ -763,7 +765,7 @@ function renderInspector(): void {
 
 function briefHtml(map: WayfinderMap): string {
   const counts = countStates(map);
-  const total = map.tickets.length;
+  const total = allTickets(map).length;
   const rows = STATE_ORDER.map((state) => {
     const style = STATE_STYLE[state];
     const on = filter === state;
@@ -1108,7 +1110,8 @@ function setFilter(next: TicketFilter | null): void {
 
 /** Open the first ticket the search and filter leave showing, and bring it into view. */
 function jumpToFirstMatch(): void {
-  const hit = currentMap()?.tickets.find((ticket) => matchesFilter(ticket, filter) && matchesQuery(ticket, query));
+  const map = currentMap();
+  const hit = map === null ? undefined : allTickets(map).find((ticket) => matchesFilter(ticket, filter) && matchesQuery(ticket, query));
   if (hit === undefined) {
     toast('No ticket matches.', 2400);
     return;
@@ -1151,9 +1154,12 @@ window.addEventListener('popstate', () => {
   const index = snapshot?.maps.findIndex((map) => map.number === route?.mapNumber) ?? -1;
   if (index < 0) return;
   activeMap = index;
+  const openedMap = currentMap();
+  if (snapshot !== null && openedMap !== null) rememberMapOpen(snapshot.repo, openedMap.number);
   view = viewFromQuery(new URLSearchParams(window.location.search).get('view'));
   const requestedTicket = Number(new URLSearchParams(window.location.search).get('ticket'));
-  selected = currentMap()?.tickets.find((ticket) => ticket.number === requestedTicket)?.number ?? null;
+  const map = currentMap();
+  selected = map === null ? null : allTickets(map).find((ticket) => ticket.number === requestedTicket)?.number ?? null;
   inspectorTab = selected === null ? 'brief' : 'ticket';
   if (snapshot !== null) navigation?.setSnapshot(snapshot, currentMap()?.number ?? null);
   navigation?.setActiveView(view);

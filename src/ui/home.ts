@@ -3,25 +3,25 @@ import type { AuthFlowState } from '../authFlow.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import { draftMapPath, normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import type { MapSnapshot, WayfinderMap } from '../types.js';
-import { bindTheme, bindUpdater, paintIcons, renderAccountMarkContent, repoIconHtml, updateAccountMark } from './chrome.js';
+import { bindTheme, bindUpdater, paintIcons, repoIconHtml, updateAccountMark } from './chrome.js';
 import type { AccountMark, AccountProfile } from './chrome.js';
 import * as icons from './icons.js';
 import { loadCatalog, TIER_LABEL } from './models.js';
 import { syncedLabel } from './focus.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
-import { AutoRefresh } from './autoRefresh.js';
-import { draftToMapPath, isNewMapHandOff, newMapPath, rememberNewMapRetry } from './newMap.js';
-import type { NewMapHandOff } from './newMap.js';
-import { renderNewMapPage } from './newMapPage.js';
 import { mountProgressPanel } from './progress.js';
 import type { ProgressSettings, ProgressState } from '../progress.js';
+import { AutoRefresh } from './autoRefresh.js';
+import { draftToMapPath, initialRepository, isNewMapHandOff, newMapPath, rememberNewMapRetry } from './newMap.js';
+import type { NewMapHandOff } from './newMap.js';
+import { renderNewMapPage } from './newMapPage.js';
 import { mountNavigation } from './navigation.js';
 import type { NavigationController, NavigationPage } from './navigation.js';
+import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
+import { homeLoadingMarkup, renderHomeLanding } from './homeLanding.js';
 import { countRunningHandOffs, mapMatchesRepositoryFilter, repositoryLoadErrorHtml, repositoryPageHtml } from './repositoryView.js';
 import type { RepositoryHandOffStatus, RepositoryMapFilter } from './repositoryView.js';
-
-const RECENT_KEY = 'wayfinder-map:recent-repositories';
 
 function need<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -35,14 +35,17 @@ const els = {
 };
 
 function setSynced(text: string): void {
-  const synced = need<HTMLButtonElement>('synced');
+  const synced = syncedButton();
   const label = synced.querySelector<HTMLElement>('.synced-label') ?? synced;
   label.textContent = text;
-  synced.hidden = !text;
+}
+
+function syncedButton(): HTMLButtonElement {
+  return need<HTMLButtonElement>('synced');
 }
 
 function setSyncBusy(busy: boolean): void {
-  need<HTMLButtonElement>('synced').classList.toggle('is-busy', busy);
+  syncedButton().classList.toggle('is-busy', busy);
 }
 
 let toastTimer = 0;
@@ -64,20 +67,19 @@ function paint(html: string, sheetClass = ''): void {
 
 function recentRepositories(): string[] {
   try {
-    const value: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
-    return Array.isArray(value) ? value.filter((repo): repo is string => typeof repo === 'string' && normalizeRepo(repo) !== null).slice(0, 8) : [];
+    return readHomeRecency(localStorage).repositories;
   } catch {
     return [];
   }
 }
 
 function remember(repo: string): void {
-  localStorage.setItem(RECENT_KEY, JSON.stringify([repo, ...recentRepositories().filter((candidate) => candidate !== repo)].slice(0, 8)));
-  localStorage.setItem('wayfinder-map:last-route', window.location.pathname);
-}
-
-function repositoryLink(repo: string): string {
-  return `<a class="card repo-card" href="${repoPath(repo)}">${repoIconHtml(repo)}<span class="grow">${escapeHtml(repo)}</span><span class="go" data-icon="arrow"></span></a>`;
+  try {
+    recordRepositoryOpened(repo, Date.now(), localStorage);
+    localStorage.setItem('wayfinder-map:last-route', window.location.pathname);
+  } catch {
+    // Last route is only a convenience for the next launch.
+  }
 }
 
 /* ---------- GitHub account ---------- */
@@ -85,23 +87,9 @@ function repositoryLink(repo: string): string {
 function accountPanel(state: HomeState): string {
   const account = state.account;
   if (account.status === 'ready') {
-    const sso =
-      state.skippedOrganizations.length > 0
-        ? `<div class="panel is-warning is-block"><strong>SSO is hiding some results</strong><p>GitHub skipped ${escapeHtml(state.skippedOrganizations.join(', '))}. Authorize those organizations on GitHub, then refresh.</p></div>`
-        : '';
-    const environmentToken = /GH_TOKEN|GITHUB_TOKEN/i.test(account.tokenSource ?? '');
-    const switcher =
-      account.accounts.length > 1 && !environmentToken
-        ? `<select class="select" id="account-switch" aria-label="GitHub account">${account.accounts
-            .map((login) => `<option${login === account.login ? ' selected' : ''}>${escapeHtml(login)}</option>`)
-            .join('')}</select>`
-        : '';
-    return `<div class="panel">
-      <span class="avatar">${renderAccountMarkContent(account)}</span>
-      <span class="grow"><strong>${escapeHtml(account.login ?? '')}</strong><p>${escapeHtml(account.host)}${environmentToken ? ' · token from the environment' : ''}</p></span>
-      ${switcher}
-      <button type="button" class="ghost" id="stop-server"><span data-icon="sign-out"></span>Stop server</button>
-    </div>${sso}`;
+    return state.skippedOrganizations.length === 0
+      ? ''
+      : `<div class="panel is-warning home-alert"><span class="grow"><strong>Some organization results are hidden</strong><p>GitHub skipped ${escapeHtml(state.skippedOrganizations.join(', '))}. Authorize those organizations on GitHub, then refresh.</p></span><button type="button" class="ghost" data-refresh-home>Refresh</button></div>`;
   }
   const action =
     account.status === 'missing-gh'
@@ -192,78 +180,38 @@ interface HandOffSnapshot {
   t3: { available: boolean; checkedAt: string | null };
 }
 
-/** Include tracked new-map starts on Home until their map issue appears. */
-async function homeDrafts(): Promise<NewMapHandOff[]> {
-  let records: HandOffStatusDto[];
-  try {
-    ({ handOffs: records } = await getJson<HandOffSnapshot>('/api/hand-offs'));
-  } catch {
-    return [];
-  }
-  const drafts = records.filter(isNewMapHandOff);
-  const repos = Array.from(new Set(drafts.map((draft) => draft.repo)));
-  const snapshots = new Map<string, MapSnapshot | null>();
-  await Promise.all(
-    repos.map(async (repo) => {
-      try {
-        snapshots.set(repo, await getJson<MapSnapshot>(`${scopedApiPath(repo, 'snapshot')}?refresh=1`));
-      } catch {
-        snapshots.set(repo, null);
-      }
-    }),
-  );
-  return drafts.filter((draft) => {
-    const snapshot = snapshots.get(draft.repo);
-    return snapshot === null || snapshot === undefined || draftToMapPath(draft.repo, draft, snapshot.maps) === null;
-  });
-}
-
-function draftMapCard(draft: NewMapHandOff): string {
-  let path: string;
-  try {
-    path = draftMapPath(draft.repo, draft.id);
-  } catch {
-    return '';
-  }
-  return `<a class="card draft-map-card" href="${path}">
-    <div><p class="eyebrow">Map - Being planned</p><h2>${escapeHtml(draft.title ?? '')}</h2></div>
-    <p class="dest">${escapeHtml(draft.repo)}</p>
-    <span class="draft-map-status">${escapeHtml(draftStatusLine(draft))}</span>
-  </a>`;
-}
-
 function draftStatusLine(draft: NewMapHandOff): string {
   if (draft.threadId === null) return 'No T3 Code thread was started. The hand-off needs attention.';
   let status: string;
   if (draft.pendingApproval) status = 'T3 Code is waiting for approval in the planning thread.';
   else if (draft.pendingUserInput) status = 'T3 Code is waiting for your input in the planning thread.';
   else {
-    switch (draft.status) {
-      case 'starting':
-        status = 'T3 Code is starting the planning thread.';
-        break;
-      case 'running':
-        status = 'T3 Code is planning. Tickets will appear here as they are drafted.';
-        break;
-      case 'waiting':
-        status = 'T3 Code is waiting for input in the planning thread.';
-        break;
-      case 'ready':
-        status = 'T3 Code is ready for the next planning step.';
-        break;
-      case 'finished':
-        status = 'T3 Code finished a planning turn. This map is still waiting for its issue.';
-        break;
-      case 'interrupted':
-        status = 'The planning thread was interrupted.';
-        break;
-      case 'failed':
-        status = 'The planning thread ran into an error.';
-        break;
-      case 'untracked':
-        status = 'T3 Code started the thread; its current status is unavailable.';
-        break;
-    }
+  switch (draft.status) {
+    case 'starting':
+      status = 'T3 Code is starting the planning thread.';
+      break;
+    case 'running':
+      status = 'T3 Code is planning. Tickets will appear here as they are drafted.';
+      break;
+    case 'waiting':
+      status = 'T3 Code is waiting for input in the planning thread.';
+      break;
+    case 'ready':
+      status = 'T3 Code is ready for the next planning step.';
+      break;
+    case 'finished':
+      status = 'T3 Code finished a planning turn. This map is still waiting for its issue.';
+      break;
+    case 'interrupted':
+      status = 'The planning thread was interrupted.';
+      break;
+    case 'failed':
+      status = 'The planning thread ran into an error.';
+      break;
+    case 'untracked':
+      status = 'T3 Code started the thread; its current status is unavailable.';
+      break;
+  }
   }
   return draft.stale ? `T3 Code is unavailable. Showing the last reported status: ${status}` : status;
 }
@@ -410,83 +358,25 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
 }
 
 async function renderHome(refresh: boolean): Promise<void> {
-  const [state, drafts] = await Promise.all([
-    getJson<HomeState>(`/api/home${refresh ? '?refresh=1' : ''}`),
-    homeDrafts(),
-  ]);
-  cachedAccount = state.account;
-  updateAccountMark(document.getElementById('account-mark'), state.account);
-  setSynced(syncedLabel(0));
-  const recent = recentRepositories();
-  const discovered = state.repositories.filter((repo) => !recent.includes(repo));
-  const warning =
-    state.warning === null
-      ? ''
-      : `<div class="panel is-warning"><span class="grow">${escapeHtml(state.warning)}</span><button type="button" class="ghost" data-refresh-home>Retry</button></div>`;
-
-  paint(`<div class="page-head">
-      <div class="grow">
-        <p class="eyebrow">Wayfinder</p>
-        <h1>Where do you want to go?</h1>
-        <p>Pick a repository, then open one of its maps.</p>
-      </div>
-    </div>
-    <div class="home-cols"><div class="home-main">
-    ${accountPanel(state)}${warning}
-    ${drafts.length === 0 ? '' : `<section class="section"><div class="section-head"><h2>Being planned</h2></div><div class="map-grid">${drafts.map(draftMapCard).join('')}</div></section>`}
-    <form class="field" id="repo-entry">
-      <label for="repo-name">Open a repository</label>
-      <div class="row">
-        <div class="repo-picker">
-          <input class="input" id="repo-name" name="repo" placeholder="Search your repositories or type owner/name" autocomplete="off" spellcheck="false" required role="combobox" aria-expanded="false" aria-controls="repo-menu" aria-autocomplete="list" />
-          <ul class="repo-menu" id="repo-menu" role="listbox" hidden></ul>
-        </div>
-        <button class="primary" type="submit">Open</button>
-      </div>
-      <p class="hint">Typing the name always works, even when a repository isn't listed.</p>
-    </form>
-    ${
-      recent.length === 0
-        ? ''
-        : `<section class="section"><div class="section-head"><h2>Recent</h2></div><div class="repo-grid">${recent.map(repositoryLink).join('')}</div></section>`
-    }
-    <section class="section">
-      <div class="section-head"><h2>Discovered</h2><span class="grow"></span><button type="button" class="ghost" data-refresh-home><span data-icon="refresh"></span>Refresh</button></div>
-      ${
-        discovered.length === 0
-          ? '<div class="empty"><strong>No discovered repositories with maps</strong><p>Type an owner/name above to open one directly.</p></div>'
-          : `<div class="repo-grid">${discovered.map(repositoryLink).join('')}</div>`
-      }
-    </section>
-    </div><div class="home-side" id="progress-host"></div></div>
-    <footer class="version">Wayfinder v${escapeHtml(state.version)}</footer>`);
-
-  const form = need<HTMLFormElement>('repo-entry');
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const repo = normalizeRepo(String(new FormData(form).get('repo') ?? ''));
-    if (repo === null) {
-      const input = need<HTMLInputElement>('repo-name');
-      input.setCustomValidity('Use owner/name.');
-      input.reportValidity();
-      input.setCustomValidity('');
-      return;
-    }
-    window.location.assign(repoPath(repo));
-  });
-  bindRepoPicker(need<HTMLInputElement>('repo-name'), need<HTMLUListElement>('repo-menu'));
-  void renderProgress(need('progress-host'));
-  document.getElementById('account-switch')?.addEventListener('change', (event) => {
-    const select = event.currentTarget as HTMLSelectElement;
-    void run(async () => {
-      await postJson('/api/auth/switch', { login: select.value });
-      await show(true);
-    });
-  });
-  document.getElementById('stop-server')?.addEventListener('click', () => {
-    void postJson('/api/shutdown').then(() => {
-      paint('<div class="empty"><strong>Wayfinder stopped</strong><p>Your GitHub CLI account is still signed in.</p></div>');
-    });
+  await renderHomeLanding({
+    refresh,
+    storage: localStorage,
+    getJson,
+    paint,
+    bindRepoPicker,
+    accountPanel,
+    setAccount: (state) => {
+      cachedAccount = state.account;
+      updateAccountMark(document.getElementById('account-mark'), state.account);
+    },
+    syncAccountMark,
+    setSynced: () => setSynced(syncedLabel(0)),
+    renderProgress,
+    focusHandOff: async (id) => {
+      await postJson('/api/hand-offs/focus', { id });
+      toast('Brought T3 Code forward.');
+    },
+    toast,
   });
 }
 
@@ -681,6 +571,7 @@ async function renderRepository(repo: string, refresh: boolean): Promise<void> {
 }
 
 async function renderNewMap(): Promise<void> {
+  document.title = 'Start a new map · Wayfinder';
   setSynced('');
   await syncAccountMark();
 
@@ -688,12 +579,13 @@ async function renderNewMap(): Promise<void> {
   try {
     homeState = await getJson<HomeState>('/api/home');
   } catch {
-    // The composer can still use recent repositories if GitHub is unavailable.
+    // The composer can still use a repository name when GitHub is unavailable.
   }
 
-  const catalogState = await loadCatalog();
   const repositoryQuery = new URLSearchParams(window.location.search).get('repo');
-  navigation?.setCurrentRepo(normalizeRepo(repositoryQuery ?? ''));
+  const initialRepo = initialRepository(repositoryQuery);
+  navigation?.setCurrentRepo(initialRepo || null);
+  const catalogState = await loadCatalog();
   await renderNewMapPage(
     {
       main: els.main,
@@ -704,8 +596,8 @@ async function renderNewMap(): Promise<void> {
       getJson,
       postJson,
       remember,
-      toast,
       setCurrentRepo: (repo) => navigation?.setCurrentRepo(repo),
+      toast,
     },
     repositoryQuery,
   );
@@ -725,16 +617,15 @@ const page:
     : route?.draftId !== undefined
       ? { kind: 'draft', repo: route.repo, draftId: route.draftId }
       : route?.mapNumber === null
-        ? { kind: 'repository', repo: route.repo }
-        : { kind: 'home' };
+      ? { kind: 'repository', repo: route.repo }
+      : { kind: 'home' };
 
+const navigationRepo = page.kind === 'repository' || page.kind === 'draft'
+  ? page.repo
+  : page.kind === 'new-map'
+    ? normalizeRepo(new URLSearchParams(window.location.search).get('repo') ?? '')
+    : null;
 const navigationPage: NavigationPage = page.kind === 'draft' ? 'new-map' : page.kind;
-const navigationRepo =
-  page.kind === 'repository' || page.kind === 'draft'
-    ? page.repo
-    : page.kind === 'new-map'
-      ? normalizeRepo(new URLSearchParams(window.location.search).get('repo') ?? '')
-      : null;
 navigation = mountNavigation({
   shell: need('app'),
   sidebar: need('sidebar-shell'),
@@ -763,6 +654,7 @@ async function run(work: () => Promise<unknown> | unknown): Promise<void> {
 async function show(refresh = false): Promise<void> {
   if (refresh) setSyncBusy(true);
   else if (page.kind === 'repository') paint('<p class="loading" role="status" aria-live="polite">Loading repository maps…</p>', 'repository-sheet');
+  else if (page.kind === 'home') paint(homeLoadingMarkup());
   else paint('<p class="loading" role="status" aria-live="polite">Reading GitHub…</p>');
   await run(async () => {
     if (page.kind === 'new-map') await renderNewMap();
@@ -772,11 +664,10 @@ async function show(refresh = false): Promise<void> {
   });
   setSyncBusy(false);
 }
-
 paintIcons();
 bindTheme(need('theme'));
 bindUpdater(need('updater'), toast);
-need('synced').addEventListener('click', () => void show(true));
+syncedButton().addEventListener('click', () => void show(true));
 document.addEventListener('visibilitychange', () => draftAutoRefresh?.visibilityChanged());
 window.addEventListener('pagehide', () => draftAutoRefresh?.stop());
 document.addEventListener('click', (event) => {
