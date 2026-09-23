@@ -65,6 +65,8 @@ Run the wayfinder workflow to turn this into a map:
      Decisions so far, Fog, and Out of scope sections;
    - one issue per ticket labeled \`{{typePrefix}}<type>\`, added as a sub-issue
      of the map, with its blockers recorded as blocked-by relationships.
+   Use the user's goal as the map issue title, normalizing whitespace only.
+   Wayfinder uses that title to move the planning page to the new map route.
 4. Reply with the map's link and the ticket numbers.
 
 Do not start work on any ticket. Planning the map is the whole job here.

@@ -2,12 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { Config } from './config.js';
 import type { HomeState } from './home.js';
+import { DEFAULT_PROGRESS_SETTINGS, ProgressError } from './progress.js';
+import type { ProgressState } from './progress.js';
 import { DEFAULT_TEMPLATE, startServer } from './server.js';
 import type { ServerT3 } from './server.js';
 import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver } from './workspaces.js';
 import type { WorkspaceDependencies } from './workspaces.js';
+import { RepositoryCloneError } from './clone.js';
 import type { Ticket, WayfinderMap } from './types.js';
+import { HandOffStore } from './handOffTracking.js';
 
 const config: Config = {
   repo: null,
@@ -92,8 +96,10 @@ describe('repository-scoped server', () => {
       const homePage = await fetch(`${running.url}/`);
       const repositoryPage = await fetch(`${running.url}/repos/octo/one`);
       const mapPage = await fetch(`${running.url}/repos/octo/one/maps/12`);
+      const draftPage = await fetch(`${running.url}/repos/octo/one/maps/draft-123e4567-e89b-12d3-a456-426614174000`);
       expect(await homePage.text()).toContain('src="/home.js"');
       expect(await repositoryPage.text()).toContain('src="/home.js"');
+      expect(await draftPage.text()).toContain('src="/home.js"');
       expect(await mapPage.text()).toContain('src="/app.js"');
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
@@ -358,6 +364,7 @@ describe('local clone for a hand-off', () => {
       t3,
       fetcher: async () => ({ maps: [sampleMap], warnings: [] }),
       homeLoader: async () => home,
+      handOffStore: new HandOffStore({ filePath: null }),
       ...options,
     });
   }
@@ -411,6 +418,100 @@ describe('local clone for a hand-off', () => {
     }
   });
 
+  it('asks for a fresh clone destination on each request', async () => {
+    const destinations = ['C:/projects/one', 'D:/work/one'];
+    const chooseDirectory = vi.fn(async (_purpose: 'workspace' | 'clone'): Promise<string | null> => destinations.shift() ?? null);
+    const running = await serve({ workspaces: resolver({}, []), chooseDirectory });
+
+    try {
+      for (const target of ['C:/projects/one', 'D:/work/one']) {
+        const response = await fetch(`${running.url}/api/repos/octo/one/workspace`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', origin: running.url },
+          body: JSON.stringify({ cloneTarget: true }),
+        });
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({ target });
+      }
+      expect(chooseDirectory).toHaveBeenNthCalledWith(1, 'clone');
+      expect(chooseDirectory).toHaveBeenNthCalledWith(2, 'clone');
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('clones into the selected destination and makes it the hand-off workspace', async () => {
+    const chooseDirectory = vi.fn(async () => '/destination');
+    const cloneRepository = vi.fn(async (_repo: string, target: string) => target);
+    const running = await serve({
+      workspaces: resolver({ '/destination': '/destination' }, []),
+      chooseDirectory,
+      cloneRepository,
+    });
+
+    try {
+      const picker = await fetch(`${running.url}/api/repos/octo/one/workspace`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ cloneTarget: true }),
+      });
+      await expect(picker.json()).resolves.toEqual({ target: '/destination' });
+
+      const response = await fetch(`${running.url}/api/repos/octo/one/clone`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ target: '/destination' }),
+      });
+      expect(response.status).toBe(201);
+      await expect(response.json()).resolves.toEqual({ status: 'ready', path: '/destination', canChoose: true });
+      expect(chooseDirectory).toHaveBeenCalledWith('clone');
+      expect(cloneRepository).toHaveBeenCalledWith('octo/one', '/destination');
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  const cloneFailures = [
+    {
+      name: 'a non-empty destination',
+      failure: new RepositoryCloneError('destination', 'Choose an empty folder for the clone.', 400),
+      status: 400,
+      message: 'Choose an empty folder for the clone.',
+    },
+    {
+      name: 'GitHub authentication failure',
+      failure: new RepositoryCloneError('authentication', 'GitHub could not access octo/one. Check your GitHub sign-in and repository access.', 502),
+      status: 502,
+      message: 'GitHub could not access octo/one. Check your GitHub sign-in and repository access.',
+    },
+    {
+      name: 'GitHub network failure',
+      failure: new RepositoryCloneError('network', 'Could not reach GitHub. Check your network and try again.', 502),
+      status: 502,
+      message: 'Could not reach GitHub. Check your network and try again.',
+    },
+  ];
+
+  it.each(cloneFailures)('reports $name on the clone endpoint', async ({ failure, status, message }) => {
+    const cloneRepository = vi.fn(async () => {
+      throw failure;
+    });
+    const running = await serve({ workspaces: resolver({}, []), cloneRepository });
+
+    try {
+      const response = await fetch(`${running.url}/api/repos/octo/one/clone`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ target: '/destination' }),
+      });
+      expect(response.status).toBe(status);
+      await expect(response.json()).resolves.toMatchObject({ error: message, status: 'choose', canChoose: false });
+      expect(cloneRepository).toHaveBeenCalledWith('octo/one', '/destination');
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
   it('refuses a folder that is not a checkout of the repository', async () => {
     const running = await serve({ workspaces: resolver({ '/clone': '/clone' }, []) });
 
@@ -443,6 +544,101 @@ describe('local clone for a hand-off', () => {
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({ rung: 'thread' });
       expect(startThread).toHaveBeenCalledWith(expect.objectContaining({ workspaceRoot: '/clone' }));
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('records ticket hand-offs and exposes current T3 status through /api/hand-offs', async () => {
+    const trackingT3: ServerT3 = {
+      ...t3,
+      steps: () => ({
+        startThread: async () => ({ threadId: 'tracked-thread', prompt: 'do not expose this prompt' }),
+        openApp: async () => undefined,
+        copy: async () => undefined,
+      }),
+      readHandOffSnapshot: async () => ({
+        environmentId: 't3-env',
+        origin: 'http://127.0.0.1:3773',
+        snapshot: {
+          snapshotSequence: 8,
+          threads: [
+            {
+              id: 'tracked-thread',
+              projectId: 't3-project',
+              branch: 'wayfinder/11-retire-api-agents-2',
+              session: { status: 'running' },
+              pullRequests: [{ number: 42, url: 'https://github.com/octo/one/pull/42', state: 'open' }],
+            },
+          ],
+        },
+      }),
+      subscribeShell: async () => () => undefined,
+    };
+    const running = await serve({ t3: trackingT3, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+
+    try {
+      const handOffResponse = await fetch(`${running.url}/api/repos/octo/one/hand-off`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ map: 5, ticket: 11 }),
+      });
+      expect(handOffResponse.status).toBe(200);
+      await expect(handOffResponse.json()).resolves.toMatchObject({ rung: 'thread', threadId: 'tracked-thread', handOffId: expect.any(String) });
+
+      const statusResponse = await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } });
+      const status = (await statusResponse.json()) as { handOffs: Array<Record<string, unknown>>; t3: { available: boolean } };
+      expect(statusResponse.status).toBe(200);
+      expect(status.t3.available).toBe(true);
+      expect(status.handOffs).toMatchObject([
+        {
+          repo: 'octo/one',
+          mapNumber: 5,
+          ticketNumber: 11,
+          threadId: 'tracked-thread',
+          status: 'running',
+          stale: false,
+          branch: 'wayfinder/11-retire-api-agents-2',
+          pullRequests: [{ number: 42, url: 'https://github.com/octo/one/pull/42' }],
+        },
+      ]);
+      expect(JSON.stringify(status)).not.toContain('do not expose this prompt');
+      expect(status.handOffs[0]).not.toHaveProperty('worktreePath');
+      expect(status.handOffs[0]).not.toHaveProperty('environmentId');
+      expect(status.handOffs[0]).not.toHaveProperty('projectId');
+      expect(status.handOffs[0]).not.toHaveProperty('lastError');
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('records a T3-down hand-off as untracked without failing the copy fallback', async () => {
+    const steps = {
+      startThread: async (): Promise<never> => {
+        throw new Error('T3 Code is not running');
+      },
+      openApp: async (): Promise<never> => {
+        throw new Error('desktop app is not running');
+      },
+      copy: async () => undefined,
+    };
+    const running = await serve({
+      t3: { ...t3, steps: () => steps },
+      workspaces: resolver({ '/clone': '/clone' }, ['/clone']),
+    });
+
+    try {
+      const handOffResponse = await fetch(`${running.url}/api/repos/octo/one/hand-off`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ map: 5, ticket: 11 }),
+      });
+      await expect(handOffResponse.json()).resolves.toMatchObject({ rung: 'clipboard', handOffId: expect.any(String) });
+      const statusResponse = await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } });
+      await expect(statusResponse.json()).resolves.toMatchObject({
+        t3: { available: false },
+        handOffs: [{ status: 'untracked', stale: false, threadId: null }],
+      });
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }
@@ -514,9 +710,14 @@ describe('local clone for a hand-off', () => {
       });
 
       try {
-        const response = await newMap(running.url, { goal: 'Build offline\nmode', model: { instanceId: 'codex', model: 'gpt' } });
+        const response = await newMap(running.url, { goal: 'Build offline\nmode', tier: 'hard', model: { instanceId: 'codex', model: 'gpt' } });
         expect(response.status).toBe(200);
-        await expect(response.json()).resolves.toMatchObject({ rung: 'thread', threadId: 'thread-7', notice: null });
+        const started = (await response.json()) as { handOffId: string };
+        expect(started).toMatchObject({ rung: 'thread', threadId: 'thread-7', notice: null, handOffId: expect.any(String) });
+        const handOffResponse = await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } });
+        await expect(handOffResponse.json()).resolves.toMatchObject({
+          handOffs: [{ id: started.handOffId, repo: 'octo/one', mapNumber: null, ticketNumber: null, title: 'Build offline\nmode', tier: 'hard', threadId: 'thread-7' }],
+        });
         expect(startThread).toHaveBeenCalledWith(
           expect.objectContaining({
             title: 'New map: Build offline mode',
@@ -531,5 +732,62 @@ describe('local clone for a hand-off', () => {
         await new Promise<void>((resolve) => running.server.close(() => resolve()));
       }
     });
+
+    it('focuses T3 Code only for a known hand-off thread', async () => {
+      const focus = vi.fn(async () => undefined);
+      const startThread = vi.fn(async () => ({ threadId: 'thread-7', prompt: 'prompt' }));
+      const running = await serve({
+        t3: { ...t3, focus, steps: () => ({ startThread, openApp: async () => undefined, copy: async () => undefined }) },
+        workspaces: resolver({ '/clone': '/clone' }, ['/clone']),
+      });
+
+      try {
+        const startResponse = await newMap(running.url, { goal: 'Build offline mode' });
+        const started = (await startResponse.json()) as { handOffId: string };
+        const response = await fetch(`${running.url}/api/hand-offs/focus`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', origin: running.url },
+          body: JSON.stringify({ id: started.handOffId }),
+        });
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({ opened: true });
+        expect(focus).toHaveBeenCalledOnce();
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+  });
+});
+
+describe('progress panel endpoints', () => {
+  it('serves the panel state and saves a choice for the signed-in user', async () => {
+    const state: ProgressState = { login: 'octo', settings: DEFAULT_PROGRESS_SETTINGS, days: [0, 2], streak: 1, warning: null };
+    const save = vi.fn(async (patch: unknown) => {
+      if (typeof patch === 'object' && patch !== null && 'goal' in patch && patch.goal === 4) throw new ProgressError(400, 'Choose a goal of 3, 5, 8.');
+      return { style: 'hex', goal: 5 } as const;
+    });
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      homeLoader: async () => home,
+      progress: { state: async () => state, save },
+    });
+
+    try {
+      await expect(fetch(`${running.url}/api/progress`).then((response) => response.json())).resolves.toEqual(state);
+      const post = (body: unknown) => fetch(`${running.url}/api/progress/settings`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const saved = await post({ style: 'hex' });
+      expect(saved.status).toBe(200);
+      await expect(saved.json()).resolves.toEqual({ style: 'hex', goal: 5 });
+      expect(save).toHaveBeenCalledWith({ style: 'hex' });
+      const rejected = await post({ goal: 4 });
+      expect(rejected.status).toBe(400);
+      await expect(rejected.json()).resolves.toEqual({ error: 'Choose a goal of 3, 5, 8.' });
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
   });
 });

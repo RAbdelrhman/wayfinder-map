@@ -1,9 +1,13 @@
 export interface RepoPageRoute {
   repo: string;
   mapNumber: number | null;
+  /** The server-side hand-off record for a map that does not have an issue yet. */
+  draftId?: string;
   /** True for the repository's own prototypes page, which spans every map. */
   prototypes?: boolean;
 }
+
+const DRAFT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function normalizeRepo(value: string): string | null {
   const trimmed = value.trim();
@@ -11,7 +15,7 @@ export function normalizeRepo(value: string): string | null {
 }
 
 export function parseRepoPagePath(pathname: string): RepoPageRoute | null {
-  const match = /^\/repos\/([^/]+)\/([^/]+)(?:\/maps\/(\d+)|\/(prototypes))?\/?$/.exec(pathname);
+  const match = /^\/repos\/([^/]+)\/([^/]+)(?:\/maps\/(\d+)|\/maps\/draft-([^/]+)|\/(prototypes))?\/?$/.exec(pathname);
   if (match === null) return null;
   let owner: string;
   let name: string;
@@ -23,7 +27,8 @@ export function parseRepoPagePath(pathname: string): RepoPageRoute | null {
   }
   const repo = normalizeRepo(`${owner}/${name}`);
   if (repo === null) return null;
-  if (match[4] !== undefined) return { repo, mapNumber: null, prototypes: true };
+  if (match[5] !== undefined) return { repo, mapNumber: null, prototypes: true };
+  if (match[4] !== undefined) return DRAFT_ID.test(match[4]) ? { repo, mapNumber: null, draftId: match[4] } : null;
   const mapNumber = match[3] === undefined ? null : Number(match[3]);
   return Number.isSafeInteger(mapNumber) && mapNumber !== null && mapNumber > 0
     ? { repo, mapNumber }
@@ -49,8 +54,14 @@ export function mapPath(repo: string, mapNumber: number): string {
   return `${repoPath(repo)}/maps/${String(mapNumber)}`;
 }
 
+/** A map before its GitHub issue exists, addressed by the persisted hand-off record. */
+export function draftMapPath(repo: string, draftId: string): string {
+  if (!DRAFT_ID.test(draftId)) throw new Error(`Invalid draft ID: ${draftId}`);
+  return `${repoPath(repo)}/maps/draft-${draftId}`;
+}
+
 /** The repository-scoped API calls the page makes, so a page can name a repo other than the launch one. */
-export type ScopedApiAction = 'snapshot' | 'hand-off' | 'new-map' | 'prototypes' | 'ticket' | 'workspace' | 'icon';
+export type ScopedApiAction = 'snapshot' | 'hand-off' | 'new-map' | 'prototypes' | 'ticket' | 'workspace' | 'clone' | 'icon';
 
 export function scopedApiPath(repo: string, action: ScopedApiAction): string {
   return `/api${repoPath(repo)}/${action}`;

@@ -201,6 +201,7 @@ describe('buildNewMapPrompt', () => {
     expect(prompt).toContain('labeled `wayfinder:map`');
     expect(prompt).toContain('labeled `wayfinder:<type>`');
     expect(prompt).toContain('sub-issue');
+    expect(prompt).toContain("Use the user's goal as the map issue title, normalizing whitespace only.");
   });
 
   it('uses the configured labels', () => {
