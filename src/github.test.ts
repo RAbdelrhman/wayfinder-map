@@ -42,16 +42,33 @@ describe('ticketStateOf', () => {
 });
 
 describe('toOutsideTicket', () => {
-  it('keeps the link, title and links of an off-map issue', () => {
+  it('reads an off-map issue as a full ticket with its links', () => {
     expect(
-      toOutsideTicket({ number: 80, title: 'Prototype Home', html_url: 'https://github.com/o/r/issues/80', state: 'open' }, 'o/r', [52]),
+      toOutsideTicket(
+        {
+          number: 80,
+          title: 'Prototype Home',
+          html_url: 'https://github.com/o/r/issues/80',
+          body: 'Build it.',
+          state: 'open',
+          labels: [{ name: 'wayfinder:task' }],
+        },
+        'o/r',
+        { blocks: [52], blockers: [{ number: 12, open: false }] },
+      ),
     ).toEqual({
       number: 80,
       title: 'Prototype Home',
       url: 'https://github.com/o/r/issues/80',
+      body: 'Build it.',
+      type: 'task',
+      labels: ['wayfinder:task'],
       open: true,
-      pullRequest: false,
+      assignee: null,
+      blockedBy: [12],
+      openBlockers: [],
       state: 'frontier',
+      pullRequest: false,
       blocks: [52],
       waitsOn: [],
     });
@@ -64,7 +81,7 @@ describe('toOutsideTicket', () => {
 
   it('derives its state the way a ticket does', () => {
     const base = { number: 9, title: 't', state: 'open' };
-    expect(toOutsideTicket({ ...base, issue_dependencies_summary: { blocked_by: 1 } }, 'o/r').state).toBe('blocked');
+    expect(toOutsideTicket(base, 'o/r', { blockers: [{ number: 3, open: true }] }).state).toBe('blocked');
     expect(toOutsideTicket({ ...base, assignee: { login: 'me' } }, 'o/r').state).toBe('claimed');
     expect(toOutsideTicket({ ...base, pull_request: {}, user: { login: 'author' } }, 'o/r').state).toBe('claimed');
   });

@@ -99,21 +99,38 @@ function issueUrl(raw: RawIssue, repo: string): string {
   return raw.html_url ?? raw.url ?? `https://github.com/${repo}/issues/${raw.number}`;
 }
 
-export function toOutsideTicket(raw: RawIssue, repo: string, blocks: number[] = [], waitsOn: number[] = []): OutsideTicket {
+export interface OutsideLinks {
+  /** Tickets on the map it blocks. */
+  blocks?: number[];
+  /** Tickets on the map it waits on. */
+  waitsOn?: number[];
+  /** Its own blockers, with their open state already settled. */
+  blockers?: Array<{ number: number; open: boolean }>;
+  typePrefix?: string;
+}
+
+export function toOutsideTicket(raw: RawIssue, repo: string, links: OutsideLinks = {}): OutsideTicket {
   const pullRequest = raw.pull_request !== undefined && raw.pull_request !== null;
   const open = isOpenState(raw.state);
-  const openBlockerCount = raw.issue_dependencies_summary?.blocked_by ?? 0;
-  const holder = raw.assignee?.login ?? raw.assignees?.[0]?.login ?? (pullRequest ? raw.user?.login : undefined) ?? null;
+  const labels = labelNames(raw);
+  const assignee = raw.assignee?.login ?? raw.assignees?.[0]?.login ?? (pullRequest ? raw.user?.login : undefined) ?? null;
+  const blockers = links.blockers ?? [];
+  const openBlockers = blockers.filter((blocker) => blocker.open).map((blocker) => blocker.number);
   return {
     number: raw.number,
     title: raw.title,
     url: raw.html_url ?? `https://github.com/${repo}/${pullRequest ? 'pull' : 'issues'}/${raw.number}`,
+    body: raw.body ?? '',
+    type: ticketType(labels, links.typePrefix ?? 'wayfinder:'),
+    labels,
     open,
+    assignee,
+    blockedBy: blockers.map((blocker) => blocker.number),
+    openBlockers,
+    state: ticketStateOf(open, openBlockers, assignee),
     pullRequest,
-    // The summary only counts blockers, so stand in a placeholder number for each.
-    state: ticketStateOf(open, Array.from({ length: openBlockerCount }, () => 0), holder),
-    blocks,
-    waitsOn,
+    blocks: links.blocks ?? [],
+    waitsOn: links.waitsOn ?? [],
   };
 }
 
@@ -311,10 +328,21 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
     for (const raw of await pool(missing, concurrency, (number) => fetchIssue(repo, number))) {
       if (raw !== null) outsideRaw.set(raw.number, raw);
     }
-    const outside = [...outsideRaw.values()]
-      .filter((raw): raw is RawIssue => raw !== null)
-      .map((raw) => toOutsideTicket(raw, repo, blocks.get(raw.number) ?? [], waitsOn.get(raw.number) ?? []));
-    for (const ticket of outside) openByNumber.set(ticket.number, ticket.open);
+    const outsideIssues = [...outsideRaw.values()].filter((raw): raw is RawIssue => raw !== null);
+    for (const raw of outsideIssues) openByNumber.set(raw.number, isOpenState(raw.state));
+    // Their own blockers too, so they open in the panel like any ticket.
+    const outsideBlockers = await pool(outsideIssues, concurrency, (raw) => fetchBlockers(repo, raw));
+    const outside = outsideIssues.map((raw, index) =>
+      toOutsideTicket(raw, repo, {
+        blocks: blocks.get(raw.number) ?? [],
+        waitsOn: waitsOn.get(raw.number) ?? [],
+        blockers: (outsideBlockers[index] ?? []).map((blocker) => ({
+          number: blocker.number,
+          open: blocker.open ?? openByNumber.get(blocker.number) ?? true,
+        })),
+        typePrefix,
+      }),
+    );
 
     const tickets = children.map((child, index): Ticket => {
       const labels = labelNames(child);
