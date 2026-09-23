@@ -226,6 +226,15 @@ export class T3HandOff {
     return { api: this.api.api, command: this.api.command, origin: runtime.origin };
   }
 
+  /** Bring the running T3 Code window forward for a tracked thread. */
+  async focus(): Promise<void> {
+    const runtime = await detectT3();
+    if (runtime.origin === null || runtime.pid === null) throw new Error('T3 Code is not running');
+    const command = await serverCommand(runtime.pid);
+    if (command === null) throw new Error('could not find the T3 Code binary');
+    reveal(command, runtime.origin);
+  }
+
   /** T3 Code's providers and settings, cached for a minute: the reply is large and rarely changes. */
   private async t3Config(runtime: T3Runtime): Promise<T3Config> {
     const { api } = await this.connect(runtime);

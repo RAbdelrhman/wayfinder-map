@@ -1,6 +1,7 @@
 import type { HomeState } from '../home.js';
 import type { AuthFlowState } from '../authFlow.js';
-import { mapPath, normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
+import type { HandOffStatusDto } from '../handOffTracking.js';
+import { draftMapPath, mapPath, normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import type { MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
 import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, bindUpdater, countStates, paintIcons, progressRing, renderAccountMarkContent, repoIconHtml, updateAccountMark } from './chrome.js';
 import type { AccountMark, AccountProfile } from './chrome.js';
@@ -14,6 +15,9 @@ import type { TileText } from './prototypeTile.js';
 import { composerState, initialRepository, newMapPath } from './newMap.js';
 import { mountProgressPanel } from './progress.js';
 import type { ProgressSettings, ProgressState } from '../progress.js';
+import { AutoRefresh } from './autoRefresh.js';
+import { composerState, draftToMapPath, initialRepository, isNewMapHandOff, newMapPath } from './newMap.js';
+import type { NewMapHandOff } from './newMap.js';
 import type { WorkspaceView } from './newMap.js';
 import { mountNavigation } from './navigation.js';
 import type { NavigationController } from './navigation.js';
@@ -179,9 +183,162 @@ async function syncAccountMark(): Promise<AccountMark | null> {
   return null;
 }
 
+interface HandOffSnapshot {
+  handOffs: HandOffStatusDto[];
+  t3: { available: boolean; checkedAt: string | null };
+}
+
+/** Include tracked new-map starts on Home until their map issue appears. */
+async function homeDrafts(): Promise<NewMapHandOff[]> {
+  let records: HandOffStatusDto[];
+  try {
+    ({ handOffs: records } = await getJson<HandOffSnapshot>('/api/hand-offs'));
+  } catch {
+    return [];
+  }
+  const drafts = records.filter(isNewMapHandOff);
+  const repos = Array.from(new Set(drafts.map((draft) => draft.repo)));
+  const snapshots = new Map<string, MapSnapshot | null>();
+  await Promise.all(
+    repos.map(async (repo) => {
+      try {
+        snapshots.set(repo, await getJson<MapSnapshot>(`${scopedApiPath(repo, 'snapshot')}?refresh=1`));
+      } catch {
+        snapshots.set(repo, null);
+      }
+    }),
+  );
+  return drafts.filter((draft) => {
+    const snapshot = snapshots.get(draft.repo);
+    return snapshot === null || snapshot === undefined || draftToMapPath(draft.repo, draft, snapshot.maps) === null;
+  });
+}
+
+function draftMapCard(draft: NewMapHandOff): string {
+  let path: string;
+  try {
+    path = draftMapPath(draft.repo, draft.id);
+  } catch {
+    return '';
+  }
+  return `<a class="card draft-map-card" href="${path}">
+    <div><p class="eyebrow">Map - Being planned</p><h2>${escapeHtml(draft.title ?? '')}</h2></div>
+    <p class="dest">${escapeHtml(draft.repo)}</p>
+    <span class="draft-map-status">${escapeHtml(draftStatusLine(draft))}</span>
+  </a>`;
+}
+
+function draftStatusLine(draft: NewMapHandOff): string {
+  if (draft.threadId === null) return 'No T3 Code thread was started. The hand-off needs attention.';
+  switch (draft.status) {
+    case 'starting':
+      return 'T3 Code is starting the planning thread.';
+    case 'running':
+      return 'T3 Code is planning. Tickets will appear here as they are drafted.';
+    case 'waiting':
+      return 'T3 Code is waiting for input in the planning thread.';
+    case 'ready':
+      return 'T3 Code is ready for the next planning step.';
+    case 'finished':
+      return 'T3 Code finished a planning turn. This map is still waiting for its issue.';
+    case 'interrupted':
+      return 'The planning thread was interrupted.';
+    case 'failed':
+      return 'The planning thread ran into an error.';
+    case 'untracked':
+      return 'T3 Code started the thread; its current status is unavailable.';
+  }
+}
+
+let draftAutoRefresh: AutoRefresh | null = null;
+
+async function renderDraftPage(repo: string, draftId: string, refresh = false): Promise<boolean> {
+  if (refresh) els.synced.classList.add('is-busy');
+  let tracking: HandOffSnapshot;
+  try {
+    tracking = await getJson<HandOffSnapshot>('/api/hand-offs');
+  } catch (error) {
+    if (refresh) els.synced.classList.remove('is-busy');
+    throw error;
+  }
+  const handOff = tracking.handOffs.find((candidate) => candidate.id === draftId && candidate.repo.toLowerCase() === repo.toLowerCase());
+  if (handOff === undefined || !isNewMapHandOff(handOff)) {
+    if (refresh) els.synced.classList.remove('is-busy');
+    throw new Error('This planning hand-off could not be found. Start a new map from Home to create another.');
+  }
+  const draft = handOff as NewMapHandOff;
+  let snapshot: MapSnapshot | null = null;
+  let snapshotWarning = '';
+  try {
+    snapshot = await getJson<MapSnapshot>(`${scopedApiPath(repo, 'snapshot')}?refresh=1`);
+  } catch {
+    snapshotWarning = '<div class="panel is-warning"><span class="grow">Could not check for the new map issue. Wayfinder will try again.</span></div>';
+  }
+  if (snapshot !== null) {
+    const target = draftToMapPath(repo, draft, snapshot.maps);
+    if (target !== null) {
+      window.location.replace(target);
+      if (refresh) els.synced.classList.remove('is-busy');
+      return true;
+    }
+    const fetched = Date.parse(snapshot.fetchedAt);
+    setSynced(Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
+  }
+
+  remember(repo);
+  crumbs([repo, draft.title ?? 'New map']);
+  document.title = `${draft.title ?? 'New map'} - being planned - Wayfinder`;
+  const badge = draft.threadId === null || draft.status === 'failed' || draft.status === 'interrupted' ? 'Needs attention' : 'Being planned';
+  const openThread = draft.threadId === null ? '' : `<button type="button" class="ghost" data-open-handoff="${escapeHtml(draft.id)}"><span data-icon="play"></span>Open in T3 Code</button>`;
+  paint(`<div class="draft-map-page">
+      ${snapshotWarning}
+      <header class="draft-map-head">
+        <span class="badge draft-map-badge">${badge}</span>
+        <h1>${escapeHtml(draft.title ?? 'New map')}</h1>
+        <p>${escapeHtml(draft.repo)}</p>
+      </header>
+      <section class="draft-handoff" aria-label="T3 Code hand-off">
+        <span class="draft-handoff-mark" aria-hidden="true">${icon(icons.PLAY)}</span>
+        <p class="grow" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(draftStatusLine(draft))}</p>
+        ${openThread}
+      </section>
+      <section class="draft-map-board" aria-label="Map tickets being drafted">
+        <p>Tickets appear here as T3 Code drafts them.</p>
+        <div class="draft-map-ghosts" aria-hidden="true"><span></span><span></span><span></span></div>
+      </section>
+    </div>`);
+  els.main.querySelector<HTMLButtonElement>('[data-open-handoff]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    if (!(button instanceof HTMLButtonElement)) return;
+    button.disabled = true;
+    try {
+      await postJson('/api/hand-offs/focus', { id: draft.id });
+      toast('Brought T3 Code forward.');
+    } catch (error) {
+      toast((error as Error).message, 9000);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  if (draftAutoRefresh === null) {
+    draftAutoRefresh = new AutoRefresh({
+      refresh: () => renderDraftPage(repo, draftId, true),
+      isVisible: () => document.visibilityState === 'visible',
+    });
+    if (snapshot !== null) draftAutoRefresh.markSuccessfulSnapshot();
+    draftAutoRefresh.start();
+  }
+  if (refresh) els.synced.classList.remove('is-busy');
+  return snapshot !== null;
+}
+
 async function renderHome(refresh: boolean): Promise<void> {
   document.title = 'Home · Wayfinder';
-  const state = await getJson<HomeState>(`/api/home${refresh ? '?refresh=1' : ''}`);
+  crumbs([]);
+  const [state, drafts] = await Promise.all([
+    getJson<HomeState>(`/api/home${refresh ? '?refresh=1' : ''}`),
+    homeDrafts(),
+  ]);
   cachedAccount = state.account;
   updateAccountMark(document.getElementById('account-mark'), state.account);
   setSynced(syncedLabel(0));
@@ -201,6 +358,7 @@ async function renderHome(refresh: boolean): Promise<void> {
     </div>
     <div class="home-cols"><div class="home-main">
     ${accountPanel(state)}${warning}
+    ${drafts.length === 0 ? '' : `<section class="section"><div class="section-head"><h2>Being planned</h2></div><div class="map-grid">${drafts.map(draftMapCard).join('')}</div></section>`}
     <form class="field" id="repo-entry">
       <label for="repo-name">Open a repository</label>
       <div class="row">
@@ -996,13 +1154,24 @@ async function renderNewMap(): Promise<void> {
     mapStartBtn.textContent = 'Starting in T3 Code…';
     try {
       const modelChoice = catalog ? readChoice(catalog, mapModelSelect, null) : null;
-      const result = await postJson<{ rung: 'thread' | 'app' | 'clipboard' | null; copied: boolean; notice: string | null; error: string | null }>(
+      const result = await postJson<{
+        rung: 'thread' | 'app' | 'clipboard' | null;
+        copied: boolean;
+        notice: string | null;
+        error: string | null;
+        handOffId: string | null;
+        trackingWarning?: string;
+      }>(
         scopedApiPath(repo, 'new-map'),
         { goal, ...(modelChoice ? { model: modelChoice } : {}) },
       );
+      if (result.handOffId !== null) {
+        window.location.assign(draftMapPath(repo, result.handOffId));
+        return;
+      }
       if (result.rung === 'thread') {
         mapNotice = null;
-        toast('Started a planning thread in T3 Code.');
+        toast(result.trackingWarning ?? 'The planning thread started, but Wayfinder could not save its route.');
       } else {
         mapNotice = [result.notice, result.copied ? 'The prompt is on the clipboard.' : result.error].filter(Boolean).join(' ');
         toast(result.copied ? 'Copied the prompt. Paste it into T3 Code.' : (result.error ?? 'Could not start the thread.'), 9000);
@@ -1041,30 +1210,37 @@ async function renderNewMap(): Promise<void> {
 
 const route = parseRepoPagePath(window.location.pathname);
 if (route?.prototypes === true) window.location.replace(repoPath(route.repo));
-const page: { kind: 'home' } | { kind: 'repository'; repo: string } | { kind: 'new-map' } =
+const page:
+  | { kind: 'home' }
+  | { kind: 'repository'; repo: string }
+  | { kind: 'draft'; repo: string; draftId: string }
+  | { kind: 'new-map' } =
   window.location.pathname === '/new-map'
     ? { kind: 'new-map' }
-    : route?.mapNumber === null
+    : route?.draftId !== undefined
+      ? { kind: 'draft', repo: route.repo, draftId: route.draftId }
+      : route?.mapNumber === null
       ? { kind: 'repository', repo: route.repo }
       : { kind: 'home' };
 
-const navigationRepo = page.kind === 'repository'
+const navigationRepo = page.kind === 'repository' || page.kind === 'draft'
   ? page.repo
   : page.kind === 'new-map'
     ? normalizeRepo(new URLSearchParams(window.location.search).get('repo') ?? '')
     : null;
+const navigationPage = page.kind === 'draft' ? 'map' : page.kind;
 navigation = mountNavigation({
   shell: need('app'),
   sidebar: need('sidebar-shell'),
   topbar: need('nav-topbar'),
   topbarRoot: need('topbar'),
-  page: page.kind,
+  page: navigationPage,
   repo: navigationRepo,
   mapNumber: null,
   view: 'map',
 });
 
-async function run(work: () => Promise<void> | void): Promise<void> {
+async function run(work: () => Promise<unknown> | unknown): Promise<void> {
   try {
     await work();
   } catch (error) {
@@ -1079,6 +1255,7 @@ async function show(refresh = false): Promise<void> {
   else paint('<p class="loading">Reading GitHub…</p>');
   await run(async () => {
     if (page.kind === 'new-map') await renderNewMap();
+    else if (page.kind === 'draft') await renderDraftPage(page.repo, page.draftId, refresh);
     else if (page.kind === 'repository') await renderRepository(page.repo, refresh);
     else await renderHome(refresh);
   });
@@ -1087,8 +1264,14 @@ async function show(refresh = false): Promise<void> {
 
 paintIcons();
 bindTheme(need('theme'));
-bindUpdater(need('updater'), toast);
-need('synced').addEventListener('click', () => void show(true));
+bindUpdater(els.updater, toast);
+els.navNew.classList.toggle('is-on', page.kind === 'new-map');
+// From a repository's pages, the composer opens on that repository.
+const composerHref = newMapPath(page.kind === 'repository' || page.kind === 'draft' ? page.repo : null);
+els.navNew.setAttribute('href', composerHref);
+els.synced.addEventListener('click', () => void show(true));
+document.addEventListener('visibilitychange', () => draftAutoRefresh?.visibilityChanged());
+window.addEventListener('pagehide', () => draftAutoRefresh?.stop());
 document.addEventListener('click', (event) => {
   const target = (event.target as HTMLElement | null)?.closest('[data-refresh-home], [data-auth]');
   if (target === null || target === undefined) return;

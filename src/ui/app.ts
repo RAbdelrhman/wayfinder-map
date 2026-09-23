@@ -1,5 +1,6 @@
 import { DEFAULT_LAYOUT, layoutWithOutside } from '../layout.js';
 import type { Band, GraphTicket, PositionedNode } from '../layout.js';
+import type { HandOffStatusDto } from '../handOffTracking.js';
 import { prototypeBranch } from '../prompt.js';
 import { TICKET_TYPES } from '../types.js';
 import type { MapSections, MapSnapshot, OutsideTicket, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
@@ -87,6 +88,7 @@ const els = {
   app: need('app'),
   search: need<HTMLInputElement>('search'),
   warnings: need('warnings'),
+  planningHandoff: need('planning-handoff'),
   filters: need('filters'),
   canvasWrap: need('canvas-wrap'),
   canvas: need('canvas'),
@@ -113,6 +115,8 @@ let snapshot: MapSnapshot | null = null;
 let activeMap = 0;
 const pageRoute = parseRepoPagePath(window.location.pathname);
 if (pageRoute === null || pageRoute.mapNumber === null) window.location.replace('/');
+let planningHandOffId = new URLSearchParams(window.location.search).get('planning');
+let planningHandOff: HandOffStatusDto | null = null;
 let selected: number | null = null;
 let hovered: number | null = null;
 let filter: TicketFilter | null = null;
@@ -153,6 +157,62 @@ navigation = mountNavigation({
     setView(nextView);
   },
 });
+function planningStatusLine(handOff: HandOffStatusDto): string {
+  if (handOff.threadId === null) return 'No planning thread is available.';
+  switch (handOff.status) {
+    case 'starting':
+      return 'T3 Code is starting the planning thread.';
+    case 'running':
+      return 'T3 Code is still planning.';
+    case 'waiting':
+      return 'T3 Code is waiting for input.';
+    case 'ready':
+      return 'T3 Code is ready for the next planning step.';
+    case 'finished':
+      return 'T3 Code finished a planning turn.';
+    case 'interrupted':
+      return 'The planning thread was interrupted.';
+    case 'failed':
+      return 'The planning thread ran into an error.';
+    case 'untracked':
+      return 'T3 Code started the thread; its current status is unavailable.';
+  }
+}
+
+function renderPlanningHandoff(): void {
+  const map = currentMap();
+  const handOff = planningHandOff;
+  const matchesMap =
+    planningHandOffId !== null &&
+    map !== null &&
+    handOff !== null &&
+    handOff.id === planningHandOffId &&
+    handOff.repo.toLowerCase() === snapshot?.repo.toLowerCase() &&
+    handOff.mapNumber === null &&
+    handOff.ticketNumber === null &&
+    handOff.title?.trim().replace(/\s+/g, ' ').toLowerCase() === map.title.trim().replace(/\s+/g, ' ').toLowerCase();
+  els.planningHandoff.hidden = !matchesMap;
+  if (!matchesMap || handOff === null) {
+    els.planningHandoff.innerHTML = '';
+    return;
+  }
+  const button = handOff.threadId === null ? '' : `<button type="button" class="ghost" data-open-planning="${escapeHtml(handOff.id)}"><span data-icon="play"></span>Open in T3 Code</button>`;
+  els.planningHandoff.innerHTML = `<span class="draft-handoff-mark" aria-hidden="true">${icon(icons.PLAY)}</span><span class="grow" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(planningStatusLine(handOff))}</span>${button}`;
+  paintIcons(els.planningHandoff);
+}
+
+async function loadPlanningHandoff(): Promise<void> {
+  if (planningHandOffId === null) return;
+  try {
+    const response = await fetch('/api/hand-offs');
+    if (!response.ok) return;
+    const body = (await response.json()) as { handOffs?: HandOffStatusDto[] };
+    planningHandOff = body.handOffs?.find((item) => item.id === planningHandOffId) ?? null;
+    renderPlanningHandoff();
+  } catch {
+    // Keep the map usable when hand-off tracking is temporarily unavailable.
+  }
+}
 
 let toastTimer: number | undefined;
 let loadInFlight: Promise<boolean> | null = null;
@@ -209,6 +269,7 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
         node?.focus();
         node?.scrollIntoView({ block: 'center', inline: 'center' });
       }
+      if (planningHandOffId !== null) void loadPlanningHandoff();
       // The repository is only known once the snapshot lands, and the clone lookup is keyed to it.
       if (!workspaceAsked) void loadWorkspace().then(refreshLaunch);
       return true;
@@ -284,6 +345,7 @@ function render(): void {
 
   els.app.classList.toggle('is-prototypes', view === 'prototypes');
   renderSynced();
+  renderPlanningHandoff();
   renderFilters();
   renderKey();
   if (view === 'map') renderGraph();
@@ -1112,6 +1174,8 @@ els.mapMenu.addEventListener('click', (event) => {
   activeMap = Number(item.dataset['index']);
   const nextMap = currentMap();
   if (snapshot !== null && nextMap !== null) history.pushState(null, '', mapPath(snapshot.repo, nextMap.number));
+  planningHandOffId = null;
+  planningHandOff = null;
   selected = null;
   hovered = null;
   filter = null;
@@ -1127,6 +1191,8 @@ els.mapMenu.addEventListener('click', (event) => {
 });
 
 window.addEventListener('popstate', () => {
+  planningHandOffId = new URLSearchParams(window.location.search).get('planning');
+  planningHandOff = null;
   const route = parseRepoPagePath(window.location.pathname);
   const index = snapshot?.maps.findIndex((map) => map.number === route?.mapNumber) ?? -1;
   if (index < 0) return;
@@ -1138,6 +1204,27 @@ window.addEventListener('popstate', () => {
   if (snapshot !== null) navigation?.setSnapshot(snapshot, currentMap()?.number ?? null);
   navigation?.setActiveView(view);
   render();
+  if (planningHandOffId !== null) void loadPlanningHandoff();
+});
+
+els.planningHandoff.addEventListener('click', async (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-open-planning]');
+  if (button === null) return;
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/hand-offs/focus', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: button.dataset['openPlanning'] }),
+    });
+    const result = (await response.json()) as { error?: string };
+    if (!response.ok) throw new Error(result.error ?? 'Could not open T3 Code.');
+    toast('Brought T3 Code forward.');
+  } catch (error) {
+    toast((error as Error).message, 9000);
+  } finally {
+    button.disabled = false;
+  }
 });
 
 els.filters.addEventListener('click', (event) => {
