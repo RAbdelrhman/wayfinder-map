@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MapSnapshot, OutsideTicket, Ticket, WayfinderMap } from '../types.js';
-import { createJumpDestinations, viewFromQuery } from './navigation.js';
+import { createJumpDestinations, prototypeCountBadge, viewFromQuery } from './navigation.js';
 
 function ticket(number: number, title: string): Ticket {
   return {
@@ -46,6 +46,14 @@ describe('navigation view query', () => {
     expect(viewFromQuery('prototypes')).toBe('prototypes');
     expect(viewFromQuery('unknown')).toBe('map');
     expect(viewFromQuery(null)).toBe('map');
+  });
+});
+
+describe('Prototypes tab count', () => {
+  it('shows a loaded count including zero and hides an unknown count', () => {
+    expect(prototypeCountBadge(0)).toBe('<span class="nav-map-tab-count" aria-label="0 prototypes on this map">0</span>');
+    expect(prototypeCountBadge(4)).toContain('4 prototypes on this map');
+    expect(prototypeCountBadge(null)).toBe('');
   });
 });
 

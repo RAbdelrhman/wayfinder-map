@@ -1,5 +1,23 @@
 # Design canvas
 
+## Prototype variant thumbnails
+
+The decision-board fixture uses source screenshots for every prototype variant it
+shows. When a prototype variant changes, fetch the prototype refs and refresh the
+board images from the repo root with:
+
+```sh
+git fetch origin
+bun run capture:prototype-thumbnails
+```
+
+The capture tool archives each source prototype branch, then uses Playwright's
+Chromium browser at 1280 × 720 to refresh the matching image in
+`assets/protos/`. Install the browser once with `npx playwright install chromium`
+if Playwright reports that Chromium is missing. Run `bun run test:canvas` to check
+that every board variant has an image and that a missing image falls back to its
+variant sketch.
+
 An in-repo board for design decisions. It lays out options side by side: full pages, style directions, component sheets, palettes, type, and layered compositions. The user compares them, opens any one full size, and picks.
 
 It knows nothing about any project. Everything project-specific lives in `config.js`, `variants/` and `assets/`. The engine (`index.html`, `canvas.js`, `canvas.css`, `kit/`, `tools/`) stays the same everywhere.

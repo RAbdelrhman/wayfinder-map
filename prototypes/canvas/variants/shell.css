@@ -732,6 +732,23 @@ body,
   object-position: top left;
 }
 
+.wf-frame.has-shot .col,
+.wf-frame.has-shot .fb {
+  display: none;
+}
+
+.wf-frame.has-shot.is-fallback img {
+  display: none;
+}
+
+.wf-frame.has-shot.is-fallback .col {
+  display: grid;
+}
+
+.wf-frame.has-shot.is-fallback .fb {
+  display: grid;
+}
+
 .wf-frame .tag {
   position: absolute;
   left: 6px;

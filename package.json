@@ -25,6 +25,8 @@
     "smoke:win": "node scripts/smoke-win.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:canvas": "node --test prototypes/canvas/tools/check.test.mjs",
+    "capture:prototype-thumbnails": "node prototypes/canvas/tools/capture-thumbnails.mjs",
     "lint": "tsc --noEmit",
     "prepare": "node scripts/build.mjs"
   },
