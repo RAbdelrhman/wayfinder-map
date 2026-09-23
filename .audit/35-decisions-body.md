@@ -70,3 +70,4 @@ Home and every view it owns (landing, repository, Prototypes) plus /new-map look
 - A new visual language that diverges from the map page.
 - Editing GitHub issues from Wayfinder.
 - Figma or other external design connectors.
+
