@@ -94,73 +94,49 @@ window.CANVAS = {
     {
       title: 'Your mix',
       question:
-        'Your mix so far: B’s UI everywhere, with the dotted background kept on the map page only, and progress in the style each user picks (A’s trail by default). The Prototypes tab is shown three ways on real data.',
+        'Your mix: B’s UI everywhere (dots only on the map page), A’s repository list with B’s progress bars, progress in the style each user picks (A’s trail by default) with A’s streak and C’s 3 / 5 / 8 goal, and B’s decision board for a map’s prototypes with A’s empty state.',
       sections: [
         {
-          title: 'Home: B, no dots, progress style is the user’s choice',
-          note: 'The Trail / Hexes / Bar switch in the progress panel is live in every frame. Each frame just starts on a different style. Trail (A’s fog) is the default.',
+          title: 'Home',
+          note: 'B’s Home without the dotted canvas. Repositories are A’s list with B’s progress bar on each row and no New map button (starting a map is the sidebar’s job). The Trail / Hexes / Bar switch is live in every frame; each frame just starts on a different style.',
           items: [
             {
               id: 'M1',
               name: 'Home · Trail (default)',
               src: 'variants/b.html?view=home&data=many&fog=trail',
               note: {
-                idea: 'B’s Home without the dotted canvas. Progress defaults to A’s fog trail and 5-week calendar.',
-                pros: ['Keeps B’s node cards, mini graph and lanes', 'Plain surfaces keep the dots meaning “this is a map”'],
-                cons: ['A setting to build and store per user (local, like pins and recents)'],
+                idea: 'The mix on a normal afternoon. Progress defaults to A’s fog trail and 5-week calendar, with C’s 3 / 5 / 8 goal and A’s streak underneath.',
+                pros: ['B’s node cards, mini graph and in-flight lanes', 'A’s list reads faster than tiles, and the bar still shows each repository’s shape'],
+                cons: ['The progress style is a per-user setting to build and store (locally, like pins and recents)'],
               },
             },
-            { id: 'M2', name: 'Home · Hexes', src: 'variants/b.html?view=home&data=many&fog=hex', note: 'The same Home with B’s hex fog-of-war picked. Flags above the hexes count today’s tickets toward the goal.' },
-            { id: 'M3', name: 'Home · Bar', src: 'variants/b.html?view=home&data=inflight&fog=bar', note: 'C’s fog bar and 12-week strip, shown on the busy day (past the goal) so you can see the bar cleared.' },
+            { id: 'M2', name: 'Home · Hexes', src: 'variants/b.html?view=home&data=many&fog=hex', note: 'Same Home with B’s hex fog-of-war picked.' },
+            { id: 'M3', name: 'Home · Bar', src: 'variants/b.html?view=home&data=inflight&fog=bar', note: 'C’s fog bar and 12-week strip on the busy day, past the goal.' },
+            { id: 'M11', name: 'Home · No repositories', src: 'variants/b.html?view=home&data=none', note: 'First run: the list says what will appear there; everything is still fogged.' },
+            { id: 'M12', name: 'Home · gh signed out', src: 'variants/b.html?view=home&data=signedout', note: 'The blocking banner replaces Continue; the list comes from the local cache.' },
           ],
         },
         {
-          title: 'Repository: B, no dots',
-          items: [{ id: 'M4', name: 'Repository · wayfinder-map', src: 'variants/b.html?view=repo&data=many', note: 'Mini graphs now sit on a plain panel. Map #35 is drawn from its real 25 tickets.' }],
-        },
-        {
-          title: 'Prototypes tab on real data: map #35',
-          note: 'The real prototypes on map #35: #43 (this one, waiting on your pick), #45 (picked A + B), #44 (picked C), #42 (picked D) and #39 (the canvas). Every thumbnail is a screenshot of that variant from its prototype branch. These frames still use each direction’s own look, so compare the layout, not the chrome.',
+          title: 'Repository',
           items: [
-            {
-              id: 'M5',
-              name: 'A · Gallery',
-              src: 'variants/a.html?view=map&mapview=prototypes&data=many',
-              note: {
-                idea: 'The waiting prototype is a callout with all its variants; everything decided is a tile showing the variant that won.',
-                pros: ['One obvious thing to do, then history', 'Tiles scan fast even with many prototypes'],
-                cons: ['You only see the winner, not what it beat'],
-              },
-            },
-            {
-              id: 'M6',
-              name: 'B · Decision board',
-              src: 'variants/b.html?view=map&mapview=prototypes&data=many',
-              note: {
-                idea: 'One row per prototype with every variant side by side, like the canvas. The winner is outlined green and the rest are dimmed; the waiting row has dashed outlines.',
-                pros: ['A record of each decision: what was on the table and what won', 'Matches the canvas people already know'],
-                cons: ['Long page: 5 prototypes already scroll'],
-              },
-            },
-            {
-              id: 'M7',
-              name: 'C · List and detail',
-              src: 'variants/c.html?view=map&mapview=prototypes&data=many',
-              note: {
-                idea: 'A list sorted with what waits on you first; the detail shows the selected prototype’s variants large, with branch and decision facts. Click a row to switch.',
-                pros: ['Scales to many prototypes', 'Biggest thumbnails, plus room for the branch and decision'],
-                cons: ['One prototype at a time'],
-              },
-            },
+            { id: 'M4', name: 'Repository · wayfinder-map', src: 'variants/b.html?view=repo&data=many', note: 'B’s map rows with mini graphs on a plain panel. Map #35 is drawn from its real 25 tickets.' },
+            { id: 'M13', name: 'Repository · no maps', src: 'variants/b.html?view=repo&data=many&repo=RAbdelrhman/recipe-box', note: 'B’s empty state, with the one Start a new map action.' },
           ],
         },
         {
-          title: 'Prototypes tab on real data: map #14, one prototype',
-          note: 'A map with a single, older prototype (#17, desktop launch states).',
+          title: 'A map’s Prototypes tab: B’s decision board, on real data',
+          note: 'Map #35’s real prototypes: #43 (waiting on your pick), #45 (picked A + B), #44 (picked C), #42 (picked D) and #39 (the canvas). Each thumbnail is a screenshot of that variant from its prototype branch. Every variant stays visible next to the winner, so the long page is the record of how the map was decided.',
           items: [
-            { id: 'M8', name: 'A · Gallery', src: 'variants/a.html?view=map&mapview=prototypes&data=many&map=14', note: 'One tile under “Decided”.' },
-            { id: 'M9', name: 'B · Decision board', src: 'variants/b.html?view=map&mapview=prototypes&data=many&map=14', note: 'One row with its single variant.' },
-            { id: 'M10', name: 'C · List and detail', src: 'variants/c.html?view=map&mapview=prototypes&data=many&map=14', note: 'A one-row list; the detail does the work.' },
+            { id: 'M6', name: 'Prototypes · map #35', src: 'variants/b.html?view=map&mapview=prototypes&data=many', note: 'Waiting first with dashed outlines, then each decision with its winner outlined green and the rest dimmed.' },
+            { id: 'M9', name: 'Prototypes · map #14', src: 'variants/b.html?view=map&mapview=prototypes&data=many&map=14', note: 'A map with one older prototype (#17, desktop launch states).' },
+            { id: 'M14', name: 'Prototypes · none yet', src: 'variants/b.html?view=map&mapview=prototypes&data=many&repo=RAbdelrhman/podcontrol&map=2', note: 'A’s empty state: a plain heading and the one sentence on what makes a prototype appear.' },
+          ],
+        },
+        {
+          title: 'Not chosen: the other two Prototypes layouts on the same real data',
+          items: [
+            { id: 'M5', name: 'A · Gallery', src: 'variants/a.html?view=map&mapview=prototypes&data=many', note: 'Waiting callout, then one tile per decision showing only the winner.' },
+            { id: 'M7', name: 'C · List and detail', src: 'variants/c.html?view=map&mapview=prototypes&data=many', note: 'One prototype at a time, with branch and decision facts.' },
           ],
         },
       ],

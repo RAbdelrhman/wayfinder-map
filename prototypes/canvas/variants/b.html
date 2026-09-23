@@ -372,6 +372,113 @@
         stroke-opacity: 0.35;
         stroke-width: 1;
       }
+      /* A's repository list, with B's progress bar under each name */
+      .b-list {
+        padding: 6px;
+      }
+      .b-repo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 9px 12px;
+        border-radius: 9px;
+        color: inherit;
+        text-decoration: none;
+        font-size: 13.5px;
+      }
+      .b-repo:hover {
+        background: var(--wash);
+      }
+      .b-repo .who {
+        flex: 1;
+        min-width: 0;
+        display: grid;
+        gap: 6px;
+      }
+      .b-repo .name {
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .b-repo .b-stack {
+        flex: none;
+        width: min(240px, 100%);
+      }
+      .b-repo .stat {
+        font-size: 12.5px;
+        color: var(--text-secondary);
+        white-space: nowrap;
+      }
+      .b-repo .when {
+        width: 88px;
+        text-align: right;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .b-more {
+        display: block;
+        padding: 8px 12px 6px;
+        font-size: 12.5px;
+        color: var(--state-claimed);
+        text-decoration: none;
+      }
+      .b-quiet {
+        margin: 0;
+        padding: 18px 16px;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      /* C's goal selector and A's streak */
+      .b-goal {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .b-goal .grow {
+        flex: 1;
+      }
+      .b-goals {
+        display: inline-flex;
+        gap: 2px;
+        padding: 2px;
+        border-radius: 8px;
+        background: var(--wash);
+      }
+      .b-goals button {
+        height: 26px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        font: inherit;
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .b-goals button.is-on {
+        background: var(--surface-1);
+        color: var(--text-primary);
+        font-weight: 600;
+        box-shadow: var(--shadow-segment);
+      }
+      .b-streak {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid var(--hairline);
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .b-streak .i {
+        width: 14px;
+        height: 14px;
+        color: var(--state-blocked);
+      }
       .b-foot {
         display: flex;
         align-items: center;
@@ -871,15 +978,22 @@
         return all ? ['done', 'claimed', 'frontier', 'blocked'].map((s) => `<i style="width:${(c[s] / all) * 100}%;background:var(${STATES[s].v})"></i>`).join('') : '';
       }
 
+      // A's list of recent repositories, each row with B's progress bar. No New map button: that's the sidebar's job (#42).
       function repos() {
-        const shown = 8;
-        const tiles = REPOS.map(
-          (r, i) => `<a class="b-node b-tile" href="#" ${goRepo(r)} data-name="${esc(r.name)}"${i >= shown ? ' data-overflow hidden' : ''}>${repoMark(r, 30)}<span class="name">${esc(short(r.name))}</span><span class="when">${esc(r.opened)}</span>
-            <span class="bar"><span class="b-stack">${stack(r)}</span>${r.maps.length ? `${r.maps.length} map${r.maps.length === 1 ? '' : 's'} · ${WF.openTickets(r)} open` : 'No maps yet'}</span></a>`,
+        const shown = 6;
+        const rows = REPOS.map(
+          (r, i) => `<a class="b-repo" href="#" ${goRepo(r)} data-name="${esc(r.name)}"${i >= shown ? ' data-overflow hidden' : ''}>${repoMark(r, 26)}
+            <span class="who"><span class="name">${esc(r.name)}</span><span class="b-stack">${stack(r)}</span></span>
+            <span class="stat">${r.maps.length ? `${r.maps.length} map${r.maps.length === 1 ? '' : 's'} · ${WF.openTickets(r)} open` : 'No maps yet'}</span><span class="when">${esc(r.opened)}</span></a>`,
         ).join('');
-        return `<section data-filter-scope><div class="b-label">Repositories<span class="grow"></span>${REPOS.length > shown ? `<a href="#" data-filter-more data-to="every repository">All ${REPOS.length}</a>` : ''}</div>
-          <div class="b-find"><label class="search">${icon('lens')}<input type="search" data-filter placeholder="Find a repository, or type owner/name and press Enter" /></label><a class="ghost" href="#" data-to="Start a new map (#44)">${icon('plus')}New map</a></div>
-          ${REPOS.length ? `<div class="b-tiles">${tiles}</div><div class="b-none" data-filter-none hidden>No recent repository matches “<b></b>”. Press Enter to open it.</div>` : '<div class="b-none">Open a repository with the search above. It stays here, most recent first.</div>'}</section>`;
+        const more = REPOS.length > shown ? `<a class="b-more" href="#" data-filter-more data-to="every repository">Show all ${REPOS.length}</a>` : '';
+        return `<section data-filter-scope><div class="b-label">Repositories</div>
+          <div class="b-find"><label class="search">${icon('lens')}<input type="search" data-filter placeholder="Search your repositories, or type owner/name" /></label></div>
+          <div class="b-node b-list">${
+            REPOS.length
+              ? `${rows}<p class="b-quiet" data-filter-none hidden>No recent repository matches “<b></b>”. Press Enter to open it as owner/name.</p>${more}`
+              : '<p class="b-quiet">Repositories you open show up here, most recent first.</p>'
+          }</div></section>`;
       }
 
       function hexes() {
@@ -963,7 +1077,10 @@
         return `<aside class="b-node b-fog"><div class="b-fog-head"><p class="eyebrow">Fog cleared</p>${style}</div>
           <div class="b-today">${blank ? '<b>–</b><span>Sign in to count today</span>' : `<b>${done}/${goal}</b><span>${done >= goal ? (done > goal ? `goal met, ${done - goal} extra` : 'goal met') : `${goal - done} more to clear today`}</span>`}</div>
           ${flags}${art}
-          <div class="b-foot">${blank ? '<span class="grow">Done tickets clear the fog.</span>' : `${icon('flame')}<span class="grow">${WF.STREAK ? `${WF.STREAK} days in a row` : 'Clear a ticket to start a streak'}</span>`}<button type="button" data-to="the daily goal editor">Goal ${goal}</button></div></aside>`;
+          <div class="b-goal"><span class="grow">Daily goal</span><span class="b-goals" role="group" aria-label="Daily goal">${[3, 5, 8]
+            .map((g) => `<button type="button" class="${g === goal ? 'is-on' : ''}" aria-pressed="${g === goal}" data-to="a daily goal of ${g}">${g}</button>`)
+            .join('')}</span></div>
+          ${blank ? '' : `<div class="b-streak">${icon('flame')}${WF.STREAK ? `${WF.STREAK}-day streak` : 'Clear one ticket to start a streak'}</div>`}</aside>`;
       }
 
       function home() {
@@ -1033,7 +1150,8 @@
         const sorted = [...list].sort((a, b) => order[a.status] - order[b.status]);
         const body = list.length
           ? `<div class="b-board">${sorted.map(protoRow).join('')}</div>`
-          : `<section class="b-node b-empty"><div class="graph"><span class="ghostnode">Variant A · B · C</span></div><div class="txt"><h2>No prototypes on map #${m.number}</h2><p>When a prototype ticket on this map pushes its prototype branch, its variants show up here side by side.</p></div></section>`;
+          : `<div class="page-head"><div class="grow"><p class="eyebrow">Prototypes · map #${m.number}</p><h1>No prototypes yet</h1>
+              <p>When a prototype ticket on this map pushes its prototype branch, its canvas shows up here.</p></div></div>`;
         return `<div class="b-page"><div class="b-sheet">${body}</div></div>`;
       }
 
