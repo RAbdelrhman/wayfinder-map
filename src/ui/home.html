@@ -22,11 +22,22 @@
         <header class="topbar">
           <span class="crumbs" id="crumbs"><a href="/">Home</a></span>
           <span class="topbar-spacer"></span>
+          <div class="handoff-anchor" id="handoff-anchor" hidden>
+            <button type="button" class="handoff-trigger" id="handoff-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="handoff-list" aria-label="Hand-offs in T3 Code"></button>
+            <section class="handoff-list" id="handoff-list" role="dialog" aria-labelledby="handoff-list-title" hidden>
+              <header class="handoff-list-head">
+                <div><h2 id="handoff-list-title">Hand-offs</h2><p id="handoff-list-count"></p></div>
+                <button type="button" class="handoff-close" data-focus-key="close" aria-label="Close hand-offs">×</button>
+              </header>
+              <div class="handoff-list-body" id="handoff-list-body"></div>
+            </section>
+          </div>
           <button type="button" class="synced" id="synced" aria-label="Resync from GitHub" title="Click to resync from GitHub">
             <span class="synced-icon" data-icon="refresh"></span>
             <span class="synced-label" id="synced-label"></span>
           </button>
         </header>
+        <span class="sr-only" id="handoff-announcement" role="status" aria-live="polite"></span>
 
         <main class="page" id="main" tabindex="-1">
           <div class="sheet"><p class="loading">Reading GitHub…</p></div>

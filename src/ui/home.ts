@@ -6,18 +6,19 @@ import type { MapSnapshot, Prototype, Ticket, TicketState, TicketType, Wayfinder
 import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, bindUpdater, countStates, paintIcons, progressRing, renderAccountMarkContent, repoIconHtml, updateAccountMark } from './chrome.js';
 import type { AccountMark, AccountProfile } from './chrome.js';
 import * as icons from './icons.js';
-import { loadCatalog, TIER_LABEL } from './models.js';
+import { loadCatalog } from './models.js';
 import { syncedLabel } from './focus.js';
 import { icon } from './icons.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
 import { fitPrototypeThumbs, prototypeTileHtml } from './prototypeTile.js';
 import type { TileText } from './prototypeTile.js';
 import { AutoRefresh } from './autoRefresh.js';
-import { draftToMapPath, isNewMapHandOff, newMapPath, rememberNewMapRetry } from './newMap.js';
+import { draftToMapPath, isNewMapHandOff, newMapPath } from './newMap.js';
 import type { NewMapHandOff } from './newMap.js';
 import { renderNewMapPage } from './newMapPage.js';
 import { mountProgressPanel } from './progress.js';
 import type { ProgressSettings, ProgressState } from '../progress.js';
+import { handOffCardHtml, handOffPresentation, homeHandOffCardHtml, homeHandOffHistoryHtml, listedHandOffs, mountHandOffs } from './handOffs.js';
 
 const RECENT_KEY = 'wayfinder-map:recent-repositories';
 
@@ -36,6 +37,38 @@ const els = {
   updater: need('updater'),
   navNew: need('nav-new'),
 };
+
+const handOffSurface = mountHandOffs();
+let homeHandOffVisualKey = '';
+
+function renderHomeHandOffLists(records: readonly HandOffStatusDto[]): void {
+  const flightSection = document.getElementById('home-inflight-section');
+  const flightList = document.getElementById('home-inflight-list');
+  const historySection = document.getElementById('home-history-section');
+  const historyList = document.getElementById('home-history-list');
+  if (!(flightSection instanceof HTMLElement) || !(flightList instanceof HTMLElement) || !(historySection instanceof HTMLElement) || !(historyList instanceof HTMLElement)) return;
+  const listed = listedHandOffs(records);
+  const history = records
+    .filter((handOff) => handOff.acknowledged && handOff.threadId !== null && handOffPresentation(handOff).terminal)
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  const key = records
+    .map((handOff) => `${handOff.id}:${handOff.status}:${String(handOff.pendingApproval)}:${String(handOff.pendingUserInput)}:${String(handOff.stale)}:${String(handOff.acknowledged)}:${handOff.repo}:${handOff.mapTitle ?? ''}:${handOff.title ?? ''}:${handOff.pullRequests.map((pullRequest) => `${pullRequest.source}:${pullRequest.url}`).join(',')}`)
+    .join('|');
+  if (key === homeHandOffVisualKey) return;
+  homeHandOffVisualKey = key;
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement.getAttribute('data-focus-key') : null;
+  const flightScroll = flightList.scrollTop;
+  const historyScroll = historyList.scrollTop;
+  flightSection.hidden = listed.length === 0;
+  flightList.innerHTML = listed.map(homeHandOffCardHtml).join('');
+  historySection.hidden = history.length === 0;
+  historyList.innerHTML = history.map(homeHandOffHistoryHtml).join('');
+  flightList.scrollTop = flightScroll;
+  historyList.scrollTop = historyScroll;
+  if (active !== null) document.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(active)}"]`)?.focus();
+}
+
+handOffSurface.subscribe(renderHomeHandOffLists);
 
 function setSynced(text: string): void {
   const label = els.synced.querySelector<HTMLElement>('.synced-label') ?? els.synced;
@@ -203,13 +236,7 @@ interface HandOffSnapshot {
 }
 
 /** Include tracked new-map starts on Home until their map issue appears. */
-async function homeDrafts(): Promise<NewMapHandOff[]> {
-  let records: HandOffStatusDto[];
-  try {
-    ({ handOffs: records } = await getJson<HandOffSnapshot>('/api/hand-offs'));
-  } catch {
-    return [];
-  }
+async function homeDrafts(records: readonly HandOffStatusDto[]): Promise<NewMapHandOff[]> {
   const drafts = records.filter(isNewMapHandOff);
   const repos = Array.from(new Set(drafts.map((draft) => draft.repo)));
   const snapshots = new Map<string, MapSnapshot | null>();
@@ -278,30 +305,6 @@ function draftStatusLine(draft: NewMapHandOff): string {
   return draft.stale ? `T3 Code is unavailable. Showing the last reported status: ${status}` : status;
 }
 
-function draftOutcomeHtml(draft: NewMapHandOff): string {
-  if (draft.status !== 'finished') return '';
-  const repository = `<span><span class="draft-outcome-label">Repository</span><b>${escapeHtml(draft.repo)}</b></span>`;
-  const tier = draft.tier === undefined
-    ? ''
-    : `<span><span class="draft-outcome-label">Model tier</span><b>${TIER_LABEL[draft.tier]}</b></span>`;
-  const thread = draft.threadId === null
-    ? ''
-    : `<span><span class="draft-outcome-label">Thread</span><code>${escapeHtml(draft.threadId)}</code></span>`;
-  const branch = draft.branch === null
-    ? ''
-    : (() => {
-        const [owner = '', name = ''] = draft.repo.split('/', 2);
-        const path = draft.branch.split('/').map(encodeURIComponent).join('/');
-        return `<span><span class="draft-outcome-label">Branch</span><a href="https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tree/${path}" target="_blank" rel="noreferrer">${escapeHtml(draft.branch)}</a></span>`;
-      })();
-  const pullRequests = draft.pullRequests.length === 0
-    ? ''
-    : `<span><span class="draft-outcome-label">Pull requests</span><span class="draft-outcome-links">${draft.pullRequests
-        .map((pullRequest) => `<a href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer">${pullRequest.number === null ? 'Open pull request' : `#${String(pullRequest.number)}`}</a>`)
-        .join('')}</span></span>`;
-  return `<div class="draft-handoff-outcome">${repository}${tier}${thread}${branch}${pullRequests}<a class="ghost" href="/">Back to Home</a></div>`;
-}
-
 let draftAutoRefresh: AutoRefresh | null = null;
 
 async function renderDraftPage(repo: string, draftId: string, refresh = false): Promise<boolean> {
@@ -341,13 +344,9 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
   crumbs([repo, draft.title ?? 'New map']);
   document.title = `${draft.title ?? 'New map'} - being planned - Wayfinder`;
   const badge = draft.threadId === null || draft.status === 'failed' || draft.status === 'interrupted' ? 'Needs attention' : 'Being planned';
-  const openThread = draft.threadId === null ? '' : `<button type="button" class="ghost" data-open-handoff="${escapeHtml(draft.id)}"><span data-icon="play"></span>Open in T3 Code</button>`;
-  const canRecover = draft.threadId === null || draft.status === 'failed' || draft.status === 'interrupted';
-  const recoveryActions = canRecover
-    ? `<div class="draft-recovery-actions"><button type="button" class="ghost" data-retry-draft>${icon(icons.REFRESH)}Try again</button><button type="button" class="ghost" data-copy-draft-prompt>${icon(icons.COPY)}Copy prompt</button></div>`
+  const recoveryActions = draft.threadId === null
+    ? `<div class="draft-recovery-actions"><button type="button" class="ghost" data-copy-draft-prompt>${icon(icons.COPY)}Copy prompt</button></div>`
     : '';
-  const active = draft.status === 'starting' || draft.status === 'running';
-  const handOffIcon = active ? '<span class="draft-handoff-spinner" aria-hidden="true"></span>' : icon(draft.status === 'finished' ? icons.CHECK : icons.PLAY);
   paint(`<div class="draft-map-page">
       ${snapshotWarning}
       <header class="draft-map-head">
@@ -356,10 +355,7 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
         <p>${escapeHtml(draft.repo)}</p>
       </header>
       <section class="draft-handoff" aria-label="T3 Code hand-off">
-        <span class="draft-handoff-mark${active ? ' is-active' : ''}" aria-hidden="true">${handOffIcon}</span>
-        <p class="grow" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(draftStatusLine(draft))}</p>
-        ${openThread}
-        ${draftOutcomeHtml(draft)}
+        ${handOffCardHtml(draft, false, false)}
         ${recoveryActions}
       </section>
       <section class="draft-map-board" aria-label="Map tickets being drafted">
@@ -367,27 +363,6 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
         <div class="draft-map-ghosts" aria-hidden="true"><span></span><span></span><span></span></div>
       </section>
     </div>`);
-  els.main.querySelector<HTMLButtonElement>('[data-open-handoff]')?.addEventListener('click', async (event) => {
-    const button = event.currentTarget;
-    if (!(button instanceof HTMLButtonElement)) return;
-    button.disabled = true;
-    try {
-      await postJson('/api/hand-offs/focus', { id: draft.id });
-      toast('Brought T3 Code forward.');
-    } catch (error) {
-      toast((error as Error).message, 9000);
-    } finally {
-      button.disabled = false;
-    }
-  });
-  els.main.querySelector<HTMLButtonElement>('[data-retry-draft]')?.addEventListener('click', () => {
-    try {
-      rememberNewMapRetry(draft.repo, draft.title ?? '');
-      window.location.assign(newMapPath(draft.repo));
-    } catch (error) {
-      toast(error instanceof Error ? error.message : 'Could not save the draft for retry.', 9000);
-    }
-  });
   els.main.querySelector<HTMLButtonElement>('[data-copy-draft-prompt]')?.addEventListener('click', async (event) => {
     const button = event.currentTarget;
     if (!(button instanceof HTMLButtonElement)) return;
@@ -420,10 +395,13 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
 
 async function renderHome(refresh: boolean): Promise<void> {
   crumbs([]);
-  const [state, drafts] = await Promise.all([
+  const [state] = await Promise.all([
     getJson<HomeState>(`/api/home${refresh ? '?refresh=1' : ''}`),
-    homeDrafts(),
+    handOffSurface.refresh(),
   ]);
+  const records = handOffSurface.getRecords();
+  const listedIds = new Set(listedHandOffs(records).map((handOff) => handOff.id));
+  const drafts = await homeDrafts(records.filter((handOff) => !listedIds.has(handOff.id)));
   cachedAccount = state.account;
   updateAccountMark(els.accountMark, state.account);
   setSynced(syncedLabel(0));
@@ -443,7 +421,9 @@ async function renderHome(refresh: boolean): Promise<void> {
     </div>
     <div class="home-cols"><div class="home-main">
     ${accountPanel(state)}${warning}
+    <section class="section" id="home-inflight-section" hidden><div class="section-head"><h2>In flight</h2><span class="grow"></span><span class="hint">Ordered by what needs attention</span></div><div class="home-flight-list" id="home-inflight-list"></div></section>
     ${drafts.length === 0 ? '' : `<section class="section"><div class="section-head"><h2>Being planned</h2></div><div class="map-grid">${drafts.map(draftMapCard).join('')}</div></section>`}
+    <section class="section" id="home-history-section" hidden><div class="section-head"><h2>Recent hand-offs</h2><span class="hint">Kept for 30 days</span></div><div class="home-handoff-history-list" id="home-history-list"></div></section>
     <form class="field" id="repo-entry">
       <label for="repo-name">Open a repository</label>
       <div class="row">
@@ -470,6 +450,8 @@ async function renderHome(refresh: boolean): Promise<void> {
     </section>
     </div><div class="home-side" id="progress-host"></div></div>
     <footer class="version">Wayfinder v${escapeHtml(state.version)}</footer>`);
+  homeHandOffVisualKey = '';
+  renderHomeHandOffLists(records);
 
   const form = need<HTMLFormElement>('repo-entry');
   form.addEventListener('submit', (event) => {

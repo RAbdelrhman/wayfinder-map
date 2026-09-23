@@ -27,6 +27,7 @@ export interface StoredHandOff {
   id: string;
   repo: string;
   mapNumber: number | null;
+  mapTitle: string | null;
   ticketNumber: number | null;
   title: string | null;
   tier?: Tier;
@@ -39,6 +40,7 @@ export interface StoredHandOff {
   worktreePath: string | null;
   rung: HandOffRung;
   status: HandOffStatus;
+  acknowledged: boolean;
   createdAt: string;
   updatedAt: string;
   lastSeenAt: string | null;
@@ -55,6 +57,7 @@ export interface StoredHandOff {
 export interface RecordHandOffInput {
   repo: string;
   mapNumber: number | null;
+  mapTitle?: string | null;
   ticketNumber: number | null;
   title: string | null;
   tier?: Tier | null;
@@ -72,12 +75,14 @@ export interface HandOffStatusDto {
   id: string;
   repo: string;
   mapNumber: number | null;
+  mapTitle: string | null;
   ticketNumber: number | null;
   title: string | null;
   tier?: Tier;
   threadId: string | null;
   rung: HandOffRung;
   status: HandOffStatus;
+  acknowledged: boolean;
   createdAt: string;
   updatedAt: string;
   lastSeenAt: string | null;
@@ -281,6 +286,7 @@ export class HandOffStore {
       id: randomUUID(),
       repo: input.repo,
       mapNumber: input.mapNumber,
+      mapTitle: input.mapTitle ?? null,
       ticketNumber: input.ticketNumber,
       title: input.title,
       ...(input.tier === undefined || input.tier === null ? {} : { tier: input.tier }),
@@ -293,6 +299,7 @@ export class HandOffStore {
       worktreePath: input.worktreePath ?? null,
       rung: input.rung,
       status: input.threadId === null ? 'untracked' : 'starting',
+      acknowledged: false,
       createdAt: now,
       updatedAt: now,
       lastSeenAt: null,
@@ -315,6 +322,17 @@ export class HandOffStore {
     const pruned = this.prune();
     if (pruned) await this.persist();
     return this.current().map((item) => ({ ...item, pullRequests: item.pullRequests.map((ref) => ({ ...ref })) }));
+  }
+
+  async acknowledge(id: string): Promise<boolean> {
+    await this.ensureLoaded();
+    const handOff = this.current().find((item) => item.id === id);
+    if (handOff === undefined) return false;
+    if (handOff.acknowledged) return true;
+    handOff.acknowledged = true;
+    handOff.updatedAt = this.now().toISOString();
+    await this.persist();
+    return true;
   }
 
   async addPullRequests(id: string, refs: readonly PullRequestRef[]): Promise<void> {
@@ -397,7 +415,8 @@ export class HandOffStore {
     if (sequence !== null && handOff.sequence !== null && sequence < handOff.sequence) return false;
 
     const now = this.now().toISOString();
-    const terminal = thread.status === 'finished' || thread.status === 'interrupted' || thread.status === 'failed';
+    const hasT3PullRequest = [...handOff.pullRequests, ...thread.pullRequests].some((pullRequest) => pullRequest.source === 't3');
+    const terminal = thread.status === 'finished' || thread.status === 'interrupted' || thread.status === 'failed' || hasT3PullRequest;
     const nextTerminalAt = terminal ? (handOff.terminalAt ?? now) : null;
     const nextSequence = sequence === null ? handOff.sequence : Math.max(handOff.sequence ?? sequence, sequence);
     const next = {
@@ -449,8 +468,10 @@ export class HandOffStore {
       try {
         const parsed: unknown = JSON.parse(await readFile(filePath, 'utf8'));
         const root = record(parsed);
-        if (root?.['version'] !== 1 || !Array.isArray(root['records'])) throw new Error('Unsupported hand-off store format.');
-        this.records = root['records'].filter(isStoredHandOff);
+        if ((root?.['version'] !== 1 && root?.['version'] !== 2) || !Array.isArray(root['records'])) throw new Error('Unsupported hand-off store format.');
+        this.records = root['records']
+          .filter(isStoredHandOff)
+          .map((item) => ({ ...item, mapTitle: item.mapTitle ?? null, acknowledged: item.acknowledged === true }));
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
           this.records = [];
@@ -469,7 +490,7 @@ export class HandOffStore {
   private async persist(): Promise<void> {
     const filePath = this.options.filePath;
     if (filePath === null || filePath === undefined) return;
-    const payload = JSON.stringify({ version: 1, records: this.current() }, null, 2);
+    const payload = JSON.stringify({ version: 2, records: this.current() }, null, 2);
     this.writes = this.writes.catch(() => undefined).then(async () => {
       await mkdir(dirname(filePath), { recursive: true, mode: 0o700 });
       const temporary = `${filePath}.${String(process.pid)}.${randomUUID()}.tmp`;
@@ -495,6 +516,7 @@ function isStoredHandOff(value: unknown): value is StoredHandOff {
     typeof item['id'] === 'string' &&
     typeof item['repo'] === 'string' &&
     nullableNumber('mapNumber') &&
+    (item['mapTitle'] === undefined || nullableString('mapTitle')) &&
     nullableNumber('ticketNumber') &&
     nullableString('title') &&
     nullableString('environmentId') &&
@@ -506,6 +528,7 @@ function isStoredHandOff(value: unknown): value is StoredHandOff {
     nullableString('worktreePath') &&
     validRung &&
     typeof item['createdAt'] === 'string' &&
+    (item['acknowledged'] === undefined || typeof item['acknowledged'] === 'boolean') &&
     typeof item['updatedAt'] === 'string' &&
     nullableString('lastSeenAt') &&
     nullableString('terminalAt') &&
@@ -595,6 +618,10 @@ export class HandOffTracker {
       handOffs: records.map((item) => this.toDto(item)),
       t3: { available: this.online, checkedAt: this.checkedAt },
     };
+  }
+
+  async acknowledge(id: string): Promise<boolean> {
+    return this.store.acknowledge(id);
   }
 
   close(): void {
@@ -706,12 +733,14 @@ export class HandOffTracker {
       id: item.id,
       repo: item.repo,
       mapNumber: item.mapNumber,
+      mapTitle: item.mapTitle,
       ticketNumber: item.ticketNumber,
       title: item.title,
       ...(item.tier === undefined ? {} : { tier: item.tier }),
       threadId: item.threadId,
       rung: item.rung,
       status: item.status,
+      acknowledged: item.acknowledged,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
       lastSeenAt: item.lastSeenAt,

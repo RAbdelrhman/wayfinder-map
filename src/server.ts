@@ -345,6 +345,17 @@ export async function startServer({
         return;
       }
 
+      if (path === '/api/hand-offs/acknowledge' && request.method === 'POST') {
+        const body = (await readBody(request)) as { id?: unknown };
+        const id = typeof body.id === 'string' ? body.id : '';
+        if (!(await handOffTracker.acknowledge(id))) {
+          json(response, 404, { error: 'No such hand-off.' });
+          return;
+        }
+        json(response, 200, { acknowledged: true });
+        return;
+      }
+
       if (path === '/api/hand-offs/focus' && request.method === 'POST') {
         const body = (await readBody(request)) as { id?: unknown };
         const id = typeof body.id === 'string' ? body.id : '';
@@ -686,6 +697,7 @@ export async function startServer({
           const saved = await handOffTracker.record({
             repo: requestedRepo,
             mapNumber: null,
+            mapTitle: goal,
             ticketNumber: null,
             title: goal,
             tier,
@@ -783,6 +795,7 @@ export async function startServer({
           const saved = await handOffTracker.record({
             repo: requestedRepo,
             mapNumber: map?.number ?? null,
+            mapTitle: map?.title ?? null,
             ticketNumber: ticket.number,
             title: ticket.title,
             environmentId: tracking?.environmentId ?? null,

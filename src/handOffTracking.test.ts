@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -68,6 +68,30 @@ describe('HandOffStore', () => {
     }
   });
 
+  it('migrates v1 records and persists acknowledgement without losing the record', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    try {
+      const original = new HandOffStore({ filePath });
+      const saved = await original.record(input);
+      const parsed = JSON.parse(await readFile(filePath, 'utf8')) as { records: Array<Record<string, unknown>> };
+      const legacyRecords = parsed.records.map((record) => {
+        const legacyRecord = { ...record };
+        delete legacyRecord['acknowledged'];
+        return legacyRecord;
+      });
+      await writeFile(filePath, JSON.stringify({ version: 1, records: legacyRecords }), 'utf8');
+
+      const migrated = new HandOffStore({ filePath });
+      await expect(migrated.list()).resolves.toMatchObject([{ id: saved.id, acknowledged: false }]);
+      await expect(migrated.acknowledge(saved.id)).resolves.toBe(true);
+      await expect(new HandOffStore({ filePath }).list()).resolves.toMatchObject([{ id: saved.id, acknowledged: true }]);
+      await expect(readFile(filePath, 'utf8')).resolves.toContain('"version": 2');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('updates only from current sequence data and prunes 30 days after terminal status', async () => {
     let now = new Date('2026-09-01T00:00:00.000Z');
     const store = new HandOffStore({ filePath: null, now: () => now });
@@ -90,6 +114,23 @@ describe('HandOffStore', () => {
     });
     now = new Date('2026-10-01T00:00:00.000Z');
     await expect(store.list()).resolves.toHaveLength(1);
+    now = new Date('2026-10-03T00:00:00.000Z');
+    await expect(store.list()).resolves.toHaveLength(0);
+  });
+
+  it('starts terminal retention when T3 Code reports a pull request', async () => {
+    let now = new Date('2026-09-01T00:00:00.000Z');
+    const store = new HandOffStore({ filePath: null, now: () => now });
+    await store.record(input);
+    await store.applySnapshot('env-1', input.t3Origin ?? '', {
+      snapshotSequence: 1,
+      threads: [{
+        id: 'thread-1',
+        session: { status: 'running' },
+        pullRequests: [{ number: 42, url: 'https://github.com/octo/one/pull/42', state: 'open' }],
+      }],
+    });
+    await expect(store.list()).resolves.toMatchObject([{ terminalAt: now.toISOString() }]);
     now = new Date('2026-10-03T00:00:00.000Z');
     await expect(store.list()).resolves.toHaveLength(0);
   });

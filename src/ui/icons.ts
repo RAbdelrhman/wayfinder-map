@@ -37,6 +37,8 @@ export const REFRESH = '<path d="M20 11a8 8 0 0 0-14.9-3.5L3 10"/><path d="M3 4v
 export const MOON = '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>';
 export const CHEVRON = '<path d="m6 9 6 6 6-6"/>';
 export const EXTERNAL = '<path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>';
+export const PLUG = '<path d="M9 3v6M15 3v6"/><path d="M7 9h10v3a5 5 0 0 1-10 0z"/><path d="M12 17v4"/>';
+export const ALERT = '<path d="m12 3 9 16H3z"/><path d="M12 9v4M12 17h.01"/>';
 export const PLAY = '<path d="M7 4v16l13-8z" fill="currentColor"/>';
 export const COPY = '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>';
 export const INFO = '<circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/>';
