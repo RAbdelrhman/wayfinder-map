@@ -2838,3 +2838,310 @@ textarea.input {
   text-transform: uppercase;
   color: var(--text-muted);
 }
+
+/* ---------- Home progress panel (#43, #80) ---------- */
+
+.sheet:has(> .home-cols) {
+  width: min(1140px, 100%);
+}
+
+.home-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 22px;
+  align-items: start;
+}
+
+.home-main {
+  min-width: 0;
+}
+
+.home-side {
+  position: sticky;
+  top: 20px;
+}
+
+@media (max-width: 900px) {
+  .home-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .home-side {
+    position: static;
+  }
+}
+
+.progress-panel {
+  padding: 18px;
+  overflow: hidden;
+}
+
+.progress-panel .segmented {
+  padding: 2px;
+  border-radius: 8px;
+}
+
+.progress-panel .seg {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.progress-panel .seg.is-on {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.progress-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-head .eyebrow {
+  margin: 0;
+}
+
+.progress-head .segmented {
+  margin-left: auto;
+}
+
+.progress-head .seg {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+
+.progress-today {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.progress-today b {
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-today span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* Trail: fogged terrain over a five-week calendar */
+.progress-trail {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 14px 0 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+}
+
+.progress-trail .ground {
+  fill: var(--surface-1);
+}
+
+.progress-trail .contours {
+  fill: none;
+  stroke: var(--gridline);
+  stroke-width: 1.2;
+}
+
+.progress-trail .route {
+  fill: none;
+  stroke: var(--baseline);
+  stroke-width: 2;
+  stroke-dasharray: 1 6;
+  stroke-linecap: round;
+}
+
+.progress-trail circle {
+  stroke: var(--surface-1);
+  stroke-width: 2;
+}
+
+.progress-trail .is-reached {
+  fill: var(--state-frontier);
+}
+
+.progress-trail .is-ahead {
+  fill: var(--text-muted);
+}
+
+.progress-trail .fog {
+  fill: var(--plane);
+  opacity: 0.94;
+}
+
+.progress-cal {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+  margin: 12px 0 6px;
+}
+
+.progress-cal i {
+  aspect-ratio: 1;
+  border-radius: 5px;
+  background:
+    linear-gradient(color-mix(in srgb, var(--plane) calc(var(--f) * 100%), transparent), color-mix(in srgb, var(--plane) calc(var(--f) * 100%), transparent)),
+    color-mix(in srgb, var(--state-frontier) 55%, var(--surface-1));
+  border: 1px solid var(--hairline);
+}
+
+.progress-cal i.is-today {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 1px;
+}
+
+.progress-cal i.is-pad {
+  visibility: hidden;
+}
+
+.progress-cal i.is-blank {
+  background: transparent;
+  border-style: dashed;
+}
+
+/* Hexes: one flag per goal ticket over a five-week fog-of-war */
+.progress-flags {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0 4px;
+}
+
+.progress-flags i {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--wash);
+  border: 1px dashed var(--baseline);
+}
+
+.progress-flags i.on {
+  background: var(--state-frontier);
+  border: 1px solid transparent;
+}
+
+.progress-flags i.over {
+  flex: 0.6;
+  background: color-mix(in srgb, var(--state-frontier) 55%, var(--surface-1));
+  border: 1px solid transparent;
+}
+
+.progress-hex {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 14px 0 6px;
+}
+
+.progress-hex .fog {
+  fill: var(--plane);
+}
+
+.progress-hex .land {
+  fill: color-mix(in srgb, var(--state-frontier) 42%, var(--surface-1));
+}
+
+.progress-hex .edge {
+  fill: none;
+  stroke: var(--surface-1);
+  stroke-width: 2;
+}
+
+.progress-hex .today {
+  fill: none;
+  stroke: var(--state-claimed);
+  stroke-width: 2.5;
+}
+
+.progress-hex .contour {
+  fill: none;
+  stroke: color-mix(in srgb, var(--state-frontier) 70%, var(--text-primary));
+  stroke-opacity: 0.35;
+  stroke-width: 1;
+}
+
+/* Bar: the goal burned clear from the left over a twelve-week strip */
+.progress-bar {
+  position: relative;
+  height: 34px;
+  margin: 14px 0 0;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(20% - 1px), var(--hairline) calc(20% - 1px) 20%),
+    linear-gradient(90deg, color-mix(in srgb, var(--state-frontier) 60%, var(--surface-1)), color-mix(in srgb, var(--state-frontier) 35%, var(--surface-1)));
+}
+
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 calc(var(--p) * 100% - 18px);
+  background: linear-gradient(90deg, transparent, var(--plane) 18px);
+  opacity: 0.96;
+}
+
+.progress-weeks {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-template-rows: repeat(7, 1fr);
+  grid-auto-flow: column;
+  gap: 3px;
+  margin: 14px 0 4px;
+}
+
+.progress-weeks i {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--state-frontier) calc(var(--v) * 75%), var(--wash));
+}
+
+.progress-weeks i.is-today {
+  outline: 1.5px solid var(--state-claimed);
+}
+
+.progress-cap {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.progress-goal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.progress-goal .grow {
+  flex: 1;
+}
+
+.progress-streak {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.progress-streak .i {
+  width: 14px;
+  height: 14px;
+  color: var(--state-blocked);
+}

@@ -12,6 +12,8 @@ import { escapeHtml, renderMarkdown } from './markdown.js';
 import { fitPrototypeThumbs, prototypeTileHtml } from './prototypeTile.js';
 import type { TileText } from './prototypeTile.js';
 import { composerState, initialRepository, newMapPath } from './newMap.js';
+import { mountProgressPanel } from './progress.js';
+import type { ProgressSettings, ProgressState } from '../progress.js';
 import type { WorkspaceView } from './newMap.js';
 
 const RECENT_KEY = 'wayfinder-map:recent-repositories';
@@ -212,6 +214,7 @@ async function renderHome(refresh: boolean): Promise<void> {
         <p>Pick a repository, then open one of its maps.</p>
       </div>
     </div>
+    <div class="home-cols"><div class="home-main">
     ${accountPanel(state)}${warning}
     <form class="field" id="repo-entry">
       <label for="repo-name">Open a repository</label>
@@ -237,6 +240,7 @@ async function renderHome(refresh: boolean): Promise<void> {
           : `<div class="repo-grid">${discovered.map(repositoryLink).join('')}</div>`
       }
     </section>
+    </div><div class="home-side" id="progress-host"></div></div>
     <footer class="version">Wayfinder v${escapeHtml(state.version)}</footer>`);
 
   const form = need<HTMLFormElement>('repo-entry');
@@ -253,6 +257,7 @@ async function renderHome(refresh: boolean): Promise<void> {
     window.location.assign(repoPath(repo));
   });
   bindRepoPicker(need<HTMLInputElement>('repo-name'), need<HTMLUListElement>('repo-menu'));
+  void renderProgress(need('progress-host'));
   document.getElementById('account-switch')?.addEventListener('change', (event) => {
     const select = event.currentTarget as HTMLSelectElement;
     void run(async () => {
@@ -266,6 +271,17 @@ async function renderHome(refresh: boolean): Promise<void> {
       paint('<div class="empty"><strong>Wayfinder stopped</strong><p>Your GitHub CLI account is still signed in.</p></div>');
     });
   });
+}
+
+/** Home's progress panel loads on its own, so a slow GitHub search never holds the page. */
+async function renderProgress(host: HTMLElement): Promise<void> {
+  try {
+    const state = await getJson<ProgressState>('/api/progress');
+    if (!host.isConnected) return;
+    mountProgressPanel(host, state, (patch) => postJson<ProgressSettings>('/api/progress/settings', patch), (message) => toast(message));
+  } catch (error) {
+    host.innerHTML = `<div class="card progress-panel"><p class="eyebrow">Fog cleared</p><p class="hint failure">${escapeHtml(error instanceof Error ? error.message : String(error))}</p></div>`;
+  }
 }
 
 const MENU_LIMIT = 50;
