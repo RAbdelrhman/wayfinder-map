@@ -23,6 +23,7 @@ import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './work
 import type { WorkspaceState } from './workspaces.js';
 import { WAYFINDER_VERSION } from './version.js';
 import { resolveRepoIcon, type ResolvedRepoIcon } from './repoIcon.js';
+import { ProgressError, ProgressService, ProgressSettingsStore, readCompletedTickets } from './progress.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -86,6 +87,8 @@ export interface ServeOptions {
    */
   uiDir?: string;
   updater?: UpdaterService;
+  /** Replaces Home's progress panel data in tests, which must not touch gh or the home directory. */
+  progress?: Pick<ProgressService, 'state' | 'save'>;
 }
 
 export interface UpdaterStatus {
@@ -176,6 +179,7 @@ export async function startServer({
   onShutdown,
   uiDir = join(process.cwd(), 'src', 'ui'),
   updater,
+  progress,
 }: ServeOptions): Promise<RunningServer> {
   const defaultUpdater: UpdaterService = {
     async check(): Promise<UpdaterStatus> {
@@ -221,6 +225,16 @@ export async function startServer({
   const repoIcons = new Map<string, Promise<ResolvedRepoIcon | null>>();
   let repoList: Promise<string[]> | null = null;
   const authFlow = new AuthFlow();
+  const progressPanel =
+    progress ??
+    new ProgressService({
+      login: async () => {
+        const account = homeState?.account ?? (await readAccount());
+        return account.status === 'ready' ? account.login : null;
+      },
+      store: new ProgressSettingsStore(),
+      completed: (login, since) => readCompletedTickets(login, { typePrefix: config.typePrefix, mapLabel: config.mapLabel, since }),
+    });
 
   /** One entry per repository and map, since every prototype list costs GitHub calls. */
   const prototypeCache = new Map<string, { at: number; list: Promise<Prototype[]> }>();
@@ -303,6 +317,20 @@ export async function startServer({
           homeState = await loadHome(labels);
         }
         json(response, 200, homeState);
+        return;
+      }
+
+      if (path === '/api/progress') {
+        json(response, 200, await progressPanel.state());
+        return;
+      }
+
+      if (path === '/api/progress/settings' && request.method === 'POST') {
+        try {
+          json(response, 200, await progressPanel.save(await readBody(request)));
+        } catch (error) {
+          json(response, error instanceof ProgressError ? error.status : 400, { error: (error as Error).message });
+        }
         return;
       }
 
