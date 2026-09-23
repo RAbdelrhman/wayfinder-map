@@ -22,7 +22,6 @@ import {
 import type { ModelChoice, Tier } from './models.js';
 import { AutoRefresh } from './autoRefresh.js';
 import { fitPrototypeThumbs, prototypeTileHtml } from './prototypeTile.js';
-import type { TileText } from './prototypeTile.js';
 import { lineage, matchesFilter, matchesQuery, onLineage, syncedLabel } from './focus.js';
 import type { Lineage, TicketFilter } from './focus.js';
 import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
@@ -32,6 +31,7 @@ import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
 import type { NavigationController, NavigationView } from './navigation.js';
+import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -499,28 +499,27 @@ function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
     try {
       const response = await fetch(`${scopedApiPath(repoName(), 'prototypes')}?map=${String(map.number)}${force ? '&refresh=1' : ''}`);
       const body: unknown = await response.json();
-      next = response.ok
-        ? { status: 'ready', list: body as Prototype[] }
-        : { status: 'failed', error: (body as { error?: string }).error ?? 'Could not read the prototypes.' };
+      if (!response.ok) {
+        const error = typeof body === 'object' && body !== null && 'error' in body && typeof body.error === 'string'
+          ? body.error
+          : 'Could not read the prototypes.';
+        next = { status: 'failed', error };
+      } else if (!Array.isArray(body)) {
+        next = { status: 'failed', error: 'The prototype response was invalid.' };
+      } else {
+        next = { status: 'ready', list: body as Prototype[] };
+      }
     } catch (error) {
       next = { status: 'failed', error: (error as Error).message };
     }
     if (prototypeLoads.get(map.number) !== loading) return;
     prototypeLoads.set(map.number, next);
     if (currentMap()?.number !== map.number) return;
+    navigation?.setPrototypeCount(next.status === 'ready' ? next.list.length : null);
     if (view === 'prototypes') renderPrototypes();
     renderTicketPrototype();
   })();
   return loading;
-}
-
-/** The words under a tile on this map: the ticket, and a way to open it. */
-function tileText(prototype: Prototype, ticket: Ticket | undefined): TileText {
-  return {
-    eyebrow: `#${String(prototype.ticketNumber)}${ticket === undefined ? '' : ` · ${STATE_STYLE[ticket.state].label}`}`,
-    title: ticket?.title ?? prototype.branch,
-    links: `<button type="button" class="linkish" data-jump="${String(prototype.ticketNumber)}">Ticket</button><a href="${escapeHtml(prototype.url)}" target="_blank" rel="noreferrer">Branch ↗</a>`,
-  };
 }
 
 function renderPrototypes(): void {
@@ -536,36 +535,20 @@ function renderPrototypes(): void {
   }
 
   const load = prototypesFor(map);
-  if (load.status !== 'ready') {
-    els.protoWrap.innerHTML = `<p class="empty">${
-      load.status === 'loading' ? 'Looking for prototype branches…' : escapeHtml(`Could not read the prototypes: ${load.error}`)
-    }</p>`;
+  if (load.status === 'loading') {
+    navigation?.setPrototypeCount(null);
+    els.protoWrap.innerHTML = prototypeBoardLoadingHtml();
     return;
   }
-
-  if (load.list.length === 0) {
-    els.protoWrap.innerHTML =
-      '<p class="empty">No prototypes on this map yet.<br />A prototype ticket keeps its prototype on a <code>prototype/&lt;ticket&gt;-&lt;slug&gt;</code> branch, and it shows up here once pushed.</p>';
+  if (load.status === 'failed') {
+    navigation?.setPrototypeCount(null);
+    els.protoWrap.innerHTML = prototypeBoardErrorHtml(load.error);
+    paintIcons(els.protoWrap);
     return;
   }
-
-  const tiles = load.list
-    .map((prototype) =>
-      prototypeTileHtml(
-        repoName(),
-        prototype,
-        tileText(
-          prototype,
-          map.tickets.find((candidate) => candidate.number === prototype.ticketNumber),
-        ),
-      ),
-    )
-    .join('');
-
-  els.protoWrap.innerHTML = `<div class="protogallery">
-    <p class="eyebrow">${String(load.list.length)} ${load.list.length === 1 ? 'prototype' : 'prototypes'} on ${escapeHtml(map.title)} · click one to open it</p>
-    <div class="proto-grid">${tiles}</div>
-  </div>`;
+  navigation?.setPrototypeCount(load.list.length);
+  els.protoWrap.innerHTML = prototypeBoardHtml(repoName(), map, load.list);
+  paintIcons(els.protoWrap);
   fitPrototypeThumbs(els.protoWrap);
 }
 
@@ -1140,9 +1123,33 @@ els.nodes.addEventListener('focusin', (event) => {
 els.nodes.addEventListener('focusout', () => setHovered(null));
 
 els.protoWrap.addEventListener('click', (event) => {
-  const jump = (event.target as HTMLElement).closest<HTMLElement>('[data-jump]');
+  const target = event.target as HTMLElement;
+  const retry = target.closest<HTMLButtonElement>('[data-prototype-retry]');
+  if (retry !== null) {
+    const map = currentMap();
+    if (map !== null) {
+      prototypesFor(map, true);
+      renderPrototypes();
+    }
+    return;
+  }
+  const jump = target.closest<HTMLElement>('[data-jump]');
   if (jump !== null) select(Number(jump.dataset['jump']));
 });
+
+els.protoWrap.addEventListener('error', (event) => {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement) || !image.classList.contains('decision-variant-image')) return;
+  image.hidden = true;
+  const fallback = image.parentElement?.querySelector<HTMLElement>('.decision-variant-fallback');
+  const page = image.parentElement?.querySelector<HTMLIFrameElement>('.decision-variant-page');
+  if (page !== null && page !== undefined) {
+    page.hidden = false;
+    fitPrototypeThumbs(els.protoWrap);
+  } else if (fallback !== null && fallback !== undefined) {
+    fallback.hidden = false;
+  }
+}, true);
 
 els.tableWrap.addEventListener('click', (event) => {
   const row = (event.target as HTMLElement).closest<HTMLElement>('tr[data-number]');
