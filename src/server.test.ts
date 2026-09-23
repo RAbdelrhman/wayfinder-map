@@ -93,8 +93,10 @@ describe('repository-scoped server', () => {
       const homePage = await fetch(`${running.url}/`);
       const repositoryPage = await fetch(`${running.url}/repos/octo/one`);
       const mapPage = await fetch(`${running.url}/repos/octo/one/maps/12`);
+      const draftPage = await fetch(`${running.url}/repos/octo/one/maps/draft-123e4567-e89b-12d3-a456-426614174000`);
       expect(await homePage.text()).toContain('src="/home.js"');
       expect(await repositoryPage.text()).toContain('src="/home.js"');
+      expect(await draftPage.text()).toContain('src="/home.js"');
       expect(await mapPage.text()).toContain('src="/app.js"');
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
@@ -613,7 +615,12 @@ describe('local clone for a hand-off', () => {
       try {
         const response = await newMap(running.url, { goal: 'Build offline\nmode', model: { instanceId: 'codex', model: 'gpt' } });
         expect(response.status).toBe(200);
-        await expect(response.json()).resolves.toMatchObject({ rung: 'thread', threadId: 'thread-7', notice: null });
+        const started = (await response.json()) as { handOffId: string };
+        expect(started).toMatchObject({ rung: 'thread', threadId: 'thread-7', notice: null, handOffId: expect.any(String) });
+        const handOffResponse = await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } });
+        await expect(handOffResponse.json()).resolves.toMatchObject({
+          handOffs: [{ id: started.handOffId, repo: 'octo/one', mapNumber: null, ticketNumber: null, title: 'Build offline\nmode', threadId: 'thread-7' }],
+        });
         expect(startThread).toHaveBeenCalledWith(
           expect.objectContaining({
             title: 'New map: Build offline mode',
@@ -624,6 +631,30 @@ describe('local clone for a hand-off', () => {
         );
         const [input] = startThread.mock.calls[0] ?? [];
         expect(input?.prompt(null)).toContain('Run the wayfinder workflow');
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('focuses T3 Code only for a known hand-off thread', async () => {
+      const focus = vi.fn(async () => undefined);
+      const startThread = vi.fn(async () => ({ threadId: 'thread-7', prompt: 'prompt' }));
+      const running = await serve({
+        t3: { ...t3, focus, steps: () => ({ startThread, openApp: async () => undefined, copy: async () => undefined }) },
+        workspaces: resolver({ '/clone': '/clone' }, ['/clone']),
+      });
+
+      try {
+        const startResponse = await newMap(running.url, { goal: 'Build offline mode' });
+        const started = (await startResponse.json()) as { handOffId: string };
+        const response = await fetch(`${running.url}/api/hand-offs/focus`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', origin: running.url },
+          body: JSON.stringify({ id: started.handOffId }),
+        });
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({ opened: true });
+        expect(focus).toHaveBeenCalledOnce();
       } finally {
         await new Promise<void>((resolve) => running.server.close(() => resolve()));
       }

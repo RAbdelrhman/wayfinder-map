@@ -63,6 +63,7 @@ export const PAGE_CSP =
 
 export type ServerT3 =
   Pick<T3HandOff, 'models' | 'steps' | 'projects'> &
+  Partial<Pick<T3HandOff, 'focus'>> &
   Partial<Pick<T3HandOff, 'readHandOffSnapshot' | 'subscribeShell'>> & { close?: () => void };
 
 export interface ServeOptions {
@@ -322,6 +323,28 @@ export async function startServer({
 
       if (path === '/api/hand-offs' && request.method === 'GET') {
         json(response, 200, await handOffTracker.snapshot());
+        return;
+      }
+
+      if (path === '/api/hand-offs/focus' && request.method === 'POST') {
+        const body = (await readBody(request)) as { id?: unknown };
+        const id = typeof body.id === 'string' ? body.id : '';
+        const status = await handOffTracker.snapshot();
+        const handOff = status.handOffs.find((item) => item.id === id);
+        if (handOff === undefined) {
+          json(response, 404, { error: 'No such hand-off.' });
+          return;
+        }
+        if (handOff.threadId === null || t3.focus === undefined) {
+          json(response, 409, { error: 'This hand-off has no T3 Code thread to open.' });
+          return;
+        }
+        try {
+          await t3.focus();
+          json(response, 200, { opened: true });
+        } catch (error) {
+          json(response, 503, { error: (error as Error).message });
+        }
         return;
       }
 
@@ -598,7 +621,7 @@ export async function startServer({
             repo: requestedRepo,
             mapNumber: null,
             ticketNumber: null,
-            title: null,
+            title: goal,
             environmentId: tracking?.environmentId ?? null,
             t3Origin: runtime.origin,
             projectId: tracking?.projectId ?? null,

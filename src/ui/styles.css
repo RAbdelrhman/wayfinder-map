@@ -2374,6 +2374,154 @@ textarea.input {
   transition: all 0.2s ease;
 }
 
+/* ---------- a map while its planning thread drafts the issues ---------- */
+
+.draft-map-page {
+  display: grid;
+  width: min(100%, 1040px);
+  margin: 0 auto;
+  gap: 18px;
+}
+
+.draft-map-head {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 8px 2px 4px;
+}
+
+.draft-map-head h1 {
+  max-width: 28ch;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: clamp(24px, 4vw, 34px);
+  line-height: 1.2;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.draft-map-head p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.draft-map-badge {
+  border-color: color-mix(in srgb, var(--state-frontier) 32%, var(--hairline));
+  color: var(--state-frontier);
+}
+
+.draft-handoff,
+.planning-handoff {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+}
+
+.draft-handoff .grow,
+.planning-handoff .grow {
+  min-width: 0;
+}
+
+.draft-handoff p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.draft-handoff-mark {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  background: var(--wash);
+  color: var(--text-secondary);
+}
+
+.draft-map-board {
+  display: grid;
+  min-height: 320px;
+  align-content: center;
+  justify-items: center;
+  gap: 20px;
+  overflow: hidden;
+  padding: 36px 24px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background-color: var(--plane);
+  background-image: radial-gradient(var(--gridline) 1px, transparent 1px);
+  background-size: 20px 20px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.draft-map-board > p {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+}
+
+.draft-map-ghosts {
+  display: flex;
+  width: min(100%, 520px);
+  align-items: flex-start;
+  justify-content: center;
+  gap: 14px;
+}
+
+.draft-map-ghosts span {
+  width: min(30%, 150px);
+  height: 54px;
+  border: 1px dashed var(--baseline);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface-1) 72%, transparent);
+}
+
+.draft-map-ghosts span:nth-child(2) {
+  margin-top: 42px;
+}
+
+.draft-map-status {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.planning-handoff.is-compact {
+  min-height: 48px;
+  padding: 7px 10px;
+  box-shadow: none;
+}
+
+.planning-handoff[hidden] {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .draft-handoff,
+  .planning-handoff {
+    flex-wrap: wrap;
+  }
+
+  .draft-handoff .ghost,
+  .planning-handoff .ghost {
+    margin-left: 44px;
+  }
+
+  .draft-map-board {
+    min-height: 240px;
+    padding: 28px 12px;
+  }
+}
+
 .ticket-preview-box.is-empty {
   color: var(--text-muted);
   text-align: center;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { mapPath, normalizeRepo, parseRepoPagePath, prototypesPath, repoPath, scopedApiPath } from './repoRoutes.js';
+import { draftMapPath, mapPath, normalizeRepo, parseRepoPagePath, prototypesPath, repoPath, scopedApiPath } from './repoRoutes.js';
 
 describe('repository routes', () => {
   it('round-trips repository and map routes', () => {
@@ -19,6 +19,16 @@ describe('repository routes', () => {
     expect(parseRepoPagePath('/repos/owner/repo/maps/0')).toBeNull();
     expect(parseRepoPagePath('/repos/owner/repo/maps/nope')).toBeNull();
     expect(parseRepoPagePath('/elsewhere')).toBeNull();
+  });
+
+  it('parses a draft route by its hand-off ID and builds the same route', () => {
+    const id = '123e4567-e89b-12d3-a456-426614174000';
+    const path = draftMapPath('owner/repo', id);
+    expect(path).toBe(`/repos/owner/repo/maps/draft-${id}`);
+    expect(parseRepoPagePath(path)).toEqual({ repo: 'owner/repo', mapNumber: null, draftId: id });
+    expect(parseRepoPagePath(`${path}/`)).toEqual({ repo: 'owner/repo', mapNumber: null, draftId: id });
+    expect(() => draftMapPath('owner/repo', 'not-a-uuid')).toThrow('Invalid draft ID');
+    expect(parseRepoPagePath('/repos/owner/repo/maps/draft-not-a-uuid')).toBeNull();
   });
 
   it('rejects malformed URL encoding', () => {

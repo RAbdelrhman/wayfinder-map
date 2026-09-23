@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { composerState, initialRepository, newMapPath } from './newMap.js';
+import { composerState, draftToMapPath, initialRepository, isNewMapHandOff, newMapPath } from './newMap.js';
 import type { ComposerInput } from './newMap.js';
 
 describe('newMapPath', () => {
@@ -11,6 +11,34 @@ describe('newMapPath', () => {
   it('opens without one from Home or for a bad name', () => {
     expect(newMapPath(null)).toBe('/new-map');
     expect(newMapPath('not a repo')).toBe('/new-map');
+  });
+});
+
+describe('draft map routing', () => {
+  const handOff = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
+    repo: 'octo/one',
+    mapNumber: null,
+    ticketNumber: null,
+    title: 'Build offline mode',
+    threadId: 'thread-7',
+    rung: 'thread' as const,
+    status: 'running' as const,
+  };
+
+  it('recognizes a persisted new-map hand-off while its map issue is missing', () => {
+    expect(isNewMapHandOff(handOff)).toBe(true);
+    expect(draftToMapPath('octo/one', handOff, [])).toBeNull();
+  });
+
+  it('moves to the matching real map route when its issue appears', () => {
+    expect(draftToMapPath('octo/one', handOff, [{ number: 51, title: 'Build offline mode' }, { number: 62, title: 'Build offline mode' }])).toBe(
+      '/repos/octo/one/maps/62?planning=123e4567-e89b-12d3-a456-426614174000',
+    );
+    expect(draftToMapPath('OCTO/ONE', handOff, [{ number: 62, title: 'Build   offline\nmode' }])).toBe(
+      '/repos/OCTO/ONE/maps/62?planning=123e4567-e89b-12d3-a456-426614174000',
+    );
+    expect(draftToMapPath('octo/two', handOff, [{ number: 62, title: 'Build offline mode' }])).toBeNull();
   });
 });
 

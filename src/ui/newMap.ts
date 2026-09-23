@@ -1,4 +1,6 @@
-import { normalizeRepo } from '../repoRoutes.js';
+import type { HandOffStatusDto } from '../handOffTracking.js';
+import { mapPath, normalizeRepo } from '../repoRoutes.js';
+import type { WayfinderMap } from '../types.js';
 
 /* Start a new map: which repository the composer opens on, and whether it can start a thread. */
 
@@ -6,6 +8,32 @@ import { normalizeRepo } from '../repoRoutes.js';
 export type WorkspaceView =
   | { status: 'ready'; path: string; canChoose: boolean }
   | { status: 'choose'; candidates: string[]; canChoose: boolean };
+
+export type NewMapHandOff = Pick<HandOffStatusDto, 'id' | 'repo' | 'mapNumber' | 'ticketNumber' | 'title' | 'threadId' | 'rung' | 'status'>;
+
+/** Map starts have neither a map nor a ticket number; their title carries the original goal. */
+export function isNewMapHandOff(handOff: Pick<NewMapHandOff, 'mapNumber' | 'ticketNumber' | 'title'>): boolean {
+  return handOff.mapNumber === null && handOff.ticketNumber === null && handOff.title !== null;
+}
+
+/** Switch a planning URL to its real map once the map issue appears in the repository snapshot. */
+export function draftToMapPath(
+  repo: string,
+  handOff: NewMapHandOff,
+  maps: readonly Pick<WayfinderMap, 'number' | 'title'>[],
+): string | null {
+  if (!isNewMapHandOff(handOff) || handOff.repo.toLowerCase() !== repo.toLowerCase()) return null;
+  const goal = normalizedMapTitle(handOff.title ?? '');
+  const map = maps
+    .filter((candidate) => normalizedMapTitle(candidate.title) === goal)
+    .reduce<Pick<WayfinderMap, 'number' | 'title'> | null>((latest, candidate) => (latest === null || candidate.number > latest.number ? candidate : latest), null);
+  if (map === null) return null;
+  return `${mapPath(repo, map.number)}?planning=${encodeURIComponent(handOff.id)}`;
+}
+
+function normalizedMapTitle(title: string): string {
+  return title.trim().replace(/\s+/g, ' ').toLowerCase();
+}
 
 /** The composer, opened on `repo` when there is one. */
 export function newMapPath(repo: string | null): string {
