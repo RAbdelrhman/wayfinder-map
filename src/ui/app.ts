@@ -1,8 +1,8 @@
-import { DEFAULT_LAYOUT, layoutTickets } from '../layout.js';
-import type { PositionedNode } from '../layout.js';
+import { DEFAULT_LAYOUT, layoutWithOutside } from '../layout.js';
+import type { Band, GraphTicket, PositionedNode } from '../layout.js';
 import { prototypeBranch } from '../prompt.js';
 import { TICKET_TYPES } from '../types.js';
-import type { MapSections, MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
+import type { MapSections, MapSnapshot, OutsideTicket, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
 import {
   TIERS,
   TIER_HINT,
@@ -99,6 +99,7 @@ const els = {
   keyButton: need('key'),
   keyMenu: need('keymenu'),
   zoomReset: need('zoom-reset'),
+  canvasStage: need('canvas-stage'),
   inspector: need('inspector'),
   hovercard: need('hovercard'),
   toast: need('toast'),
@@ -120,6 +121,8 @@ let filter: TicketFilter | null = null;
 type View = 'map' | 'table' | 'prototypes';
 let view: View = 'map';
 let zoom = 1;
+/** The map the canvas was last homed for, so a background refresh keeps the view where it is. */
+let homedMap: number | null = null;
 let inspectorTab: 'brief' | 'ticket' = 'brief';
 let briefSection: keyof MapSections = 'destination';
 
@@ -202,24 +205,39 @@ function miniRing(done: number, total: number): string {
   </svg>`;
 }
 
-/** Linked ticket numbers, coloured by their state when they sit on this map. Clicking one opens it. */
+/** A ticket on this map, or an issue off it that one links to. Both open in the panel. */
+function ticketAt(map: WayfinderMap, number: number | null): Ticket | undefined {
+  return map.tickets.find((ticket) => ticket.number === number) ?? map.outside.find((ticket) => ticket.number === number);
+}
+
+function isOutside(map: WayfinderMap, number: number): boolean {
+  return map.outside.some((ticket) => ticket.number === number);
+}
+
+/**
+ * Linked ticket numbers, coloured by their state. Clicking one opens it in the panel; a number
+ * the map has never read links out to GitHub instead.
+ */
 function ticketPills(map: WayfinderMap, numbers: readonly number[], withTitles = false): string {
   if (numbers.length === 0) return '<span class="none">—</span>';
   return numbers
     .map((number) => {
-      const other = map.tickets.find((ticket) => ticket.number === number);
-      const accent = other === undefined ? '--text-muted' : STATE_STYLE[other.state].variable;
-      const title = withTitles && other !== undefined ? ` ${other.title}` : '';
+      const other = ticketAt(map, number);
+      if (other === undefined) {
+        const url = `https://github.com/${repoName()}/issues/${String(number)}`;
+        return `<a class="pill is-outside" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="--accent: var(--text-muted)" title="Not on this map. Opens on GitHub."><span class="pill-text">#${String(number)}</span>${icon(icons.EXTERNAL)}</a>`;
+      }
+      const accent = STATE_STYLE[other.state].variable;
+      const title = withTitles ? ` ${other.title}` : '';
       const label = `<span class="pill-text">${escapeHtml(`#${String(number)}${title}`)}</span>`;
-      return other === undefined
-        ? `<span class="pill" style="--accent: var(${accent})" title="Not on this map">${label}</span>`
-        : `<button type="button" class="pill" style="--accent: var(${accent})" data-jump="${String(number)}" title="${escapeHtml(other.title)}">${label}</button>`;
+      const tooltip = isOutside(map, number) ? `${other.title} (not on this map)` : other.title;
+      return `<button type="button" class="pill" style="--accent: var(${accent})" data-jump="${String(number)}" title="${escapeHtml(tooltip)}">${label}</button>`;
     })
     .join('');
 }
 
 function dependents(map: WayfinderMap, number: number): number[] {
-  return map.tickets.filter((ticket) => ticket.blockedBy.includes(number)).map((ticket) => ticket.number);
+  return [...map.tickets, ...map.outside].filter((ticket) => ticket.blockedBy.includes(number)).map((ticket) => ticket.number);
 }
 
 /* ---------- render ---------- */
@@ -232,7 +250,7 @@ function render(): void {
   els.warnings.textContent = snapshot.warnings.join('  ·  ');
 
   const map = currentMap();
-  if (selected !== null && map?.tickets.some((ticket) => ticket.number === selected) !== true) selected = null;
+  if (selected !== null && (map === null || ticketAt(map, selected) === undefined)) selected = null;
 
   renderHead();
   renderFilters();
@@ -339,6 +357,33 @@ function nodeHtml(ticket: Ticket, position: PositionedNode): string {
   </button>`;
 }
 
+/** An issue off this map: coloured by state and opened in the panel like any card, but dashed so it never reads as part of the map. */
+function outsideNodeHtml(outside: OutsideTicket, position: PositionedNode): string {
+  const style = STATE_STYLE[outside.state];
+  const kind = outside.pullRequest ? 'PR' : 'Issue';
+  return `<button type="button" class="node is-outside${outside.state === 'done' ? ' is-done' : ''}"
+    data-number="${String(outside.number)}"
+    style="--accent: var(${style.variable}); left:${String(position.x)}px; top:${String(position.y)}px; width:${String(position.width)}px; height:${String(position.height)}px"
+    aria-label="${escapeHtml(`${kind} #${String(outside.number)} ${outside.title}, ${style.label}, not on this map`)}">
+    <span class="node-top">
+      <span class="num">#${String(outside.number)}</span>
+      ${stateChip(outside.state)}
+    </span>
+    <span class="title">${escapeHtml(outside.title)}</span>
+    <span class="meta">${kind} · not on this map</span>
+  </button>`;
+}
+
+function bandHtml(band: Band, side: 'top' | 'bottom', width: number): string {
+  const label = side === 'top' ? 'Outside this map · the map waits on these' : 'Outside this map · these wait on the map';
+  return `<div class="band" style="top:${String(band.y - 10)}px; height:${String(band.height + 20)}px; width:${String(width - 32)}px"><span class="band-label">${label}</span></div>`;
+}
+
+/** Every card's dependencies, the issues off the map included, for tracing a chain on hover. */
+function graphTickets(map: WayfinderMap): GraphTicket[] {
+  return [...map.tickets, ...map.outside.map((outside) => ({ number: outside.number, blockedBy: outside.waitsOn }))];
+}
+
 function renderGraph(): void {
   els.canvasWrap.hidden = false;
   els.tableWrap.hidden = true;
@@ -352,19 +397,31 @@ function renderGraph(): void {
     return;
   }
 
-  const layout = layoutTickets(map.tickets, DEFAULT_LAYOUT);
+  const layout = layoutWithOutside(map.tickets, map.outside, DEFAULT_LAYOUT);
   const byNumber = new Map(map.tickets.map((ticket) => [ticket.number, ticket]));
+  const outsideByNumber = new Map(map.outside.map((outside) => [outside.number, outside]));
   const positions = new Map(layout.nodes.map((node) => [node.number, node]));
 
   els.canvas.style.width = `${String(layout.width)}px`;
   els.canvas.style.height = `${String(layout.height)}px`;
 
-  els.nodes.innerHTML = layout.nodes
+  const bands = [
+    layout.bands.top === null ? '' : bandHtml(layout.bands.top, 'top', layout.width),
+    layout.bands.bottom === null ? '' : bandHtml(layout.bands.bottom, 'bottom', layout.width),
+  ].join('');
+  els.nodes.innerHTML = bands + layout.nodes
     .map((position) => {
       const ticket = byNumber.get(position.number);
-      return ticket ? nodeHtml(ticket, position) : '';
+      if (ticket) return nodeHtml(ticket, position);
+      const outside = outsideByNumber.get(position.number);
+      return outside ? outsideNodeHtml(outside, position) : '';
     })
     .join('');
+
+  if (homedMap !== map.number) {
+    homedMap = map.number;
+    requestAnimationFrame(homeCanvas);
+  }
 
   els.edges.setAttribute('viewBox', `0 0 ${String(layout.width)} ${String(layout.height)}`);
   els.edges.setAttribute('width', String(layout.width));
@@ -374,12 +431,21 @@ function renderGraph(): void {
       const from = positions.get(edge.from);
       const to = positions.get(edge.to);
       if (!from || !to) return '';
+      const target = byNumber.get(edge.to);
+      const live = target === undefined ? byNumber.get(edge.from)?.open === true : target.openBlockers.includes(edge.from);
+      if (edge.vertical === true) {
+        const x1 = from.x + from.width / 2;
+        const y1 = from.y + from.height;
+        const x2 = to.x + to.width / 2;
+        const y2 = to.y;
+        const bend = Math.max(28, (y2 - y1) / 2);
+        return `<path class="${live ? 'is-live' : ''}" data-from="${String(edge.from)}" data-to="${String(edge.to)}" d="M${String(x1)},${String(y1)} C${String(x1)},${String(y1 + bend)} ${String(x2)},${String(y2 - bend)} ${String(x2)},${String(y2)}" />`;
+      }
       const x1 = from.x + from.width;
       const y1 = from.y + from.height / 2;
       const x2 = to.x;
       const y2 = to.y + to.height / 2;
       const bend = Math.max(28, (x2 - x1) / 2);
-      const live = byNumber.get(edge.to)?.openBlockers.includes(edge.from) === true;
       return `<path class="${live ? 'is-live' : ''}" data-from="${String(edge.from)}" data-to="${String(edge.to)}" d="M${String(x1)},${String(y1)} C${String(x1 + bend)},${String(y1)} ${String(x2 - bend)},${String(y2)} ${String(x2)},${String(y2)}" />`;
     })
     .join('');
@@ -528,7 +594,7 @@ function ticketPrototypeHtml(map: WayfinderMap, ticket: Ticket): string {
 function renderTicketPrototype(): void {
   const slot = document.getElementById('ticket-proto');
   const map = currentMap();
-  const ticket = map?.tickets.find((candidate) => candidate.number === selected);
+  const ticket = map === null ? undefined : ticketAt(map, selected);
   if (slot === null || map === null || ticket === undefined) return;
   slot.innerHTML = ticketPrototypeHtml(map, ticket);
   fitPrototypeThumbs(slot);
@@ -542,11 +608,20 @@ function syncHighlights(): void {
   const map = currentMap();
   if (map === null) return;
   const byNumber = new Map(map.tickets.map((ticket) => [ticket.number, ticket]));
+  const matches = (ticket: Ticket): boolean => matchesFilter(ticket, filter) && matchesQuery(ticket, query);
   const shown = (number: number): boolean => {
     const ticket = byNumber.get(number);
-    return ticket !== undefined && matchesFilter(ticket, filter) && matchesQuery(ticket, query);
+    // An issue off the map stays lit while any ticket it links to does.
+    if (ticket === undefined) {
+      const outside = map.outside.find((candidate) => candidate.number === number);
+      return [...(outside?.blocks ?? []), ...(outside?.waitsOn ?? [])].some((linked) => {
+        const other = byNumber.get(linked);
+        return other !== undefined && matches(other);
+      });
+    }
+    return matches(ticket);
   };
-  const chain: Lineage | null = hovered === null ? null : lineage(map.tickets, hovered);
+  const chain: Lineage | null = hovered === null ? null : lineage(graphTickets(map), hovered);
   const related = (number: number): boolean =>
     chain === null || number === hovered || chain.upstream.has(number) || chain.downstream.has(number);
 
@@ -611,7 +686,7 @@ function setHovered(node: HTMLElement | null): void {
   syncHighlights();
   hideCard();
   const map = currentMap();
-  const ticket = map?.tickets.find((candidate) => candidate.number === number);
+  const ticket = map === null ? undefined : ticketAt(map, number);
   if (node === null || map === null || ticket === undefined || panFrom !== null) return;
   cardTimer = window.setTimeout(() => showCard(node, ticket, map), 220);
 }
@@ -625,7 +700,7 @@ function renderInspector(): void {
     return;
   }
 
-  const ticket = map.tickets.find((candidate) => candidate.number === selected) ?? null;
+  const ticket = ticketAt(map, selected) ?? null;
   const tab = ticket === null ? 'brief' : inspectorTab;
   const previous = els.inspector.querySelector('.insp-panel');
   const scrollTop = previous?.getAttribute('data-tab') === `${tab}:${String(selected)}` ? previous.scrollTop : 0;
@@ -707,6 +782,7 @@ function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
     </div>
     <h2 class="dtitle">${escapeHtml(ticket.title)}</h2>
     ${banner === null ? '' : `<div class="banner" style="--accent: var(${style.variable})">${icon(style.icon)}<span>${banner}</span></div>`}
+    ${isOutside(map, ticket.number) ? '<p class="hint">Not on this map, but linked to it by a dependency.</p>' : ''}
     <dl class="facts">
       <dt>Type</dt><dd>${icon(typeStyle(ticket.type).icon)}${escapeHtml(typeStyle(ticket.type).label)}</dd>
       <dt>Assignee</dt><dd>${ticket.assignee === null ? '<span class="none">unclaimed</span>' : escapeHtml(`@${ticket.assignee}`)}</dd>
@@ -844,7 +920,7 @@ function startableReason(ticket: Ticket): string | null {
 function selectedTicket(): Ticket | null {
   const map = currentMap();
   if (map === null || selected === null) return null;
-  return map.tickets.find((ticket) => ticket.number === selected) ?? null;
+  return ticketAt(map, selected) ?? null;
 }
 
 /**
@@ -1034,8 +1110,10 @@ els.mapMenu.addEventListener('click', (event) => {
   els.search.value = '';
   inspectorTab = 'brief';
   briefSection = 'destination';
-  setZoom(1);
-  els.canvasWrap.scrollTo(0, 0);
+  zoom = 1;
+  els.canvas.style.zoom = '1';
+  els.zoomReset.textContent = '100%';
+  homedMap = null;
   render();
 });
 
@@ -1186,7 +1264,7 @@ els.synced.addEventListener('click', () => {
     const map = currentMap();
     prototypeLoads.clear();
     if (map === null) return;
-    if (view === 'prototypes' || map.tickets.find((ticket) => ticket.number === selected)?.type === 'prototype') {
+    if (view === 'prototypes' || ticketAt(map, selected)?.type === 'prototype') {
       prototypesFor(map, true);
       if (view === 'prototypes') renderPrototypes();
       renderTicketPrototype();
@@ -1219,35 +1297,57 @@ need('view-map').addEventListener('click', () => setView('map'));
 need('view-table').addEventListener('click', () => setView('table'));
 need('view-prototypes').addEventListener('click', () => setView('prototypes'));
 
-/* zoom and pan */
+/* zoom and pan: the canvas sits in a padded stage, so it can be dragged anywhere and zoomed far out */
 
-function setZoom(next: number): void {
-  zoom = Math.min(1.6, Math.max(0.4, Math.round(next * 100) / 100));
-  els.canvas.style.transform = `scale(${String(zoom)})`;
+const MIN_ZOOM = 0.15;
+const MAX_ZOOM = 1.6;
+
+/** Where the stage's padding ends and the canvas starts, in scroll coordinates. */
+function stageOrigin(): { x: number; y: number } {
+  const style = getComputedStyle(els.canvasStage);
+  return { x: parseFloat(style.paddingLeft), y: parseFloat(style.paddingTop) };
+}
+
+/** Zoom keeping the canvas point under `at` (viewport pixels within the stage) where it is. */
+function setZoom(next: number, at?: { x: number; y: number }): void {
+  const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(next * 100) / 100));
+  const anchor = at ?? { x: els.canvasWrap.clientWidth / 2, y: els.canvasWrap.clientHeight / 2 };
+  const origin = stageOrigin();
+  const pointX = (els.canvasWrap.scrollLeft + anchor.x - origin.x) / zoom;
+  const pointY = (els.canvasWrap.scrollTop + anchor.y - origin.y) / zoom;
+  zoom = clamped;
+  els.canvas.style.zoom = String(zoom);
+  els.canvasWrap.scrollLeft = origin.x + pointX * zoom - anchor.x;
+  els.canvasWrap.scrollTop = origin.y + pointY * zoom - anchor.y;
   els.zoomReset.textContent = `${String(Math.round(zoom * 100))}%`;
   hideCard();
 }
 
-need('zoom-in').addEventListener('click', () => setZoom(zoom + 0.1));
-need('zoom-out').addEventListener('click', () => setZoom(zoom - 0.1));
-els.zoomReset.addEventListener('click', () => setZoom(1));
+/** Put the canvas's top-left corner at the view's top-left. */
+function homeCanvas(): void {
+  const origin = stageOrigin();
+  els.canvasWrap.scrollTo(origin.x, origin.y);
+}
+
+need('zoom-in').addEventListener('click', () => setZoom(zoom * 1.2));
+need('zoom-out').addEventListener('click', () => setZoom(zoom / 1.2));
+els.zoomReset.addEventListener('click', () => {
+  setZoom(1);
+  homeCanvas();
+});
 
 els.canvasWrap.addEventListener(
   'wheel',
   (event) => {
-    if (event.ctrlKey || event.metaKey) {
-      event.preventDefault();
-      setZoom(zoom + (event.deltaY > 0 ? -0.1 : 0.1));
+    event.preventDefault();
+    // A sideways swipe pans; any other wheel zooms around the pointer.
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+      els.canvasWrap.scrollLeft += event.deltaMode === 1 ? event.deltaX * 32 : event.deltaX;
       return;
     }
-    event.preventDefault();
-    let delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-    if (event.deltaMode === 1) {
-      delta *= 32;
-    } else if (event.deltaMode === 2) {
-      delta *= els.canvasWrap.clientWidth;
-    }
-    els.canvasWrap.scrollLeft += delta;
+    const rect = els.canvasWrap.getBoundingClientRect();
+    const step = event.deltaMode === 0 ? Math.min(Math.abs(event.deltaY), 100) / 100 : 1;
+    setZoom(zoom * (event.deltaY > 0 ? 1 - 0.15 * step : 1 + 0.15 * step), { x: event.clientX - rect.left, y: event.clientY - rect.top });
   },
   { passive: false },
 );

@@ -36,6 +36,18 @@ export interface MapSections {
   outOfScope: string;
 }
 
+/**
+ * An issue or pull request linked to the map's tickets by a dependency, but not itself on the map.
+ * A full ticket, so it opens in the panel like one; an open pull request counts as claimed by its author.
+ */
+export interface OutsideTicket extends Ticket {
+  pullRequest: boolean;
+  /** Tickets on the map that wait on it. The canvas draws these above the map. */
+  blocks: number[];
+  /** Tickets on the map it waits on. The canvas draws these below the map. */
+  waitsOn: number[];
+}
+
 export interface WayfinderMap {
   number: number;
   title: string;
@@ -44,6 +56,8 @@ export interface WayfinderMap {
   open: boolean;
   sections: MapSections;
   tickets: Ticket[];
+  /** Blockers named by this map's tickets that live outside the map, so the UI can still link them. */
+  outside: OutsideTicket[];
 }
 
 /** A prototype branch belonging to one of a map's tickets. */

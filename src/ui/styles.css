@@ -739,9 +739,14 @@ kbd {
   cursor: grabbing;
 }
 
+/* Room on every side so the map can be dragged anywhere, not only right and down. */
+.canvas-stage {
+  width: max-content;
+  padding: 60vh 60vw;
+}
+
 .canvas {
   position: relative;
-  transform-origin: 0 0;
 }
 
 .edges {
@@ -1036,6 +1041,18 @@ kbd {
   text-overflow: ellipsis;
 }
 
+a.pill {
+  text-decoration: none;
+}
+
+.pill.is-outside svg {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  opacity: 0.7;
+}
+
+a.pill:hover,
 button.pill:hover {
   border-color: var(--baseline);
   color: var(--text-primary);
@@ -2782,4 +2799,42 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* An issue off this map: state-coloured like any card, dashed so it never reads as part of the map. */
+.node.is-outside {
+  border-style: dashed;
+  border-left-style: solid;
+  text-decoration: none;
+}
+
+.node.is-outside .meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.node.is-outside .meta .i {
+  width: 11px;
+  height: 11px;
+}
+
+/* The strips above and below the map that hold those issues. */
+.band {
+  position: absolute;
+  left: 16px;
+  border: 1px dashed var(--baseline);
+  border-radius: 14px;
+  pointer-events: none;
+}
+
+.band-label {
+  position: absolute;
+  top: 8px;
+  left: 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }

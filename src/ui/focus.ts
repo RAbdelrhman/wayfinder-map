@@ -22,8 +22,8 @@ export interface Lineage {
   downstream: Set<number>;
 }
 
-/** The focused ticket's chain in both directions. Blockers off this map are ignored; cycles stop at the first repeat. */
-export function lineage(tickets: readonly Ticket[], focus: number): Lineage {
+/** The focused ticket's chain in both directions. Blockers not among `tickets` are ignored; cycles stop at the first repeat. */
+export function lineage(tickets: readonly Pick<Ticket, 'number' | 'blockedBy'>[], focus: number): Lineage {
   const onMap = new Set(tickets.map((ticket) => ticket.number));
   const blockers = new Map<number, number[]>();
   const dependents = new Map<number, number[]>();

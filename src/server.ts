@@ -258,7 +258,8 @@ export async function startServer({
 
   const find = (snapshot: MapSnapshot, mapNumber: number, ticketNumber: number): { map: WayfinderMap; ticket: MapTicket } | null => {
     const map = snapshot.maps.find((candidate) => candidate.number === mapNumber);
-    const ticket = map?.tickets.find((candidate) => candidate.number === ticketNumber);
+    // An issue off the map that one of its tickets links to opens and hands off like a ticket too.
+    const ticket = map?.tickets.find((candidate) => candidate.number === ticketNumber) ?? map?.outside.find((candidate) => candidate.number === ticketNumber);
     return map && ticket ? { map, ticket } : null;
   };
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { branchFacts, isOpenState, mapPrototypeBranches, plainGhOutput, sortPrototypes, ticketStateOf } from './github.js';
+import { branchFacts, isOpenState, mapPrototypeBranches, plainGhOutput, sortPrototypes, ticketStateOf, toOutsideTicket } from './github.js';
 import type { Prototype } from './types.js';
 
 describe('plainGhOutput', () => {
@@ -38,6 +38,52 @@ describe('ticketStateOf', () => {
 
   it('calls an unassigned, unblocked ticket the frontier', () => {
     expect(ticketStateOf(true, [], null)).toBe('frontier');
+  });
+});
+
+describe('toOutsideTicket', () => {
+  it('reads an off-map issue as a full ticket with its links', () => {
+    expect(
+      toOutsideTicket(
+        {
+          number: 80,
+          title: 'Prototype Home',
+          html_url: 'https://github.com/o/r/issues/80',
+          body: 'Build it.',
+          state: 'open',
+          labels: [{ name: 'wayfinder:task' }],
+        },
+        'o/r',
+        { blocks: [52], blockers: [{ number: 12, open: false }] },
+      ),
+    ).toEqual({
+      number: 80,
+      title: 'Prototype Home',
+      url: 'https://github.com/o/r/issues/80',
+      body: 'Build it.',
+      type: 'task',
+      labels: ['wayfinder:task'],
+      open: true,
+      assignee: null,
+      blockedBy: [12],
+      openBlockers: [],
+      state: 'frontier',
+      pullRequest: false,
+      blocks: [52],
+      waitsOn: [],
+    });
+  });
+
+  it('flags a pull request and builds its link when GitHub gave none', () => {
+    const pr = toOutsideTicket({ number: 81, title: 'Views', state: 'CLOSED', pull_request: {} }, 'o/r');
+    expect(pr).toMatchObject({ url: 'https://github.com/o/r/pull/81', open: false, pullRequest: true, state: 'done' });
+  });
+
+  it('derives its state the way a ticket does', () => {
+    const base = { number: 9, title: 't', state: 'open' };
+    expect(toOutsideTicket(base, 'o/r', { blockers: [{ number: 3, open: true }] }).state).toBe('blocked');
+    expect(toOutsideTicket({ ...base, assignee: { login: 'me' } }, 'o/r').state).toBe('claimed');
+    expect(toOutsideTicket({ ...base, pull_request: {}, user: { login: 'author' } }, 'o/r').state).toBe('claimed');
   });
 });
 

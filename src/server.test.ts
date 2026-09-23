@@ -74,6 +74,7 @@ const sampleMap: WayfinderMap = {
     outOfScope: '',
   },
   tickets: [sampleTicket],
+  outside: [],
 };
 
 describe('repository-scoped server', () => {
