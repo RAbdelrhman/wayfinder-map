@@ -73,6 +73,10 @@ describe('Jump to destinations', () => {
     expect(byTitle[0]?.label).toContain('Search tickets');
   });
 
+  it('does not treat a lone hash as an empty number prefix', () => {
+    expect(createJumpDestinations([], [SNAPSHOT], '#')).toEqual([]);
+  });
+
   it('returns no destinations for an empty query and caps large result sets', () => {
     const manyMaps = Array.from({ length: 80 }, (_, index) => map(index + 1, `Work map ${String(index + 1)}`));
     const manySnapshots: MapSnapshot[] = [{ ...SNAPSHOT, maps: manyMaps }];

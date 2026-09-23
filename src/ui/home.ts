@@ -729,6 +729,8 @@ async function renderNewMap(): Promise<void> {
     }
     try {
       const snap = await getJson<MapSnapshot>(scopedApiPath(normalized, 'snapshot'));
+      if (selectedRepo() !== normalized) return;
+      navigation?.setSnapshot(snap, null);
       if (snap.maps.length > 0) {
         existingMapsHint.hidden = false;
         existingMapsList.innerHTML = snap.maps

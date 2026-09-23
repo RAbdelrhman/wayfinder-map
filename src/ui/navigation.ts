@@ -61,7 +61,7 @@ export function createJumpDestinations(
   query: string,
 ): JumpDestination[] {
   const needle = query.trim().toLocaleLowerCase();
-  if (needle.length === 0) return [];
+  if (needle.length === 0 || needle === '#') return [];
   const normalizedNeedle = needle.replace(/^#/, '');
   const destinations: JumpDestination[] = [];
 
@@ -81,7 +81,8 @@ export function createJumpDestinations(
     for (const map of snapshot.maps) {
       const mapHref = mapPath(snapshot.repo, map.number);
       const mapSearch = `${snapshot.repo} #${String(map.number)} ${map.title}`;
-      if (mapSearch.toLocaleLowerCase().includes(needle) || String(map.number).startsWith(normalizedNeedle)) {
+      const mapNumberMatches = normalizedNeedle.length > 0 && String(map.number).startsWith(normalizedNeedle);
+      if (mapSearch.toLocaleLowerCase().includes(needle) || mapNumberMatches) {
         destinations.push({
           kind: 'map',
           label: map.title,
@@ -93,7 +94,8 @@ export function createJumpDestinations(
 
       for (const ticket of map.tickets) {
         const ticketSearch = `${snapshot.repo} ${map.title} #${String(ticket.number)} ${ticket.title}`;
-        if (ticketSearch.toLocaleLowerCase().includes(needle) || String(ticket.number).startsWith(normalizedNeedle)) {
+        const ticketNumberMatches = normalizedNeedle.length > 0 && String(ticket.number).startsWith(normalizedNeedle);
+        if (ticketSearch.toLocaleLowerCase().includes(needle) || ticketNumberMatches) {
           destinations.push({
             kind: 'ticket',
             label: `#${String(ticket.number)} ${ticket.title}`,
@@ -669,7 +671,6 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   setShellExpanded(expanded, false);
   renderTopbar();
   void loadRepositories();
-  if (currentRepo !== null && page !== 'map') void getMapSnapshot(currentRepo);
 
   return {
     setSnapshot(snapshot, mapNumber = currentMapNumber) {
@@ -684,7 +685,6 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     setCurrentRepo(repo) {
       currentRepo = repo;
       if (repo !== null && (page === 'repository' || page === 'map' || page === 'new-map')) expandedRepos.add(repo);
-      if (repo !== null && page !== 'map') void getMapSnapshot(repo);
       render();
     },
     setActiveView(view) {
