@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { Config } from './config.js';
 import type { HomeState } from './home.js';
+import { DEFAULT_PROGRESS_SETTINGS, ProgressError } from './progress.js';
+import type { ProgressState } from './progress.js';
 import { DEFAULT_TEMPLATE, startServer } from './server.js';
 import type { ServerT3 } from './server.js';
 import type { RepositoryFetcher } from './repositoryStore.js';
@@ -754,5 +756,38 @@ describe('local clone for a hand-off', () => {
         await new Promise<void>((resolve) => running.server.close(() => resolve()));
       }
     });
+  });
+});
+
+describe('progress panel endpoints', () => {
+  it('serves the panel state and saves a choice for the signed-in user', async () => {
+    const state: ProgressState = { login: 'octo', settings: DEFAULT_PROGRESS_SETTINGS, days: [0, 2], streak: 1, warning: null };
+    const save = vi.fn(async (patch: unknown) => {
+      if (typeof patch === 'object' && patch !== null && 'goal' in patch && patch.goal === 4) throw new ProgressError(400, 'Choose a goal of 3, 5, 8.');
+      return { style: 'hex', goal: 5 } as const;
+    });
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      homeLoader: async () => home,
+      progress: { state: async () => state, save },
+    });
+
+    try {
+      await expect(fetch(`${running.url}/api/progress`).then((response) => response.json())).resolves.toEqual(state);
+      const post = (body: unknown) => fetch(`${running.url}/api/progress/settings`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const saved = await post({ style: 'hex' });
+      expect(saved.status).toBe(200);
+      await expect(saved.json()).resolves.toEqual({ style: 'hex', goal: 5 });
+      expect(save).toHaveBeenCalledWith({ style: 'hex' });
+      const rejected = await post({ goal: 4 });
+      expect(rejected.status).toBe(400);
+      await expect(rejected.json()).resolves.toEqual({ error: 'Choose a goal of 3, 5, 8.' });
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
   });
 });

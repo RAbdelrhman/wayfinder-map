@@ -16,6 +16,8 @@ import { AutoRefresh } from './autoRefresh.js';
 import { draftToMapPath, isNewMapHandOff, newMapPath, rememberNewMapRetry } from './newMap.js';
 import type { NewMapHandOff } from './newMap.js';
 import { renderNewMapPage } from './newMapPage.js';
+import { mountProgressPanel } from './progress.js';
+import type { ProgressSettings, ProgressState } from '../progress.js';
 
 const RECENT_KEY = 'wayfinder-map:recent-repositories';
 
@@ -439,6 +441,7 @@ async function renderHome(refresh: boolean): Promise<void> {
         <p>Pick a repository, then open one of its maps.</p>
       </div>
     </div>
+    <div class="home-cols"><div class="home-main">
     ${accountPanel(state)}${warning}
     ${drafts.length === 0 ? '' : `<section class="section"><div class="section-head"><h2>Being planned</h2></div><div class="map-grid">${drafts.map(draftMapCard).join('')}</div></section>`}
     <form class="field" id="repo-entry">
@@ -465,6 +468,7 @@ async function renderHome(refresh: boolean): Promise<void> {
           : `<div class="repo-grid">${discovered.map(repositoryLink).join('')}</div>`
       }
     </section>
+    </div><div class="home-side" id="progress-host"></div></div>
     <footer class="version">Wayfinder v${escapeHtml(state.version)}</footer>`);
 
   const form = need<HTMLFormElement>('repo-entry');
@@ -481,6 +485,7 @@ async function renderHome(refresh: boolean): Promise<void> {
     window.location.assign(repoPath(repo));
   });
   bindRepoPicker(need<HTMLInputElement>('repo-name'), need<HTMLUListElement>('repo-menu'));
+  void renderProgress(need('progress-host'));
   document.getElementById('account-switch')?.addEventListener('change', (event) => {
     const select = event.currentTarget as HTMLSelectElement;
     void run(async () => {
@@ -494,6 +499,17 @@ async function renderHome(refresh: boolean): Promise<void> {
       paint('<div class="empty"><strong>Wayfinder stopped</strong><p>Your GitHub CLI account is still signed in.</p></div>');
     });
   });
+}
+
+/** Home's progress panel loads on its own, so a slow GitHub search never holds the page. */
+async function renderProgress(host: HTMLElement): Promise<void> {
+  try {
+    const state = await getJson<ProgressState>('/api/progress');
+    if (!host.isConnected) return;
+    mountProgressPanel(host, state, (patch) => postJson<ProgressSettings>('/api/progress/settings', patch), (message) => toast(message));
+  } catch (error) {
+    host.innerHTML = `<div class="card progress-panel"><p class="eyebrow">Fog cleared</p><p class="hint failure">${escapeHtml(error instanceof Error ? error.message : String(error))}</p></div>`;
+  }
 }
 
 const MENU_LIMIT = 50;
