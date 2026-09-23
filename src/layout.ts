@@ -1,5 +1,8 @@
 import type { Ticket } from './types.js';
 
+/** All the layout needs of a card: its number and what it waits on. */
+export type GraphTicket = Pick<Ticket, 'number' | 'blockedBy'>;
+
 export interface LayoutOptions {
   nodeWidth: number;
   nodeHeight: number;
@@ -48,7 +51,7 @@ export interface Layout {
  * counting only blockers that are on this map. Cycles stop at the first repeat, so a
  * broken dependency graph still lays out instead of hanging.
  */
-export function assignLayers(tickets: readonly Ticket[]): Map<number, number> {
+export function assignLayers(tickets: readonly GraphTicket[]): Map<number, number> {
   const byNumber = new Map(tickets.map((ticket) => [ticket.number, ticket]));
   const layers = new Map<number, number>();
 
@@ -73,11 +76,11 @@ export function assignLayers(tickets: readonly Ticket[]): Map<number, number> {
 }
 
 /** Place tickets left to right by dependency depth, top to bottom in map order. */
-export function layoutTickets(tickets: readonly Ticket[], options: LayoutOptions = DEFAULT_LAYOUT): Layout {
+export function layoutTickets(tickets: readonly GraphTicket[], options: LayoutOptions = DEFAULT_LAYOUT): Layout {
   const { nodeWidth, nodeHeight, gapX, gapY, rowsPerColumn, padding } = options;
   const layers = assignLayers(tickets);
 
-  const byLayer = new Map<number, Ticket[]>();
+  const byLayer = new Map<number, GraphTicket[]>();
   for (const ticket of tickets) {
     const layer = layers.get(ticket.number) ?? 0;
     const bucket = byLayer.get(layer) ?? [];

@@ -1,8 +1,8 @@
 import { DEFAULT_LAYOUT, layoutTickets } from '../layout.js';
-import type { PositionedNode } from '../layout.js';
+import type { GraphTicket, PositionedNode } from '../layout.js';
 import { prototypeBranch } from '../prompt.js';
 import { TICKET_TYPES } from '../types.js';
-import type { MapSections, MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
+import type { MapSections, MapSnapshot, OutsideTicket, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
 import {
   TIERS,
   TIER_HINT,
@@ -351,6 +351,28 @@ function nodeHtml(ticket: Ticket, position: PositionedNode): string {
   </button>`;
 }
 
+/** A blocker that lives off this map: drawn as a card, but it opens on GitHub rather than in the panel. */
+function outsideNodeHtml(outside: OutsideTicket, position: PositionedNode): string {
+  const accent = outside.open ? '--text-muted' : STATE_STYLE.done.variable;
+  const kind = outside.pullRequest ? 'PR' : 'Issue';
+  return `<a class="node is-outside${outside.open ? '' : ' is-done'}" href="${escapeHtml(outside.url)}" target="_blank" rel="noreferrer"
+    data-number="${String(outside.number)}"
+    style="--accent: var(${accent}); left:${String(position.x)}px; top:${String(position.y)}px; width:${String(position.width)}px; height:${String(position.height)}px"
+    aria-label="${escapeHtml(`${kind} #${String(outside.number)} ${outside.title}, not on this map, opens on GitHub`)}">
+    <span class="node-top">
+      <span class="num">#${String(outside.number)}</span>
+      <span class="chip">${escapeHtml(`${kind} · ${outside.open ? 'open' : 'closed'}`)}${icon(icons.EXTERNAL)}</span>
+    </span>
+    <span class="title">${escapeHtml(outside.title)}</span>
+    <span class="meta">Not on this map</span>
+  </a>`;
+}
+
+/** The cards the canvas draws: the map's tickets, then the blockers that live off it. */
+function graphTickets(map: WayfinderMap): GraphTicket[] {
+  return [...map.tickets, ...map.outside.map((outside) => ({ number: outside.number, blockedBy: [] }))];
+}
+
 function renderGraph(): void {
   els.canvasWrap.hidden = false;
   els.tableWrap.hidden = true;
@@ -364,8 +386,9 @@ function renderGraph(): void {
     return;
   }
 
-  const layout = layoutTickets(map.tickets, DEFAULT_LAYOUT);
+  const layout = layoutTickets(graphTickets(map), DEFAULT_LAYOUT);
   const byNumber = new Map(map.tickets.map((ticket) => [ticket.number, ticket]));
+  const outsideByNumber = new Map(map.outside.map((outside) => [outside.number, outside]));
   const positions = new Map(layout.nodes.map((node) => [node.number, node]));
 
   els.canvas.style.width = `${String(layout.width)}px`;
@@ -374,7 +397,9 @@ function renderGraph(): void {
   els.nodes.innerHTML = layout.nodes
     .map((position) => {
       const ticket = byNumber.get(position.number);
-      return ticket ? nodeHtml(ticket, position) : '';
+      if (ticket) return nodeHtml(ticket, position);
+      const outside = outsideByNumber.get(position.number);
+      return outside ? outsideNodeHtml(outside, position) : '';
     })
     .join('');
 
@@ -554,11 +579,14 @@ function syncHighlights(): void {
   const map = currentMap();
   if (map === null) return;
   const byNumber = new Map(map.tickets.map((ticket) => [ticket.number, ticket]));
+  const matches = (ticket: Ticket): boolean => matchesFilter(ticket, filter) && matchesQuery(ticket, query);
   const shown = (number: number): boolean => {
     const ticket = byNumber.get(number);
-    return ticket !== undefined && matchesFilter(ticket, filter) && matchesQuery(ticket, query);
+    // A blocker off the map stays lit while anything it blocks does.
+    if (ticket === undefined) return map.tickets.some((other) => other.blockedBy.includes(number) && matches(other));
+    return matches(ticket);
   };
-  const chain: Lineage | null = hovered === null ? null : lineage(map.tickets, hovered);
+  const chain: Lineage | null = hovered === null ? null : lineage(graphTickets(map), hovered);
   const related = (number: number): boolean =>
     chain === null || number === hovered || chain.upstream.has(number) || chain.downstream.has(number);
 
@@ -1068,7 +1096,8 @@ els.filters.addEventListener('click', (event) => {
 
 els.nodes.addEventListener('click', (event) => {
   const node = (event.target as HTMLElement).closest<HTMLElement>('.node');
-  if (node === null) return;
+  // Off-map cards are links; let the browser open them.
+  if (node === null || node.classList.contains('is-outside')) return;
   select(Number(node.dataset['number']));
 });
 

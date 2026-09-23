@@ -72,6 +72,13 @@ describe('layoutTickets', () => {
     expect(edges).toEqual([{ from: 1, to: 2 }]);
   });
 
+  it('lays out an off-map blocker as a card left of what it blocks', () => {
+    const { nodes, edges } = layoutTickets([ticket(1), ticket(2, [80]), { number: 80, blockedBy: [] }], DEFAULT_LAYOUT);
+    expect(nodes.find((node) => node.number === 80)?.layer).toBe(0);
+    expect(nodes.find((node) => node.number === 2)?.layer).toBe(1);
+    expect(edges).toEqual([{ from: 80, to: 2 }]);
+  });
+
   it('sizes the canvas around the nodes', () => {
     const { width, height } = layoutTickets([ticket(1)], DEFAULT_LAYOUT);
     expect(width).toBe(DEFAULT_LAYOUT.padding * 2 + DEFAULT_LAYOUT.nodeWidth);

@@ -2795,3 +2795,16 @@ textarea.input {
   align-items: center;
   gap: 8px;
 }
+
+/* A blocker that lives off this map: a dashed ghost of a card that links out to GitHub. */
+.node.is-outside {
+  border-style: dashed;
+  border-left-style: solid;
+  background: color-mix(in srgb, var(--surface-1) 55%, transparent);
+  text-decoration: none;
+}
+
+.node.is-outside .num,
+.node.is-outside .title {
+  color: var(--text-secondary);
+}
