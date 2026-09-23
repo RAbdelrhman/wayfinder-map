@@ -739,9 +739,14 @@ kbd {
   cursor: grabbing;
 }
 
+/* Room on every side so the map can be dragged anywhere, not only right and down. */
+.canvas-stage {
+  width: max-content;
+  padding: 60vh 60vw;
+}
+
 .canvas {
   position: relative;
-  transform-origin: 0 0;
 }
 
 .edges {
@@ -2796,15 +2801,40 @@ textarea.input {
   gap: 8px;
 }
 
-/* A blocker that lives off this map: a dashed ghost of a card that links out to GitHub. */
+/* An issue off this map: state-coloured like any card, dashed so it never reads as part of the map. */
 .node.is-outside {
   border-style: dashed;
   border-left-style: solid;
-  background: color-mix(in srgb, var(--surface-1) 55%, transparent);
   text-decoration: none;
 }
 
-.node.is-outside .num,
-.node.is-outside .title {
-  color: var(--text-secondary);
+.node.is-outside .meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.node.is-outside .meta .i {
+  width: 11px;
+  height: 11px;
+}
+
+/* The strips above and below the map that hold those issues. */
+.band {
+  position: absolute;
+  left: 16px;
+  border: 1px dashed var(--baseline);
+  border-radius: 14px;
+  pointer-events: none;
+}
+
+.band-label {
+  position: absolute;
+  top: 8px;
+  left: 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }

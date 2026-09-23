@@ -42,20 +42,31 @@ describe('ticketStateOf', () => {
 });
 
 describe('toOutsideTicket', () => {
-  it('keeps the link, title and state of an off-map issue', () => {
+  it('keeps the link, title and links of an off-map issue', () => {
     expect(
-      toOutsideTicket({ number: 80, title: 'Prototype Home', html_url: 'https://github.com/o/r/issues/80', state: 'open' }, 'o/r'),
-    ).toEqual({ number: 80, title: 'Prototype Home', url: 'https://github.com/o/r/issues/80', open: true, pullRequest: false });
+      toOutsideTicket({ number: 80, title: 'Prototype Home', html_url: 'https://github.com/o/r/issues/80', state: 'open' }, 'o/r', [52]),
+    ).toEqual({
+      number: 80,
+      title: 'Prototype Home',
+      url: 'https://github.com/o/r/issues/80',
+      open: true,
+      pullRequest: false,
+      state: 'frontier',
+      blocks: [52],
+      waitsOn: [],
+    });
   });
 
   it('flags a pull request and builds its link when GitHub gave none', () => {
-    expect(toOutsideTicket({ number: 81, title: 'Views', state: 'CLOSED', pull_request: {} }, 'o/r')).toEqual({
-      number: 81,
-      title: 'Views',
-      url: 'https://github.com/o/r/pull/81',
-      open: false,
-      pullRequest: true,
-    });
+    const pr = toOutsideTicket({ number: 81, title: 'Views', state: 'CLOSED', pull_request: {} }, 'o/r');
+    expect(pr).toMatchObject({ url: 'https://github.com/o/r/pull/81', open: false, pullRequest: true, state: 'done' });
+  });
+
+  it('derives its state the way a ticket does', () => {
+    const base = { number: 9, title: 't', state: 'open' };
+    expect(toOutsideTicket({ ...base, issue_dependencies_summary: { blocked_by: 1 } }, 'o/r').state).toBe('blocked');
+    expect(toOutsideTicket({ ...base, assignee: { login: 'me' } }, 'o/r').state).toBe('claimed');
+    expect(toOutsideTicket({ ...base, pull_request: {}, user: { login: 'author' } }, 'o/r').state).toBe('claimed');
   });
 });
 

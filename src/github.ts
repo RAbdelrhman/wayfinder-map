@@ -73,7 +73,8 @@ interface RawIssue {
   assignee?: { login?: string } | null;
   assignees?: Array<{ login?: string }> | null;
   labels?: Array<string | { name?: string }> | null;
-  issue_dependencies_summary?: { blocked_by?: number } | null;
+  user?: { login?: string } | null;
+  issue_dependencies_summary?: { blocked_by?: number; total_blocking?: number } | null;
   /** Present when the issue is really a pull request. */
   pull_request?: unknown;
 }
@@ -98,14 +99,21 @@ function issueUrl(raw: RawIssue, repo: string): string {
   return raw.html_url ?? raw.url ?? `https://github.com/${repo}/issues/${raw.number}`;
 }
 
-export function toOutsideTicket(raw: RawIssue, repo: string): OutsideTicket {
+export function toOutsideTicket(raw: RawIssue, repo: string, blocks: number[] = [], waitsOn: number[] = []): OutsideTicket {
   const pullRequest = raw.pull_request !== undefined && raw.pull_request !== null;
+  const open = isOpenState(raw.state);
+  const openBlockerCount = raw.issue_dependencies_summary?.blocked_by ?? 0;
+  const holder = raw.assignee?.login ?? raw.assignees?.[0]?.login ?? (pullRequest ? raw.user?.login : undefined) ?? null;
   return {
     number: raw.number,
     title: raw.title,
     url: raw.html_url ?? `https://github.com/${repo}/${pullRequest ? 'pull' : 'issues'}/${raw.number}`,
-    open: isOpenState(raw.state),
+    open,
     pullRequest,
+    // The summary only counts blockers, so stand in a placeholder number for each.
+    state: ticketStateOf(open, Array.from({ length: openBlockerCount }, () => 0), holder),
+    blocks,
+    waitsOn,
   };
 }
 
@@ -166,6 +174,15 @@ async function fetchBlockers(repo: string, raw: RawIssue): Promise<Blocker[]> {
   }
   // The body line names numbers only, so the state comes from the map's own tickets.
   return parseBlockedByLine(raw.body ?? '').map((number) => ({ number, open: null }));
+}
+
+/** Issues `number` blocks. Empty when dependencies are unavailable. */
+async function fetchBlocking(repo: string, number: number): Promise<RawIssue[]> {
+  try {
+    return await ghJson<RawIssue[]>(['api', `repos/${repo}/issues/${number}/dependencies/blocking`]);
+  } catch {
+    return [];
+  }
 }
 
 interface Blocker {
@@ -256,19 +273,47 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
 
     const blockerLists = await pool(children, concurrency, (child) => fetchBlockers(repo, child));
 
-    // Blockers off this map: reuse what the dependency read returned, look up the rest.
+    // Issues off this map on either side of a dependency: blockers above it, dependents below.
+    const onMap = new Set(children.map((child) => child.number));
     const outsideRaw = new Map<number, RawIssue | null>();
-    for (const blocker of blockerLists.flat()) {
-      if (openByNumber.has(blocker.number)) continue;
-      if (blocker.raw !== undefined || !outsideRaw.has(blocker.number)) outsideRaw.set(blocker.number, blocker.raw ?? null);
-    }
+    const blocks = new Map<number, number[]>();
+    const waitsOn = new Map<number, number[]>();
+    const dependentsOnMap = new Map<number, number>();
+    const link = (store: Map<number, number[]>, key: number, value: number): void => {
+      store.set(key, [...(store.get(key) ?? []), value]);
+    };
+
+    children.forEach((child, index) => {
+      for (const blocker of blockerLists[index] ?? []) {
+        if (onMap.has(blocker.number)) {
+          dependentsOnMap.set(blocker.number, (dependentsOnMap.get(blocker.number) ?? 0) + 1);
+          continue;
+        }
+        link(blocks, blocker.number, child.number);
+        if (blocker.raw !== undefined || !outsideRaw.has(blocker.number)) outsideRaw.set(blocker.number, blocker.raw ?? null);
+      }
+    });
+
+    // Only ask the tickets whose blocking count says a dependent lives off the map.
+    const blockingElsewhere = children.filter(
+      (child) => (child.issue_dependencies_summary?.total_blocking ?? 0) > (dependentsOnMap.get(child.number) ?? 0),
+    );
+    const blockingLists = await pool(blockingElsewhere, concurrency, (child) => fetchBlocking(repo, child.number));
+    blockingElsewhere.forEach((child, index) => {
+      for (const dependent of blockingLists[index] ?? []) {
+        if (onMap.has(dependent.number)) continue;
+        link(waitsOn, dependent.number, child.number);
+        outsideRaw.set(dependent.number, dependent);
+      }
+    });
+
     const missing = [...outsideRaw].filter(([, raw]) => raw === null).map(([number]) => number);
     for (const raw of await pool(missing, concurrency, (number) => fetchIssue(repo, number))) {
       if (raw !== null) outsideRaw.set(raw.number, raw);
     }
     const outside = [...outsideRaw.values()]
       .filter((raw): raw is RawIssue => raw !== null)
-      .map((raw) => toOutsideTicket(raw, repo));
+      .map((raw) => toOutsideTicket(raw, repo, blocks.get(raw.number) ?? [], waitsOn.get(raw.number) ?? []));
     for (const ticket of outside) openByNumber.set(ticket.number, ticket.open);
 
     const tickets = children.map((child, index): Ticket => {
