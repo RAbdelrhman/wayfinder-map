@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { branchFacts, isOpenState, mapPrototypeBranches, sortPrototypes, ticketStateOf } from './github.js';
+import { branchFacts, isOpenState, mapPrototypeBranches, plainGhOutput, sortPrototypes, ticketStateOf } from './github.js';
 import type { Prototype } from './types.js';
+
+describe('plainGhOutput', () => {
+  it('removes terminal colors around JSON objects and arrays', () => {
+    expect(JSON.parse(plainGhOutput('\u001b[1;37m{\u001b[0m"ok":true}\u001b[0m'))).toEqual({ ok: true });
+    expect(JSON.parse(plainGhOutput('\u001b[1;37m[\u001b[0m1]\u001b[0m'))).toEqual([1]);
+  });
+
+  it('keeps plain output unchanged', () => {
+    expect(plainGhOutput('{"ok":true}\n')).toBe('{"ok":true}\n');
+  });
+});
 
 describe('isOpenState', () => {
   it('reads both the gh issue list and gh api spellings', () => {

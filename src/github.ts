@@ -8,6 +8,14 @@ import type { Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '.
 
 const run = promisify(execFile);
 
+const ghEnv: NodeJS.ProcessEnv = { ...process.env, NO_COLOR: '1' };
+delete ghEnv.GH_FORCE_TTY;
+
+/** GitHub CLI can still decorate piped output when launched from a terminal app. */
+export function plainGhOutput(output: string): string {
+  return output.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
 export class GhError extends Error {
   constructor(
     message: string,
@@ -20,13 +28,13 @@ export class GhError extends Error {
 
 /** Run `gh` and return stdout. Throws GhError with gh's own stderr, which is usually the useful part. */
 export async function gh(args: string[]): Promise<string> {
-  return (await ghBytes(args)).toString('utf8');
+  return plainGhOutput((await ghBytes(args)).toString('utf8'));
 }
 
 /** `gh` stdout as raw bytes, for files that may not be text. */
 export async function ghBytes(args: string[]): Promise<Buffer> {
   try {
-    const { stdout } = await run('gh', args, { maxBuffer: 64 * 1024 * 1024, windowsHide: true, encoding: 'buffer' });
+    const { stdout } = await run('gh', args, { maxBuffer: 64 * 1024 * 1024, windowsHide: true, encoding: 'buffer', env: ghEnv });
     return stdout;
   } catch (error) {
     const stderr = (error as { stderr?: unknown }).stderr;
@@ -45,8 +53,9 @@ export async function currentRepo(cwd: string): Promise<string> {
   const { stdout } = await run('gh', ['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'], {
     cwd,
     windowsHide: true,
+    env: ghEnv,
   });
-  return stdout.trim();
+  return plainGhOutput(stdout).trim();
 }
 
 /** `gh issue list` reports OPEN/CLOSED, `gh api` reports open/closed. Accept both. */
