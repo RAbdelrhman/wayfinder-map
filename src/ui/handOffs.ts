@@ -4,6 +4,7 @@ import { newMapPath, rememberNewMapRetry } from './newMap.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
+import { clickedOutside } from './outsideClick.js';
 
 export type HandOffUiState = 'starting' | 'working' | 'needs-you' | 'pr-ready' | 'failed';
 
@@ -374,7 +375,7 @@ export function mountHandOffs(): HandOffSurface {
     if (link !== null) void acknowledge(link.dataset['handoffAck'] ?? '').catch(() => undefined);
   });
   document.addEventListener('click', (event) => {
-    if (open && event.target instanceof Node && !anchor.contains(event.target)) close(false);
+    if (open && clickedOutside(event, anchor)) close(false);
   });
   document.addEventListener('keydown', (event) => {
     if (open && event.key === 'Escape') {

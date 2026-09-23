@@ -10,7 +10,8 @@
   --plane: #f4f4f1;
   --text-primary: #0b0b0b;
   --text-secondary: #52514e;
-  --text-muted: #898781;
+  /* 4.5:1 or better on every light surface, down to the #f0f0ef segment track. */
+  --text-muted: #6b6a65;
   --gridline: #dcdbd3;
   --baseline: #c3c2b7;
   --hairline: rgba(11, 11, 11, 0.1);
@@ -19,6 +20,10 @@
   --shadow-segment: 0 1px 2px rgba(0, 0, 0, 0.2), 0 0 0 1px var(--hairline);
   --shadow-preview: 0 2px 8px rgba(0, 0, 0, 0.04);
   --on-accent: #fff;
+  /* The primary button's fill: the claimed blue, deep enough for white 13px text in both themes. */
+  --accent-fill: #1f6bc8;
+  /* Claimed blue as text or links: the light hue is 4.3:1 on the page, so text takes the fill shade. */
+  --accent-text: #1f6bc8;
   --font-page-title: 25px;
 
   --state-done: #898781;
@@ -38,13 +43,14 @@
     --plane: #0d0d0d;
     --text-primary: #ffffff;
     --text-secondary: #c3c2b7;
-    --text-muted: #898781;
+    --text-muted: #9a9892;
     --gridline: #2c2c2a;
     --baseline: #383835;
     --hairline: rgba(255, 255, 255, 0.1);
     --wash: rgba(255, 255, 255, 0.06);
     --shadow: 0 16px 48px -18px rgba(0, 0, 0, 0.7);
     --state-claimed: #3987e5;
+    --accent-text: #3987e5;
     --state-failed: #ff8782;
     --handoff-working: #7fb3ff;
     --handoff-needs-you: #f6c453;
@@ -59,13 +65,14 @@
   --plane: #0d0d0d;
   --text-primary: #ffffff;
   --text-secondary: #c3c2b7;
-  --text-muted: #898781;
+  --text-muted: #9a9892;
   --gridline: #2c2c2a;
   --baseline: #383835;
   --hairline: rgba(255, 255, 255, 0.1);
   --wash: rgba(255, 255, 255, 0.06);
   --shadow: 0 16px 48px -18px rgba(0, 0, 0, 0.7);
   --state-claimed: #3987e5;
+  --accent-text: #3987e5;
   --state-failed: #ff8782;
   --handoff-working: #7fb3ff;
   --handoff-needs-you: #f6c453;
@@ -100,7 +107,7 @@ button:disabled {
 }
 
 a {
-  color: var(--state-claimed);
+  color: var(--accent-text);
 }
 
 [hidden] {
@@ -186,8 +193,8 @@ code {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  background: var(--state-claimed);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--on-accent);
   border: 0;
   border-radius: 8px;
   padding: 7px 14px;
@@ -2114,7 +2121,7 @@ textarea.input {
 
 .draft-map-badge {
   border-color: color-mix(in srgb, var(--state-frontier) 32%, var(--hairline));
-  color: var(--state-frontier);
+  color: var(--handoff-pr-ready);
 }
 
 .draft-handoff,
@@ -2322,7 +2329,7 @@ textarea.input {
 }
 
 .proto-tile-body h2 a:hover {
-  color: var(--state-claimed);
+  color: var(--accent-text);
 }
 
 .proto-gist {
@@ -2352,7 +2359,7 @@ textarea.input {
 
 .proto-tile-foot a:hover,
 .proto-tile-foot .linkish:hover {
-  color: var(--state-claimed);
+  color: var(--accent-text);
 }
 
 /* In the narrow ticket panel the tile sits flush in its section. */
@@ -3073,12 +3080,12 @@ textarea.input {
 
 .new-map-clone-chip.is-ready {
   border-color: color-mix(in srgb, var(--state-frontier) 30%, var(--hairline));
-  color: var(--state-frontier);
+  color: var(--handoff-pr-ready);
 }
 
 .new-map-clone-chip.is-warning {
   border-color: color-mix(in srgb, var(--state-blocked) 34%, var(--hairline));
-  color: var(--state-blocked);
+  color: var(--handoff-needs-you);
 }
 
 .new-map-toolbar-spacer {
@@ -3133,7 +3140,7 @@ textarea.input {
 }
 
 .new-map-clone-message.is-error {
-  color: var(--state-blocked);
+  color: var(--state-failed);
 }
 
 .new-map-clone-controls,
@@ -3170,14 +3177,16 @@ textarea.input {
 .new-map-examples {
   display: grid;
   gap: 4px;
-  margin-top: 24px;
+  margin-top: 28px;
 }
 
 .new-map-examples h2 {
-  margin: 0 0 4px;
+  margin: 0 0 2px 9px;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .new-map-example {
@@ -3191,7 +3200,7 @@ textarea.input {
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
   text-align: left;
   cursor: pointer;
@@ -3355,7 +3364,7 @@ textarea.input {
 
 .draft-handoff-mark.is-active {
   border-color: color-mix(in srgb, var(--state-claimed) 36%, var(--hairline));
-  color: var(--state-claimed);
+  color: var(--accent-text);
 }
 
 .draft-handoff-spinner {
@@ -3466,7 +3475,9 @@ textarea.input {
   transition: opacity 120ms ease;
 }
 
-.decision-variant.is-dim {
+.decision-variant.is-dim .decision-variant-image,
+.decision-variant.is-dim .decision-variant-page,
+.decision-variant.is-dim .decision-variant-fallback {
   opacity: 0.55;
 }
 
@@ -4670,7 +4681,7 @@ textarea.input {
 }
 
 .nav-current-check {
-  color: var(--state-claimed);
+  color: var(--accent-text);
   font-weight: 700;
 }
 
@@ -4921,7 +4932,7 @@ textarea.input {
 }
 
 .wf-label .linkish {
-  color: var(--state-claimed);
+  color: var(--accent-text);
 }
 
 .wf-icon-btn {
@@ -5278,7 +5289,7 @@ textarea.input {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--state-claimed);
+  color: var(--accent-text);
 }
 
 .wf-fly .acts .i {
@@ -5395,7 +5406,7 @@ textarea.input {
   background: none;
   font: inherit;
   font-size: 12.5px;
-  color: var(--state-claimed);
+  color: var(--accent-text);
   cursor: pointer;
 }
 
@@ -5612,7 +5623,8 @@ textarea.input {
   flex: none;
 }
 
-.wf-map.is-closed {
+/* Only the graph fades: the card's text keeps its contrast. */
+.wf-map.is-closed .graph {
   opacity: 0.75;
 }
 
@@ -5911,12 +5923,12 @@ textarea.input {
   font-weight: 600;
 }
 
-.wf-var.is-dim {
+.wf-var.is-dim .wf-frame {
   opacity: 0.55;
 }
 
-.wf-var.is-dim:hover,
-.wf-var.is-dim:focus-visible {
+.wf-var.is-dim:hover .wf-frame,
+.wf-var.is-dim:focus-visible .wf-frame {
   opacity: 1;
 }
 
