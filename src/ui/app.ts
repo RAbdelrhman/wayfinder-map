@@ -30,7 +30,7 @@ import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { mapPath, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing, repoIconHtml } from './chrome.js';
+import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindAccountMark, bindTheme, bindUpdater, allTickets, countStates, paintIcons, progressRing, repoIconHtml } from './chrome.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -287,12 +287,12 @@ function ticketPills(map: WayfinderMap, numbers: readonly number[], withTitles =
       const other = ticketAt(map, number);
       if (other === undefined) {
         const url = `https://github.com/${repoName()}/issues/${String(number)}`;
-        return `<a class="pill is-outside" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="--accent: var(--text-muted)" title="Not on this map. Opens on GitHub."><span class="pill-text">#${String(number)}</span>${icon(icons.EXTERNAL)}</a>`;
+        return `<a class="pill is-outside" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="--accent: var(--text-muted)" title="Not read by this map. Opens on GitHub."><span class="pill-text">#${String(number)}</span>${icon(icons.EXTERNAL)}</a>`;
       }
       const accent = STATE_STYLE[other.state].variable;
       const title = withTitles ? ` ${other.title}` : '';
       const label = `<span class="pill-text">${escapeHtml(`#${String(number)}${title}`)}</span>`;
-      const tooltip = isOutside(map, number) ? `${other.title} (not on this map)` : other.title;
+      const tooltip = isOutside(map, number) ? `${other.title} (fog)` : other.title;
       return `<button type="button" class="pill" style="--accent: var(${accent})" data-jump="${String(number)}" title="${escapeHtml(tooltip)}">${label}</button>`;
     })
     .join('');
@@ -335,15 +335,15 @@ function renderHead(): void {
     els.mapSwitch.disabled = true;
     els.mapSwitch.innerHTML = '<span class="t">No maps yet</span>';
   } else {
-    const open = map.tickets.filter((ticket) => ticket.open).length;
+    const open = allTickets(map).filter((ticket) => ticket.open).length;
     els.mapSwitch.disabled = false;
     els.mapSwitch.innerHTML = `<span class="t">${escapeHtml(map.title)}</span><span class="badge">${String(open)} open</span>${icon(icons.CHEVRON)}`;
   }
 
   els.mapMenu.innerHTML = `<div class="menu-label eyebrow">Maps in ${escapeHtml(snapshot.repo)}</div>${snapshot.maps
     .map((candidate, index) => {
-      const open = candidate.tickets.filter((ticket) => ticket.open).length;
-      const total = candidate.tickets.length;
+      const open = allTickets(candidate).filter((ticket) => ticket.open).length;
+      const total = allTickets(candidate).length;
       return `<button type="button" role="menuitem" class="menu-item${index === activeMap ? ' is-on' : ''}" data-index="${String(index)}">
         ${miniRing(total - open, total)}<span class="grow">${escapeHtml(candidate.title)}</span>
         <span class="badge">${open === 0 ? 'done' : `${String(open)} open`}</span>
@@ -377,12 +377,12 @@ function renderFilters(): void {
   const counts = countStates(map);
   const states = STATE_ORDER.map((state) => chip(state, STATE_STYLE[state].long, STATE_STYLE[state].icon, counts[state], STATE_STYLE[state].variable));
   const types = TICKET_TYPES.map((type) =>
-    chip(type, TYPE_STYLE[type].label, TYPE_STYLE[type].icon, map.tickets.filter((ticket) => ticket.type === type).length, null),
+    chip(type, TYPE_STYLE[type].label, TYPE_STYLE[type].icon, allTickets(map).filter((ticket) => ticket.type === type).length, null),
   );
-  const untyped = map.tickets.filter((ticket) => ticket.type === null).length;
+  const untyped = allTickets(map).filter((ticket) => ticket.type === null).length;
   if (untyped > 0) types.push(chip('untyped', UNTYPED.label, UNTYPED.icon, untyped, null));
 
-  els.filters.innerHTML = `${chip(null, 'All', null, map.tickets.length, null)}${states.join('')}<span class="filter-sep" role="none"></span>${types.join('')}`;
+  els.filters.innerHTML = `${chip(null, 'All', null, allTickets(map).length, null)}${states.join('')}<span class="filter-sep" role="none"></span>${types.join('')}`;
 }
 
 function renderKey(): void {
@@ -420,25 +420,25 @@ function nodeHtml(ticket: Ticket, position: PositionedNode): string {
   </button>`;
 }
 
-/** An issue off this map: coloured by state and opened in the panel like any card, but dashed so it never reads as part of the map. */
+/** Fog: an issue linked to the map by a dependency but not one of its sub-issues. Counted and opened like any card, dashed to set it apart. */
 function outsideNodeHtml(outside: OutsideTicket, position: PositionedNode): string {
   const style = STATE_STYLE[outside.state];
   const kind = outside.pullRequest ? 'PR' : 'Issue';
   return `<button type="button" class="node is-outside${outside.state === 'done' ? ' is-done' : ''}"
     data-number="${String(outside.number)}"
     style="--accent: var(${style.variable}); left:${String(position.x)}px; top:${String(position.y)}px; width:${String(position.width)}px; height:${String(position.height)}px"
-    aria-label="${escapeHtml(`${kind} #${String(outside.number)} ${outside.title}, ${style.label}, not on this map`)}">
+    aria-label="${escapeHtml(`${kind} #${String(outside.number)} ${outside.title}, ${style.label}, fog`)}">
     <span class="node-top">
       <span class="num">#${String(outside.number)}</span>
       ${stateChip(outside.state)}
     </span>
     <span class="title">${escapeHtml(outside.title)}</span>
-    <span class="meta">${kind} · not on this map</span>
+    <span class="meta">${kind} · fog</span>
   </button>`;
 }
 
 function bandHtml(band: Band, side: 'top' | 'bottom', width: number): string {
-  const label = side === 'top' ? 'Outside this map · the map waits on these' : 'Outside this map · these wait on the map';
+  const label = side === 'top' ? 'Fog · the map waits on these' : 'Fog · these wait on the map';
   return `<div class="band" style="top:${String(band.y - 10)}px; height:${String(band.height + 20)}px; width:${String(width - 32)}px"><span class="band-label">${label}</span></div>`;
 }
 
@@ -528,7 +528,7 @@ function renderTable(): void {
     return;
   }
 
-  const rows = map.tickets
+  const rows = allTickets(map)
     .map((ticket) => {
       const style = STATE_STYLE[ticket.state];
       return `<tr data-number="${String(ticket.number)}">
@@ -670,19 +670,10 @@ function renderTicketPrototype(): void {
 function syncHighlights(): void {
   const map = currentMap();
   if (map === null) return;
-  const byNumber = new Map(map.tickets.map((ticket) => [ticket.number, ticket]));
-  const matches = (ticket: Ticket): boolean => matchesFilter(ticket, filter) && matchesQuery(ticket, query);
+  const byNumber = new Map(allTickets(map).map((ticket) => [ticket.number, ticket]));
   const shown = (number: number): boolean => {
     const ticket = byNumber.get(number);
-    // An issue off the map stays lit while any ticket it links to does.
-    if (ticket === undefined) {
-      const outside = map.outside.find((candidate) => candidate.number === number);
-      return [...(outside?.blocks ?? []), ...(outside?.waitsOn ?? [])].some((linked) => {
-        const other = byNumber.get(linked);
-        return other !== undefined && matches(other);
-      });
-    }
-    return matches(ticket);
+    return ticket !== undefined && matchesFilter(ticket, filter) && matchesQuery(ticket, query);
   };
   const chain: Lineage | null = hovered === null ? null : lineage(graphTickets(map), hovered);
   const related = (number: number): boolean =>
@@ -786,7 +777,7 @@ function renderInspector(): void {
 
 function briefHtml(map: WayfinderMap): string {
   const counts = countStates(map);
-  const total = map.tickets.length;
+  const total = allTickets(map).length;
   const rows = STATE_ORDER.map((state) => {
     const style = STATE_STYLE[state];
     const on = filter === state;
@@ -845,7 +836,7 @@ function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
     </div>
     <h2 class="dtitle">${escapeHtml(ticket.title)}</h2>
     ${banner === null ? '' : `<div class="banner" style="--accent: var(${style.variable})">${icon(style.icon)}<span>${banner}</span></div>`}
-    ${isOutside(map, ticket.number) ? '<p class="hint">Not on this map, but linked to it by a dependency.</p>' : ''}
+    ${isOutside(map, ticket.number) ? '<p class="hint">Fog: not a sub-issue of this map, but linked to it by a dependency.</p>' : ''}
     <dl class="facts">
       <dt>Type</dt><dd>${icon(typeStyle(ticket.type).icon)}${escapeHtml(typeStyle(ticket.type).label)}</dd>
       <dt>Assignee</dt><dd>${ticket.assignee === null ? '<span class="none">unclaimed</span>' : escapeHtml(`@${ticket.assignee}`)}</dd>
@@ -1122,7 +1113,8 @@ function setFilter(next: TicketFilter | null): void {
 
 /** Open the first ticket the search and filter leave showing, and bring it into view. */
 function jumpToFirstMatch(): void {
-  const hit = currentMap()?.tickets.find((ticket) => matchesFilter(ticket, filter) && matchesQuery(ticket, query));
+  const map = currentMap();
+  const hit = map === null ? undefined : allTickets(map).find((ticket) => matchesFilter(ticket, filter) && matchesQuery(ticket, query));
   if (hit === undefined) {
     toast('No ticket matches.', 2400);
     return;

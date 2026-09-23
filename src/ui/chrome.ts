@@ -1,7 +1,7 @@
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
-import type { TicketState, WayfinderMap } from '../types.js';
+import type { Ticket, TicketState, WayfinderMap } from '../types.js';
 import { normalizeRepo, scopedApiPath } from '../repoRoutes.js';
 
 export interface StateLook {
@@ -352,9 +352,14 @@ if (typeof window !== 'undefined') {
   );
 }
 
+/** Every ticket the map counts: its sub-issues plus the fog, the issues linked to them by a dependency. */
+export function allTickets(map: WayfinderMap): Ticket[] {
+  return [...map.tickets, ...map.outside];
+}
+
 export function countStates(map: WayfinderMap): Record<TicketState, number> {
   const counts: Record<TicketState, number> = { frontier: 0, claimed: 0, blocked: 0, done: 0 };
-  for (const ticket of map.tickets) counts[ticket.state] += 1;
+  for (const ticket of allTickets(map)) counts[ticket.state] += 1;
   return counts;
 }
 

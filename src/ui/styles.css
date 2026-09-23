@@ -3472,6 +3472,7 @@ textarea.input {
   text-transform: uppercase;
   color: var(--text-muted);
 }
+
 /* ---------- Home progress panel (#43, #80) ---------- */
 
 .sheet:has(> .home-cols) {
