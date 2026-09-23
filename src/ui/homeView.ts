@@ -77,7 +77,7 @@ export function orderRepositories(
 
 export function summarizeRepository(repo: string, snapshot: MapSnapshot | null | undefined): RepositorySummary {
   const maps = snapshot?.maps ?? [];
-  const tickets = maps.flatMap((map) => map.tickets);
+  const tickets = maps.flatMap((map) => [...map.tickets, ...map.outside]);
   const latestMap = maps.reduce<WayfinderMap | null>(
     (latest, map) => (latest === null || map.number > latest.number ? map : latest),
     null,

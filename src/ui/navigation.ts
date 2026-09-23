@@ -1,7 +1,7 @@
 import type { MapSnapshot, WayfinderMap } from '../types.js';
 import { mapPath, normalizeRepo, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { escapeHtml } from './markdown.js';
-import { paintIcons } from './chrome.js';
+import { allTickets, paintIcons } from './chrome.js';
 
 export type NavigationView = 'map' | 'table' | 'prototypes';
 export type NavigationPage = 'home' | 'repository' | 'new-map' | 'map';
@@ -92,7 +92,7 @@ export function createJumpDestinations(
         });
       }
 
-      for (const ticket of map.tickets) {
+      for (const ticket of allTickets(map)) {
         const ticketSearch = `${snapshot.repo} ${map.title} #${String(ticket.number)} ${ticket.title}`;
         const ticketNumberMatches = normalizedNeedle.length > 0 && String(ticket.number).startsWith(normalizedNeedle);
         if (ticketSearch.toLocaleLowerCase().includes(needle) || ticketNumberMatches) {

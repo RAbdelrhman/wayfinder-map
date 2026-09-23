@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { MapSnapshot, Ticket, WayfinderMap } from '../types.js';
+import type { MapSnapshot, OutsideTicket, Ticket, WayfinderMap } from '../types.js';
 import { createJumpDestinations, viewFromQuery } from './navigation.js';
 
 function ticket(number: number, title: string): Ticket {
@@ -72,6 +72,25 @@ describe('Jump to destinations', () => {
     expect(withHash).toHaveLength(1);
     expect(withoutHash).toHaveLength(1);
     expect(byTitle[0]?.label).toContain('Search tickets');
+  });
+
+  it('includes linked fog issues in Jump to', () => {
+    const fog: OutsideTicket = {
+      ...ticket(58, 'Linked external issue'),
+      pullRequest: false,
+      blocks: [51],
+      waitsOn: [],
+    };
+    const snapshotWithFog: MapSnapshot = {
+      ...SNAPSHOT,
+      maps: [{ ...SNAPSHOT.maps[0]!, outside: [fog] }],
+    };
+
+    expect(createJumpDestinations([], [snapshotWithFog], '#58')[0]).toMatchObject({
+      kind: 'ticket',
+      label: '#58 Linked external issue',
+      href: '/repos/octo/wayfinder/maps/35?view=map&ticket=58',
+    });
   });
 
   it('does not treat a lone hash as an empty number prefix', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { HandOffStatusDto } from '../handOffTracking.js';
-import type { MapSnapshot, WayfinderMap } from '../types.js';
+import type { MapSnapshot, OutsideTicket, WayfinderMap } from '../types.js';
 import { buildHomeWorkItems, chooseContinueDestination, orderRepositories, relativeTimeLabel, summarizeRepository } from './homeView.js';
 
 const map: WayfinderMap = {
@@ -56,6 +56,31 @@ describe('Home repository summaries', () => {
       ticketCount: 2,
       doneTicketCount: 1,
       latestMap: map,
+    });
+  });
+
+  it('counts linked fog issues in repository totals', () => {
+    const fog: OutsideTicket = {
+      number: 58,
+      title: 'Linked external issue',
+      url: 'https://github.com/octo/wayfinder/issues/58',
+      body: '',
+      type: 'task',
+      labels: [],
+      open: true,
+      assignee: null,
+      blockedBy: [2],
+      openBlockers: [2],
+      state: 'frontier',
+      pullRequest: false,
+      blocks: [2],
+      waitsOn: [],
+    };
+
+    expect(summarizeRepository('octo/wayfinder', { ...snapshot, maps: [{ ...map, outside: [fog] }] })).toMatchObject({
+      openTicketCount: 2,
+      ticketCount: 3,
+      doneTicketCount: 1,
     });
   });
 });
