@@ -202,20 +202,32 @@ function miniRing(done: number, total: number): string {
   </svg>`;
 }
 
-/** Linked ticket numbers, coloured by their state when they sit on this map. Clicking one opens it. */
+/**
+ * Linked ticket numbers, coloured by their state when they sit on this map. Clicking one opens it;
+ * one that lives off the map links out to GitHub instead.
+ */
 function ticketPills(map: WayfinderMap, numbers: readonly number[], withTitles = false): string {
   if (numbers.length === 0) return '<span class="none">—</span>';
   return numbers
     .map((number) => {
       const other = map.tickets.find((ticket) => ticket.number === number);
-      const accent = other === undefined ? '--text-muted' : STATE_STYLE[other.state].variable;
-      const title = withTitles && other !== undefined ? ` ${other.title}` : '';
+      if (other === undefined) return outsidePill(map, number, withTitles);
+      const accent = STATE_STYLE[other.state].variable;
+      const title = withTitles ? ` ${other.title}` : '';
       const label = `<span class="pill-text">${escapeHtml(`#${String(number)}${title}`)}</span>`;
-      return other === undefined
-        ? `<span class="pill" style="--accent: var(${accent})" title="Not on this map">${label}</span>`
-        : `<button type="button" class="pill" style="--accent: var(${accent})" data-jump="${String(number)}" title="${escapeHtml(other.title)}">${label}</button>`;
+      return `<button type="button" class="pill" style="--accent: var(${accent})" data-jump="${String(number)}" title="${escapeHtml(other.title)}">${label}</button>`;
     })
     .join('');
+}
+
+function outsidePill(map: WayfinderMap, number: number, withTitles: boolean): string {
+  const outside = map.outside.find((candidate) => candidate.number === number);
+  const url = outside?.url ?? `https://github.com/${repoName()}/issues/${String(number)}`;
+  const accent = outside?.open === false ? STATE_STYLE.done.variable : '--text-muted';
+  const kind = outside?.pullRequest === true ? 'PR ' : '';
+  const title = withTitles && outside !== undefined ? ` ${outside.title}` : '';
+  const tooltip = `Not on this map${outside === undefined ? '' : `: ${outside.title}`}. Opens on GitHub.`;
+  return `<a class="pill is-outside" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="--accent: var(${accent})" title="${escapeHtml(tooltip)}"><span class="pill-text">${escapeHtml(`${kind}#${String(number)}${title}`)}</span>${icon(icons.EXTERNAL)}</a>`;
 }
 
 function dependents(map: WayfinderMap, number: number): number[] {

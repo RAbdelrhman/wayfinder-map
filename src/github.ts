@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import { parseBlockedByLine, parseChildNumbers, parseMapBody } from './mapBody.js';
 import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, pickPreview, prototypeTicketNumber, unlistedCanvasBoards } from './prototypes.js';
 import { TICKET_TYPES } from './types.js';
-import type { Prototype, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
+import type { OutsideTicket, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
 
 const run = promisify(execFile);
 
@@ -74,6 +74,8 @@ interface RawIssue {
   assignees?: Array<{ login?: string }> | null;
   labels?: Array<string | { name?: string }> | null;
   issue_dependencies_summary?: { blocked_by?: number } | null;
+  /** Present when the issue is really a pull request. */
+  pull_request?: unknown;
 }
 
 function labelNames(raw: RawIssue): string[] {
@@ -94,6 +96,17 @@ function ticketType(labels: string[], prefix: string): TicketType | null {
 
 function issueUrl(raw: RawIssue, repo: string): string {
   return raw.html_url ?? raw.url ?? `https://github.com/${repo}/issues/${raw.number}`;
+}
+
+export function toOutsideTicket(raw: RawIssue, repo: string): OutsideTicket {
+  const pullRequest = raw.pull_request !== undefined && raw.pull_request !== null;
+  return {
+    number: raw.number,
+    title: raw.title,
+    url: raw.html_url ?? `https://github.com/${repo}/${pullRequest ? 'pull' : 'issues'}/${raw.number}`,
+    open: isOpenState(raw.state),
+    pullRequest,
+  };
 }
 
 export function ticketStateOf(open: boolean, openBlockers: number[], assignee: string | null): TicketState {
@@ -146,7 +159,7 @@ async function fetchBlockers(repo: string, raw: RawIssue): Promise<Blocker[]> {
   try {
     const blockers = await ghJson<RawIssue[]>(['api', `repos/${repo}/issues/${raw.number}/dependencies/blocked_by`]);
     if (blockers.length > 0) {
-      return blockers.map((blocker) => ({ number: blocker.number, open: isOpenState(blocker.state) }));
+      return blockers.map((blocker) => ({ number: blocker.number, open: isOpenState(blocker.state), raw: blocker }));
     }
   } catch {
     // Dependencies unavailable on this repo. Fall through to the body line.
@@ -159,6 +172,8 @@ interface Blocker {
   number: number;
   /** null when the source did not say, e.g. a `Blocked by:` line. */
   open: boolean | null;
+  /** The blocker itself, when the source returned it. */
+  raw?: RawIssue;
 }
 
 /** Read a single ticket directly from GitHub as a Ticket. */
@@ -241,14 +256,29 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
 
     const blockerLists = await pool(children, concurrency, (child) => fetchBlockers(repo, child));
 
+    // Blockers off this map: reuse what the dependency read returned, look up the rest.
+    const outsideRaw = new Map<number, RawIssue | null>();
+    for (const blocker of blockerLists.flat()) {
+      if (openByNumber.has(blocker.number)) continue;
+      if (blocker.raw !== undefined || !outsideRaw.has(blocker.number)) outsideRaw.set(blocker.number, blocker.raw ?? null);
+    }
+    const missing = [...outsideRaw].filter(([, raw]) => raw === null).map(([number]) => number);
+    for (const raw of await pool(missing, concurrency, (number) => fetchIssue(repo, number))) {
+      if (raw !== null) outsideRaw.set(raw.number, raw);
+    }
+    const outside = [...outsideRaw.values()]
+      .filter((raw): raw is RawIssue => raw !== null)
+      .map((raw) => toOutsideTicket(raw, repo));
+    for (const ticket of outside) openByNumber.set(ticket.number, ticket.open);
+
     const tickets = children.map((child, index): Ticket => {
       const labels = labelNames(child);
       const open = isOpenState(child.state);
       const assignee = child.assignee?.login ?? child.assignees?.[0]?.login ?? null;
       const blockers = blockerLists[index] ?? [];
       const blockedBy = blockers.map((blocker) => blocker.number);
-      // Trust what the dependency read said; otherwise ask this map, and assume open if
-      // the blocker lives somewhere we cannot see.
+      // Trust what the dependency read said; otherwise ask what we fetched, and assume open
+      // if the blocker lives somewhere we cannot see.
       const openBlockers = blockers
         .filter((blocker) => blocker.open ?? openByNumber.get(blocker.number) ?? true)
         .map((blocker) => blocker.number);
@@ -275,6 +305,7 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
       open: isOpenState(mapIssue.state),
       sections: parseMapBody(mapIssue.body ?? ''),
       tickets,
+      outside,
     };
   });
 

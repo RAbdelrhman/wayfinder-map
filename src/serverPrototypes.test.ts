@@ -74,6 +74,7 @@ function map(number: number): WayfinderMap {
     open: true,
     sections: { destination: '', fog: '', decisions: '', notes: '', outOfScope: '' },
     tickets: [],
+    outside: [],
   };
 }
 

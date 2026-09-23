@@ -36,6 +36,15 @@ export interface MapSections {
   outOfScope: string;
 }
 
+/** An issue or pull request a ticket waits on that is not itself on the map. */
+export interface OutsideTicket {
+  number: number;
+  title: string;
+  url: string;
+  open: boolean;
+  pullRequest: boolean;
+}
+
 export interface WayfinderMap {
   number: number;
   title: string;
@@ -44,6 +53,8 @@ export interface WayfinderMap {
   open: boolean;
   sections: MapSections;
   tickets: Ticket[];
+  /** Blockers named by this map's tickets that live outside the map, so the UI can still link them. */
+  outside: OutsideTicket[];
 }
 
 /** A prototype branch belonging to one of a map's tickets. */

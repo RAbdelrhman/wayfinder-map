@@ -1036,6 +1036,18 @@ kbd {
   text-overflow: ellipsis;
 }
 
+a.pill {
+  text-decoration: none;
+}
+
+.pill.is-outside svg {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  opacity: 0.7;
+}
+
+a.pill:hover,
 button.pill:hover {
   border-color: var(--baseline);
   color: var(--text-primary);

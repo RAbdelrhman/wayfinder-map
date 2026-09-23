@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { branchFacts, isOpenState, mapPrototypeBranches, plainGhOutput, sortPrototypes, ticketStateOf } from './github.js';
+import { branchFacts, isOpenState, mapPrototypeBranches, plainGhOutput, sortPrototypes, ticketStateOf, toOutsideTicket } from './github.js';
 import type { Prototype } from './types.js';
 
 describe('plainGhOutput', () => {
@@ -38,6 +38,24 @@ describe('ticketStateOf', () => {
 
   it('calls an unassigned, unblocked ticket the frontier', () => {
     expect(ticketStateOf(true, [], null)).toBe('frontier');
+  });
+});
+
+describe('toOutsideTicket', () => {
+  it('keeps the link, title and state of an off-map issue', () => {
+    expect(
+      toOutsideTicket({ number: 80, title: 'Prototype Home', html_url: 'https://github.com/o/r/issues/80', state: 'open' }, 'o/r'),
+    ).toEqual({ number: 80, title: 'Prototype Home', url: 'https://github.com/o/r/issues/80', open: true, pullRequest: false });
+  });
+
+  it('flags a pull request and builds its link when GitHub gave none', () => {
+    expect(toOutsideTicket({ number: 81, title: 'Views', state: 'CLOSED', pull_request: {} }, 'o/r')).toEqual({
+      number: 81,
+      title: 'Views',
+      url: 'https://github.com/o/r/pull/81',
+      open: false,
+      pullRequest: true,
+    });
   });
 });
 

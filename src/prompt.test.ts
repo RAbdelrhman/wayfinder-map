@@ -17,6 +17,7 @@ const map: WayfinderMap = {
     outOfScope: '',
   },
   tickets: [],
+  outside: [],
 };
 
 const ticket: Ticket = {
