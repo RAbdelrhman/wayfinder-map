@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { composerState, draftToMapPath, initialRepository, isNewMapHandOff, newMapPath } from './newMap.js';
+import { composerState, consumeNewMapRetryGoal, DEFAULT_NEW_MAP_TIER, draftToMapPath, initialRepository, isNewMapHandOff, newMapPath, rememberNewMapRetry, repositoryOptions } from './newMap.js';
 import type { ComposerInput } from './newMap.js';
+
+function fakeStorage(): Pick<Storage, 'getItem' | 'removeItem' | 'setItem'> {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key) => values.get(key) ?? null,
+    removeItem: (key) => values.delete(key),
+    setItem: (key, value) => values.set(key, value),
+  };
+}
 
 describe('newMapPath', () => {
   it('opens on the repository it is given', () => {
@@ -21,9 +30,14 @@ describe('draft map routing', () => {
     mapNumber: null,
     ticketNumber: null,
     title: 'Build offline mode',
+    branch: null,
+    pullRequests: [],
     threadId: 'thread-7',
     rung: 'thread' as const,
     status: 'running' as const,
+    pendingApproval: false,
+    pendingUserInput: false,
+    stale: false,
   };
 
   it('recognizes a persisted new-map hand-off while its map issue is missing', () => {
@@ -43,14 +57,42 @@ describe('draft map routing', () => {
 });
 
 describe('initialRepository', () => {
-  it('preselects the repository the composer was opened from', () => {
-    expect(initialRepository('octo/two', ['octo/one'], ['octo/three'])).toBe('octo/two');
+  it('preselects only the repository the composer was opened from', () => {
+    expect(initialRepository('octo/two')).toBe('octo/two');
+    expect(initialRepository(null)).toBe('');
+    expect(initialRepository('not a repo')).toBe('');
   });
 
-  it('falls back to the most recent repository, then the first known one', () => {
-    expect(initialRepository(null, ['octo/one'], ['octo/three'])).toBe('octo/one');
-    expect(initialRepository('not a repo', [], ['octo/three'])).toBe('octo/three');
-    expect(initialRepository(null, [], [])).toBe('');
+  it('defaults the model chip to the existing Mid tier', () => {
+    expect(DEFAULT_NEW_MAP_TIER).toBe('mid');
+  });
+});
+
+describe('new map retry', () => {
+  it('restores a retry goal once for the matching repository', () => {
+    const storage = fakeStorage();
+    rememberNewMapRetry('octo/one', 'Build offline mode', storage);
+    expect(consumeNewMapRetryGoal('OCTO/ONE', storage)).toBe('Build offline mode');
+    expect(consumeNewMapRetryGoal('octo/one', storage)).toBeNull();
+  });
+
+  it('does not restore a goal for another repository and clears the one-shot value', () => {
+    const storage = fakeStorage();
+    rememberNewMapRetry('octo/one', 'Build offline mode', storage);
+    expect(consumeNewMapRetryGoal('octo/two', storage)).toBeNull();
+    expect(consumeNewMapRetryGoal('octo/one', storage)).toBeNull();
+  });
+
+  it('rejects invalid repositories', () => {
+    expect(() => rememberNewMapRetry('invalid', 'Build offline mode', fakeStorage())).toThrow('Enter a valid repository');
+  });
+});
+
+describe('repositoryOptions', () => {
+  it('searches recent and known repositories with recents first and case-insensitive deduplication', () => {
+    expect(repositoryOptions('OCTO', ['octo/one', 'other/repo'], ['OCTO/ONE', 'octo/two'])).toEqual(['octo/one', 'octo/two']);
+    expect(repositoryOptions('', ['octo/one'], ['octo/two'])).toEqual(['octo/one', 'octo/two']);
+    expect(repositoryOptions('missing', ['octo/one'], ['octo/two'])).toEqual([]);
   });
 });
 
@@ -71,14 +113,29 @@ describe('composerState', () => {
   });
 
   it('requires a repository', () => {
-    expect(composerState({ ...ready, repo: null })).toMatchObject({ canStart: false, canCopy: false });
+    expect(composerState({ ...ready, repo: null })).toEqual({
+      canStart: false,
+      canCopy: false,
+      reason: 'Pick a repository to start.',
+    });
   });
 
-  it('keeps Copy prompt and says why when no clone is verified', () => {
+  it('keeps Copy prompt and asks for a clone when there is none', () => {
     expect(composerState({ ...ready, workspace: { status: 'choose', candidates: [], canChoose: false } })).toEqual({
       canStart: false,
       canCopy: true,
-      reason: 'T3 Code needs a verified local clone of octo/one to start a thread. Choose one, or copy the prompt.',
+      reason: 'Run Wayfinder inside a clone of this repository to start in T3 Code.',
+    });
+    expect(composerState({ ...ready, workspace: { status: 'choose', candidates: [], canChoose: true } }).reason).toBe(
+      'Choose a local clone or clone this repository for me.',
+    );
+  });
+
+  it('asks the user to choose when there are several clones', () => {
+    expect(composerState({ ...ready, workspace: { status: 'choose', candidates: ['/one', '/two'], canChoose: true } })).toMatchObject({
+      canStart: false,
+      canCopy: true,
+      reason: 'Choose a local clone below before starting.',
     });
   });
 
@@ -97,5 +154,9 @@ describe('composerState', () => {
 
   it('shows the reason before a goal is typed', () => {
     expect(composerState({ ...ready, goal: '', t3Unavailable: 'down' })).toMatchObject({ canStart: false, canCopy: false, reason: expect.stringContaining('down') as unknown });
+  });
+
+  it('leaves the helper empty when the goal is the only missing input', () => {
+    expect(composerState({ ...ready, goal: '' })).toEqual({ canStart: false, canCopy: false, reason: null });
   });
 });

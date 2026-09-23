@@ -708,13 +708,13 @@ describe('local clone for a hand-off', () => {
       });
 
       try {
-        const response = await newMap(running.url, { goal: 'Build offline\nmode', model: { instanceId: 'codex', model: 'gpt' } });
+        const response = await newMap(running.url, { goal: 'Build offline\nmode', tier: 'hard', model: { instanceId: 'codex', model: 'gpt' } });
         expect(response.status).toBe(200);
         const started = (await response.json()) as { handOffId: string };
         expect(started).toMatchObject({ rung: 'thread', threadId: 'thread-7', notice: null, handOffId: expect.any(String) });
         const handOffResponse = await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } });
         await expect(handOffResponse.json()).resolves.toMatchObject({
-          handOffs: [{ id: started.handOffId, repo: 'octo/one', mapNumber: null, ticketNumber: null, title: 'Build offline\nmode', threadId: 'thread-7' }],
+          handOffs: [{ id: started.handOffId, repo: 'octo/one', mapNumber: null, ticketNumber: null, title: 'Build offline\nmode', tier: 'hard', threadId: 'thread-7' }],
         });
         expect(startThread).toHaveBeenCalledWith(
           expect.objectContaining({

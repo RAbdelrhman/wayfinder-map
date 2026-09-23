@@ -3,7 +3,8 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { parseModelChoice } from './models.js';
+import { parseModelChoice, TIERS } from './models.js';
+import type { Tier } from './models.js';
 import { copyToClipboard } from './clipboard.js';
 import { DEFAULT_TEMPLATE, buildNewMapPrompt, buildPrompt, ticketBranch } from './prompt.js';
 import { parsePrototypeFilePath } from './prototypes.js';
@@ -619,7 +620,7 @@ export async function startServer({
       }
 
       if (requestedRepo !== null && scoped?.action === 'new-map' && request.method === 'POST') {
-        const body = (await readBody(request)) as { goal?: unknown; preview?: unknown; copyOnly?: unknown; model?: unknown };
+        const body = (await readBody(request)) as { goal?: unknown; preview?: unknown; copyOnly?: unknown; model?: unknown; tier?: unknown };
         const goal = typeof body.goal === 'string' ? body.goal.trim() : '';
         if (goal.length === 0) {
           json(response, 400, { error: 'Say what you want to accomplish first.' });
@@ -641,6 +642,7 @@ export async function startServer({
           return;
         }
         const runtime = await detectT3();
+        const tier = typeof body.tier === 'string' && TIERS.includes(body.tier as Tier) ? (body.tier as Tier) : null;
         const result = await handOff(
           {
             title: `New map: ${goal.replace(/\s+/g, ' ').slice(0, 48)}`,
@@ -658,6 +660,7 @@ export async function startServer({
             mapNumber: null,
             ticketNumber: null,
             title: goal,
+            tier,
             environmentId: tracking?.environmentId ?? null,
             t3Origin: runtime.origin,
             projectId: tracking?.projectId ?? null,
