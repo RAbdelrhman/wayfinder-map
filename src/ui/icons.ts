@@ -37,6 +37,12 @@ export const SLIDERS = '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle
 export const REFRESH = '<path d="M20 11a8 8 0 0 0-14.9-3.5L3 10"/><path d="M3 4v6h6"/><path d="M4 13a8 8 0 0 0 14.9 3.5L21 14"/><path d="M21 20v-6h-6"/>';
 export const MOON = '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>';
 export const CHEVRON = '<path d="m6 9 6 6 6-6"/>';
+export const CHEVRON_RIGHT = '<path d="m9 6 6 6-6 6"/>';
+/** A lightning bolt: work running in T3 Code. */
+export const BOLT = '<path d="M13 2 4.5 13.5H12L11 22l8.5-11.5H12z"/>';
+/** A raised hand: something waits on you. */
+export const HAND =
+  '<path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>';
 export const EXTERNAL = '<path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>';
 export const PLUG = '<path d="M9 3v6M15 3v6"/><path d="M7 9h10v3a5 5 0 0 1-10 0z"/><path d="M12 17v4"/>';
 export const ALERT = '<path d="m12 3 9 16H3z"/><path d="M12 9v4M12 17h.01"/>';

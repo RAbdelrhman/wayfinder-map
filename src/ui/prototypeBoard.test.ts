@@ -133,6 +133,34 @@ describe('prototype variant metadata', () => {
     expect(pickedVariantIds('We selected C for the goal-first flow.', ['A', 'B', 'C'])).toEqual(['C']);
     expect(pickedVariantIds('The reviewer discussed A, B, and C.', ['A', 'B', 'C'])).toEqual([]);
   });
+
+  it('reads the answer line first and never picks a variant the verdict rejects', () => {
+    const verdict = [
+      '**Answer:** A + B, with the hand-off list in the topbar.',
+      '- **A: status stays on the ticket.** You use it from the map.',
+      '- **C (a page per hand-off) is not chosen:** it takes you away from the map.',
+    ].join('\n');
+
+    expect(pickedVariantIds(verdict, ['A', 'AB', 'B', 'C'])).toEqual(['AB']);
+    expect(pickedVariantIds('**Answer:** C, goal first. Maps only.', ['A', 'B', 'C'])).toEqual(['C']);
+    expect(pickedVariantIds('The user picked C1 and B2. The answer is **direction D**: C’s tree with B’s switcher.', ['A', 'B', 'C', 'D'])).toEqual(['D']);
+  });
+
+  it('uses the canvas variants the server read, with their screenshots and pages', () => {
+    const mapView = map([ticket(45, 'After hand-off', 'prototype', 'done')]);
+    const html = prototypeBoardHtml('octo/wayfinder', mapView, [prototype(45, {
+      verdict: '**Answer:** A + B, with the list in the topbar.',
+      variants: [
+        { id: 'A', title: 'Stays on the ticket', page: 'prototypes/canvas/variants/after-a.html', shot: '45-A.jpg' },
+        { id: 'AB', title: 'A + B, list in the topbar', page: null, shot: '45-AB.jpg' },
+      ],
+    })]);
+
+    expect(html).toContain('Picked AB');
+    expect(html).toContain('src="/proto-shot/octo/wayfinder/45-A.jpg"');
+    expect(html).toContain('AB · A + B, list in the topbar');
+    expect(html).toContain('class="wf-var decision-variant is-dim"');
+  });
 });
 
 describe('prototype decision board states', () => {
@@ -165,11 +193,11 @@ describe('prototype decision board states', () => {
     });
     const html = prototypeBoardHtml('octo/wayfinder', mapView, [card]);
 
-    expect(html).toContain('Decided');
-    expect(html).toContain('class="decision-variant is-picked"');
-    expect(html).toContain('class="decision-variant is-dim"');
-    expect(html).toContain('aria-label="Open variant B: Variant B"');
-    expect(html.match(/class="proto-thumb decision-variant-thumb/g)).toHaveLength(3);
+    expect(html).toContain('Picked B');
+    expect(html).toContain('class="wf-var decision-variant is-picked"');
+    expect(html).toContain('class="wf-var decision-variant is-dim"');
+    expect(html).toContain('aria-label="Open variant B: Variant B (picked)"');
+    expect(html.match(/class="wf-frame proto-thumb/g)).toHaveLength(3);
   });
 
   it('keeps a live page fallback when a screenshot thumbnail cannot load', () => {

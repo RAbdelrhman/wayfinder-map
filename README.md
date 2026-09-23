@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/wayfinder-icon.svg" alt="Wayfinder logo" width="96" height="96" /></p>
+
 # wayfinder-map
 
 An interactive map of a repo's wayfinder maps, served on localhost. Click a ticket

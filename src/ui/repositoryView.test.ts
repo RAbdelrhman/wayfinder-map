@@ -87,10 +87,13 @@ describe('repositoryPageHtml', () => {
     expect(html).toContain('data-map-status="active"');
     expect(html).toContain('data-map-status="completed"');
     expect(html).toContain('Ticket dependency graph with 3 tickets');
-    expect(html).toContain('Next</span><a href="/repos/octo/wayfinder/maps/35?view=map&amp;ticket=102">#102');
+    expect(html).toContain('next</span> <a href="/repos/octo/wayfinder/maps/35?view=map&amp;ticket=102">#102');
+    expect(html).toContain('class="mini-graph"');
     expect(html).toContain('Open map #35: Make the map page feel clear');
-    expect(html).toContain('Next up');
+    expect(html).toContain('1 next up');
+    expect(html).toContain('1 blocked');
     expect(html).toContain('Completed');
+    expect(html).toContain('1 active, 1 completed');
     expect(html).not.toContain('Start a new map');
     expect(html).not.toContain('Prototypes</a>');
   });
@@ -110,7 +113,8 @@ describe('repositoryPageHtml', () => {
   it('renders the plain no-maps state with a contextual repository selection', () => {
     const html = repositoryPageHtml('octo/recipe-box', snapshot([]));
 
-    expect(html).toContain('No maps yet');
+    expect(html).toContain('No maps in recipe-box yet');
+    expect(html).toContain('octo/recipe-box · no maps yet');
     expect(html).toContain('Destination');
     expect(html).toContain('href="/new-map?repo=octo%2Frecipe-box"');
     expect(html.match(/Start a new map/g)).toHaveLength(1);

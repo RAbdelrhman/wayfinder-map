@@ -1,16 +1,18 @@
 import type { HomeState } from '../home.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
-import { mapPath, normalizeRepo, repoPath, scopedApiPath } from '../repoRoutes.js';
-import type { MapSnapshot } from '../types.js';
-import { paintIcons, repoIconHtml } from './chrome.js';
+import { normalizeRepo, repoPath, scopedApiPath } from '../repoRoutes.js';
+import type { MapSnapshot, TicketState } from '../types.js';
+import { PROGRESS_ORDER, STATE_STYLE, paintIcons, repoIconHtml } from './chrome.js';
 import { buildHomeWorkItems, chooseContinueDestination, inFlightStatusLabel, orderRepositories, relativeTimeLabel, summarizeRepository } from './homeView.js';
-import type { HomeWorkItem, RepositorySummary } from './homeView.js';
+import type { ContinueDestination, HomeWorkItem, RepositorySummary } from './homeView.js';
 import { readHomeRecency } from './homeRecency.js';
 import type { HomeStorage } from './homeRecency.js';
 import { escapeHtml } from './markdown.js';
+import { miniGraphSvg } from './miniGraph.js';
 
 const HOME_REPOSITORY_LIMIT = 6;
 const HOME_INITIAL_SNAPSHOT_LIMIT = 8;
+const LANE_LIMIT = 3;
 
 interface HandOffSnapshot {
   handOffs: HandOffStatusDto[];
@@ -57,96 +59,113 @@ async function loadHomeSnapshots(
   return snapshots;
 }
 
-function repositorySummaryMarkup(summary: RepositorySummary | null, openedAt: string | undefined, accountReady: boolean): string {
-  const lastOpened = `<span class="home-repo-last-opened">${escapeHtml(relativeTimeLabel(openedAt))}</span>`;
-  if (summary === null) {
-    const message = accountReady ? 'Map activity could not be loaded' : 'Sign in to load map activity';
-    return `${lastOpened}<span>${message}</span>`;
-  }
-  const mapCount = `${String(summary.mapCount)} map${summary.mapCount === 1 ? '' : 's'}`;
-  const openCount = `${String(summary.openTicketCount)} open ticket${summary.openTicketCount === 1 ? '' : 's'}`;
-  const latestMap = summary.latestMap === null
-    ? '<span class="home-repo-latest">No maps yet</span>'
-    : `<a class="home-repo-latest" href="${mapPath(summary.repo, summary.latestMap.number)}"><span data-icon="compass" aria-hidden="true"></span>${escapeHtml(summary.latestMap.title)}</a>`;
-  const progress = summary.ticketCount === 0
+/** The repository's tickets as one bar: done, claimed, next up, blocked, left to right. */
+export function stateStackHtml(counts: Record<TicketState, number>): string {
+  const total = PROGRESS_ORDER.reduce((sum, state) => sum + counts[state], 0);
+  const segments = total === 0
     ? ''
-    : `<div class="home-repo-progress" role="progressbar" aria-label="${String(summary.doneTicketCount)} of ${String(summary.ticketCount)} tickets complete" aria-valuemin="0" aria-valuemax="${String(summary.ticketCount)}" aria-valuenow="${String(summary.doneTicketCount)}"><span style="--progress:${String(Math.round((summary.doneTicketCount / summary.ticketCount) * 100))}%"></span></div>`;
-  return `<div class="home-repo-summary">${lastOpened}<span>${mapCount} <i aria-hidden="true">·</i> ${openCount}</span>${latestMap}${progress}</div>`;
+    : PROGRESS_ORDER.filter((state) => counts[state] > 0)
+        .map((state) => `<i style="width:${((counts[state] / total) * 100).toFixed(2)}%;background:var(${STATE_STYLE[state].variable})"></i>`)
+        .join('');
+  const label = total === 0 ? 'No tickets yet' : `${String(counts.done)} of ${String(total)} tickets done`;
+  return `<span class="wf-stack" role="img" aria-label="${label}">${segments}</span>`;
 }
 
-function repositoryRowMarkup(
-  repo: string,
-  index: number,
-  summary: RepositorySummary | null,
-  openedAt: string | undefined,
-  accountReady: boolean,
-): string {
-  return `<article class="home-repo-row" data-home-repo-row data-home-index="${String(index)}" data-home-repo="${escapeHtml(repo)}" data-repo-search="${escapeHtml(repo.toLocaleLowerCase())}"${index >= HOME_REPOSITORY_LIMIT ? ' hidden' : ''}>
-    <a class="home-repo-link" href="${repoPath(repo)}">${repoIconHtml(repo, 'lg')}<span><strong>${escapeHtml(repo)}</strong><small>Open repository</small></span><span class="home-repo-arrow" data-icon="arrow" aria-hidden="true"></span></a>
-    <div class="home-repo-summary" data-home-repo-summary>${repositorySummaryMarkup(summary, openedAt, accountReady)}</div>
-  </article>`;
+function repositoryStat(summary: RepositorySummary | null, accountReady: boolean): string {
+  if (summary === null) return accountReady ? 'Maps not loaded' : 'Sign in to load maps';
+  if (summary.mapCount === 0) return 'No maps yet';
+  return `${String(summary.mapCount)} map${summary.mapCount === 1 ? '' : 's'} · ${String(summary.openTicketCount)} open`;
 }
 
-export function homeContinueCardMarkup(
-  destination: ReturnType<typeof chooseContinueDestination>,
-  accountReady: boolean,
-): string {
+function repositoryRowInner(repo: string, summary: RepositorySummary | null, openedAt: string | undefined, accountReady: boolean): string {
+  const bar = summary === null ? '<span class="wf-stack"></span>' : stateStackHtml(summary.stateCounts);
+  const when = openedAt === undefined ? '' : relativeTimeLabel(openedAt);
+  return `${repoIconHtml(repo, 'md')}<span class="who"><span class="name">${escapeHtml(repo)}</span>${bar}</span><span class="stat">${escapeHtml(repositoryStat(summary, accountReady))}</span><span class="when">${escapeHtml(when)}</span>`;
+}
+
+function repositoryRowMarkup(repo: string, index: number, summary: RepositorySummary | null, openedAt: string | undefined, accountReady: boolean): string {
+  return `<a class="wf-repo" href="${repoPath(repo)}" data-home-repo-row data-home-repo="${escapeHtml(repo)}" data-repo-search="${escapeHtml(repo.toLocaleLowerCase())}"${index >= HOME_REPOSITORY_LIMIT ? ' hidden' : ''}>${repositoryRowInner(repo, summary, openedAt, accountReady)}</a>`;
+}
+
+function shortRepo(repo: string): string {
+  return repo.split('/')[1] ?? repo;
+}
+
+export function homeContinueCardMarkup(destination: ContinueDestination | null, accountReady: boolean): string {
   if (!accountReady) {
-    return `<div class="home-continue-card is-blocked"><span class="home-continue-mark" aria-hidden="true">!</span><div><p class="eyebrow">Account needed</p><h3>Sign in to continue</h3><p>Your recent repositories stay here while GitHub is disconnected.</p></div></div>`;
+    return `<section class="wf-node wf-alert" role="alert"><span class="ic" aria-hidden="true">!</span><div><p class="eyebrow">Account needed</p><h2>Sign in to continue</h2><p>GitHub is signed out, so maps, in-flight work and today’s progress can’t load. Your recent repositories stay below.</p></div></section>`;
   }
   if (destination === null) {
-    return `<div class="home-continue-card is-empty">
-      <div class="destination-sketch" aria-hidden="true"><span class="destination-grid"></span><span class="destination-path"></span><span class="destination-pin"></span><span class="destination-label">DESTINATION</span></div>
-      <div><p class="eyebrow">Your next map</p><h3>Maps you open will be ready here.</h3><p>Choose a repository below, or start a new map from the sidebar.</p></div>
-    </div>`;
+    return `<section class="wf-node wf-continue is-first" style="--accent: var(--state-frontier)">
+      <div class="txt"><p class="eyebrow">Your first map</p><h2>Maps you open will be ready here.</h2><p class="dest">Every map starts with a destination. Start one from the sidebar and T3 Code drafts it with you; its tickets show up here as a graph you clear one at a time.</p></div>
+      <div class="graph" aria-hidden="true"><span class="ghostnode">Destination</span></div>
+    </section>`;
   }
-  const t3Action = destination.handOffId === null
-    ? ''
-    : `<button type="button" class="ghost home-open-t3" data-open-handoff="${escapeHtml(destination.handOffId)}"><span data-icon="play" aria-hidden="true"></span>Open in T3 Code</button>`;
-  const eyebrow = destination.kind === 'handoff' ? 'Continue hand-off' : 'Continue map';
-  const detail = destination.detail.toLocaleLowerCase().startsWith(destination.repo.toLocaleLowerCase())
-    ? destination.detail
-    : `${destination.repo} · ${destination.detail}`;
-  return `<div class="home-continue-card">
-    <span class="home-continue-mark" aria-hidden="true"><span data-icon="compass"></span></span>
-    <div class="home-continue-copy"><p class="eyebrow">${eyebrow}</p><h3>${escapeHtml(destination.title)}</h3><p class="home-continue-detail">${escapeHtml(detail)}</p><span class="home-continue-time">Updated ${escapeHtml(relativeTimeLabel(destination.timestamp))}</span></div>
-    <div class="home-continue-actions"><a class="primary" href="${escapeHtml(destination.href)}">Open map</a>${t3Action}</div>
-  </div>`;
+  const handoff = destination.kind === 'handoff';
+  const map = destination.map;
+  const next = map?.tickets.find((ticket) => ticket.state === 'frontier');
+  const eyebrow = handoff
+    ? `Continue · your latest hand-off · ${relativeTimeLabel(destination.timestamp)}`
+    : `Continue · ${shortRepo(destination.repo)} · opened ${relativeTimeLabel(destination.timestamp)}`;
+  const title = map === null ? destination.title : `#${String(map.number)} ${map.title}`;
+  const nextLine = handoff
+    ? `<span class="chip" style="--accent: var(--state-frontier)"><span data-icon="bolt" aria-hidden="true"></span>T3 Code</span>${escapeHtml(destination.detail)}`
+    : next === undefined
+      ? `<span class="quiet">${map === null ? escapeHtml(destination.detail) : 'Nothing is next up on this map.'}</span>`
+      : `<span class="chip" style="--accent: var(--state-frontier)"><span data-icon="arrow" aria-hidden="true"></span>next</span><a href="${escapeHtml(`${destination.href}?view=map&ticket=${String(next.number)}`)}">#${String(next.number)} ${escapeHtml(next.title)}</a>`;
+  const actions = handoff && destination.handOffId !== null
+    ? `<button type="button" class="primary" data-open-handoff="${escapeHtml(destination.handOffId)}"><span data-icon="external" aria-hidden="true"></span>Open in T3 Code</button><a class="ghost" href="${escapeHtml(destination.href)}">Open map</a>`
+    : `<a class="primary" href="${escapeHtml(destination.href)}">Open map<span data-icon="arrow" aria-hidden="true"></span></a>`;
+  const graph = map === null
+    ? '<span class="ghostnode">Destination</span>'
+    : miniGraphSvg(map);
+  return `<section class="wf-node wf-continue" style="--accent: var(${handoff ? '--state-frontier' : '--state-claimed'})">
+    <div class="txt"><p class="eyebrow">${escapeHtml(eyebrow)}</p><h2>${escapeHtml(title)}</h2><div class="next">${nextLine}</div><div class="go">${actions}</div></div>
+    <a class="graph" href="${escapeHtml(destination.href)}" aria-label="Open ${escapeHtml(title)}" tabindex="-1">${graph}</a>
+  </section>`;
 }
 
 export function homeErrorMarkup(message: string, recentRepositories: readonly string[]): string {
   const recentLinks = recentRepositories.length === 0
     ? ''
-    : `<div class="home-error-recents"><h2>Recent repositories</h2>${recentRepositories.map((repo) => `<a href="${repoPath(repo)}">${repoIconHtml(repo, 'sm')}${escapeHtml(repo)}</a>`).join('')}</div>`;
-  return `<div class="home-view"><div class="home-intro"><p class="eyebrow">HOME</p><h1>Find your next map.</h1><p>Wayfinder could not load your Home view. Try again to reconnect your repositories and maps.</p></div><div class="home-error-layout"><section class="home-error" role="alert"><strong>Home could not load</strong><p>${escapeHtml(message)}</p><button type="button" class="primary" data-refresh-home>Retry</button></section>${recentLinks}</div><section class="home-section" id="home-handoff-history-section" aria-labelledby="home-handoff-history-heading" hidden><div class="home-section-head"><div><h2 id="home-handoff-history-heading">Recent hand-offs</h2><p>Kept for 30 days</p></div></div><div class="home-handoff-history-list" id="home-handoff-history-list"></div></section></div>`;
+    : `<section><div class="wf-label">Recent repositories</div><div class="wf-node wf-list">${recentRepositories.map((repo) => `<a class="wf-repo" href="${repoPath(repo)}">${repoIconHtml(repo, 'md')}<span class="who"><span class="name">${escapeHtml(repo)}</span></span></a>`).join('')}</div></section>`;
+  return `<div class="wf-home"><div class="wf-left"><section class="wf-node wf-alert" role="alert"><span class="ic" aria-hidden="true">!</span><div><p class="eyebrow">Home could not load</p><h2>Wayfinder could not reach GitHub</h2><p>${escapeHtml(message)}</p><div class="go"><button type="button" class="primary" data-refresh-home><span data-icon="refresh" aria-hidden="true"></span>Try again</button></div></div></section>${recentLinks}${handOffHistorySection()}</div></div>`;
+}
+
+function handOffHistorySection(): string {
+  return '<section id="home-handoff-history-section" aria-labelledby="home-handoff-history-heading" hidden><div class="wf-label" id="home-handoff-history-heading">Recent hand-offs<span class="grow"></span><span class="wf-label-note">Kept for 30 days</span></div><div class="home-handoff-history-list" id="home-handoff-history-list"></div></section>';
 }
 
 function workItemMarkup(item: HomeWorkItem, extra: boolean): string {
-  const source = item.externalUrl === null
-    ? ''
-    : `<a class="home-work-source" href="${escapeHtml(item.externalUrl)}" target="_blank" rel="noreferrer">Source<span data-icon="external" aria-hidden="true"></span></a>`;
-  const openT3 = item.handOffId === null
-    ? ''
-    : `<button type="button" class="home-work-source" data-open-handoff="${escapeHtml(item.handOffId)}">Open in T3 Code</button>`;
-  const glyph = item.kind === 'handoff' ? 'play' : item.kind === 'pull-request' ? 'external' : 'grill';
-  const extraClass = extra ? ' home-inflight-extra' : '';
-  return `<article class="home-work-row${extraClass}"${extra ? ' hidden' : ''}>
-    <a class="home-work-main" href="${escapeHtml(item.href)}"><span class="home-work-kind" aria-hidden="true"><span data-icon="${glyph}"></span></span><span class="home-work-copy"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.detail)}</small></span><span class="home-work-state${item.stale ? ' is-stale' : ''}">${escapeHtml(inFlightStatusLabel(item))}</span></a>
-    <div class="home-work-actions">${openT3}${source}</div>
+  const needs = item.lane === 'needs-you';
+  const glyph = item.kind === 'handoff' ? (needs ? 'hand' : 'bolt') : item.kind === 'pull-request' ? 'external' : 'grill';
+  const accent = needs ? '--state-claimed' : '--state-frontier';
+  const actions = [
+    item.handOffId === null ? '' : `<button type="button" class="linkish" data-open-handoff="${escapeHtml(item.handOffId)}">Open in T3 Code</button>`,
+    item.externalUrl === null ? '' : `<a class="linkish" href="${escapeHtml(item.externalUrl)}" target="_blank" rel="noreferrer">On GitHub<span data-icon="external" aria-hidden="true"></span></a>`,
+  ].filter((part) => part !== '').join('');
+  const number = item.number === null ? '' : `<span class="num">#${String(item.number)}</span>`;
+  return `<article class="wf-node wf-fly${item.stale ? ' is-stale' : ''}${extra ? ' home-inflight-extra' : ''}" style="--accent: var(${accent})"${extra ? ' hidden' : ''}>
+    <a class="wf-fly-link" href="${escapeHtml(item.href)}"><span class="top"><span data-icon="${glyph}" aria-hidden="true"></span>${number}<span class="repo">${escapeHtml(shortRepo(item.repo))}</span><span class="age">${escapeHtml(relativeTimeLabel(item.timestamp))}</span></span>
+      <strong>${escapeHtml(item.title)}</strong><span class="meta">${escapeHtml(item.stale ? inFlightStatusLabel(item) : item.detail.replace(`${item.repo} · `, ''))}</span></a>
+    ${actions === '' ? '' : `<span class="acts">${actions}</span>`}
   </article>`;
 }
 
-function inFlightLaneMarkup(title: string, lane: HomeWorkItem['lane'], items: readonly HomeWorkItem[]): string {
+function inFlightLaneMarkup(title: string, glyph: string, lane: HomeWorkItem['lane'], items: readonly HomeWorkItem[]): string {
   const rows = items.length === 0
-    ? `<p class="home-lane-empty">${lane === 'needs-you' ? 'Nothing needs your attention right now.' : 'Nothing is running in T3 Code.'}</p>`
-    : items.map((item, index) => workItemMarkup(item, index >= 3)).join('');
-  return `<div class="home-inflight-lane"><div class="home-lane-head"><h3>${title}</h3><span>${String(items.length)}</span></div><div class="home-work-list">${rows}</div></div>`;
+    ? `<div class="wf-none">${lane === 'needs-you' ? 'Nothing is waiting on you.' : 'Hand a ticket to T3 Code and it runs here.'}</div>`
+    : items.map((item, index) => workItemMarkup(item, index >= LANE_LIMIT)).join('');
+  return `<div class="wf-lane"><h3 class="wf-lane-h"><span data-icon="${glyph}" aria-hidden="true"></span>${title}<b>${String(items.length)}</b></h3>${rows}</div>`;
 }
 
 export function homeLoadingMarkup(): string {
-  return `<div class="home-view is-loading" role="status" aria-live="polite" aria-label="Loading Home">
-    <div class="home-intro"><p class="eyebrow">HOME</p><div class="home-skeleton home-skeleton-title"></div><div class="home-skeleton home-skeleton-copy"></div></div>
-    <div class="home-cols"><div class="home-main"><section class="home-section"><div class="home-section-head"><h2>Continue</h2></div><div class="home-skeleton home-skeleton-card"></div></section><section class="home-section"><div class="home-section-head"><h2>In flight</h2></div><div class="home-skeleton home-skeleton-card"></div></section><section class="home-section"><div class="home-section-head"><h2>Repositories</h2></div><div class="home-skeleton home-skeleton-search"></div><div class="home-skeleton home-skeleton-list"></div></section></div><aside class="home-side"><div class="home-skeleton home-skeleton-progress"></div></aside></div>
+  return `<div class="wf-home is-loading" role="status" aria-live="polite" aria-label="Loading Home">
+    <div class="wf-cols"><div class="wf-left">
+      <section><div class="wf-label">Continue</div><div class="wf-skeleton is-card"></div></section>
+      <section><div class="wf-label">In flight</div><div class="wf-skeleton is-lanes"></div></section>
+      <section><div class="wf-label">Repositories</div><div class="wf-skeleton is-search"></div><div class="wf-skeleton is-list"></div></section>
+    </div><aside class="wf-side"><div class="wf-skeleton is-progress"></div></aside></div>
   </div>`;
 }
 
@@ -201,26 +220,27 @@ export async function renderHomeLanding(options: HomeLandingOptions): Promise<vo
     accountReady,
   )).join('');
   const emptyRepositories = accountReady
-    ? '<div class="home-repo-empty"><strong>No repositories with maps yet</strong><p>Open a repository above, or start a new map from the sidebar.</p></div>'
-    : '<div class="home-repo-empty"><strong>No cached recent repositories</strong><p>Sign in to load repositories that contain Wayfinder maps.</p></div>';
-  const handOffNotice = handOffError ? '<p class="home-inline-warning" role="status">Hand-off status could not be loaded. Refresh to try again.</p>' : '';
+    ? '<p class="wf-quiet">Repositories you open show up here, most recent first.</p>'
+    : '<p class="wf-quiet">Sign in to load the repositories that hold Wayfinder maps.</p>';
+  const handOffNotice = handOffError ? '<p class="wf-quiet is-warning" role="status">Hand-off status could not be loaded. Refresh to try again.</p>' : '';
   const needsYou = workItems.filter((item) => item.lane === 'needs-you');
   const running = workItems.filter((item) => item.lane === 'running');
-  const seeAll = workItems.length > 5 ? `<button type="button" class="ghost home-see-all" data-home-see-all aria-expanded="false">See all ${String(workItems.length)}</button>` : '';
+  const hiddenWork = needsYou.length > LANE_LIMIT || running.length > LANE_LIMIT;
+  const seeAll = workItems.length > 5 || hiddenWork ? `<button type="button" class="linkish" data-home-see-all aria-expanded="false">See all ${String(workItems.length)}</button>` : '';
+  const showAll = repositories.length > HOME_REPOSITORY_LIMIT ? `<button type="button" class="wf-more" data-home-show-all>Show all ${String(repositories.length)}</button>` : '';
 
-  options.paint(`<div class="home-view">
-    <header class="home-intro"><p class="eyebrow">HOME</p><h1>Find your next map.</h1><p>Pick up where you left off, see what needs you, or choose a repository.</p></header>
+  options.paint(`<div class="wf-home">
     ${options.accountPanel(state)}${warning}
-    <div class="home-cols"><div class="home-main">
-      <section class="home-section" aria-labelledby="home-continue-heading"><div class="home-section-head"><h2 id="home-continue-heading">Continue</h2></div>${homeContinueCardMarkup(continueDestination, accountReady)}</section>
-      <section class="home-section" aria-labelledby="home-inflight-heading"><div class="home-section-head"><h2 id="home-inflight-heading">In flight</h2>${seeAll}</div>${handOffNotice}<div class="home-inflight-grid">${inFlightLaneMarkup('Needs you', 'needs-you', needsYou)}${inFlightLaneMarkup('Running in T3 Code', 'running', running)}</div></section>
-      <section class="home-section" id="home-handoff-history-section" aria-labelledby="home-handoff-history-heading" hidden><div class="home-section-head"><div><h2 id="home-handoff-history-heading">Recent hand-offs</h2><p>Kept for 30 days</p></div></div><div class="home-handoff-history-list" id="home-handoff-history-list"></div></section>
-      <section class="home-section" aria-labelledby="home-repositories-heading"><div class="home-section-head"><div><h2 id="home-repositories-heading">Repositories</h2><p>Recent first · repositories with Wayfinder maps</p></div><span class="grow"></span><button type="button" class="ghost home-refresh" data-refresh-home aria-label="Refresh Home"><span data-icon="refresh" aria-hidden="true"></span></button></div>
-        <form class="home-repo-search" id="repo-entry"><label for="repo-name">Find a repository</label><div class="repo-picker"><input class="input" id="repo-name" name="repo" placeholder="Search by owner or name, or type owner/name" autocomplete="off" spellcheck="false" required role="combobox" aria-expanded="false" aria-controls="repo-menu" aria-autocomplete="list" /><ul class="repo-menu" id="repo-menu" role="listbox" hidden></ul></div><button class="primary" type="submit">Open</button></form>
-        <div class="home-repo-list" id="home-repo-list">${rows || emptyRepositories}</div><p class="home-repo-no-match" data-home-repo-no-match hidden>No repositories match that search.</p><button type="button" class="ghost home-show-all" data-home-show-all${repositories.length <= HOME_REPOSITORY_LIMIT ? ' hidden' : ''}>Show all ${String(repositories.length)}</button>
+    <div class="wf-cols"><div class="wf-left">
+      <section aria-label="Continue">${homeContinueCardMarkup(continueDestination, accountReady)}</section>
+      <section aria-labelledby="home-inflight-heading"><div class="wf-label"><span id="home-inflight-heading">In flight</span><span class="grow"></span>${seeAll}</div>${handOffNotice}
+        ${accountReady ? `<div class="wf-lanes">${inFlightLaneMarkup('Needs you', 'hand', 'needs-you', needsYou)}${inFlightLaneMarkup('Running in T3 Code', 'bolt', 'running', running)}</div>` : '<div class="wf-none">Needs GitHub. Sign in to see what’s waiting on you and what T3 Code is running.</div>'}</section>
+      ${handOffHistorySection()}
+      <section aria-labelledby="home-repositories-heading"><div class="wf-label"><span id="home-repositories-heading">Repositories</span><span class="grow"></span><button type="button" class="wf-icon-btn" data-refresh-home aria-label="Refresh Home" title="Refresh Home"><span data-icon="refresh" aria-hidden="true"></span></button></div>
+        <form class="wf-find" id="repo-entry" role="search"><label class="search repo-picker"><span data-icon="lens" aria-hidden="true"></span><span class="sr-only">Find a repository</span><input id="repo-name" name="repo" type="search" placeholder="Search your repositories, or type owner/name" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="repo-menu" aria-autocomplete="list" /><ul class="repo-menu" id="repo-menu" role="listbox" hidden></ul></label></form>
+        <div class="wf-node wf-list" id="home-repo-list">${rows === '' ? emptyRepositories : `${rows}<p class="wf-quiet" data-home-repo-no-match hidden>No recent repository matches. Press Enter to open it as owner/name.</p>${showAll}`}</div>
       </section>
-    </div><aside class="home-side" id="progress-host" aria-label="Progress"></aside></div>
-    <footer class="version">Wayfinder v${escapeHtml(state.version)}</footer>
+    </div><aside class="wf-side" id="progress-host" aria-label="Progress"></aside></div>
   </div>`);
 
   const form = document.getElementById('repo-entry');
@@ -274,9 +294,8 @@ export async function renderHomeLanding(options: HomeLandingOptions): Promise<vo
     }
     for (const row of repoRows) {
       const repo = row.dataset['homeRepo'];
-      const summaryHost = row.querySelector<HTMLElement>('[data-home-repo-summary]');
-      if (repo === undefined || summaryHost === null) continue;
-      summaryHost.innerHTML = repositorySummaryMarkup(summaries.get(repo.toLocaleLowerCase()) ?? null, recency.repositoryOpenedAt[repo.toLocaleLowerCase()], accountReady);
+      if (repo === undefined) continue;
+      row.innerHTML = repositoryRowInner(repo, summaries.get(repo.toLocaleLowerCase()) ?? null, recency.repositoryOpenedAt[repo.toLocaleLowerCase()], accountReady);
     }
     paintIcons(document);
     showAllButton.hidden = true;
@@ -298,11 +317,12 @@ export async function renderHomeLanding(options: HomeLandingOptions): Promise<vo
   document.querySelector<HTMLButtonElement>('[data-home-see-all]')?.addEventListener('click', (event) => {
     const button = event.currentTarget;
     if (!(button instanceof HTMLButtonElement)) return;
-    const expanded = button.getAttribute('aria-expanded') === 'true';
-    button.setAttribute('aria-expanded', String(!expanded));
-    button.textContent = expanded ? `See all ${String(workItems.length)}` : 'Show less';
-    for (const row of document.querySelectorAll<HTMLElement>('.home-inflight-extra')) row.hidden = expanded;
+    const open = button.getAttribute('aria-expanded') === 'true';
+    button.setAttribute('aria-expanded', String(!open));
+    button.textContent = open ? `See all ${String(workItems.length)}` : 'Show less';
+    for (const row of document.querySelectorAll<HTMLElement>('.home-inflight-extra')) row.hidden = open;
   });
   const progressHost = document.getElementById('progress-host');
   if (progressHost !== null) void options.renderProgress(progressHost);
 }
+

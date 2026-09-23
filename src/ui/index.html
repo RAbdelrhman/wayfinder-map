@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>wayfinder map</title>
+    <link rel="icon" type="image/svg+xml" href="/wayfinder-icon.svg" />
     <link rel="stylesheet" href="/styles.css" />
     <script src="/theme.js"></script>
   </head>
@@ -25,19 +26,22 @@
               <div class="handoff-list-body" id="handoff-list-body"></div>
             </section>
           </div>
-          <button type="button" class="topbar-action nav-topbar-jump" id="jump-to-top" data-nav-action="jump" aria-label="Jump to" title="Jump to · Ctrl K" hidden><span data-icon="lens"></span><span class="topbar-action-label">Jump to</span></button>
+          <button type="button" class="search nav-topbar-jump" id="jump-to-top" data-nav-action="jump" aria-label="Jump to" title="Jump to · Ctrl K" hidden><span data-icon="lens"></span><span class="ph">Jump to…</span><kbd>Ctrl K</kbd></button>
+          <button type="button" class="synced" id="synced" aria-label="Resync from GitHub" title="Click to resync from GitHub"><span data-icon="refresh" class="synced-icon" aria-hidden="true"></span><span class="synced-label"></span></button>
           <button type="button" class="primary map-start" id="map-start" hidden><span data-icon="play"></span><span class="topbar-action-label"></span></button>
         </header>
         <span class="sr-only" id="handoff-announcement" role="status" aria-live="polite"></span>
 
-        <label class="search map-local-search" for="search">
-          <span data-icon="lens" aria-hidden="true"></span>
-          <input id="search" type="search" placeholder="Filter tickets on this map…" autocomplete="off" spellcheck="false" aria-label="Filter tickets on this map" />
-        </label>
 
         <div class="warnings" id="warnings" hidden></div>
         <div class="planning-handoff is-compact" id="planning-handoff" role="region" aria-label="Map planning hand-off" hidden></div>
-        <div class="filters" id="filters" role="toolbar" aria-label="Filter tickets"></div>
+        <div class="map-toolbar">
+          <div class="filters" id="filters" role="toolbar" aria-label="Filter tickets"></div>
+          <label class="search map-local-search" for="search">
+            <span data-icon="lens" aria-hidden="true"></span>
+            <input id="search" type="search" placeholder="Filter tickets on this map…" autocomplete="off" spellcheck="false" aria-label="Filter tickets on this map" />
+          </label>
+        </div>
 
         <div class="body">
           <section class="stage" aria-label="Tickets">
