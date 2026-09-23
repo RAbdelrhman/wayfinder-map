@@ -28,6 +28,7 @@ function map(number: number, title: string, tickets: Ticket[] = []): WayfinderMa
     open: true,
     sections: { destination: '', notes: '', decisions: '', fog: '', outOfScope: '' },
     tickets,
+    outside: [],
   };
 }
 

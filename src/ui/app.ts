@@ -33,6 +33,7 @@ import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
 import type { NavigationController, NavigationView } from './navigation.js';
+import { recordMapOpened } from './homeRecency.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -132,6 +133,14 @@ let navigation: NavigationController | null = null;
 
 function currentMap(): WayfinderMap | null {
   return snapshot?.maps[activeMap] ?? null;
+}
+
+function rememberMapOpen(repo: string, mapNumber: number): void {
+  try {
+    recordMapOpened(repo, mapNumber, Date.now(), localStorage);
+  } catch {
+    // Recency is optional and must not block opening a map.
+  }
 }
 
 function syncedButton(): HTMLButtonElement {
@@ -258,6 +267,8 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       navigation?.setSnapshot(snapshot, currentMap()?.number ?? null);
       navigation?.setActiveView(view);
       if (mode === 'initial') {
+        const openedMap = currentMap();
+        if (openedMap !== null) rememberMapOpen(snapshot.repo, openedMap.number);
         const requestedTicket = Number(new URLSearchParams(window.location.search).get('ticket'));
         const ticket = currentMap()?.tickets.find((candidate) => candidate.number === requestedTicket);
         selected = ticket?.number ?? null;
@@ -1167,29 +1178,6 @@ document.addEventListener('click', (event) => {
   if (!MENUS.some((entry) => entry.menu.contains(target))) closeMenus();
 });
 
-els.mapMenu.addEventListener('click', (event) => {
-  const item = (event.target as HTMLElement).closest<HTMLElement>('[data-index]');
-  if (item === null) return;
-  closeMenus();
-  activeMap = Number(item.dataset['index']);
-  const nextMap = currentMap();
-  if (snapshot !== null && nextMap !== null) history.pushState(null, '', mapPath(snapshot.repo, nextMap.number));
-  planningHandOffId = null;
-  planningHandOff = null;
-  selected = null;
-  hovered = null;
-  filter = null;
-  query = '';
-  els.search.value = '';
-  inspectorTab = 'brief';
-  briefSection = 'destination';
-  zoom = 1;
-  els.canvas.style.zoom = '1';
-  els.zoomReset.textContent = '100%';
-  homedMap = null;
-  render();
-});
-
 window.addEventListener('popstate', () => {
   planningHandOffId = new URLSearchParams(window.location.search).get('planning');
   planningHandOff = null;
@@ -1197,6 +1185,8 @@ window.addEventListener('popstate', () => {
   const index = snapshot?.maps.findIndex((map) => map.number === route?.mapNumber) ?? -1;
   if (index < 0) return;
   activeMap = index;
+  const openedMap = currentMap();
+  if (snapshot !== null && openedMap !== null) rememberMapOpen(snapshot.repo, openedMap.number);
   view = viewFromQuery(new URLSearchParams(window.location.search).get('view'));
   const requestedTicket = Number(new URLSearchParams(window.location.search).get('ticket'));
   selected = currentMap()?.tickets.find((ticket) => ticket.number === requestedTicket)?.number ?? null;
