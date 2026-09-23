@@ -714,7 +714,7 @@
           .join('');
         const vars = p.variants.length
           ? `<div class="c-vars">${p.variants
-              .map(([l, n]) => `<a href="#" class="${p.picked === l ? 'is-picked' : ''}" data-to="variant ${l} of #${p.ticket}, full size">${WF.frame(l, { img: p.img && p.picked === l })}<span class="lbl">${p.picked === l ? icon('check') : ''}<b>${l}</b> ${esc(n)}</span></a>`)
+              .map(([l, n, shot]) => `<a href="#" class="${p.picked === l ? 'is-picked' : ''}" data-to="variant ${l} of #${p.ticket}, full size">${WF.frame(l, { shot })}<span class="lbl">${p.picked === l ? icon('check') : ''}<b>${l}</b> ${esc(n)}</span></a>`)
               .join('')}</div>`
           : '<div class="c-blank" style="margin-top:22px"><strong>No canvas yet</strong><p>The variants show up here when the prototype branch is pushed.</p></div>';
         return `<div class="c-split"><nav aria-label="Prototypes"><div class="c-h">Prototypes <span class="n">${list.length}</span></div>${nav}</nav>

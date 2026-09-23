@@ -52,11 +52,15 @@
     return `<div class="summary"><div class="ring">${ring(c)}<div class="lbl"><b>${c.done}/${total(c)}</b><span>done</span></div></div><div class="status-rows">${rows}</div></div>`;
   }
 
-  /** A sketch of one variant's page, standing in for its live frame. img uses the one real screenshot we have. */
-  const frame = (letter, { img = false, tag = true } = {}) =>
+  /** One variant's frame: its real screenshot (assets/protos/<shot>.jpg) when there is one, otherwise a sketch. */
+  const frame = (letter, { shot = null, tag = true } = {}) =>
     `<span class="wf-frame v-${letter.toLowerCase()}">${
-      img ? '<img src="../assets/home-b.png" alt="">' : `<span class="col"><i></i><i></i><i></i><i></i></span><span class="fb"><i class="wide"></i><i></i><i></i><i></i><i></i></span>`
+      shot
+        ? `<img src="../assets/protos/${esc(shot)}.jpg" alt="Variant ${esc(letter)}" loading="lazy">`
+        : `<span class="col"><i></i><i></i><i></i><i></i></span><span class="fb"><i class="wide"></i><i></i><i></i><i></i><i></i></span>`
     }${tag ? `<span class="tag">${esc(letter)}</span>` : ''}</span>`;
+  /** The variant a prototype settled on, as [id, name, shot]. */
+  const pickedVariant = (p) => p.variants.find(([id]) => id === p.picked) ?? p.variants[0];
 
   /**
     Progress as fog being cleared (#40). A small terrain under fog; each ticket done today clears one
@@ -490,6 +494,7 @@
     miniRing,
     summary,
     frame,
+    pickedVariant,
     fog,
     chip,
     go,

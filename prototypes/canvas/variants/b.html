@@ -4,15 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>B · Terrain</title>
-    <!-- PROTOTYPE (#43), direction B: Terrain. Home-owned pages borrow the map page itself: its dotted canvas, its
-         node cards and state chips, a mini ticket graph for every map, and progress as a hex fog-of-war map. -->
+    <!-- PROTOTYPE (#43), direction B: Terrain. Home-owned pages borrow the map page's node cards and state chips and
+         show a mini ticket graph for every map. The dotted canvas stays on the map page only. Progress has three looks
+         the user can switch between (?fog=trail|hex|bar): A's fog trail (default), B's hex fog-of-war, C's fog bar. -->
     <link rel="stylesheet" href="../assets/app.css" />
     <link rel="stylesheet" href="shell.css" />
     <style>
       .b-page {
         min-height: 100%;
-        background-image: radial-gradient(var(--gridline) 1px, transparent 1px);
-        background-size: 22px 22px;
       }
       .b-sheet {
         width: min(1160px, 100%);
@@ -114,8 +113,6 @@
         position: relative;
         background: var(--plane);
         border-left: 1px solid var(--hairline);
-        background-image: radial-gradient(var(--gridline) 1px, transparent 1px);
-        background-size: 14px 14px;
       }
       .b-graph {
         display: block;
@@ -392,6 +389,113 @@
         width: 14px;
         height: 14px;
       }
+      .b-style {
+        display: inline-flex;
+        gap: 2px;
+        margin-left: auto;
+        padding: 2px;
+        border-radius: 8px;
+        background: var(--wash);
+      }
+      .b-style button {
+        height: 24px;
+        padding: 0 8px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        font: inherit;
+        font-size: 11.5px;
+        color: var(--text-secondary);
+      }
+      .b-style button.is-on {
+        background: var(--surface-1);
+        color: var(--text-primary);
+        font-weight: 600;
+        box-shadow: var(--shadow-segment);
+      }
+      .b-fog-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .b-fog-head .eyebrow {
+        margin: 0;
+      }
+      .b-fog .wf-fog {
+        display: block;
+        margin: 14px 0 6px;
+        border-radius: 10px;
+        border: 1px solid var(--hairline);
+      }
+      .b-cal {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 5px;
+        margin: 12px 0 6px;
+      }
+      .b-cal i {
+        aspect-ratio: 1;
+        border-radius: 5px;
+        background:
+          linear-gradient(color-mix(in srgb, var(--plane) calc(var(--f) * 100%), transparent), color-mix(in srgb, var(--plane) calc(var(--f) * 100%), transparent)),
+          color-mix(in srgb, var(--state-frontier) 55%, var(--surface-1));
+        border: 1px solid var(--hairline);
+      }
+      .b-cal i.is-today {
+        outline: 2px solid var(--state-claimed);
+        outline-offset: 1px;
+      }
+      .b-cal i.is-pad {
+        visibility: hidden;
+      }
+      .b-cal i.is-blank {
+        background: transparent;
+        border-style: dashed;
+      }
+      .b-fogbar {
+        position: relative;
+        height: 34px;
+        margin: 14px 0 0;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--hairline);
+        background:
+          repeating-linear-gradient(90deg, transparent 0 calc(20% - 1px), var(--hairline) calc(20% - 1px) 20%),
+          linear-gradient(90deg, color-mix(in srgb, var(--state-frontier) 60%, var(--surface-1)), color-mix(in srgb, var(--state-frontier) 35%, var(--surface-1)));
+      }
+      .b-fogbar::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        right: 0;
+        left: calc(var(--p) * 100% - 18px);
+        background: linear-gradient(90deg, transparent, var(--plane) 18px);
+        opacity: 0.96;
+      }
+      .b-weeks {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        grid-auto-flow: column;
+        grid-template-rows: repeat(7, 1fr);
+        gap: 3px;
+        margin: 14px 0 4px;
+      }
+      .b-weeks i {
+        aspect-ratio: 1;
+        border-radius: 2px;
+        background: color-mix(in srgb, var(--state-frontier) calc(var(--v) * 75%), var(--wash));
+      }
+      .b-weeks i.is-today {
+        outline: 1.5px solid var(--state-claimed);
+      }
+      .b-cap {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 6px;
+        font-size: 11.5px;
+        color: var(--text-muted);
+      }
       .b-foot button {
         border: 1px solid var(--hairline);
         background: var(--surface-1);
@@ -448,8 +552,6 @@
         min-height: 170px;
         background: var(--plane);
         border-right: 1px solid var(--hairline);
-        background-image: radial-gradient(var(--gridline) 1px, transparent 1px);
-        background-size: 14px 14px;
       }
       .b-map .txt {
         display: flex;
@@ -523,8 +625,6 @@
         place-items: center;
         background: var(--plane);
         border-right: 1px solid var(--hairline);
-        background-image: radial-gradient(var(--gridline) 1px, transparent 1px);
-        background-size: 14px 14px;
       }
       .b-empty .ghostnode {
         width: 150px;
@@ -814,16 +914,56 @@
         return `<svg class="b-hex" viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" role="img" aria-label="Five weeks of cleared fog">${out}</svg>`;
       }
 
+      // The user picks how progress looks (#43): A's fog trail is the default, B's hexes and C's bar are the others.
+      const FOG_STYLES = { trail: 'Trail', hex: 'Hexes', bar: 'Bar' };
+      let fogStyle = FOG_STYLES[new URLSearchParams(location.search).get('fog')] ? new URLSearchParams(location.search).get('fog') : 'trail';
+      document.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-fog]');
+        if (!b) return;
+        fogStyle = b.dataset.fog;
+        WF.render();
+      });
+
+      function trail(blank, done, goal) {
+        const days = WF.HISTORY ?? Array(33).fill(null);
+        const cells = [...Array(35 - days.length).fill(undefined), ...days]
+          .map((n, i) =>
+            n === undefined
+              ? '<i class="is-pad"></i>'
+              : n === null
+                ? '<i class="is-blank"></i>'
+                : `<i style="--f:${(1 - Math.min(1, n / goal)).toFixed(2)}"${i === 34 ? ' class="is-today"' : ''} title="${n} done"></i>`,
+          )
+          .join('');
+        return `${WF.fog({ w: 300, h: 150, done, goal, blank })}<div class="b-cal" aria-label="Last 5 weeks">${cells}</div><div class="b-cap"><span>5 weeks ago</span><span>Today</span></div>`;
+      }
+
+      function bar(blank, done, goal) {
+        const hist = WF.HISTORY ?? [];
+        const all = [...Array(84 - hist.length).fill(null), ...hist];
+        const cells = all.map((n, i) => `<i style="--v:${n === null ? 0 : Math.min(1, n / goal).toFixed(2)}"${i === 83 && !blank ? ' class="is-today"' : ''}></i>`).join('');
+        return `<div class="b-fogbar" style="--p:${blank ? 0 : Math.min(1, done / goal)}" role="img" aria-label="${done} of ${goal} cleared"></div>
+          <div class="b-weeks" aria-label="12 weeks">${cells}</div><div class="b-cap"><span>12 weeks ago</span><span>Today</span></div>`;
+      }
+
       function progress() {
         const blank = WF.TODAY === null;
         const goal = WF.GOAL;
         const done = WF.TODAY ?? 0;
-        const flags = blank ? Array(goal).fill('<i></i>').join('') : [...Array(goal)].map((_, i) => `<i class="${i < done ? 'on' : ''}"></i>`).join('') + '<i class="over"></i>'.repeat(Math.max(0, done - goal));
-        return `<aside class="b-node b-fog"><p class="eyebrow">Fog cleared</p>
+        const flags =
+          fogStyle === 'hex'
+            ? `<div class="b-flags" aria-hidden="true">${
+                blank ? Array(goal).fill('<i></i>').join('') : [...Array(goal)].map((_, i) => `<i class="${i < done ? 'on' : ''}"></i>`).join('') + '<i class="over"></i>'.repeat(Math.max(0, done - goal))
+              }</div>`
+            : '';
+        const art = fogStyle === 'hex' ? hexes() : fogStyle === 'bar' ? bar(blank, done, goal) : trail(blank, done, goal);
+        const style = `<span class="b-style" role="group" aria-label="Progress style">${Object.entries(FOG_STYLES)
+          .map(([k, label]) => `<button type="button" data-fog="${k}" class="${k === fogStyle ? 'is-on' : ''}" aria-pressed="${k === fogStyle}">${label}</button>`)
+          .join('')}</span>`;
+        return `<aside class="b-node b-fog"><div class="b-fog-head"><p class="eyebrow">Fog cleared</p>${style}</div>
           <div class="b-today">${blank ? '<b>–</b><span>Sign in to count today</span>' : `<b>${done}/${goal}</b><span>${done >= goal ? (done > goal ? `goal met, ${done - goal} extra` : 'goal met') : `${goal - done} more to clear today`}</span>`}</div>
-          <div class="b-flags" aria-hidden="true">${flags}</div>
-          ${hexes()}
-          <div class="b-foot">${blank ? '<span class="grow">Each hex is a day. Done tickets clear its fog.</span>' : `${icon('flame')}<span class="grow">${WF.STREAK ? `${WF.STREAK} days in a row` : 'Clear a ticket to start a streak'}</span>`}<button type="button" data-to="the daily goal editor">Goal ${goal}</button></div></aside>`;
+          ${flags}${art}
+          <div class="b-foot">${blank ? '<span class="grow">Done tickets clear the fog.</span>' : `${icon('flame')}<span class="grow">${WF.STREAK ? `${WF.STREAK} days in a row` : 'Clear a ticket to start a streak'}</span>`}<button type="button" data-to="the daily goal editor">Goal ${goal}</button></div></aside>`;
       }
 
       function home() {
@@ -874,8 +1014,8 @@
         const strip = p.variants.length
           ? p.variants
               .map(
-                ([l, n]) =>
-                  `<a class="b-var${p.picked === l ? ' is-picked' : p.picked ? ' is-dim' : ''}" href="#" data-to="variant ${l} of #${p.ticket}, full size">${WF.frame(l, { img: p.img && p.picked === l })}<span class="lbl">${p.picked === l ? icon('check') : ''}${l} · ${esc(n)}</span></a>`,
+                ([l, n, shot]) =>
+                  `<a class="b-var${p.picked === l ? ' is-picked' : p.picked ? ' is-dim' : ''}" href="#" data-to="variant ${l} of #${p.ticket}, full size">${WF.frame(l, { shot })}<span class="lbl">${p.picked === l ? icon('check') : ''}${l} · ${esc(n)}</span></a>`,
               )
               .join('')
           : '<span class="b-slot">A</span><span class="b-slot">B</span><span class="b-slot">C</span>';

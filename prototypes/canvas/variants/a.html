@@ -728,14 +728,14 @@
           <p>${list.length ? `Each opens its canvas: the variants side by side, a note on each.${waiting.length ? ` ${waiting.length} is waiting on your pick.` : ''}` : 'When a prototype ticket on this map pushes its prototype branch, its canvas shows up here.'}</p></div></div>`;
         const pick = waiting
           .map(
-            (p) => `<section class="card a-pick"><div class="frames">${p.variants.map(([l]) => WF.frame(l)).join('')}</div><div>
+            (p) => `<section class="card a-pick"><div class="frames">${p.variants.map(([l, , shot]) => WF.frame(l, { shot })).join('')}</div><div>
               <span class="a-flag">${icon('hand')}Waiting on your pick</span><h2>#${p.ticket} ${esc(p.title)}</h2><p>${esc(p.gist)}</p>
               <p>${p.variants.length} variants: ${p.variants.map(([l, n]) => `${l} ${esc(n)}`).join(', ')}. You pick in #${p.decides}.</p>
               <div class="a-actions"><a class="primary" href="#" data-to="the #${p.ticket} canvas">${icon('play')}Open the canvas</a><a class="ghost" href="#" data-to="grilling #${p.decides}">Pick in #${p.decides}</a></div></div></section>`,
           )
           .join('');
         const tile = (p) => `<a class="card a-proto" href="#" data-to="the #${p.ticket} canvas">
-          ${p.variants.length ? `<span class="thumb">${WF.frame(p.picked, { img: !!p.img })}</span>` : `<span class="thumb is-empty">No canvas yet</span>`}
+          ${p.variants.length ? `<span class="thumb">${WF.frame(p.picked, { shot: WF.pickedVariant(p)[2] })}</span>` : `<span class="thumb is-empty">No canvas yet</span>`}
           <span class="txt"><span class="a-status">${p.status === 'picked' ? WF.chip('done', `picked ${p.picked}`) : WF.chip('blocked', 'being built')}<span class="grow"></span>#${p.ticket}${p.date ? ` · ${esc(p.date)}` : ''}</span>
           <strong>${esc(p.title)}</strong><span class="gist">${esc(p.gist)}</span></span></a>`;
         return `<div class="a-sheet">${head}${pick}${rest.length ? `<div class="a-head" style="margin:${waiting.length ? 30 : 0}px 0 12px"><h2>Decided and in progress</h2></div><div class="a-protos">${rest.map(tile).join('')}</div>` : ''}</div>`;

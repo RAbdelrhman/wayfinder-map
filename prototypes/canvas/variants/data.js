@@ -60,102 +60,100 @@
   };
   const TYPES = { R: ['research', 'lens'], P: ['prototype', 'beaker'], G: ['grilling', 'grill'], T: ['task', 'list'] };
 
-  // Map #35 as it stands after #42 and #44 were decided and #43 was claimed.
+  // Map #35 as it stands on GitHub today (2026-09-22).
   const T = (number, col, type, state, title, blockers = []) => ({ number, col, type, state, title, blockers });
   const MAP_35 = [
     T(36, 0, 'R', 'done', 'Where do Home and Start a new map fall short of the map page?'),
-    T(37, 0, 'R', 'done', "What is the map page's design system, and where do the Home views drift?"),
+    T(37, 0, 'R', 'done', "What is the map page's design system, and where do the Home views drift from it?"),
     T(38, 0, 'R', 'done', 'What can T3 Code tell Wayfinder about a thread after a hand-off?'),
-    T(39, 0, 'P', 'done', 'What should the prototype canvas look like?'),
+    T(39, 0, 'P', 'done', 'What should the prototype canvas look like, modelled on Claude Design artifacts?'),
     T(40, 1, 'G', 'done', 'What is Home for?'),
     T(41, 1, 'G', 'done', 'How deep does hand-off tracking go?'),
     T(42, 1, 'P', 'done', 'How should navigation show where you are and where you can go?'),
     T(44, 1, 'P', 'done', 'What should starting a new map feel like?'),
     T(50, 1, 'T', 'done', 'Consolidate shared design tokens and components in styles.css'),
+    T(58, 1, 'T', 'done', 'Sync the design system into Claude Design'),
     T(43, 2, 'P', 'claimed', 'What should the Home, repository and Prototypes views look like?'),
-    T(45, 2, 'P', 'frontier', 'What does the user see after handing off to T3 Code?'),
-    T(46, 2, 'G', 'frontier', 'Which navigation direction ships?'),
-    T(48, 2, 'G', 'frontier', 'Which Start a new map flow ships?'),
-    T(55, 2, 'T', 'frontier', 'Track hand-offs on the server'),
+    T(45, 2, 'P', 'done', 'What does the user see after handing off to T3 Code?'),
+    T(46, 2, 'G', 'done', 'Which navigation direction ships?'),
+    T(48, 2, 'G', 'done', 'Which Start a new map flow ships?'),
+    T(55, 2, 'T', 'done', 'Track hand-offs on the server'),
     T(47, 3, 'G', 'blocked', 'Which Home, repository and Prototypes direction ships?', [43]),
-    T(49, 3, 'G', 'blocked', 'Which after-hand-off experience ships?', [45]),
-    T(51, 3, 'T', 'blocked', 'Build the new navigation shell', [46, 50]),
+    T(49, 3, 'G', 'frontier', 'Which after-hand-off experience ships?', [45]),
+    T(51, 3, 'T', 'claimed', 'Build the new navigation shell', [46, 50]),
+    T(68, 3, 'T', 'frontier', 'Open a new map at a temporary route while it is being planned', [48]),
+    T(69, 3, 'T', 'frontier', 'Clone a repository from Start a new map', [48]),
     T(52, 4, 'T', 'blocked', 'Redesign the Home view', [47, 51]),
-    T(53, 4, 'T', 'blocked', 'Redesign the repository views', [47, 51]),
-    T(54, 4, 'T', 'blocked', 'Redesign the Start a new map flow', [48, 51]),
+    T(53, 4, 'T', 'blocked', 'Redesign the repository and Prototypes views', [47, 51]),
+    T(54, 4, 'T', 'blocked', 'Redesign the Start a new map flow', [51, 68, 69]),
+    T(56, 4, 'T', 'blocked', 'Show hand-off status after starting a ticket or map', [49, 55]),
+    T(57, 5, 'T', 'blocked', 'Audit the redesigned pages for accessibility and fidelity', [52, 53, 54]),
   ];
 
   const counts = (c, b, f, d) => ({ claimed: c, blocked: b, frontier: f, done: d });
   const map = (number, title, dest, c, extra = {}) => ({ number, title, dest, counts: c, ...extra });
   const repo = (name, mark, hue, opened, maps, extra = {}) => ({ name, mark, hue, opened, maps, prototypes: [], ...extra });
 
-  // Prototypes belong to a map (#42). status: waiting (a pick is yours to make), picked, building.
+  // Prototypes belong to a map (#42). These are the real ones: each prototype/<n>-<slug> branch, its variants
+  // (with a screenshot in assets/protos) and the verdict that closed it. status: waiting | picked | building.
   const PROTOS_35 = [
     {
       ticket: 43,
       map: 35,
       title: 'What should the Home, repository and Prototypes views look like?',
-      gist: 'Three directions for Home, the repository page and this tab: Cards, Terrain and Ledger.',
+      gist: 'Three directions for Home, the repository page and a map’s Prototypes tab: Cards, Terrain and Ledger.',
       status: 'waiting',
       date: 'today',
-      variants: [
-        ['A', 'Cards'],
-        ['B', 'Terrain'],
-        ['C', 'Ledger'],
-      ],
+      variants: [['A', 'Cards', '43-A'], ['B', 'Terrain', '43-B'], ['C', 'Ledger', '43-C']],
       decides: 47,
-    },
-    {
-      ticket: 44,
-      map: 35,
-      title: 'What should starting a new map feel like?',
-      gist: 'Goal first, repository chip in the composer, and landing on the map while it is planned.',
-      status: 'picked',
-      picked: 'C',
-      date: 'today',
-      variants: [
-        ['A', 'Form'],
-        ['B', 'Conversation'],
-        ['C', 'Goal first'],
-      ],
-    },
-    {
-      ticket: 42,
-      map: 35,
-      title: 'How should navigation show where you are and where you can go?',
-      gist: 'Sidebar tree on every page, with the scope switcher and map tabs in the topbar.',
-      status: 'picked',
-      picked: 'D',
-      date: 'today',
-      variants: [
-        ['A', 'Path bar'],
-        ['B', 'Scope and tabs'],
-        ['C', 'Sidebar tree'],
-        ['D', 'Your mix'],
-      ],
-      img: true,
-    },
-    {
-      ticket: 39,
-      map: 35,
-      title: 'What should the prototype canvas look like?',
-      gist: 'A dark board with one live frame per variant and a note on each.',
-      status: 'picked',
-      picked: 'A',
-      date: '4 days ago',
-      variants: [
-        ['A', 'Board'],
-        ['B', 'Gallery'],
-      ],
+      branch: 'prototype/43-what-should-the-home-repository-and-prototypes-views-look-like',
     },
     {
       ticket: 45,
       map: 35,
       title: 'What does the user see after handing off to T3 Code?',
-      gist: 'Not built yet. Its canvas shows up here when the prototype branch is pushed.',
-      status: 'building',
-      date: '',
-      variants: [],
+      gist: 'A + B: a live status card on the ticket, and every hand-off one click away in the topbar.',
+      status: 'picked',
+      picked: 'AB',
+      date: 'today',
+      variants: [['A', 'Stays on the ticket', '45-A'], ['B', 'A tray that follows you', '45-B'], ['C', 'Each hand-off gets a page', '45-C'], ['AB', 'A + B, list in the topbar', '45-AB']],
+      decides: 49,
+      branch: 'prototype/45-what-does-the-user-see-after-handing-off-to-t3-code',
+    },
+    {
+      ticket: 44,
+      map: 35,
+      title: 'What should starting a new map feel like?',
+      gist: 'Goal first: describe the goal, pick the repository in the composer, and Start lands on the map while it is planned.',
+      status: 'picked',
+      picked: 'C',
+      date: 'today',
+      variants: [['A', 'One page, map first', '44-A'], ['B', 'Stepped', '44-B'], ['C', 'Goal first', '44-C']],
+      decides: 48,
+      branch: 'prototype/44-what-should-starting-a-new-map-feel-like',
+    },
+    {
+      ticket: 42,
+      map: 35,
+      title: 'How should navigation show where you are and where you can go?',
+      gist: 'D: C’s sidebar tree on every page, with B’s repository and map switchers and the map’s tabs in the topbar.',
+      status: 'picked',
+      picked: 'D',
+      date: 'today',
+      variants: [['A', 'Path bar', '42-A'], ['B', 'Scope and tabs', '42-B'], ['C', 'Sidebar tree', '42-C'], ['D', 'Your mix', '42-D']],
+      decides: 46,
+      branch: 'prototype/42-how-should-navigation-show-where-you-are-and-where-you-can-go',
+    },
+    {
+      ticket: 39,
+      map: 35,
+      title: 'What should the prototype canvas look like, modelled on Claude Design artifacts?',
+      gist: 'A dark dotted board with every option side by side, a sticky note on each, and present mode for any one.',
+      status: 'picked',
+      picked: 'A',
+      date: 'yesterday',
+      variants: [['A', 'The board', '39-board']],
+      branch: 'prototype/39-what-should-the-prototype-canvas-look-like-modelled-on-claude-de',
     },
   ];
 
@@ -170,8 +168,8 @@
           35,
           'Redesign Home and Start a new map, prototyped on a design canvas',
           "Home and every view it owns look polished, share the map page's visual language, and have a clear flow: finding the right repo and map, starting a map, and knowing what happened after a hand-off.",
-          counts(1, 6, 4, 9),
-          { tickets: MAP_35, updated: '12 min ago', next: [45, 'What does the user see after handing off to T3 Code?'], running: 1 },
+          counts(2, 6, 3, 14),
+          { tickets: MAP_35, updated: '12 min ago', next: [49, 'Which after-hand-off experience ships?'], running: 1 },
         ),
         map(
           14,
@@ -185,8 +183,28 @@
       {
         prototypes: [
           ...PROTOS_35,
-          { ticket: 17, map: 14, title: 'Desktop launch and first-run states', gist: 'Splash, first run and the tray menu, side by side.', status: 'picked', picked: 'B', date: '2 weeks ago', variants: [['A', 'Splash'], ['B', 'Straight to Home']] },
-          { ticket: 8, map: 3, title: 'What does the Home page look like?', gist: 'Three Home layouts: directory, dashboard and last-used.', status: 'picked', picked: 'A', date: '1 month ago', variants: [['A', 'Directory'], ['B', 'Dashboard'], ['C', 'Last used']] },
+          {
+            ticket: 17,
+            map: 14,
+            title: 'Prototype desktop launch and first-run states',
+            gist: 'Launch, starting up, second launch, gh missing or signed out, startup failed and quit, as one clickable flow.',
+            status: 'picked',
+            picked: 'A',
+            date: '2 days ago',
+            variants: [['A', 'Launch and recovery states', '17']],
+            branch: 'prototype/17-prototype-desktop-launch-and-first-run-states',
+          },
+          {
+            ticket: 8,
+            map: 3,
+            title: 'What does the home page look like, and how does it lead into the map?',
+            gist: 'Home at / with Pinned above Recent; a repository opens its own map picker; the map header gets a compact switcher.',
+            status: 'picked',
+            picked: 'A',
+            date: '3 days ago',
+            variants: [['A', 'Pinned and Recent', '8']],
+            branch: 'prototype/8-what-does-the-home-page-look-like-and-how-does-it-lead-into-the',
+          },
         ],
       },
     ),
@@ -222,10 +240,10 @@
   const WM = 'RAbdelrhman/wayfinder-map';
   const INFLIGHT_ALL = [
     { kind: 'pick', repo: WM, map: 35, ticket: 43, title: 'Pick a direction for Home, repository and Prototypes', detail: '3 directions on the canvas', age: 'now', mapview: 'prototypes' },
-    { kind: 'review', repo: WM, map: 35, ticket: 50, pr: 76, title: 'Consolidate shared design tokens and components', detail: 'PR #76 ready for review', age: '1 h' },
+    { kind: 'decide', repo: WM, map: 35, ticket: 49, title: 'Which after-hand-off experience ships?', detail: 'Grilling waiting on your answer', age: '2 h' },
     { kind: 'input', repo: 'RAbdelrhman/podcontrol', map: 2, ticket: 18, title: 'Pair a phone with a QR code', detail: 'T3 Code is asking which port to use', age: '8 min' },
     { kind: 'decide', repo: 'RAbdelrhman/pdfbuilder', map: 5, ticket: 9, title: 'What does the template editor look like?', detail: 'Grilling waiting on your answer', age: '2 d' },
-    { kind: 'running', repo: WM, map: 35, ticket: 55, title: 'Track hand-offs on the server', detail: 'T3 Code working · 14 min', age: '14 min' },
+    { kind: 'running', repo: WM, map: 35, ticket: 51, title: 'Build the new navigation shell', detail: 'T3 Code working · 14 min', age: '14 min' },
     { kind: 'running', repo: 'entelech/ecpl-lockstep', map: 11, ticket: 31, title: 'Bound the log size during a partition', detail: 'T3 Code working · 41 min', age: '41 min' },
     { kind: 'running', repo: 'RAbdelrhman/podcontrol', map: 2, ticket: 16, title: 'Show what’s playing on the lock screen', detail: 'T3 Code working · 1 h 5 min', age: '1 h' },
   ];
@@ -250,7 +268,7 @@
 
   const CONTINUE =
     sc.cont === 'handoff'
-      ? { kind: 'handoff', repo: WM, map: 35, ticket: 55, title: 'Track hand-offs on the server', status: 'Running in T3 Code', since: '4 min ago' }
+      ? { kind: 'handoff', repo: WM, map: 35, ticket: 51, title: 'Build the new navigation shell', status: 'Running in T3 Code', since: '4 min ago' }
       : sc.cont === 'map'
         ? { kind: 'map', repo: WM, map: 35, since: '12 min ago' }
         : null;

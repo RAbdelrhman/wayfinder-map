@@ -92,6 +92,80 @@ window.CANVAS = {
 
   pages: [
     {
+      title: 'Your mix',
+      question:
+        'Your mix so far: B’s UI everywhere, with the dotted background kept on the map page only, and progress in the style each user picks (A’s trail by default). The Prototypes tab is shown three ways on real data.',
+      sections: [
+        {
+          title: 'Home: B, no dots, progress style is the user’s choice',
+          note: 'The Trail / Hexes / Bar switch in the progress panel is live in every frame. Each frame just starts on a different style. Trail (A’s fog) is the default.',
+          items: [
+            {
+              id: 'M1',
+              name: 'Home · Trail (default)',
+              src: 'variants/b.html?view=home&data=many&fog=trail',
+              note: {
+                idea: 'B’s Home without the dotted canvas. Progress defaults to A’s fog trail and 5-week calendar.',
+                pros: ['Keeps B’s node cards, mini graph and lanes', 'Plain surfaces keep the dots meaning “this is a map”'],
+                cons: ['A setting to build and store per user (local, like pins and recents)'],
+              },
+            },
+            { id: 'M2', name: 'Home · Hexes', src: 'variants/b.html?view=home&data=many&fog=hex', note: 'The same Home with B’s hex fog-of-war picked. Flags above the hexes count today’s tickets toward the goal.' },
+            { id: 'M3', name: 'Home · Bar', src: 'variants/b.html?view=home&data=inflight&fog=bar', note: 'C’s fog bar and 12-week strip, shown on the busy day (past the goal) so you can see the bar cleared.' },
+          ],
+        },
+        {
+          title: 'Repository: B, no dots',
+          items: [{ id: 'M4', name: 'Repository · wayfinder-map', src: 'variants/b.html?view=repo&data=many', note: 'Mini graphs now sit on a plain panel. Map #35 is drawn from its real 25 tickets.' }],
+        },
+        {
+          title: 'Prototypes tab on real data: map #35',
+          note: 'The real prototypes on map #35: #43 (this one, waiting on your pick), #45 (picked A + B), #44 (picked C), #42 (picked D) and #39 (the canvas). Every thumbnail is a screenshot of that variant from its prototype branch. These frames still use each direction’s own look, so compare the layout, not the chrome.',
+          items: [
+            {
+              id: 'M5',
+              name: 'A · Gallery',
+              src: 'variants/a.html?view=map&mapview=prototypes&data=many',
+              note: {
+                idea: 'The waiting prototype is a callout with all its variants; everything decided is a tile showing the variant that won.',
+                pros: ['One obvious thing to do, then history', 'Tiles scan fast even with many prototypes'],
+                cons: ['You only see the winner, not what it beat'],
+              },
+            },
+            {
+              id: 'M6',
+              name: 'B · Decision board',
+              src: 'variants/b.html?view=map&mapview=prototypes&data=many',
+              note: {
+                idea: 'One row per prototype with every variant side by side, like the canvas. The winner is outlined green and the rest are dimmed; the waiting row has dashed outlines.',
+                pros: ['A record of each decision: what was on the table and what won', 'Matches the canvas people already know'],
+                cons: ['Long page: 5 prototypes already scroll'],
+              },
+            },
+            {
+              id: 'M7',
+              name: 'C · List and detail',
+              src: 'variants/c.html?view=map&mapview=prototypes&data=many',
+              note: {
+                idea: 'A list sorted with what waits on you first; the detail shows the selected prototype’s variants large, with branch and decision facts. Click a row to switch.',
+                pros: ['Scales to many prototypes', 'Biggest thumbnails, plus room for the branch and decision'],
+                cons: ['One prototype at a time'],
+              },
+            },
+          ],
+        },
+        {
+          title: 'Prototypes tab on real data: map #14, one prototype',
+          note: 'A map with a single, older prototype (#17, desktop launch states).',
+          items: [
+            { id: 'M8', name: 'A · Gallery', src: 'variants/a.html?view=map&mapview=prototypes&data=many&map=14', note: 'One tile under “Decided”.' },
+            { id: 'M9', name: 'B · Decision board', src: 'variants/b.html?view=map&mapview=prototypes&data=many&map=14', note: 'One row with its single variant.' },
+            { id: 'M10', name: 'C · List and detail', src: 'variants/c.html?view=map&mapview=prototypes&data=many&map=14', note: 'A one-row list; the detail does the work.' },
+          ],
+        },
+      ],
+    },
+    {
       title: 'Home',
       question: 'Home: which direction gets you back into work in one click, and makes the fog worth clearing?',
       sections: [
@@ -180,7 +254,7 @@ window.CANVAS = {
       question: 'A map’s Prototypes tab (#42): compare and open the map’s prototypes. Which makes the one waiting on your pick impossible to miss?',
       sections: [
         {
-          title: 'Map #35: one waiting on your pick, three picked, one being built',
+          title: 'Map #35: one waiting on your pick, four picked',
           note: 'The in-flight “Pick a variant” item deep-links here (#40). The badge on the Prototypes tab turns blue while something waits on you. The sidebar is folded, as on every map page (#42).',
           items: trio('protos', 1, 'data=many', (d) =>
             ({
