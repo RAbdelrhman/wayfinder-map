@@ -2,7 +2,7 @@ import type { HomeState } from '../home.js';
 import type { AuthFlowState } from '../authFlow.js';
 import { mapPath, normalizeRepo, parseRepoPagePath, prototypesPath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import type { MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
-import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, bindUpdater, countStates, paintIcons, progressRing, renderAccountMarkContent, repoIconHtml, updateAccountMark } from './chrome.js';
+import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, allTickets, bindTheme, bindUpdater, countStates, paintIcons, progressRing, renderAccountMarkContent, repoIconHtml, updateAccountMark } from './chrome.js';
 import type { AccountMark, AccountProfile } from './chrome.js';
 import * as icons from './icons.js';
 import { currentCatalog, loadCatalog, modelSelectHtml, readChoice, tierDefaults } from './models.js';
@@ -375,7 +375,7 @@ function bindRepoPicker(
 /** A map's progress, drawn exactly as the map page's brief draws it. */
 function mapSummary(map: WayfinderMap): string {
   const counts = countStates(map);
-  const total = map.tickets.length;
+  const total = allTickets(map).length;
   const rows = STATE_ORDER.filter((state) => counts[state] > 0)
     .map(
       (state) =>
