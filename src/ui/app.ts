@@ -23,7 +23,6 @@ import {
 import type { ModelChoice, Tier } from './models.js';
 import { AutoRefresh } from './autoRefresh.js';
 import { fitPrototypeThumbs, prototypeTileHtml } from './prototypeTile.js';
-import type { TileText } from './prototypeTile.js';
 import { lineage, matchesFilter, matchesQuery, onLineage, syncedLabel } from './focus.js';
 import type { Lineage, TicketFilter } from './focus.js';
 import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
@@ -33,6 +32,7 @@ import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
 import type { NavigationController, NavigationView } from './navigation.js';
+import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
 import { recordMapOpened } from './homeRecency.js';
 import { handOffCardHtml, handOffPill, handOffPresentation, mountHandOffs } from './handOffs.js';
 
@@ -191,7 +191,6 @@ function rememberMapOpen(repo: string, mapNumber: number): void {
     // Recency is optional and must not block opening a map.
   }
 }
-
 function syncedButton(): HTMLButtonElement {
   return need<HTMLButtonElement>('synced');
 }
@@ -304,12 +303,12 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
         inspectorTab = selected === null ? 'brief' : 'ticket';
       }
       render();
+      if (planningHandOffId !== null) void loadPlanningHandoff();
       if (mode === 'initial' && selected !== null && view === 'map') {
         const node = els.nodes.querySelector<HTMLElement>(`.node[data-number="${String(selected)}"]`);
         node?.focus();
         node?.scrollIntoView({ block: 'center', inline: 'center' });
       }
-      if (planningHandOffId !== null) void loadPlanningHandoff();
       // The repository is only known once the snapshot lands, and the clone lookup is keyed to it.
       if (!workspaceAsked) {
         if (retryTicketOnLoad) {
@@ -342,16 +341,6 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
 
 /* ---------- small builders ---------- */
 
-function miniRing(done: number, total: number): string {
-  const radius = 7;
-  const circumference = 2 * Math.PI * radius;
-  const share = total === 0 ? 0 : done / total;
-  return `<svg class="miniring" viewBox="0 0 18 18" aria-hidden="true">
-    <circle cx="9" cy="9" r="${String(radius)}" fill="none" stroke="var(--baseline)" stroke-width="2.4"/>
-    <circle cx="9" cy="9" r="${String(radius)}" fill="none" stroke="var(--state-frontier)" stroke-width="2.4" stroke-dasharray="${String(share * circumference)} ${String(circumference)}"/>
-  </svg>`;
-}
-
 /** A ticket on this map, or an issue off it that one links to. Both open in the panel. */
 function ticketAt(map: WayfinderMap, number: number | null): Ticket | undefined {
   return map.tickets.find((ticket) => ticket.number === number) ?? map.outside.find((ticket) => ticket.number === number);
@@ -361,7 +350,10 @@ function isOutside(map: WayfinderMap, number: number): boolean {
   return map.outside.some((ticket) => ticket.number === number);
 }
 
-/** Linked ticket numbers, coloured by their state; off-map issues link directly to GitHub. */
+/**
+ * Linked ticket numbers, coloured by their state. Clicking one opens it in the panel; a number
+ * the map has never read links out to GitHub instead.
+ */
 function ticketPills(map: WayfinderMap, numbers: readonly number[], withTitles = false): string {
   if (numbers.length === 0) return '<span class="none">—</span>';
   return numbers
@@ -369,12 +361,12 @@ function ticketPills(map: WayfinderMap, numbers: readonly number[], withTitles =
       const other = ticketAt(map, number);
       if (other === undefined) {
         const url = `https://github.com/${repoName()}/issues/${String(number)}`;
-        return `<a class="pill is-outside" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="--accent: var(--text-muted)" title="Not read by this map. Opens on GitHub."><span class="pill-text">#${String(number)}</span>${icon(icons.EXTERNAL)}</a>`;
+        return `<a class="pill is-outside" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="--accent: var(--text-muted)" title="Not on this map. Opens on GitHub."><span class="pill-text">#${String(number)}</span>${icon(icons.EXTERNAL)}</a>`;
       }
       const accent = STATE_STYLE[other.state].variable;
       const title = withTitles ? ` ${other.title}` : '';
       const label = `<span class="pill-text">${escapeHtml(`#${String(number)}${title}`)}</span>`;
-      const tooltip = isOutside(map, number) ? `${other.title} (fog)` : other.title;
+      const tooltip = isOutside(map, number) ? `${other.title} (not on this map)` : other.title;
       return `<button type="button" class="pill" style="--accent: var(${accent})" data-jump="${String(number)}" title="${escapeHtml(tooltip)}">${label}</button>`;
     })
     .join('');
@@ -486,14 +478,14 @@ function outsideNodeHtml(outside: OutsideTicket, position: PositionedNode): stri
   return `<button type="button" class="node is-outside${outside.state === 'done' ? ' is-done' : ''}"
     data-number="${String(outside.number)}"
     style="--accent: var(${style.variable}); left:${String(position.x)}px; top:${String(position.y)}px; width:${String(position.width)}px; height:${String(position.height)}px"
-    aria-label="${escapeHtml(`${kind} #${String(outside.number)} ${outside.title}, ${style.label}, fog${handOff === undefined ? '' : `, hand-off ${handOffPresentation(handOff).label}`}`)}">
+    aria-label="${escapeHtml(`${kind} #${String(outside.number)} ${outside.title}, ${style.label}, not on this map${handOff === undefined ? '' : `, hand-off ${handOffPresentation(handOff).label}`}`)}">
     <span class="node-top">
       <span class="num">#${String(outside.number)}</span>
       ${stateChip(outside.state)}
       ${handOff === undefined ? '' : handOffPill(handOff, true)}
     </span>
     <span class="title">${escapeHtml(outside.title)}</span>
-    <span class="meta">${kind} · fog</span>
+    <span class="meta">${kind} · not on this map</span>
   </button>`;
 }
 
@@ -628,28 +620,27 @@ function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
     try {
       const response = await fetch(`${scopedApiPath(repoName(), 'prototypes')}?map=${String(map.number)}${force ? '&refresh=1' : ''}`);
       const body: unknown = await response.json();
-      next = response.ok
-        ? { status: 'ready', list: body as Prototype[] }
-        : { status: 'failed', error: (body as { error?: string }).error ?? 'Could not read the prototypes.' };
+      if (!response.ok) {
+        const error = typeof body === 'object' && body !== null && 'error' in body && typeof body.error === 'string'
+          ? body.error
+          : 'Could not read the prototypes.';
+        next = { status: 'failed', error };
+      } else if (!Array.isArray(body)) {
+        next = { status: 'failed', error: 'The prototype response was invalid.' };
+      } else {
+        next = { status: 'ready', list: body as Prototype[] };
+      }
     } catch (error) {
       next = { status: 'failed', error: (error as Error).message };
     }
     if (prototypeLoads.get(map.number) !== loading) return;
     prototypeLoads.set(map.number, next);
     if (currentMap()?.number !== map.number) return;
+    navigation?.setPrototypeCount(next.status === 'ready' ? next.list.length : null);
     if (view === 'prototypes') renderPrototypes();
     renderTicketPrototype();
   })();
   return loading;
-}
-
-/** The words under a tile on this map: the ticket, and a way to open it. */
-function tileText(prototype: Prototype, ticket: Ticket | undefined): TileText {
-  return {
-    eyebrow: `#${String(prototype.ticketNumber)}${ticket === undefined ? '' : ` · ${STATE_STYLE[ticket.state].label}`}`,
-    title: ticket?.title ?? prototype.branch,
-    links: `<button type="button" class="linkish" data-jump="${String(prototype.ticketNumber)}">Ticket</button><a href="${escapeHtml(prototype.url)}" target="_blank" rel="noreferrer">Branch ↗</a>`,
-  };
 }
 
 function renderPrototypes(): void {
@@ -665,36 +656,20 @@ function renderPrototypes(): void {
   }
 
   const load = prototypesFor(map);
-  if (load.status !== 'ready') {
-    els.protoWrap.innerHTML = `<p class="empty">${
-      load.status === 'loading' ? 'Looking for prototype branches…' : escapeHtml(`Could not read the prototypes: ${load.error}`)
-    }</p>`;
+  if (load.status === 'loading') {
+    navigation?.setPrototypeCount(null);
+    els.protoWrap.innerHTML = prototypeBoardLoadingHtml();
     return;
   }
-
-  if (load.list.length === 0) {
-    els.protoWrap.innerHTML =
-      '<p class="empty">No prototypes on this map yet.<br />A prototype ticket keeps its prototype on a <code>prototype/&lt;ticket&gt;-&lt;slug&gt;</code> branch, and it shows up here once pushed.</p>';
+  if (load.status === 'failed') {
+    navigation?.setPrototypeCount(null);
+    els.protoWrap.innerHTML = prototypeBoardErrorHtml(load.error);
+    paintIcons(els.protoWrap);
     return;
   }
-
-  const tiles = load.list
-    .map((prototype) =>
-      prototypeTileHtml(
-        repoName(),
-        prototype,
-        tileText(
-          prototype,
-          map.tickets.find((candidate) => candidate.number === prototype.ticketNumber),
-        ),
-      ),
-    )
-    .join('');
-
-  els.protoWrap.innerHTML = `<div class="protogallery">
-    <p class="eyebrow">${String(load.list.length)} ${load.list.length === 1 ? 'prototype' : 'prototypes'} on ${escapeHtml(map.title)} · click one to open it</p>
-    <div class="proto-grid">${tiles}</div>
-  </div>`;
+  navigation?.setPrototypeCount(load.list.length);
+  els.protoWrap.innerHTML = prototypeBoardHtml(repoName(), map, load.list);
+  paintIcons(els.protoWrap);
   fitPrototypeThumbs(els.protoWrap);
 }
 
@@ -736,8 +711,7 @@ function syncHighlights(): void {
   const shown = (number: number): boolean => {
     const ticket = byNumber.get(number);
     return ticket !== undefined && matches(ticket);
-  };
-  const chain: Lineage | null = hovered === null ? null : lineage(graphTickets(map), hovered);
+  };  const chain: Lineage | null = hovered === null ? null : lineage(graphTickets(map), hovered);
   const related = (number: number): boolean =>
     chain === null || number === hovered || chain.upstream.has(number) || chain.downstream.has(number);
 
@@ -899,7 +873,7 @@ function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
     </div>
     <h2 class="dtitle">${escapeHtml(ticket.title)}</h2>
     ${banner === null ? '' : `<div class="banner" style="--accent: var(${style.variable})">${icon(style.icon)}<span>${banner}</span></div>`}
-    ${isOutside(map, ticket.number) ? '<p class="hint">Fog: not a sub-issue of this map, but linked to it by a dependency.</p>' : ''}
+    ${isOutside(map, ticket.number) ? '<p class="hint">Not on this map, but linked to it by a dependency.</p>' : ''}
     <dl class="facts">
       <dt>Type</dt><dd>${icon(typeStyle(ticket.type).icon)}${escapeHtml(typeStyle(ticket.type).label)}</dd>
       <dt>Assignee</dt><dd>${ticket.assignee === null ? '<span class="none">unclaimed</span>' : escapeHtml(`@${ticket.assignee}`)}</dd>
@@ -1235,7 +1209,8 @@ window.addEventListener('popstate', () => {
   if (snapshot !== null && openedMap !== null) rememberMapOpen(snapshot.repo, openedMap.number);
   view = viewFromQuery(new URLSearchParams(window.location.search).get('view'));
   const requestedTicket = Number(new URLSearchParams(window.location.search).get('ticket'));
-  selected = currentMap()?.tickets.find((ticket) => ticket.number === requestedTicket)?.number ?? null;
+  const map = currentMap();
+  selected = map === null ? null : allTickets(map).find((ticket) => ticket.number === requestedTicket)?.number ?? null;
   inspectorTab = selected === null ? 'brief' : 'ticket';
   if (snapshot !== null) navigation?.setSnapshot(snapshot, currentMap()?.number ?? null);
   navigation?.setActiveView(view);
@@ -1291,9 +1266,33 @@ els.nodes.addEventListener('focusin', (event) => {
 els.nodes.addEventListener('focusout', () => setHovered(null));
 
 els.protoWrap.addEventListener('click', (event) => {
-  const jump = (event.target as HTMLElement).closest<HTMLElement>('[data-jump]');
+  const target = event.target as HTMLElement;
+  const retry = target.closest<HTMLButtonElement>('[data-prototype-retry]');
+  if (retry !== null) {
+    const map = currentMap();
+    if (map !== null) {
+      prototypesFor(map, true);
+      renderPrototypes();
+    }
+    return;
+  }
+  const jump = target.closest<HTMLElement>('[data-jump]');
   if (jump !== null) select(Number(jump.dataset['jump']));
 });
+
+els.protoWrap.addEventListener('error', (event) => {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement) || !image.classList.contains('decision-variant-image')) return;
+  image.hidden = true;
+  const fallback = image.parentElement?.querySelector<HTMLElement>('.decision-variant-fallback');
+  const page = image.parentElement?.querySelector<HTMLIFrameElement>('.decision-variant-page');
+  if (page !== null && page !== undefined) {
+    page.hidden = false;
+    fitPrototypeThumbs(els.protoWrap);
+  } else if (fallback !== null && fallback !== undefined) {
+    fallback.hidden = false;
+  }
+}, true);
 
 els.tableWrap.addEventListener('click', (event) => {
   const row = (event.target as HTMLElement).closest<HTMLElement>('tr[data-number]');
@@ -1422,13 +1421,7 @@ function setView(next: NavigationView): void {
   render();
 }
 
-if (new URLSearchParams(window.location.search).get('view') === 'prototypes') setView('prototypes');
-
-need('view-map').addEventListener('click', () => setView('map'));
-need('view-table').addEventListener('click', () => setView('table'));
-need('view-prototypes').addEventListener('click', () => setView('prototypes'));
-
-/* Zoom and pan while keeping the point beneath the cursor anchored. */
+/* zoom and pan: the canvas sits in a padded stage, so it can be dragged anywhere and zoomed far out */
 
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 1.6;

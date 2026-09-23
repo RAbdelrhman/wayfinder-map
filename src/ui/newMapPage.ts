@@ -19,6 +19,7 @@ export interface NewMapPageContext {
   getJson<T>(url: string): Promise<T>;
   postJson<T>(url: string, body?: unknown): Promise<T>;
   remember(repo: string): void;
+  setCurrentRepo(repo: string | null): void;
   toast(message: string, ms?: number): void;
 }
 
@@ -306,6 +307,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
       return;
     }
     repo = next;
+    context.setCurrentRepo(next);
     if (next !== null && !knownRepos.some((candidate) => candidate.toLowerCase() === next.toLowerCase())) knownRepos.unshift(next);
     mapNotice = null;
     cloneOpen = false;

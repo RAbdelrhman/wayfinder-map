@@ -1,17 +1,15 @@
 import type { HomeState } from '../home.js';
 import type { AuthFlowState } from '../authFlow.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
-import { draftMapPath, mapPath, normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import type { MapSnapshot, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
-import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, allTickets, bindTheme, bindUpdater, countStates, paintIcons, progressRing, repoIconHtml, updateAccountMark } from './chrome.js';
+import { draftMapPath, normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
+import type { MapSnapshot, WayfinderMap } from '../types.js';
+import { bindTheme, bindUpdater, paintIcons, repoIconHtml, updateAccountMark } from './chrome.js';
 import type { AccountMark, AccountProfile } from './chrome.js';
 import * as icons from './icons.js';
 import { loadCatalog } from './models.js';
 import { syncedLabel } from './focus.js';
 import { icon } from './icons.js';
-import { escapeHtml, renderMarkdown } from './markdown.js';
-import { fitPrototypeThumbs, prototypeTileHtml } from './prototypeTile.js';
-import type { TileText } from './prototypeTile.js';
+import { escapeHtml } from './markdown.js';
 import { mountProgressPanel } from './progress.js';
 import type { ProgressSettings, ProgressState } from '../progress.js';
 import { AutoRefresh } from './autoRefresh.js';
@@ -19,10 +17,12 @@ import { draftToMapPath, initialRepository, isNewMapHandOff } from './newMap.js'
 import type { NewMapHandOff } from './newMap.js';
 import { renderNewMapPage } from './newMapPage.js';
 import { mountNavigation } from './navigation.js';
-import type { NavigationController } from './navigation.js';
+import type { NavigationController, NavigationPage } from './navigation.js';
 import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
 import { homeLoadingMarkup, renderHomeLanding } from './homeLanding.js';
 import { handOffCardHtml, handOffPresentation, homeHandOffHistoryHtml, mountHandOffs } from './handOffs.js';
+import { countRunningHandOffs, mapMatchesRepositoryFilter, repositoryLoadErrorHtml, repositoryPageHtml } from './repositoryView.js';
+import type { RepositoryHandOffStatus, RepositoryMapFilter } from './repositoryView.js';
 
 function need<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -70,6 +70,10 @@ function syncedButton(): HTMLButtonElement {
   return need<HTMLButtonElement>('synced');
 }
 
+function setSyncBusy(busy: boolean): void {
+  syncedButton().classList.toggle('is-busy', busy);
+}
+
 let toastTimer = 0;
 
 function toast(message: string, ms = 4200): void {
@@ -82,8 +86,8 @@ function toast(message: string, ms = 4200): void {
 }
 
 /** Writes markup into the page and hydrates the icons it named. */
-function paint(html: string): void {
-  els.main.innerHTML = `<div class="sheet">${html}</div>`;
+function paint(html: string, sheetClass = ''): void {
+  els.main.innerHTML = '<div class="sheet' + (sheetClass === '' ? '' : ' ' + sheetClass) + '">' + html + '</div>';
   paintIcons(els.main);
 }
 
@@ -205,17 +209,18 @@ interface HandOffSnapshot {
 let draftAutoRefresh: AutoRefresh | null = null;
 
 async function renderDraftPage(repo: string, draftId: string, refresh = false): Promise<boolean> {
-  if (refresh) syncedButton().classList.add('is-busy');
+  navigation?.setCurrentRepo(repo);
+  if (refresh) setSyncBusy(true);
   let tracking: HandOffSnapshot;
   try {
     tracking = await getJson<HandOffSnapshot>('/api/hand-offs');
   } catch (error) {
-    if (refresh) syncedButton().classList.remove('is-busy');
+    if (refresh) setSyncBusy(false);
     throw error;
   }
   const handOff = tracking.handOffs.find((candidate) => candidate.id === draftId && candidate.repo.toLowerCase() === repo.toLowerCase());
   if (handOff === undefined || !isNewMapHandOff(handOff)) {
-    if (refresh) syncedButton().classList.remove('is-busy');
+    if (refresh) setSyncBusy(false);
     throw new Error('This planning hand-off could not be found. Start a new map from Home to create another.');
   }
   const draft = handOff as NewMapHandOff;
@@ -227,10 +232,11 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
     snapshotWarning = '<div class="panel is-warning"><span class="grow">Could not check for the new map issue. Wayfinder will try again.</span></div>';
   }
   if (snapshot !== null) {
+    navigation?.setSnapshot(snapshot, null);
     const target = draftToMapPath(repo, draft, snapshot.maps);
     if (target !== null) {
       window.location.replace(target);
-      if (refresh) syncedButton().classList.remove('is-busy');
+      if (refresh) setSyncBusy(false);
       return true;
     }
     const fetched = Date.parse(snapshot.fetchedAt);
@@ -285,7 +291,7 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
     if (snapshot !== null) draftAutoRefresh.markSuccessfulSnapshot();
     draftAutoRefresh.start();
   }
-  if (refresh) syncedButton().classList.remove('is-busy');
+  if (refresh) setSyncBusy(false);
   return snapshot !== null;
 }
 
@@ -430,64 +436,65 @@ function bindRepoPicker(
   });
 }
 
-/** A map's progress, drawn exactly as the map page's brief draws it. */
-function mapSummary(map: WayfinderMap): string {
-  const counts = countStates(map);
-  const total = allTickets(map).length;
-  const rows = STATE_ORDER.filter((state) => counts[state] > 0)
-    .map(
-      (state) =>
-        `<span class="srow" style="--accent: var(${STATE_STYLE[state].variable})">${icon(STATE_STYLE[state].icon)}${escapeHtml(
-          STATE_STYLE[state].long,
-        )}<b>${String(counts[state])}</b></span>`,
-    )
-    .join('');
-  return `<div class="summary">
-    <div class="ring">${progressRing(counts, total)}<div class="lbl"><b>${String(counts.done)}/${String(total)}</b><span>done</span></div></div>
-    <div class="status-rows">${rows || '<span class="hint">This map has no tickets yet.</span>'}</div>
-  </div>`;
+function bindRepositoryFilters(maps: readonly WayfinderMap[]): void {
+  const root = els.main.querySelector<HTMLElement>('[data-repository-page]');
+  const search = root?.querySelector<HTMLInputElement>('#repo-map-search');
+  const noMatch = root?.querySelector<HTMLElement>('[data-repo-map-no-match]');
+  const resultCount = root?.querySelector<HTMLElement>('[data-repo-map-count]');
+  if (root === null || root === undefined || search === null || search === undefined || noMatch === null || noMatch === undefined || resultCount === null || resultCount === undefined) return;
+
+  const byNumber = new Map(maps.map((map) => [map.number, map]));
+  const cards = [...root.querySelectorAll<HTMLElement>('[data-map-card]')];
+  let filter: RepositoryMapFilter = 'all';
+  const update = (): void => {
+    let visible = 0;
+    for (const card of cards) {
+      const map = byNumber.get(Number(card.dataset['mapNumber']));
+      const show = map !== undefined && mapMatchesRepositoryFilter(map, filter, search.value);
+      card.hidden = !show;
+      if (show) visible += 1;
+    }
+    noMatch.hidden = visible > 0;
+    noMatch.textContent = search.value.trim() !== ''
+      ? `No maps match “${search.value.trim()}”.`
+      : filter === 'all'
+        ? 'No maps match this filter.'
+        : `No ${filter} maps.`;
+    resultCount.textContent = `Showing ${String(visible)} of ${String(cards.length)} maps.`;
+  };
+
+  root.addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-map-filter]');
+    if (button === null) return;
+    const next = button.dataset['mapFilter'];
+    if (next !== 'all' && next !== 'active' && next !== 'completed') return;
+    filter = next;
+    for (const candidate of root.querySelectorAll<HTMLButtonElement>('[data-map-filter]')) {
+      const selected = candidate === button;
+      candidate.setAttribute('aria-pressed', String(selected));
+      candidate.classList.toggle('is-selected', selected);
+    }
+    update();
+  });
+  search.addEventListener('input', update);
+  update();
 }
 
-function mapCard(repo: string, map: WayfinderMap): string {
-  const destination = map.sections.destination || 'No destination has been written yet.';
-  return `<a class="card map-card" href="${mapPath(repo, map.number)}">
-    <div>
-      <p class="eyebrow">Map · #${String(map.number)}${map.open ? '' : ' · completed'}</p>
-      <h2>${escapeHtml(map.title)}</h2>
-    </div>
-    <p class="dest">${escapeHtml(destination)}</p>
-    ${mapSummary(map)}
-    <span class="proto-badge" data-proto-badge="${String(map.number)}" hidden></span>
-  </a>`;
-}
-
-/* ---------- prototypes ---------- */
-
-function prototypeCount(total: number): string {
-  return `${String(total)} prototype${total === 1 ? '' : 's'}`;
-}
-
-/**
- * Prototypes cost their own GitHub reads, so the page paints first and the badges arrive
- * after. A map with none keeps its badge hidden rather than saying zero.
- */
-async function paintPrototypeBadges(repo: string, refresh: boolean): Promise<void> {
-  let list: Prototype[];
+async function loadRepositoryHandOffCounts(repo: string, root: HTMLElement): Promise<void> {
   try {
-    list = await getJson<Prototype[]>(`${scopedApiPath(repo, 'prototypes')}${refresh ? '?refresh=1' : ''}`);
+    const snapshot = await getJson<{ handOffs: RepositoryHandOffStatus[] }>('/api/hand-offs');
+    if (!root.isConnected || !Array.isArray(snapshot.handOffs)) return;
+    const counts = countRunningHandOffs(repo, snapshot.handOffs);
+    for (const badge of root.querySelectorAll<HTMLElement>('[data-map-handoffs]')) {
+      const mapNumber = Number(badge.dataset['mapHandoffs']);
+      if (!Number.isSafeInteger(mapNumber)) continue;
+      const count = counts.get(mapNumber) ?? 0;
+      badge.textContent = count === 0 ? '' : `${String(count)} running in T3 Code`;
+      badge.hidden = count === 0;
+    }
   } catch {
-    return;
+    // Hand-off status is optional; leave the map list usable when T3 Code is offline.
   }
-  const byMap = new Map<number, number>();
-  for (const prototype of list) byMap.set(prototype.mapNumber, (byMap.get(prototype.mapNumber) ?? 0) + 1);
-
-  for (const badge of els.main.querySelectorAll<HTMLElement>('[data-proto-badge]')) {
-    const total = byMap.get(Number(badge.dataset['protoBadge'])) ?? 0;
-    if (total === 0) continue;
-    badge.innerHTML = `<span data-icon="beaker"></span>${escapeHtml(prototypeCount(total))}`;
-    badge.hidden = false;
-  }
-  paintIcons(els.main);
 }
 
 async function renderRepository(repo: string, refresh: boolean): Promise<void> {
@@ -498,48 +505,10 @@ async function renderRepository(repo: string, refresh: boolean): Promise<void> {
   navigation?.setSnapshot(snapshot, null);
   const fetched = Date.parse(snapshot.fetchedAt);
   setSynced(Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
-  const warnings = snapshot.warnings
-    .map((warning) => `<div class="panel is-warning"><span class="grow">${escapeHtml(warning)}</span></div>`)
-    .join('');
-
-  paint(`<div class="page-head">
-      <div class="grow">
-        <p class="eyebrow">Repository</p>
-        <div class="page-title-row">
-          ${repoIconHtml(repo, 'lg')}
-          <h1>${escapeHtml(repo)}</h1>
-        </div>
-      </div>
-      <div class="page-actions">
-        <span class="badge">${String(snapshot.maps.length)} map${snapshot.maps.length === 1 ? '' : 's'}</span>
-        <a class="ghost" href="https://github.com/${escapeHtml(repo)}" target="_blank" rel="noreferrer"><span data-icon="external"></span>GitHub</a>
-      </div>
-    </div>
-    ${warnings}
-    ${
-      snapshot.maps.length === 0
-        ? '<div class="empty"><strong>No Wayfinder maps here yet</strong><p>No issue in this repository carries the configured map label.</p><a class="ghost" href="/">Back to Home</a></div>'
-        : `<div class="map-grid">${snapshot.maps.map((map) => mapCard(repo, map)).join('')}</div>`
-    }`);
-
-  void paintPrototypeBadges(repo, refresh);
-}
-
-const TYPE_ICONS: Record<string, string> = {
-  research: icons.LENS,
-  prototype: icons.BEAKER,
-  grilling: icons.GRILL,
-  task: icons.LIST,
-};
-
-function typeGlyph(type: TicketType | null): string {
-  const iconPath = (type && TYPE_ICONS[type]) || icons.LIST;
-  return `<span class="glyph" title="${escapeHtml(type ?? 'task')}">${icon(iconPath)}</span>`;
-}
-
-function stateChip(state: TicketState): string {
-  const look = STATE_LOOKS[state];
-  return `<span class="chip" style="--accent: var(${look.variable})">${icon(look.icon)}${escapeHtml(look.label)}</span>`;
+  paint(repositoryPageHtml(repo, snapshot), 'repository-sheet');
+  bindRepositoryFilters(snapshot.maps);
+  const root = els.main.querySelector<HTMLElement>('[data-repository-page]');
+  if (root !== null) void loadRepositoryHandOffCounts(repo, root);
 }
 
 async function renderNewMap(): Promise<void> {
@@ -568,6 +537,7 @@ async function renderNewMap(): Promise<void> {
       getJson,
       postJson,
       remember,
+      setCurrentRepo: (repo) => navigation?.setCurrentRepo(repo),
       toast,
     },
     repositoryQuery,
@@ -596,7 +566,7 @@ const navigationRepo = page.kind === 'repository' || page.kind === 'draft'
   : page.kind === 'new-map'
     ? normalizeRepo(new URLSearchParams(window.location.search).get('repo') ?? '')
     : null;
-const navigationPage = page.kind === 'draft' ? 'map' : page.kind;
+const navigationPage: NavigationPage = page.kind === 'draft' ? 'new-map' : page.kind;
 navigation = mountNavigation({
   shell: need('app'),
   sidebar: need('sidebar-shell'),
@@ -613,24 +583,28 @@ async function run(work: () => Promise<unknown> | unknown): Promise<void> {
     await work();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    paint(`<div class="empty"><strong>Wayfinder could not load this page</strong><p>${escapeHtml(message)}</p><a class="ghost" href="/">Back to Home</a></div>`);
+    if (page.kind === 'repository') {
+      paint(repositoryLoadErrorHtml(message), 'repository-sheet');
+    } else {
+      paint('<div class="empty" role="alert"><strong>Wayfinder could not load this page</strong><p>' + escapeHtml(message) + '</p><button type="button" class="ghost" data-retry-page>Try again</button></div>');
+    }
     toast(message, 10000);
   }
 }
 
 async function show(refresh = false): Promise<void> {
-  if (refresh) need('synced').classList.add('is-busy');
+  if (refresh) setSyncBusy(true);
+  else if (page.kind === 'repository') paint('<p class="loading" role="status" aria-live="polite">Loading repository maps…</p>', 'repository-sheet');
   else if (page.kind === 'home') paint(homeLoadingMarkup());
-  else paint('<p class="loading">Reading GitHub…</p>');
+  else paint('<p class="loading" role="status" aria-live="polite">Reading GitHub…</p>');
   await run(async () => {
     if (page.kind === 'new-map') await renderNewMap();
     else if (page.kind === 'draft') await renderDraftPage(page.repo, page.draftId, refresh);
     else if (page.kind === 'repository') await renderRepository(page.repo, refresh);
     else await renderHome(refresh);
   });
-  need('synced').classList.remove('is-busy');
+  setSyncBusy(false);
 }
-
 paintIcons();
 bindTheme(need('theme'));
 bindUpdater(need('updater'), toast);
@@ -638,9 +612,9 @@ syncedButton().addEventListener('click', () => void show(true));
 document.addEventListener('visibilitychange', () => draftAutoRefresh?.visibilityChanged());
 window.addEventListener('pagehide', () => draftAutoRefresh?.stop());
 document.addEventListener('click', (event) => {
-  const target = (event.target as HTMLElement | null)?.closest('[data-refresh-home], [data-auth]');
+  const target = (event.target as HTMLElement | null)?.closest('[data-refresh-home], [data-auth], [data-retry-page]');
   if (target === null || target === undefined) return;
-  if (target.hasAttribute('data-refresh-home')) void show(true);
+  if (target.hasAttribute('data-refresh-home') || target.hasAttribute('data-retry-page')) void show(true);
   else {
     const action = (target as HTMLElement).dataset['auth'];
     if (action === 'login' || action === 'refresh') void beginAuth(action);

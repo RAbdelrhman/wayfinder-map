@@ -31,6 +31,7 @@ export interface NavigationController {
   setSnapshot(snapshot: MapSnapshot, mapNumber?: number | null): void;
   setCurrentRepo(repo: string | null): void;
   setActiveView(view: NavigationView): void;
+  setPrototypeCount(count: number | null): void;
 }
 
 const SIDEBAR_STATE = 'wayfinder-map:navigation-expanded';
@@ -53,6 +54,10 @@ function initials(repo: string): string {
 
 export function viewFromQuery(value: string | null): NavigationView {
   return value === 'table' || value === 'prototypes' ? value : 'map';
+}
+
+export function prototypeCountBadge(count: number | null): string {
+  return count === null ? '' : `<span class="nav-map-tab-count" aria-label="${String(count)} prototypes on this map">${String(count)}</span>`;
 }
 
 export function createJumpDestinations(
@@ -159,6 +164,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   let currentRepo = options.repo;
   let currentMapNumber = options.mapNumber;
   let activeView = options.view;
+  let prototypeCount: number | null = null;
   let repositories: string[] = [];
   let repositoryListLoaded = false;
   let repositoryListFailed = false;
@@ -411,7 +417,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     const separator = '<span class="crumb-sep" aria-hidden="true">/</span>';
     if (page === 'map' && currentRepo !== null) {
       const repo = currentRepo;
-      topbar.innerHTML = `<div class="nav-map-strip"><nav class="nav-map-scopes" aria-label="Map location"><a class="nav-home-crumb" href="/" title="Home">Home</a>${separator}${repoScope('repo-scope', repo)}${separator}${mapScope('map-scope', repo, map)}</nav><nav class="nav-map-tabs" aria-label="Map views">${VIEWS.map((view) => `<a class="nav-map-tab${activeView === view ? ' is-current' : ''}" href="${map ? mapHref(repo, map, view) : '#'}" data-nav-view="${view}"${activeView === view ? ' aria-current="page"' : ''}>${iconName(VIEW_ICON[view])}<span>${VIEW_LABEL[view]}</span></a>`).join('')}</nav></div>`;
+      topbar.innerHTML = `<div class="nav-map-strip"><nav class="nav-map-scopes" aria-label="Map location"><a class="nav-home-crumb" href="/" title="Home">Home</a>${separator}${repoScope('repo-scope', repo)}${separator}${mapScope('map-scope', repo, map)}</nav><nav class="nav-map-tabs" aria-label="Map views">${VIEWS.map((view) => `<a class="nav-map-tab${activeView === view ? ' is-current' : ''}" href="${map ? mapHref(repo, map, view) : '#'}" data-nav-view="${view}"${activeView === view ? ' aria-current="page"' : ''}>${iconName(VIEW_ICON[view])}<span>${VIEW_LABEL[view]}</span>${view === 'prototypes' ? prototypeCountBadge(prototypeCount) : ''}</a>`).join('')}</nav></div>`;
     } else if (page === 'repository' && currentRepo !== null) {
       topbar.innerHTML = `<nav class="nav-breadcrumbs" aria-label="Breadcrumb"><a href="/">Home</a>${separator}${repoScope('repo-scope', currentRepo)}</nav>`;
     } else if (page === 'new-map') {
@@ -674,6 +680,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
 
   return {
     setSnapshot(snapshot, mapNumber = currentMapNumber) {
+      if (currentMapNumber !== mapNumber) prototypeCount = null;
       mapSnapshots.set(snapshot.repo, snapshot);
       currentRepo = snapshot.repo;
       if (mapNumber !== undefined) currentMapNumber = mapNumber;
@@ -690,6 +697,10 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     setActiveView(view) {
       activeView = view;
       announcement.textContent = `${VIEW_LABEL[view]} view`;
+      renderTopbar();
+    },
+    setPrototypeCount(count) {
+      prototypeCount = count;
       renderTopbar();
     },
   };
