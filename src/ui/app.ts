@@ -29,8 +29,11 @@ import type { Lineage, TicketFilter } from './focus.js';
 import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
-import { mapPath, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing, repoIconHtml } from './chrome.js';
+import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
+import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
+import { mountNavigation, viewFromQuery } from './navigation.js';
+import type { NavigationController, NavigationView } from './navigation.js';
+import { recordMapOpened } from './homeRecency.js';
 import { handOffCardHtml, handOffPill, handOffPresentation, mountHandOffs } from './handOffs.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
@@ -85,10 +88,6 @@ function need<T extends HTMLElement>(id: string): T {
 
 const els = {
   app: need('app'),
-  repo: need('repo'),
-  mapSwitch: need<HTMLButtonElement>('mapswitch'),
-  mapMenu: need('mapmenu'),
-  synced: need('synced'),
   search: need<HTMLInputElement>('search'),
   warnings: need('warnings'),
   planningHandoff: need('planning-handoff'),
@@ -128,8 +127,7 @@ let planningHandOff: HandOffStatusDto | null = null;
 let selected: number | null = null;
 let hovered: number | null = null;
 let filter: TicketFilter | null = null;
-type View = 'map' | 'table' | 'prototypes';
-let view: View = 'map';
+let view: NavigationView = viewFromQuery(new URLSearchParams(window.location.search).get('view'));
 let zoom = 1;
 /** The map the canvas was last homed for, so a background refresh keeps the view where it is. */
 let homedMap: number | null = null;
@@ -137,9 +135,38 @@ let inspectorTab: 'brief' | 'ticket' = 'brief';
 let briefSection: keyof MapSections = 'destination';
 
 let query = '';
+let navigation: NavigationController | null = null;
 const handOffSurface = mountHandOffs();
 let handOffRecords: readonly HandOffStatusDto[] = [];
 let handOffVisualKey = '';
+
+function currentMap(): WayfinderMap | null {
+  return snapshot?.maps[activeMap] ?? null;
+}
+
+function ticketHandOff(map: WayfinderMap | null, ticketNumber: number): HandOffStatusDto | undefined {
+  if (map === null || snapshot === null) return undefined;
+  return handOffRecords
+    .filter((handOff) => handOff.repo.toLowerCase() === snapshot?.repo.toLowerCase() && handOff.mapNumber === map.number && handOff.ticketNumber === ticketNumber)
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+}
+
+function activeTicketHandOffs(map: WayfinderMap | null): HandOffStatusDto[] {
+  if (map === null || snapshot === null) return [];
+  return handOffRecords.filter((handOff) =>
+    handOff.repo.toLowerCase() === snapshot?.repo.toLowerCase() &&
+    handOff.mapNumber === map.number &&
+    handOff.ticketNumber !== null &&
+    handOff.threadId !== null &&
+    !handOffPresentation(handOff).terminal,
+  );
+}
+
+function inT3TicketNumbers(map: WayfinderMap | null): ReadonlySet<number> {
+  if (map === null) return new Set();
+  const known = new Set(allTickets(map).map((ticket) => ticket.number));
+  return new Set(activeTicketHandOffs(map).flatMap((handOff) => handOff.ticketNumber !== null && known.has(handOff.ticketNumber) ? [handOff.ticketNumber] : []));
+}
 
 handOffSurface.subscribe((records) => {
   handOffRecords = records;
@@ -157,34 +184,38 @@ handOffSurface.subscribe((records) => {
   }
 });
 
-function ticketHandOff(map: WayfinderMap | null, ticketNumber: number): HandOffStatusDto | undefined {
-  if (map === null || snapshot === null) return undefined;
-  return handOffRecords
-    .filter((handOff) => handOff.repo.toLowerCase() === snapshot?.repo.toLowerCase() && handOff.mapNumber === map.number && handOff.ticketNumber === ticketNumber && handOff.threadId !== null)
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+function rememberMapOpen(repo: string, mapNumber: number): void {
+  try {
+    recordMapOpened(repo, mapNumber, Date.now(), localStorage);
+  } catch {
+    // Recency is optional and must not block opening a map.
+  }
 }
 
-function activeTicketHandOffs(map: WayfinderMap | null): HandOffStatusDto[] {
-  if (map === null || snapshot === null) return [];
-  return handOffRecords.filter((handOff) =>
-    handOff.repo.toLowerCase() === snapshot?.repo.toLowerCase() &&
-    handOff.mapNumber === map.number &&
-    handOff.ticketNumber !== null &&
-    handOff.threadId !== null &&
-    !handOffPresentation(handOff).terminal,
-  );
+function syncedButton(): HTMLButtonElement {
+  return need<HTMLButtonElement>('synced');
 }
 
-function inT3TicketNumbers(map: WayfinderMap | null): ReadonlySet<number> {
-  if (map === null) return new Set();
-  const known = new Set([...map.tickets, ...map.outside].map((ticket) => ticket.number));
-  return new Set(activeTicketHandOffs(map).flatMap((handOff) => handOff.ticketNumber !== null && known.has(handOff.ticketNumber) ? [handOff.ticketNumber] : []));
-}
-
-function currentMap(): WayfinderMap | null {
-  return snapshot?.maps[activeMap] ?? null;
-}
-
+navigation = mountNavigation({
+  shell: els.app,
+  sidebar: need('sidebar-shell'),
+  topbar: need('nav-topbar'),
+  topbarRoot: need('topbar'),
+  page: 'map',
+  repo: pageRoute?.repo ?? null,
+  mapNumber: pageRoute?.mapNumber ?? null,
+  view,
+  onStartTicket(ticketNumber) {
+    const map = currentMap();
+    const ticket = map === null ? undefined : ticketAt(map, ticketNumber);
+    if (ticket?.state !== 'frontier') return;
+    select(ticketNumber);
+    void handOff(false);
+  },
+  onViewChange(nextView) {
+    setView(nextView);
+  },
+});
 function renderPlanningHandoff(): void {
   const map = currentMap();
   const handOff = planningHandOff;
@@ -236,8 +267,7 @@ function toast(message: string, ms = 4200): void {
 async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean> {
   if (loadInFlight !== null) return loadInFlight;
   const force = mode !== 'initial';
-  if (mode === 'initial') els.repo.textContent = 'reading GitHub…';
-  if (mode === 'manual') els.synced.classList.add('is-busy');
+  if (mode === 'manual') syncedButton().classList.add('is-busy');
 
   loadInFlight = (async () => {
     try {
@@ -247,7 +277,6 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       if (!response.ok) {
         const message = (body as { error?: string }).error ?? 'Could not read the maps.';
         if (mode !== 'background' || snapshot === null) {
-          if (snapshot === null) els.repo.textContent = 'failed';
           toast(message, 12000);
         }
         return false;
@@ -262,19 +291,24 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
         return true;
       }
       activeMap = routedMap >= 0 ? routedMap : Math.min(activeMap, Math.max(0, snapshot.maps.length - 1));
-      if (currentRoute?.mapNumber === null && routedTicketNumber !== null) {
-        const containingMap = snapshot.maps.findIndex((candidate) => ticketAt(candidate, routedTicketNumber) !== undefined);
-        if (containingMap >= 0) activeMap = containingMap;
-      }
-      const routedMapValue = snapshot.maps[activeMap];
-      if (initialRouteTicketPending) {
-        initialRouteTicketPending = false;
-        if (routedTicketNumber !== null && routedMapValue !== undefined && ticketAt(routedMapValue, routedTicketNumber) !== undefined) {
-          selected = routedTicketNumber;
-          inspectorTab = 'ticket';
+      navigation?.setSnapshot(snapshot, currentMap()?.number ?? null);
+      navigation?.setActiveView(view);
+      if (mode === 'initial') {
+        const openedMap = currentMap();
+        if (openedMap !== null) rememberMapOpen(snapshot.repo, openedMap.number);
+        if (initialRouteTicketPending) {
+          initialRouteTicketPending = false;
+          const ticket = routedTicketNumber === null || openedMap === null ? undefined : ticketAt(openedMap, routedTicketNumber);
+          selected = ticket?.number ?? null;
         }
+        inspectorTab = selected === null ? 'brief' : 'ticket';
       }
       render();
+      if (mode === 'initial' && selected !== null && view === 'map') {
+        const node = els.nodes.querySelector<HTMLElement>(`.node[data-number="${String(selected)}"]`);
+        node?.focus();
+        node?.scrollIntoView({ block: 'center', inline: 'center' });
+      }
       if (planningHandOffId !== null) void loadPlanningHandoff();
       // The repository is only known once the snapshot lands, and the clone lookup is keyed to it.
       if (!workspaceAsked) {
@@ -287,18 +321,20 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       }
       if (retryTicketOnLoad && selected !== null) {
         retryTicketOnLoad = false;
+        const retryUrl = new URL(window.location.href);
+        retryUrl.searchParams.delete('retry');
+        history.replaceState(null, '', `${retryUrl.pathname}${retryUrl.search}${retryUrl.hash}`);
         void handOff(false);
       }
       return true;
     } catch (error) {
       if (mode !== 'background' || snapshot === null) {
-        if (snapshot === null) els.repo.textContent = 'failed';
         toast((error as Error).message || 'Could not read the maps.', 12000);
       }
       return false;
     } finally {
       loadInFlight = null;
-      els.synced.classList.remove('is-busy');
+      syncedButton().classList.remove('is-busy');
     }
   })();
   return loadInFlight;
@@ -325,10 +361,7 @@ function isOutside(map: WayfinderMap, number: number): boolean {
   return map.outside.some((ticket) => ticket.number === number);
 }
 
-/**
- * Linked ticket numbers, coloured by their state. Clicking one opens it in the panel; a number
- * the map has never read links out to GitHub instead.
- */
+/** Linked ticket numbers, coloured by their state; off-map issues link directly to GitHub. */
 function ticketPills(map: WayfinderMap, numbers: readonly number[], withTitles = false): string {
   if (numbers.length === 0) return '<span class="none">—</span>';
   return numbers
@@ -336,12 +369,12 @@ function ticketPills(map: WayfinderMap, numbers: readonly number[], withTitles =
       const other = ticketAt(map, number);
       if (other === undefined) {
         const url = `https://github.com/${repoName()}/issues/${String(number)}`;
-        return `<a class="pill is-outside" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="--accent: var(--text-muted)" title="Not on this map. Opens on GitHub."><span class="pill-text">#${String(number)}</span>${icon(icons.EXTERNAL)}</a>`;
+        return `<a class="pill is-outside" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="--accent: var(--text-muted)" title="Not read by this map. Opens on GitHub."><span class="pill-text">#${String(number)}</span>${icon(icons.EXTERNAL)}</a>`;
       }
       const accent = STATE_STYLE[other.state].variable;
       const title = withTitles ? ` ${other.title}` : '';
       const label = `<span class="pill-text">${escapeHtml(`#${String(number)}${title}`)}</span>`;
-      const tooltip = isOutside(map, number) ? `${other.title} (not on this map)` : other.title;
+      const tooltip = isOutside(map, number) ? `${other.title} (fog)` : other.title;
       return `<button type="button" class="pill" style="--accent: var(${accent})" data-jump="${String(number)}" title="${escapeHtml(tooltip)}">${label}</button>`;
     })
     .join('');
@@ -355,7 +388,8 @@ function dependents(map: WayfinderMap, number: number): number[] {
 
 function render(): void {
   if (snapshot === null) return;
-  document.title = `${snapshot.repo} · wayfinder map`;
+  const viewTitle = view === 'map' ? 'Map' : view === 'table' ? 'Table' : 'Prototypes';
+  document.title = `${viewTitle} · ${snapshot.repo} · Wayfinder`;
 
   els.warnings.hidden = snapshot.warnings.length === 0;
   els.warnings.textContent = snapshot.warnings.join('  ·  ');
@@ -363,7 +397,8 @@ function render(): void {
   const map = currentMap();
   if (selected !== null && (map === null || ticketAt(map, selected) === undefined)) selected = null;
 
-  renderHead();
+  els.app.classList.toggle('is-prototypes', view === 'prototypes');
+  renderSynced();
   renderPlanningHandoff();
   renderFilters();
   renderKey();
@@ -373,43 +408,13 @@ function render(): void {
   renderInspector();
 }
 
-function renderHead(): void {
-  if (snapshot === null) return;
-  const [owner, name] = snapshot.repo.includes('/') ? snapshot.repo.split('/', 2) : ['', snapshot.repo];
-  els.repo.innerHTML = `<a href="/">Home</a><span class="crumb-sep">/</span><a class="is-repo" href="${repoPath(snapshot.repo)}">${repoIconHtml(snapshot.repo, 'sm')}<span>${owner ? `${escapeHtml(owner)}/${escapeHtml(name ?? '')}` : escapeHtml(name ?? '')}</span></a><span class="crumb-sep">/</span>`;
-
-  const map = currentMap();
-  els.mapSwitch.hidden = false;
-  if (map === null) {
-    els.mapSwitch.disabled = true;
-    els.mapSwitch.innerHTML = '<span class="t">No maps yet</span>';
-  } else {
-    const open = map.tickets.filter((ticket) => ticket.open).length;
-    els.mapSwitch.disabled = false;
-    els.mapSwitch.innerHTML = `<span class="t">${escapeHtml(map.title)}</span><span class="badge">${String(open)} open</span>${icon(icons.CHEVRON)}`;
-  }
-
-  els.mapMenu.innerHTML = `<div class="menu-label eyebrow">Maps in ${escapeHtml(snapshot.repo)}</div>${snapshot.maps
-    .map((candidate, index) => {
-      const open = candidate.tickets.filter((ticket) => ticket.open).length;
-      const total = candidate.tickets.length;
-      return `<button type="button" role="menuitem" class="menu-item${index === activeMap ? ' is-on' : ''}" data-index="${String(index)}">
-        ${miniRing(total - open, total)}<span class="grow">${escapeHtml(candidate.title)}</span>
-        <span class="badge">${open === 0 ? 'done' : `${String(open)} open`}</span>
-      </button>`;
-    })
-    .join('')}<a class="menu-item" href="${repoPath(snapshot.repo)}"><span class="grow">All maps</span></a>`;
-
-  renderSynced();
-}
-
 function renderSynced(): void {
   if (snapshot === null) return;
   const fetched = Date.parse(snapshot.fetchedAt);
   const text = Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched);
-  const label = els.synced.querySelector<HTMLElement>('.synced-label') ?? els.synced;
+  const synced = syncedButton();
+  const label = synced.querySelector<HTMLElement>('.synced-label') ?? synced;
   label.textContent = text;
-  els.synced.hidden = !text;
 }
 
 function renderFilters(): void {
@@ -426,14 +431,14 @@ function renderFilters(): void {
   const counts = countStates(map);
   const states = STATE_ORDER.map((state) => chip(state, STATE_STYLE[state].long, STATE_STYLE[state].icon, counts[state], STATE_STYLE[state].variable));
   const types = TICKET_TYPES.map((type) =>
-    chip(type, TYPE_STYLE[type].label, TYPE_STYLE[type].icon, map.tickets.filter((ticket) => ticket.type === type).length, null),
+    chip(type, TYPE_STYLE[type].label, TYPE_STYLE[type].icon, allTickets(map).filter((ticket) => ticket.type === type).length, null),
   );
-  const untyped = map.tickets.filter((ticket) => ticket.type === null).length;
+  const untyped = allTickets(map).filter((ticket) => ticket.type === null).length;
   if (untyped > 0) types.push(chip('untyped', UNTYPED.label, UNTYPED.icon, untyped, null));
   const inT3 = inT3TicketNumbers(map);
   const inT3Chip = inT3.size === 0 ? '' : chip('in-t3', 'In T3 Code', icons.PLAY, inT3.size, 'state-claimed');
 
-  els.filters.innerHTML = `${chip(null, 'All', null, map.tickets.length, null)}${states.join('')}<span class="filter-sep" role="none"></span>${types.join('')}${inT3Chip === '' ? '' : `<span class="filter-sep" role="none"></span>${inT3Chip}`}`;
+  els.filters.innerHTML = `${chip(null, 'All', null, allTickets(map).length, null)}${states.join('')}<span class="filter-sep" role="none"></span>${types.join('')}${inT3Chip === '' ? '' : `<span class="filter-sep" role="none"></span>${inT3Chip}`}`;
 }
 
 function renderKey(): void {
@@ -481,14 +486,14 @@ function outsideNodeHtml(outside: OutsideTicket, position: PositionedNode): stri
   return `<button type="button" class="node is-outside${outside.state === 'done' ? ' is-done' : ''}"
     data-number="${String(outside.number)}"
     style="--accent: var(${style.variable}); left:${String(position.x)}px; top:${String(position.y)}px; width:${String(position.width)}px; height:${String(position.height)}px"
-    aria-label="${escapeHtml(`${kind} #${String(outside.number)} ${outside.title}, ${style.label}, not on this map${handOff === undefined ? '' : `, hand-off ${handOffPresentation(handOff).label}`}`)}">
+    aria-label="${escapeHtml(`${kind} #${String(outside.number)} ${outside.title}, ${style.label}, fog${handOff === undefined ? '' : `, hand-off ${handOffPresentation(handOff).label}`}`)}">
     <span class="node-top">
       <span class="num">#${String(outside.number)}</span>
       ${stateChip(outside.state)}
       ${handOff === undefined ? '' : handOffPill(handOff, true)}
     </span>
     <span class="title">${escapeHtml(outside.title)}</span>
-    <span class="meta">${kind} · not on this map</span>
+    <span class="meta">${kind} · fog</span>
   </button>`;
 }
 
@@ -583,7 +588,7 @@ function renderTable(): void {
     return;
   }
 
-  const rows = map.tickets
+  const rows = allTickets(map)
     .map((ticket) => {
       const style = STATE_STYLE[ticket.state];
       return `<tr data-number="${String(ticket.number)}">
@@ -725,21 +730,12 @@ function renderTicketPrototype(): void {
 function syncHighlights(): void {
   const map = currentMap();
   if (map === null) return;
-  const byNumber = new Map(map.tickets.map((ticket) => [ticket.number, ticket]));
+  const byNumber = new Map(allTickets(map).map((ticket) => [ticket.number, ticket]));
   const inT3 = inT3TicketNumbers(map);
   const matches = (ticket: Ticket): boolean => matchesFilter(ticket, filter, inT3) && matchesQuery(ticket, query);
   const shown = (number: number): boolean => {
     const ticket = byNumber.get(number);
-    // An issue off the map stays lit while any ticket it links to does.
-    if (ticket === undefined) {
-      const outside = map.outside.find((candidate) => candidate.number === number);
-      if (filter === 'in-t3' && outside !== undefined && inT3.has(number) && matchesQuery(outside, query)) return true;
-      return [...(outside?.blocks ?? []), ...(outside?.waitsOn ?? [])].some((linked) => {
-        const other = byNumber.get(linked);
-        return other !== undefined && matches(other);
-      });
-    }
-    return matches(ticket);
+    return ticket !== undefined && matches(ticket);
   };
   const chain: Lineage | null = hovered === null ? null : lineage(graphTickets(map), hovered);
   const related = (number: number): boolean =>
@@ -843,7 +839,7 @@ function renderInspector(): void {
 
 function briefHtml(map: WayfinderMap): string {
   const counts = countStates(map);
-  const total = map.tickets.length;
+  const total = allTickets(map).length;
   const rows = STATE_ORDER.map((state) => {
     const style = STATE_STYLE[state];
     const on = filter === state;
@@ -903,7 +899,7 @@ function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
     </div>
     <h2 class="dtitle">${escapeHtml(ticket.title)}</h2>
     ${banner === null ? '' : `<div class="banner" style="--accent: var(${style.variable})">${icon(style.icon)}<span>${banner}</span></div>`}
-    ${isOutside(map, ticket.number) ? '<p class="hint">Not on this map, but linked to it by a dependency.</p>' : ''}
+    ${isOutside(map, ticket.number) ? '<p class="hint">Fog: not a sub-issue of this map, but linked to it by a dependency.</p>' : ''}
     <dl class="facts">
       <dt>Type</dt><dd>${icon(typeStyle(ticket.type).icon)}${escapeHtml(typeStyle(ticket.type).label)}</dd>
       <dt>Assignee</dt><dd>${ticket.assignee === null ? '<span class="none">unclaimed</span>' : escapeHtml(`@${ticket.assignee}`)}</dd>
@@ -1116,7 +1112,12 @@ async function handOff(copyOnly: boolean): Promise<void> {
   if (map === null || selected === null) return;
 
   const button = document.getElementById('start-thread');
+  const topbarButton = document.getElementById('map-start');
   if (button instanceof HTMLButtonElement && !copyOnly) button.disabled = true;
+  if (topbarButton instanceof HTMLButtonElement && !copyOnly) {
+    topbarButton.disabled = true;
+    topbarButton.setAttribute('aria-busy', 'true');
+  }
 
   try {
     const response = await fetch(scopedApiPath(repoName(), 'hand-off'), {
@@ -1159,6 +1160,10 @@ async function handOff(copyOnly: boolean): Promise<void> {
   } finally {
     // A blocked or closed ticket's button stays disabled; only undo what this call did.
     if (button instanceof HTMLButtonElement && !button.hasAttribute('title')) button.disabled = false;
+    if (topbarButton instanceof HTMLButtonElement) {
+      topbarButton.disabled = false;
+      topbarButton.removeAttribute('aria-busy');
+    }
   }
 }
 
@@ -1183,8 +1188,7 @@ function setFilter(next: TicketFilter | null): void {
 function jumpToFirstMatch(): void {
   const map = currentMap();
   const inT3 = inT3TicketNumbers(map);
-  const candidates = filter === 'in-t3' && map !== null ? [...map.tickets, ...map.outside] : map?.tickets ?? [];
-  const hit = candidates.find((ticket) => matchesFilter(ticket, filter, inT3) && matchesQuery(ticket, query));
+  const hit = map === null ? undefined : allTickets(map).find((ticket) => matchesFilter(ticket, filter, inT3) && matchesQuery(ticket, query));
   if (hit === undefined) {
     toast('No ticket matches.', 2400);
     return;
@@ -1195,7 +1199,6 @@ function jumpToFirstMatch(): void {
 
 type Menu = { button: HTMLElement; menu: HTMLElement };
 const MENUS: Menu[] = [
-  { button: els.mapSwitch, menu: els.mapMenu },
   { button: els.keyButton, menu: els.keyMenu },
 ];
 
@@ -1221,29 +1224,6 @@ document.addEventListener('click', (event) => {
   if (!MENUS.some((entry) => entry.menu.contains(target))) closeMenus();
 });
 
-els.mapMenu.addEventListener('click', (event) => {
-  const item = (event.target as HTMLElement).closest<HTMLElement>('[data-index]');
-  if (item === null) return;
-  closeMenus();
-  activeMap = Number(item.dataset['index']);
-  const nextMap = currentMap();
-  if (snapshot !== null && nextMap !== null) history.pushState(null, '', mapPath(snapshot.repo, nextMap.number));
-  planningHandOffId = null;
-  planningHandOff = null;
-  selected = null;
-  hovered = null;
-  filter = null;
-  query = '';
-  els.search.value = '';
-  inspectorTab = 'brief';
-  briefSection = 'destination';
-  zoom = 1;
-  els.canvas.style.zoom = '1';
-  els.zoomReset.textContent = '100%';
-  homedMap = null;
-  render();
-});
-
 window.addEventListener('popstate', () => {
   planningHandOffId = new URLSearchParams(window.location.search).get('planning');
   planningHandOff = null;
@@ -1251,7 +1231,14 @@ window.addEventListener('popstate', () => {
   const index = snapshot?.maps.findIndex((map) => map.number === route?.mapNumber) ?? -1;
   if (index < 0) return;
   activeMap = index;
-  selected = null;
+  const openedMap = currentMap();
+  if (snapshot !== null && openedMap !== null) rememberMapOpen(snapshot.repo, openedMap.number);
+  view = viewFromQuery(new URLSearchParams(window.location.search).get('view'));
+  const requestedTicket = Number(new URLSearchParams(window.location.search).get('ticket'));
+  selected = currentMap()?.tickets.find((ticket) => ticket.number === requestedTicket)?.number ?? null;
+  inspectorTab = selected === null ? 'brief' : 'ticket';
+  if (snapshot !== null) navigation?.setSnapshot(snapshot, currentMap()?.number ?? null);
+  navigation?.setActiveView(view);
   render();
   if (planningHandOffId !== null) void loadPlanningHandoff();
 });
@@ -1393,12 +1380,6 @@ els.modelsDialog.addEventListener('close', refreshTicketPicker);
 need('models').addEventListener('click', openModels);
 
 document.addEventListener('keydown', (event) => {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-    event.preventDefault();
-    els.search.focus();
-    els.search.select();
-    return;
-  }
   if (event.key !== 'Escape' || els.modelsDialog.open) return;
   if (MENUS.some((entry) => !entry.menu.hidden)) {
     closeMenus();
@@ -1409,7 +1390,7 @@ document.addEventListener('keydown', (event) => {
 
 void loadCatalog().then(refreshTicketPicker);
 
-els.synced.addEventListener('click', () => {
+syncedButton().addEventListener('click', () => {
   void load('manual').then(() => {
     const map = currentMap();
     prototypeLoads.clear();
@@ -1426,17 +1407,17 @@ bindTheme(need('theme'));
 bindUpdater(need('updater'), toast);
 bindAccountMark(document.getElementById('account-mark'));
 
-function setView(next: View): void {
+function setView(next: NavigationView): void {
+  if (next === view) return;
   view = next;
   els.app.classList.toggle('is-prototypes', next === 'prototypes');
-  for (const [id, on] of [
-    ['view-map', next === 'map'],
-    ['view-table', next === 'table'],
-    ['view-prototypes', next === 'prototypes'],
-  ] as const) {
-    const button = need(id);
-    button.classList.toggle('is-on', on);
-    button.setAttribute('aria-pressed', String(on));
+  navigation?.setActiveView(next);
+  const map = currentMap();
+  if (snapshot !== null && map !== null) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('view', next);
+    url.searchParams.delete('ticket');
+    history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`);
   }
   render();
 }
@@ -1447,7 +1428,7 @@ need('view-map').addEventListener('click', () => setView('map'));
 need('view-table').addEventListener('click', () => setView('table'));
 need('view-prototypes').addEventListener('click', () => setView('prototypes'));
 
-/* zoom and pan: the canvas sits in a padded stage, so it can be dragged anywhere and zoomed far out */
+/* Zoom and pan while keeping the point beneath the cursor anchored. */
 
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 1.6;

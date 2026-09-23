@@ -28,7 +28,7 @@ export function handOffPresentation(handOff: HandOffStatusDto): HandOffPresentat
   let state: HandOffUiState;
   if (handOff.threadId === null || handOff.status === 'failed' || handOff.status === 'interrupted') state = 'failed';
   else if (handOff.pullRequests.some((pullRequest) => pullRequest.source === 't3')) state = 'pr-ready';
-  else if (handOff.pendingApproval || handOff.pendingUserInput || handOff.status === 'waiting') state = 'needs-you';
+  else if (handOff.pendingApproval || handOff.pendingUserInput || handOff.status === 'waiting' || handOff.status === 'ready') state = 'needs-you';
   else if (handOff.status === 'starting') state = 'starting';
   else state = 'working';
 
@@ -37,7 +37,9 @@ export function handOffPresentation(handOff: HandOffStatusDto): HandOffPresentat
     : state === 'needs-you'
     ? handOff.pendingApproval
       ? 'T3 Code is waiting for your approval.'
-      : 'T3 Code is waiting for your input.'
+      : handOff.pendingUserInput || handOff.status === 'waiting'
+        ? 'T3 Code is waiting for your input.'
+        : 'T3 Code is ready for your next step.'
     : state === 'pr-ready'
       ? `Pull request${handOff.pullRequests.length === 1 ? '' : 's'} ready.`
       : state === 'failed'
@@ -184,12 +186,12 @@ export function homeHandOffHistoryHtml(handOff: HandOffStatusDto): string {
   const presentation = handOffPresentation(handOff);
   const prLinks = handOff.pullRequests
     .filter((pullRequest) => pullRequest.source === 't3')
-    .map((pullRequest) => `<a href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer">${pullRequest.number === null ? 'Pull request' : `PR #${String(pullRequest.number)}`}</a>`)
+    .map((pullRequest, index) => `<a href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer" data-focus-key="${escapeHtml(`${handOff.id}:pr:${String(index)}`)}">${pullRequest.number === null ? 'Pull request' : `PR #${String(pullRequest.number)}`}</a>`)
     .join('');
   return `<article class="home-handoff-history is-${presentation.state}">
     <div><b title="${escapeHtml(handOffTitle(handOff))}">${escapeHtml(handOffTitle(handOff))}</b><span title="${escapeHtml(`${handOff.repo} · ${handOffMapLabel(handOff)}`)}">${escapeHtml(handOff.repo)} · ${escapeHtml(handOffMapLabel(handOff))}</span></div>
     ${handOffPill(handOff)}<span class="handoff-row-report">${escapeHtml(presentation.report)} · ${escapeHtml(handOffTime(handOff))}</span>
-    ${prLinks}<a class="ghost handoff-source" href="${escapeHtml(handOffSourcePath(handOff))}">${icon(icons.ARROW)}Open source</a>
+    ${prLinks}<a class="ghost handoff-source" href="${escapeHtml(handOffSourcePath(handOff))}" data-focus-key="${escapeHtml(`${handOff.id}:source`)}">${icon(icons.ARROW)}Open source</a>
   </article>`;
 }
 

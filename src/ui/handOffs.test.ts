@@ -33,6 +33,7 @@ describe('hand-off presentation', () => {
     expect(handOffPresentation(handOff({ status: 'starting' })).label).toBe('Starting');
     expect(handOffPresentation(handOff({ status: 'running' })).label).toBe('Working');
     expect(handOffPresentation(handOff({ status: 'waiting' })).label).toBe('Needs you');
+    expect(handOffPresentation(handOff({ status: 'ready' })).report).toBe('T3 Code is ready for your next step.');
     expect(handOffPresentation(handOff({ status: 'running', pendingApproval: true })).report).toContain('approval');
     expect(handOffPresentation(handOff({ status: 'failed' })).label).toBe('Failed');
     expect(handOffPresentation(handOff({ status: 'interrupted' })).label).toBe('Failed');

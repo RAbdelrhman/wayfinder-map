@@ -8,19 +8,12 @@
     <script src="/theme.js"></script>
   </head>
   <body class="viz-root">
-    <div class="app">
-      <nav class="rail" aria-label="App">
-        <a class="logo" href="/" data-icon="compass" title="Wayfinder Home" aria-label="Wayfinder Home"></a>
-        <a class="rail-btn" id="nav-new" href="/new-map" data-icon="plus" title="Start a new map" aria-label="Start a new map"></a>
-        <span class="rail-spacer"></span>
-        <button type="button" id="theme" class="rail-btn" aria-label="Theme" title="Switch light and dark" data-icon="moon"></button>
-        <button type="button" id="updater" class="rail-btn" aria-label="Check for updates" title="Check for updates" data-icon="download"></button>
-        <span class="rail-mark" id="account-mark" title="GitHub account">…</span>
-      </nav>
+    <div class="app" id="app">
+      <aside class="sidebar-shell" id="sidebar-shell"></aside>
 
       <div class="main">
-        <header class="topbar">
-          <span class="crumbs" id="crumbs"><a href="/">Home</a></span>
+        <header class="topbar" id="topbar">
+          <div class="nav-topbar" id="nav-topbar"></div>
           <span class="topbar-spacer"></span>
           <div class="handoff-anchor" id="handoff-anchor" hidden>
             <button type="button" class="handoff-trigger" id="handoff-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="handoff-list" aria-label="Hand-offs in T3 Code"></button>
@@ -32,10 +25,6 @@
               <div class="handoff-list-body" id="handoff-list-body"></div>
             </section>
           </div>
-          <button type="button" class="synced" id="synced" aria-label="Resync from GitHub" title="Click to resync from GitHub">
-            <span class="synced-icon" data-icon="refresh"></span>
-            <span class="synced-label" id="synced-label"></span>
-          </button>
         </header>
         <span class="sr-only" id="handoff-announcement" role="status" aria-live="polite"></span>
 

@@ -1,7 +1,7 @@
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
-import type { TicketState, WayfinderMap } from '../types.js';
+import type { Ticket, TicketState, WayfinderMap } from '../types.js';
 import { normalizeRepo, scopedApiPath } from '../repoRoutes.js';
 
 export interface StateLook {
@@ -28,6 +28,7 @@ export const PROGRESS_ORDER: TicketState[] = ['done', 'claimed', 'frontier', 'bl
 
 const STATIC_ICONS: Record<string, string> = {
   compass: icons.COMPASS,
+  panel: icons.PANEL,
   graph: icons.GRAPH,
   table: icons.TABLE,
   beaker: icons.BEAKER,
@@ -64,11 +65,20 @@ export function paintIcons(root: ParentNode = document): void {
 
 /** The rail's light/dark switch. Each page stamps the saved theme before its first paint. */
 export function bindTheme(button: HTMLElement): void {
+  const updateLabel = (): void => {
+    const dark = getComputedStyle(document.body).getPropertyValue('color-scheme').trim() === 'dark';
+    const label = dark ? 'Switch to light theme' : 'Switch to dark theme';
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    button.setAttribute('aria-pressed', String(dark));
+  };
+  updateLabel();
   button.addEventListener('click', () => {
     const dark = getComputedStyle(document.body).getPropertyValue('color-scheme').trim() === 'dark';
     const next = dark ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
     localStorage.setItem('wayfinder-map:theme', next);
+    updateLabel();
   });
 }
 
@@ -192,13 +202,16 @@ export function updateAccountMark(
 ): void {
   if (!element) return;
   const login = profile?.login?.trim();
+  const accountLabel = element.parentElement?.querySelector<HTMLElement>('#account-label') ?? null;
   element.innerHTML = renderAccountMarkContent(profile);
   if (login) {
     element.title = `Signed in as ${login}`;
     element.setAttribute('aria-label', `GitHub account: ${login}`);
+    if (accountLabel !== null) accountLabel.textContent = login;
   } else {
     element.title = 'GitHub account (Not signed in)';
     element.setAttribute('aria-label', 'GitHub account: Not signed in');
+    if (accountLabel !== null) accountLabel.textContent = 'Not signed in';
   }
 }
 
@@ -352,9 +365,14 @@ if (typeof window !== 'undefined') {
   );
 }
 
+/** Every ticket the map counts: its sub-issues plus the fog, the issues linked to them by a dependency. */
+export function allTickets(map: WayfinderMap): Ticket[] {
+  return [...map.tickets, ...map.outside];
+}
+
 export function countStates(map: WayfinderMap): Record<TicketState, number> {
   const counts: Record<TicketState, number> = { frontier: 0, claimed: 0, blocked: 0, done: 0 };
-  for (const ticket of map.tickets) counts[ticket.state] += 1;
+  for (const ticket of allTickets(map)) counts[ticket.state] += 1;
   return counts;
 }
 

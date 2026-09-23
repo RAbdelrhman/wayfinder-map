@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import type { OutsideTicket, Ticket, WayfinderMap } from '../types.js';
 import {
+  allTickets,
+  countStates,
   progressRing,
   renderAccountMarkContent,
   repoColorName,
@@ -15,6 +18,22 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 function arcs(svg: string): number[] {
   return [...svg.matchAll(/stroke-dasharray="([\d.]+) /g)].map((match) => Number(match[1]));
 }
+
+function ticket(number: number, state: Ticket['state']): Ticket {
+  return { number, title: `#${String(number)}`, url: '', body: '', type: 'task', labels: [], open: state !== 'done', assignee: null, blockedBy: [], openBlockers: [], state };
+}
+
+function fog(number: number, state: Ticket['state']): OutsideTicket {
+  return { ...ticket(number, state), pullRequest: false, blocks: [1], waitsOn: [] };
+}
+
+describe('countStates', () => {
+  it('counts the fog as part of the map', () => {
+    const map = { tickets: [ticket(1, 'blocked'), ticket(2, 'done')], outside: [fog(58, 'done'), fog(59, 'frontier')] } as unknown as WayfinderMap;
+    expect(allTickets(map).map((t) => t.number)).toEqual([1, 2, 58, 59]);
+    expect(countStates(map)).toEqual({ frontier: 1, claimed: 0, blocked: 1, done: 2 });
+  });
+});
 
 describe('progressRing', () => {
   it('draws at the ring size whatever the ticket count', () => {
