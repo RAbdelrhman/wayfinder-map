@@ -3723,6 +3723,7 @@ textarea.input {
   width: 14px;
   height: 14px;
   color: var(--state-blocked);
+}
 /* ---------- shared navigation shell ---------- */
 
 .app.is-nav-expanded {
