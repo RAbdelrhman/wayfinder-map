@@ -93,6 +93,10 @@ export function summarizeRepository(repo: string, snapshot: MapSnapshot | null |
 }
 
 function handOffLane(handOff: HandOffStatusDto): HomeWorkItem['lane'] | null {
+  const hasT3PullRequest = handOff.pullRequests.some((pullRequest) => pullRequest.source === 't3');
+  const terminal = handOff.status === 'failed' || handOff.status === 'interrupted' || hasT3PullRequest;
+  if (handOff.acknowledged && terminal) return null;
+  if (hasT3PullRequest) return null;
   if (handOff.pendingApproval || handOff.pendingUserInput || handOff.threadId === null) return 'needs-you';
   if (handOff.status === 'waiting' || handOff.status === 'ready' || handOff.status === 'failed' || handOff.status === 'interrupted') return 'needs-you';
   if (handOff.status === 'starting' || handOff.status === 'running' || handOff.status === 'untracked') return 'running';

@@ -15,9 +15,20 @@
         <header class="topbar map-topbar" id="topbar">
           <div class="nav-topbar" id="nav-topbar"></div>
           <span class="topbar-spacer"></span>
+          <div class="handoff-anchor" id="handoff-anchor" hidden>
+            <button type="button" class="handoff-trigger" id="handoff-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="handoff-list" aria-label="Hand-offs in T3 Code"></button>
+            <section class="handoff-list" id="handoff-list" role="dialog" aria-labelledby="handoff-list-title" hidden>
+              <header class="handoff-list-head">
+                <div><h2 id="handoff-list-title">Hand-offs</h2><p id="handoff-list-count"></p></div>
+                <button type="button" class="handoff-close" data-focus-key="close" aria-label="Close hand-offs">×</button>
+              </header>
+              <div class="handoff-list-body" id="handoff-list-body"></div>
+            </section>
+          </div>
           <button type="button" class="topbar-action nav-topbar-jump" id="jump-to-top" data-nav-action="jump" aria-label="Jump to" title="Jump to · Ctrl K" hidden><span data-icon="lens"></span><span class="topbar-action-label">Jump to</span></button>
           <button type="button" class="primary map-start" id="map-start" hidden><span data-icon="play"></span><span class="topbar-action-label"></span></button>
         </header>
+        <span class="sr-only" id="handoff-announcement" role="status" aria-live="polite"></span>
 
         <label class="search map-local-search" for="search">
           <span data-icon="lens" aria-hidden="true"></span>

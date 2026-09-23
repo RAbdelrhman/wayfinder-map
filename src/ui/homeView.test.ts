@@ -25,11 +25,13 @@ function handOff(overrides: Partial<HandOffStatusDto> = {}): HandOffStatusDto {
     id: 'handoff-1',
     repo: 'octo/wayfinder',
     mapNumber: 35,
+    mapTitle: 'Redesign Home',
     ticketNumber: 2,
     title: 'Review a decision',
     threadId: 'thread-1',
     rung: 'thread',
     status: 'waiting',
+    acknowledged: false,
     createdAt: '2026-09-20T10:00:00.000Z',
     updatedAt: '2026-09-20T11:30:00.000Z',
     lastSeenAt: null,
@@ -97,6 +99,10 @@ describe('Home in-flight lanes', () => {
     expect(buildHomeWorkItems([], [snapshot]).map(({ kind, title }) => ({ kind, title }))).toEqual([
       { kind: 'ticket', title: 'Choose a direction' },
     ]);
+  });
+
+  it('clears acknowledged failures from the in-flight lanes', () => {
+    expect(buildHomeWorkItems([handOff({ status: 'failed', acknowledged: true })], [])).toEqual([]);
   });
 
   it('shows the newest hand-off in Continue and falls back to the last opened map', () => {

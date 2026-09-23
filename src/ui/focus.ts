@@ -1,10 +1,12 @@
 import type { Ticket, TicketState, TicketType } from '../types.js';
 
 /** What the filter chips narrow the map to: a state, a type, or the tickets with no type label. */
-export type TicketFilter = TicketState | TicketType | 'untyped';
+export type TicketFilter = TicketState | TicketType | 'untyped' | 'in-t3';
 
-export function matchesFilter(ticket: Ticket, filter: TicketFilter | null): boolean {
-  return filter === null || ticket.state === filter || (ticket.type ?? 'untyped') === filter;
+export function matchesFilter(ticket: Ticket, filter: TicketFilter | null, inT3Tickets: ReadonlySet<number> = new Set()): boolean {
+  if (filter === null) return true;
+  if (filter === 'in-t3') return inT3Tickets.has(ticket.number);
+  return ticket.state === filter || (ticket.type ?? 'untyped') === filter;
 }
 
 /** The jump box: a number (with or without `#`) matches by prefix, anything else by title. */

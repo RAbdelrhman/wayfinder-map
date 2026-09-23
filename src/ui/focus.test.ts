@@ -73,6 +73,8 @@ describe('matchesFilter', () => {
     expect(matchesFilter(ticket(1), 'task')).toBe(true);
     expect(matchesFilter(ticket(1, [], { type: null }), 'untyped')).toBe(true);
     expect(matchesFilter(ticket(1), 'untyped')).toBe(false);
+    expect(matchesFilter(ticket(1), 'in-t3', new Set([1]))).toBe(true);
+    expect(matchesFilter(ticket(2), 'in-t3', new Set([1]))).toBe(false);
   });
 });
 

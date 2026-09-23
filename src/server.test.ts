@@ -607,6 +607,18 @@ describe('local clone for a hand-off', () => {
       expect(status.handOffs[0]).not.toHaveProperty('environmentId');
       expect(status.handOffs[0]).not.toHaveProperty('projectId');
       expect(status.handOffs[0]).not.toHaveProperty('lastError');
+
+      const handOffId = status.handOffs[0]?.['id'];
+      expect(typeof handOffId).toBe('string');
+      const acknowledgeResponse = await fetch(`${running.url}/api/hand-offs/acknowledge`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ id: handOffId }),
+      });
+      expect(acknowledgeResponse.status).toBe(200);
+      await expect(acknowledgeResponse.json()).resolves.toEqual({ acknowledged: true });
+      const acknowledgedResponse = await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } });
+      await expect(acknowledgedResponse.json()).resolves.toMatchObject({ handOffs: [{ id: handOffId, acknowledged: true }] });
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }
