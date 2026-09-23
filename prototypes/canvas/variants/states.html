@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The six T3 Code states</title>
+    <!-- PROTOTYPE (#45): the words, icons, tones and actions every variant uses, one row per faked T3 Code state. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="after.css" />
+    <style>
+      body {
+        overflow: auto;
+      }
+      .st {
+        padding: 28px 32px;
+      }
+      .st h1 {
+        margin: 0 0 4px;
+        font-size: 20px;
+      }
+      .st > p {
+        margin: 0 0 18px;
+        color: var(--text-secondary);
+      }
+      .st table {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--surface-1);
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .st th {
+        text-align: left;
+        padding: 10px 14px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--hairline);
+      }
+      .st td {
+        padding: 14px;
+        vertical-align: top;
+        border-bottom: 1px solid var(--hairline);
+        font-size: 13px;
+      }
+      .st td:first-child {
+        width: 150px;
+        font-weight: 600;
+      }
+      .st td .ho-line {
+        margin: 0;
+      }
+      .st td .ho-when {
+        display: block;
+        margin-top: 4px;
+      }
+      .st .ho-row {
+        flex-wrap: nowrap;
+      }
+      .st .ho-back {
+        margin-left: 4px;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div class="st" id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="after.js"></script>
+    <script>
+      // Same helpers as the variants, one row per state; no Prototype bar here.
+      const s = AFTER.state;
+      const rows = AFTER.FAKE_STATES.map(([k, name]) => {
+        s.fake = k;
+        const h = AFTER.focusHandOff();
+        return `<tr><td>${name}</td><td>${AFTER.pill(h, { size: 'lg' })}</td><td><p class="ho-line">${
+          k === 'offline' ? "T3 Code isn't running. Last report 14 min ago: " : ''
+        }${Kit.esc(h.line)}</p><span class="ho-when">${Kit.esc(AFTER.sinceText(h))}</span></td><td><div class="ho-row">${AFTER.actions(h, { compact: true })}</div></td></tr>`;
+      }).join('');
+      document.getElementById('root').innerHTML = `<h1>The six states, in every variant</h1>
+        <p>One word, one icon and one tone each. Hue always comes with the word. When T3 Code is off, the last status stays, drawn dashed and marked stale: offline is not failure (#41).</p>
+        <table><thead><tr><th>T3 Code</th><th>Pill</th><th>What it says</th><th>What you can do</th></tr></thead><tbody>${rows}</tbody></table>`;
+    </script>
+  </body>
+</html>

@@ -11,15 +11,49 @@ bun run package:win -- x64
 ```
 
 The output is under `release/x64/`. It is intentionally unsigned and may trigger a
-Windows warning. Use the ARM64 argument to cross-package that architecture; an ARM64
-artifact is not considered verified until it has been installed and exercised on a
-real Windows ARM64 machine.
+Windows warning. The installer is named `Wayfinder-<version>-x64-Test-Setup.exe` so
+it cannot be mistaken for a signed public installer. Use the ARM64 argument to
+cross-package that architecture; an ARM64 artifact is not considered verified until
+it has been installed and exercised on a real Windows ARM64 machine.
+
+The package smoke gate installs that test artifact into a temporary per-user folder,
+launches the installed `Wayfinder.exe`, verifies the Home route (including the
+friendly `gh` diagnostic when GitHub CLI is absent), waits for the app to quit, and
+checks that the loopback port is closed:
+
+```powershell
+bun run smoke:win -- x64
+```
+
+CI runs this gate for x64 after packaging. The same matrix cross-packages ARM64, but
+the x64 runner cannot execute that binary; a real Windows ARM64 install remains a
+release gate. The installed app does not require Node or Bun; those tools are only
+used by the build runner.
 
 ## Stable release
 
-Push a tag that exactly matches the root package version, such as `v0.1.0`. The
-Windows workflow builds x64 and ARM64, writes SHA-256 checksum files, and attaches
-the signed artifacts and update metadata to the GitHub release.
+Nobody edits the version by hand. The **Release** workflow
+(`.github/workflows/release-please.yml`) keeps one `chore: release x.y.z` PR open.
+It collects everything merged to `main` and works out the bump from the conventional
+commits: while the version is below 1.0, `feat:` and `fix:` both bump the patch
+number, and a breaking change bumps the minor. It also writes `CHANGELOG.md`.
+Merging that PR sets the version in `package.json`, creates the tag and GitHub
+release, and then starts the Windows workflow on that tag. Merging anything else
+into `main` does not release anything.
+
+The Windows workflow can also run from a tag you push yourself, as long as the tag
+exactly matches the root package version, such as `v0.1.0`. It builds x64 and ARM64,
+writes SHA-256 checksum files, and attaches the installers and update metadata to the
+GitHub release. A tag containing a prerelease suffix, such as `v0.1.0-beta.1`, is
+published as an explicitly marked unsigned test release; stable tags fail closed until
+signing credentials are present.
+
+The same release carries the CLI as `wayfinder-map-<version>.tgz`, an `npm pack` of
+the same tag with its own `SHA256SUMS-cli.txt`. It has no runtime dependencies and
+installs with `npm install --global <release asset URL>`. The job runs the full test
+suite first, including the smoke test that installs a packed tarball and runs it
+against a fake `gh`. The package is not on the npm registry: the name is free, but
+publishing needs an npm account and token the repository does not have.
 
 Stable tags fail closed unless these repository secrets exist:
 
@@ -27,13 +61,13 @@ Stable tags fail closed unless these repository secrets exist:
   electron-builder.
 - `WIN_CSC_KEY_PASSWORD`: the certificate password.
 
-Azure Artifact Signing Basic remains the preferred future signing route if the
-release owner is eligible. The workflow does not create Azure resources or weaken
-the stable signing gate while those external credentials are unavailable.
+Azure Artifact Signing Basic remains the preferred future signing route if the release
+owner is eligible. The workflow does not create Azure resources or weaken the stable
+signing gate while those external credentials are unavailable.
 
-Signed stable builds check the architecture-specific GitHub Releases channel at
-launch and every 24 hours. They download in the background and ask before restart.
-Unsigned local builds and prerelease versions do not check for updates.
+Signed stable builds check the architecture-specific GitHub Releases channel at launch
+and every 24 hours. They download in the background and ask before restart. Unsigned
+local builds and prerelease versions do not check for updates.
 
 ## Release gates
 

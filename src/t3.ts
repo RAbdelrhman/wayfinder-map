@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -9,8 +9,8 @@ import { copyToClipboard } from './clipboard.js';
 import { appControlAddress, openWorkspace, stateDirFor } from './t3App.js';
 import { T3Api, samePath, serverCommand, threadCommands, threadDefaults } from './t3Api.js';
 import type { ServerCommand } from './t3Api.js';
-import { toCatalog, toModelSelection } from './models.js';
-import type { ModelCatalog, ModelChoice } from './models.js';
+import { hiddenModelsFromSettings, toCatalog, toModelSelection } from './models.js';
+import type { HiddenModels, ModelCatalog, ModelChoice } from './models.js';
 import type { PreparedWorktree } from './prompt.js';
 
 const run = promisify(execFile);
@@ -184,6 +184,17 @@ interface T3Config {
   defaultModelSelection: unknown;
 }
 
+/** Models the user turned off in T3 Code's picker live in client settings, not in `server.getConfig`. */
+async function readClientModelHides(stateDir: string): Promise<{ hidden: HiddenModels; stamp: string }> {
+  const path = join(stateDir, 'client-settings.json');
+  try {
+    const [text, info] = await Promise.all([readFile(path, 'utf8'), stat(path)]);
+    return { hidden: hiddenModelsFromSettings(JSON.parse(text) as unknown), stamp: String(info.mtimeMs) };
+  } catch {
+    return { hidden: new Map(), stamp: '' };
+  }
+}
+
 /** The real ladder steps, bound to whatever T3 Code is running right now. */
 export class T3HandOff {
   private api: { key: string; api: T3Api; command: ServerCommand } | null = null;
@@ -204,12 +215,13 @@ export class T3HandOff {
   /** T3 Code's providers and settings, cached for a minute: the reply is large and rarely changes. */
   private async t3Config(runtime: T3Runtime): Promise<T3Config> {
     const { api } = await this.connect(runtime);
-    const key = this.api?.key ?? '';
+    const hides = await readClientModelHides(runtime.stateDir);
+    const key = `${this.api?.key ?? ''}#${hides.stamp}`;
     if (this.config === null || this.config.key !== key || Date.now() - this.config.at > 60_000) {
       const value = api.rpc('server.getConfig').then((raw) => {
         const config = raw as { providers?: unknown; settings?: { defaultModelSelection?: unknown } };
         return {
-          catalog: toCatalog(Array.isArray(config.providers) ? config.providers : []),
+          catalog: toCatalog(Array.isArray(config.providers) ? config.providers : [], hides.hidden),
           defaultModelSelection: config.settings?.defaultModelSelection ?? null,
         };
       });

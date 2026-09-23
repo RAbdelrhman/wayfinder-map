@@ -63,6 +63,16 @@ export function checkCanvas(cfg, { exists, read }) {
     (style.stylesheets ?? []).forEach((href, i) => checkFile(`styles.${key}.stylesheets[${i}]`, href));
 
   pages.forEach((page, p) => {
+    if (page.ticket !== undefined && !(Number.isInteger(page.ticket) && page.ticket > 0)) {
+      errors.push(`pages[${p}].ticket: use a positive ticket number`);
+    }
+    if (
+      page.round !== undefined &&
+      !(typeof page.round === 'string' && page.round.trim() !== '') &&
+      !(Number.isInteger(page.round) && page.round > 0)
+    ) {
+      errors.push(`pages[${p}].round: use a non-empty name or positive round number`);
+    }
     const pageId =
       page.id ??
       String(page.title ?? `page-${p + 1}`)
@@ -95,6 +105,7 @@ export function checkCanvas(cfg, { exists, read }) {
           item.styles.forEach((key) => checkStyle(where, key));
         }
         if (kind !== 'note' && item.note === undefined) warnings.push(`${where}: no note; say what the option is and its trade-offs`);
+        checkNoteMetadata(where, item.note);
 
         switch (kind) {
           case 'page': {
@@ -130,6 +141,26 @@ export function checkCanvas(cfg, { exists, read }) {
         }
       });
     });
+  }
+
+  function checkNoteMetadata(where, note) {
+    if (note === undefined || typeof note === 'string') return;
+    if (!note || typeof note !== 'object' || Array.isArray(note)) {
+      errors.push(`${where}: note must be a string or an object`);
+      return;
+    }
+    if (note.basedOn !== undefined) {
+      const sources = Array.isArray(note.basedOn) ? note.basedOn : [note.basedOn];
+      if (sources.length === 0 || sources.some((source) => typeof source !== 'string' || source.trim() === '')) {
+        errors.push(`${where}: note.basedOn must be a name or a non-empty array of names`);
+      }
+    }
+    if (note.disposition !== undefined && !['keep', 'change', 'combine'].includes(note.disposition)) {
+      errors.push(`${where}: note.disposition must be keep, change, or combine`);
+    }
+    if (note.feedback !== undefined && typeof note.feedback !== 'string') {
+      errors.push(`${where}: note.feedback must be a string`);
+    }
   }
 }
 

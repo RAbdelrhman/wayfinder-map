@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseModelChoice, toCatalog, toModelSelection } from './models.js';
+import { hiddenModelsFromSettings, parseModelChoice, toCatalog, toModelSelection } from './models.js';
 
 const select = (id: string, values: string[], fallback: string) => ({
   id,
@@ -71,6 +71,51 @@ describe('toCatalog', () => {
 
   it('marks a provider that is not ready', () => {
     expect(catalog.providers.map((provider) => provider.ready)).toEqual([true, true, false, true]);
+  });
+
+  it('drops models the user hid in T3 Code, and a provider left with none', () => {
+    const hidden = hiddenModelsFromSettings({
+      providerModelPreferences: {
+        codex: { hiddenModels: ['gpt-5.6-sol', 3, ''] },
+        claudeAgent: { hiddenModels: ['claude-opus-5'] },
+        grok: { hiddenModels: ['grok-build'] },
+        stray: null,
+      },
+    });
+    const trimmed = toCatalog(
+      [
+        {
+          instanceId: 'codex',
+          displayName: 'Codex',
+          enabled: true,
+          installed: true,
+          status: 'ready',
+          models: [
+            { slug: 'gpt-5.6-sol', name: 'GPT-5.6-Sol' },
+            { slug: 'gpt-6-sol', name: 'GPT-6-Sol' },
+          ],
+        },
+        {
+          instanceId: 'claudeAgent',
+          displayName: 'Claude',
+          enabled: true,
+          installed: true,
+          status: 'ready',
+          models: [{ slug: 'claude-opus-5', name: 'Claude Opus 5' }],
+        },
+        { instanceId: 'grok', displayName: 'Grok', enabled: true, installed: true, status: 'ready', models: [{ slug: 'grok-build', name: 'Grok Build' }] },
+      ],
+      hidden,
+    );
+    expect(trimmed.providers.map((provider) => provider.instanceId)).toEqual(['codex']);
+    expect(trimmed.providers[0]?.models.map((model) => model.slug)).toEqual(['gpt-6-sol']);
+  });
+});
+
+describe('hiddenModelsFromSettings', () => {
+  it('hides nothing when the settings have no preference map', () => {
+    expect(hiddenModelsFromSettings(null).size).toBe(0);
+    expect(hiddenModelsFromSettings({ providerModelPreferences: [] }).size).toBe(0);
   });
 });
 

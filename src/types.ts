@@ -60,6 +60,8 @@ export interface Prototype {
   files: string[];
   /** Of those, the HTML files the page can serve and open live. */
   openable: string[];
+  /** The page to show running, or null when nothing on the branch can run on its own. */
+  preview: string | null;
   /** The closed ticket's last comment, which the wayfinder flow writes as its answer. Null while open. */
   verdict: string | null;
 }

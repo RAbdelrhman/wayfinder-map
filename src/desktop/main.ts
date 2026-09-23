@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, session, shell } from 'electron';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { DEFAULTS } from '../config.js';
@@ -7,8 +8,9 @@ import { startWayfinder } from '../runtime.js';
 import type { WayfinderRuntime } from '../runtime.js';
 import { startServer } from '../server.js';
 import { AUTO_UPDATE_ENABLED } from '../version.js';
-import { DesktopLifecycle, isInternalUrl, isSafeExternalUrl } from './lifecycle.js';
+import { DESKTOP_PORT, DesktopLifecycle, isInternalUrl, isSafeExternalUrl, startOnStablePort } from './lifecycle.js';
 import { startAutoUpdates } from './updater.js';
+import type { DesktopUpdaterHandle } from './updater.js';
 import { shouldEnableUpdates } from './updaterPolicy.js';
 
 const TRAY_ICON = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFSSURBVDhPjVOhbsMwEA0sLByyBwf3CYWDlUrGWjhNm29wpNLYQD9gcKrUfygKCRkcqTQYKaSJXTUqqKYq4E3npGnsNOpOeoriu/fe2T4HQUdIyvuSzMDiMbvy850hKZsIZWJJBk0IMmupsle/vg52FGSWPtGHIPMlaX3t84P/kGsRZb7lOO7VZKnSB7/oEgRt3k/uSudlYou5BpJwa4tGYQHoPUacWxwAHDB1hPJ+wPtpKk9XAFa7WgwoMJ9VYnbd6WQQSEqHziI7setsjwQFEg1Ei1KYv66AfrHX5ixWxHl4sI7snIR7RFUnTi1fq6Ts1lU9tl452r3jdBYO0uHxCn+bCXsOteMOEf+29496QgVtPlrJC+C5Oc3BOO4J0j9+URfsWPvvg8/CJs4QHDLPzHN255CPYd+DMp8+qeG8bDmfi3K47Hy8WSh9L5/MjV/H8QcYxvxKVQ6UNgAAAABJRU5ErkJggg==';
@@ -154,28 +156,45 @@ async function startRuntime(): Promise<void> {
     if (mainWindow === null) return;
     await mainWindow.loadURL(statePage('Preparing your Home', 'Starting the local server and checking this machine.'));
     showWindow();
-    const config: Config = { ...DEFAULTS, repo: null, cwd: process.cwd(), port: 0, open: false };
+    const config: Config = { ...DEFAULTS, repo: null, cwd: process.cwd(), port: DESKTOP_PORT, open: false };
     try {
+      let updaterHandle: DesktopUpdaterHandle | null = null;
       runtime = await startWayfinder(
         config,
         {
           startServer: (options) =>
-            startServer({ ...options, chooseDirectory, onShutdown: () => void quitApplication() }),
+            startOnStablePort((port) =>
+              startServer({
+                ...options,
+                config: { ...options.config, port },
+                chooseDirectory,
+                updater: {
+                  check: async () => (updaterHandle ? updaterHandle.check() : { status: 'disabled', currentVersion: app.getVersion() }),
+                  install: async () => {
+                    if (updaterHandle) await updaterHandle.install();
+                  },
+                  status: () => (updaterHandle ? updaterHandle.status() : { status: 'disabled', currentVersion: app.getVersion() }),
+                },
+                onShutdown: () => void quitApplication(),
+              }),
+            ),
         },
         { resolveCurrentRepository: false, uiDir: join(app.getAppPath(), 'dist', 'ui') },
       );
       runtimeOrigin = new URL(runtime.url).origin;
       await mainWindow.loadURL(runtime.url);
-      stopUpdates = startAutoUpdates({
+      await completeSmokeTest(runtime.url);
+      updaterHandle = startAutoUpdates({
         window: mainWindow,
         enabled: shouldEnableUpdates(app.isPackaged, app.getVersion(), AUTO_UPDATE_ENABLED),
         prepareForRestart: async () => {
-          stopUpdates();
+          updaterHandle?.stop();
           await lifecycle.quit(async () => runtime?.close());
           tray?.destroy();
           tray = null;
         },
       });
+      stopUpdates = () => updaterHandle?.stop();
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       await runtime?.close().catch(() => undefined);
@@ -187,6 +206,40 @@ async function startRuntime(): Promise<void> {
     startupPromise = null;
   });
   return startupPromise;
+}
+
+/**
+ * The Windows package smoke test opts in through an environment variable. Keeping the
+ * hook here means it exercises the real packaged Electron entry point, runtime, server,
+ * and Home route without changing ordinary launches.
+ */
+async function completeSmokeTest(homeUrl: string): Promise<void> {
+  const markerPath = process.env.WAYFINDER_SMOKE_FILE;
+  if (markerPath === undefined || runtime === null) return;
+
+  let homeStatus = 0;
+  try {
+    const response = await fetch(new URL('/api/home', homeUrl));
+    homeStatus = response.status;
+    // Drain the response before closing the server so the smoke request cannot
+    // leave an active keep-alive socket behind.
+    await response.arrayBuffer();
+  } catch {
+    homeStatus = 0;
+  }
+  const port = Number(new URL(homeUrl).port);
+  await writeFile(
+    markerPath,
+    JSON.stringify({ route: new URL(homeUrl).pathname || '/', homeStatus, port, version: app.getVersion() }),
+    'utf8',
+  );
+  setTimeout(() => {
+    void quitApplication().finally(() => {
+      // The smoke launch has no user-owned tray session to preserve. Once the normal
+      // close path has stopped the runtime, force the test process to leave promptly.
+      app.exit(0);
+    });
+  }, 100);
 }
 
 app.setAppUserModelId('com.rabdelrhman.wayfinder');

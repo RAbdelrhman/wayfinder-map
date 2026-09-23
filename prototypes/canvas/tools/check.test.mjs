@@ -12,7 +12,7 @@ test('a valid config of every kind passes', () => {
   const { errors } = run([
     {
       items: [
-        { id: 'A', src: 'variants/a.html', note: 'n' },
+        { id: 'A', src: 'variants/a.html', note: { idea: 'n', basedOn: ['Base A'], disposition: 'change', feedback: 'More contrast' } },
         {
           id: 'C',
           kind: 'compose',
@@ -105,6 +105,56 @@ test('pages are checked, and ids are unique across pages', () => {
   assert.match(errorsFor([page('One', 'A'), page('Two', 'A')]), /duplicate id "A"/);
   assert.match(errorsFor([page('One', 'A'), page('One', 'B')]), /duplicate page id "one"/);
   assert.match(errorsFor([page('One', 'A'), { sections: [] }]), /every page needs sections/);
+});
+
+test('named remix rounds and recorded feedback metadata pass', () => {
+  const { errors } = checkCanvas(
+    {
+      ...base,
+      pages: [
+        {
+          title: 'Second pass',
+          ticket: 43,
+          round: 'Round 2 · Navigation pass',
+          sections: [
+            {
+              items: [
+                {
+                  id: 'A2',
+                  kind: 'type',
+                  note: { idea: 'Refined option', basedOn: ['A', 'B'], disposition: 'combine', feedback: 'Keep the clearer labels' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    disk,
+  );
+  assert.deepEqual(errors, []);
+});
+
+test('invalid remix round and feedback metadata are errors', () => {
+  const { errors } = checkCanvas(
+    {
+      ...base,
+      pages: [
+        {
+          title: 'Broken pass',
+          ticket: 0,
+          round: 0,
+          sections: [{ items: [{ id: 'A', kind: 'type', note: { basedOn: [], disposition: 'retain', feedback: 42 } }] }],
+        },
+      ],
+    },
+    disk,
+  );
+  assert.match(errors.join('\n'), /pages\[0\]\.ticket/);
+  assert.match(errors.join('\n'), /pages\[0\]\.round/);
+  assert.match(errors.join('\n'), /note\.basedOn/);
+  assert.match(errors.join('\n'), /note\.disposition/);
+  assert.match(errors.join('\n'), /note\.feedback/);
 });
 
 test('base and style stylesheets must exist', () => {

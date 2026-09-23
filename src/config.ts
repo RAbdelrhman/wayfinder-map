@@ -30,30 +30,32 @@ Usage
 Options
   --repo <owner/name>   Repository to open. Uses the one in --cwd, or Home when none.
   --cwd <path>          Directory used to resolve the repo. Defaults to the shell's.
-  --port <number>       Port to serve on. Default ${String(DEFAULTS.port)}.
+  --port <number>       Port to serve on. Default ${String(DEFAULTS.port)}; 0 picks a free one.
   --map-label <label>   Label that marks a map issue. Default ${DEFAULTS.mapLabel}.
   --type-prefix <text>  Prefix on a ticket's type label. Default ${DEFAULTS.typePrefix}.
   --prompt <file>       Prompt template. {{ticketTitle}}, {{destination}} and friends.
   --no-open             Do not open a browser on start.
+  -v, --version         Print the version.
   -h, --help            This text.
 
 Config file
   A wayfinder-map.config.json in --cwd sets the same keys, and flags win over it.
 `;
 
-function readNumber(value: string | undefined, flag: string): number {
+function readPort(value: string): number {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`${flag} needs a positive integer, got "${value ?? ''}"`);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) throw new Error(`--port needs a port from 0 to 65535, got "${value}"`);
   return parsed;
 }
 
 /** Flags beat the config file, the config file beats the defaults. */
-export async function resolveConfig(argv: readonly string[]): Promise<Config | 'help'> {
+export async function resolveConfig(argv: readonly string[]): Promise<Config | 'help' | 'version'> {
   const flags = new Map<string, string | true>();
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === undefined || !arg.startsWith('--')) {
       if (arg === '-h') flags.set('help', true);
+      if (arg === '-v') flags.set('version', true);
       continue;
     }
     const name = arg.slice(2);
@@ -67,6 +69,7 @@ export async function resolveConfig(argv: readonly string[]): Promise<Config | '
   }
 
   if (flags.has('help')) return 'help';
+  if (flags.has('version')) return 'version';
 
   const cwd = resolve(typeof flags.get('cwd') === 'string' ? (flags.get('cwd') as string) : process.cwd());
   const fromFile = await readConfigFile(cwd);
@@ -87,7 +90,7 @@ export async function resolveConfig(argv: readonly string[]): Promise<Config | '
     cwd,
     port:
       typeof portFlag === 'string'
-        ? readNumber(portFlag, '--port')
+        ? readPort(portFlag)
         : typeof filePort === 'number'
           ? filePort
           : DEFAULTS.port,
