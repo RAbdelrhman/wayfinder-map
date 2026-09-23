@@ -6,7 +6,7 @@ import type { MapSnapshot, Prototype, Ticket, TicketState, TicketType, Wayfinder
 import { STATE_LOOKS, STATE_ORDER, STATE_STYLE, bindTheme, bindUpdater, countStates, paintIcons, progressRing, repoIconHtml, updateAccountMark } from './chrome.js';
 import type { AccountMark, AccountProfile } from './chrome.js';
 import * as icons from './icons.js';
-import { currentCatalog, loadCatalog, modelSelectHtml, readChoice, tierDefaults } from './models.js';
+import { loadCatalog, TIER_LABEL } from './models.js';
 import { syncedLabel } from './focus.js';
 import { icon } from './icons.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
@@ -15,9 +15,9 @@ import type { TileText } from './prototypeTile.js';
 import { mountProgressPanel } from './progress.js';
 import type { ProgressSettings, ProgressState } from '../progress.js';
 import { AutoRefresh } from './autoRefresh.js';
-import { composerState, draftToMapPath, initialRepository, isNewMapHandOff } from './newMap.js';
+import { draftToMapPath, initialRepository, isNewMapHandOff, newMapPath, rememberNewMapRetry } from './newMap.js';
 import type { NewMapHandOff } from './newMap.js';
-import type { WorkspaceView } from './newMap.js';
+import { renderNewMapPage } from './newMapPage.js';
 import { mountNavigation } from './navigation.js';
 import type { NavigationController } from './navigation.js';
 import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
@@ -178,24 +178,62 @@ interface HandOffSnapshot {
 
 function draftStatusLine(draft: NewMapHandOff): string {
   if (draft.threadId === null) return 'No T3 Code thread was started. The hand-off needs attention.';
+  let status: string;
+  if (draft.pendingApproval) status = 'T3 Code is waiting for approval in the planning thread.';
+  else if (draft.pendingUserInput) status = 'T3 Code is waiting for your input in the planning thread.';
+  else {
   switch (draft.status) {
     case 'starting':
-      return 'T3 Code is starting the planning thread.';
+      status = 'T3 Code is starting the planning thread.';
+      break;
     case 'running':
-      return 'T3 Code is planning. Tickets will appear here as they are drafted.';
+      status = 'T3 Code is planning. Tickets will appear here as they are drafted.';
+      break;
     case 'waiting':
-      return 'T3 Code is waiting for input in the planning thread.';
+      status = 'T3 Code is waiting for input in the planning thread.';
+      break;
     case 'ready':
-      return 'T3 Code is ready for the next planning step.';
+      status = 'T3 Code is ready for the next planning step.';
+      break;
     case 'finished':
-      return 'T3 Code finished a planning turn. This map is still waiting for its issue.';
+      status = 'T3 Code finished a planning turn. This map is still waiting for its issue.';
+      break;
     case 'interrupted':
-      return 'The planning thread was interrupted.';
+      status = 'The planning thread was interrupted.';
+      break;
     case 'failed':
-      return 'The planning thread ran into an error.';
+      status = 'The planning thread ran into an error.';
+      break;
     case 'untracked':
-      return 'T3 Code started the thread; its current status is unavailable.';
+      status = 'T3 Code started the thread; its current status is unavailable.';
+      break;
   }
+  }
+  return draft.stale ? `T3 Code is unavailable. Showing the last reported status: ${status}` : status;
+}
+
+function draftOutcomeHtml(draft: NewMapHandOff): string {
+  if (draft.status !== 'finished') return '';
+  const repository = `<span><span class="draft-outcome-label">Repository</span><b>${escapeHtml(draft.repo)}</b></span>`;
+  const tier = draft.tier === undefined
+    ? ''
+    : `<span><span class="draft-outcome-label">Model tier</span><b>${TIER_LABEL[draft.tier]}</b></span>`;
+  const thread = draft.threadId === null
+    ? ''
+    : `<span><span class="draft-outcome-label">Thread</span><code>${escapeHtml(draft.threadId)}</code></span>`;
+  const branch = draft.branch === null
+    ? ''
+    : (() => {
+        const [owner = '', name = ''] = draft.repo.split('/', 2);
+        const path = draft.branch.split('/').map(encodeURIComponent).join('/');
+        return `<span><span class="draft-outcome-label">Branch</span><a href="https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tree/${path}" target="_blank" rel="noreferrer">${escapeHtml(draft.branch)}</a></span>`;
+      })();
+  const pullRequests = draft.pullRequests.length === 0
+    ? ''
+    : `<span><span class="draft-outcome-label">Pull requests</span><span class="draft-outcome-links">${draft.pullRequests
+        .map((pullRequest) => `<a href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer">${pullRequest.number === null ? 'Open pull request' : `#${String(pullRequest.number)}`}</a>`)
+        .join('')}</span></span>`;
+  return `<div class="draft-handoff-outcome">${repository}${tier}${thread}${branch}${pullRequests}<a class="ghost" href="/">Back to Home</a></div>`;
 }
 
 let draftAutoRefresh: AutoRefresh | null = null;
@@ -237,6 +275,12 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
   document.title = `${draft.title ?? 'New map'} - being planned - Wayfinder`;
   const badge = draft.threadId === null || draft.status === 'failed' || draft.status === 'interrupted' ? 'Needs attention' : 'Being planned';
   const openThread = draft.threadId === null ? '' : `<button type="button" class="ghost" data-open-handoff="${escapeHtml(draft.id)}"><span data-icon="play"></span>Open in T3 Code</button>`;
+  const canRecover = draft.threadId === null || draft.status === 'failed' || draft.status === 'interrupted';
+  const recoveryActions = canRecover
+    ? `<div class="draft-recovery-actions"><button type="button" class="ghost" data-retry-draft>${icon(icons.REFRESH)}Try again</button><button type="button" class="ghost" data-copy-draft-prompt>${icon(icons.COPY)}Copy prompt</button></div>`
+    : '';
+  const active = draft.status === 'starting' || draft.status === 'running';
+  const handOffIcon = active ? '<span class="draft-handoff-spinner" aria-hidden="true"></span>' : icon(draft.status === 'finished' ? icons.CHECK : icons.PLAY);
   paint(`<div class="draft-map-page">
       ${snapshotWarning}
       <header class="draft-map-head">
@@ -245,9 +289,11 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
         <p>${escapeHtml(draft.repo)}</p>
       </header>
       <section class="draft-handoff" aria-label="T3 Code hand-off">
-        <span class="draft-handoff-mark" aria-hidden="true">${icon(icons.PLAY)}</span>
+        <span class="draft-handoff-mark${active ? ' is-active' : ''}" aria-hidden="true">${handOffIcon}</span>
         <p class="grow" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(draftStatusLine(draft))}</p>
         ${openThread}
+        ${draftOutcomeHtml(draft)}
+        ${recoveryActions}
       </section>
       <section class="draft-map-board" aria-label="Map tickets being drafted">
         <p>Tickets appear here as T3 Code drafts them.</p>
@@ -263,6 +309,32 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
       toast('Brought T3 Code forward.');
     } catch (error) {
       toast((error as Error).message, 9000);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  els.main.querySelector<HTMLButtonElement>('[data-retry-draft]')?.addEventListener('click', () => {
+    try {
+      rememberNewMapRetry(draft.repo, draft.title ?? '');
+      window.location.assign(newMapPath(draft.repo));
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Could not save the draft for retry.', 9000);
+    }
+  });
+  els.main.querySelector<HTMLButtonElement>('[data-copy-draft-prompt]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    if (!(button instanceof HTMLButtonElement)) return;
+    button.disabled = true;
+    try {
+      const result = await postJson<{ prompt: string; copied: boolean }>(scopedApiPath(draft.repo, 'new-map'), {
+        goal: draft.title ?? '',
+        copyOnly: true,
+        ...(draft.tier === undefined ? {} : { tier: draft.tier }),
+      });
+      if (!result.copied) await navigator.clipboard.writeText(result.prompt);
+      toast('Copied the prompt. Paste it into T3 Code.');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Could not copy the prompt.', 9000);
     } finally {
       button.disabled = false;
     }
@@ -532,565 +604,33 @@ function stateChip(state: TicketState): string {
 async function renderNewMap(): Promise<void> {
   document.title = 'Start a new map · Wayfinder';
   setSynced('');
-  const account = await syncAccountMark();
+  await syncAccountMark();
 
   let homeState: HomeState | null = null;
   try {
     homeState = await getJson<HomeState>('/api/home');
   } catch {
-    // ignore
+    // The composer can still use a repository name when GitHub is unavailable.
   }
 
-  const recents = recentRepositories();
-  const allRepos = Array.from(new Set([...recents, ...(homeState?.repositories ?? [])]));
-
-  const initialRepo = initialRepository(new URLSearchParams(window.location.search).get('repo'), recents, allRepos);
+  const repositoryQuery = new URLSearchParams(window.location.search).get('repo');
+  const initialRepo = initialRepository(repositoryQuery);
   navigation?.setCurrentRepo(initialRepo || null);
-
   const catalogState = await loadCatalog();
-  const catalog = catalogState.status === 'ready' ? catalogState.catalog : null;
-  const t3Unavailable = catalogState.status === 'unavailable' ? catalogState.reason : null;
-  const defaultModelChoice = catalog ? tierDefaults()['mid'] ?? null : null;
-
-  const repoOptionsHtml = allRepos.map((r) => `<option value="${escapeHtml(r)}"></option>`).join('');
-  const recentPillsHtml = recents
-    .slice(0, 4)
-    .map((r) => `<button type="button" class="repo-pill" data-repo="${escapeHtml(r)}">${repoIconHtml(r, 'sm')}<span>${escapeHtml(r)}</span></button>`)
-    .join('');
-
-  const ticketModelSelectHtml = catalog
-    ? modelSelectHtml(catalog, defaultModelChoice, 'class="select" id="ticket-model-select"')
-    : '<select class="select" id="ticket-model-select" disabled><option>Models unavailable</option></select>';
-  const mapModelSelectHtml = catalog
-    ? modelSelectHtml(catalog, defaultModelChoice, 'class="select" id="map-model-select"')
-    : '<select class="select" id="map-model-select" disabled><option>Models unavailable</option></select>';
-
-  paint(`
-    <div class="add-new-shell">
-      <div class="page-head">
-        <div class="grow">
-          <p class="eyebrow">Start New Work</p>
-          <h1>Open a singular ticket or start a map</h1>
-          <p>Hand off a singular GitHub issue directly to T3 Code, or start a new destination map through an interactive planning interview.</p>
-        </div>
-      </div>
-
-      <div class="add-new-repo-bar">
-        <label for="new-repo-input"><span data-icon="repo"></span> Repository</label>
-        <div class="repo-picker">
-          <input class="input" id="new-repo-input" placeholder="Search GitHub repositories or type owner/name" value="${escapeHtml(initialRepo)}" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="new-repo-menu" aria-autocomplete="list" />
-          <ul class="repo-menu" id="new-repo-menu" role="listbox" hidden></ul>
-        </div>
-        ${recentPillsHtml ? `<div class="recent-repos-hint"><span>Recent:</span>${recentPillsHtml}</div>` : ''}
-      </div>
-
-      <div class="add-new-grid">
-        <!-- Column 1: Singular Ticket -->
-        <div class="add-new-card" id="card-singular-ticket">
-          <div class="add-new-card-head">
-            <div class="add-new-icon-box"><span data-icon="ticket"></span></div>
-            <div class="add-new-card-titles">
-              <p class="eyebrow">Singular Ticket</p>
-              <h2>Work on an Issue</h2>
-              <p class="card-blurb">Pick up any GitHub ticket in this repo without needing an existing map. T3 Code will create a dedicated branch and worktree.</p>
-            </div>
-          </div>
-
-          <div class="field">
-            <label for="new-ticket-input">Ticket number or issue URL</label>
-            <input class="input" id="new-ticket-input" placeholder="#42 or https://github.com/owner/name/issues/42" autocomplete="off" spellcheck="false" />
-          </div>
-
-          <div class="ticket-preview-box is-empty" id="ticket-preview-box">
-            Enter a ticket number or paste an issue link above to inspect it.
-          </div>
-
-          <div class="model-row">
-            <label for="ticket-model-select">Model</label>
-            <div class="model-row-controls">
-              ${ticketModelSelectHtml}
-            </div>
-          </div>
-
-          <div class="add-new-actions">
-            <button type="button" class="primary" id="ticket-start-btn" disabled>
-              <span data-icon="play"></span>Start in T3 Code
-            </button>
-            <button type="button" class="ghost" id="ticket-copy-btn" disabled>
-              <span data-icon="copy"></span>Copy prompt
-            </button>
-          </div>
-
-          <details class="prompt-details" id="ticket-prompt-details" hidden>
-            <summary><span data-icon="chevron"></span>View generated prompt</summary>
-            <pre class="prompt-pre"><code id="ticket-prompt-code"></code></pre>
-          </details>
-        </div>
-
-        <!-- Column 2: Wayfinder Map -->
-        <div class="add-new-card" id="card-wayfinder-map">
-          <div class="add-new-card-head">
-            <div class="add-new-icon-box"><span data-icon="compass"></span></div>
-            <div class="add-new-card-titles">
-              <p class="eyebrow">Wayfinder Map</p>
-              <h2>Start a New Map</h2>
-              <p class="card-blurb">Describe your destination. T3 Code will interview you, clarify scope and decisions, and propose a full dependency map.</p>
-            </div>
-          </div>
-
-          <div class="field">
-            <label for="new-map-goal">What do you want to accomplish?</label>
-            <textarea class="input" id="new-map-goal" rows="5" required placeholder="e.g. Build an offline-first draft mode with local indexedDB storage and automatic background sync..."></textarea>
-          </div>
-
-          <div class="model-row">
-            <label for="map-model-select">Model</label>
-            <div class="model-row-controls">
-              ${mapModelSelectHtml}
-            </div>
-          </div>
-
-          <div class="add-new-actions">
-            <button type="button" class="primary" id="map-start-btn" disabled>
-              <span data-icon="play"></span>Start in T3 Code
-            </button>
-            <button type="button" class="ghost" id="map-copy-btn" disabled>
-              <span data-icon="copy"></span>Copy prompt
-            </button>
-          </div>
-          <p class="hint clone-hint" id="map-note" role="status" hidden></p>
-          <div id="map-clone"></div>
-
-          <details class="prompt-details" id="map-prompt-details" hidden>
-            <summary><span data-icon="chevron"></span>View interview prompt</summary>
-            <pre class="prompt-pre"><code id="map-prompt-code"></code></pre>
-          </details>
-
-          <div class="existing-maps-hint" id="existing-maps-hint" hidden>
-            <p>Existing maps in this repository:</p>
-            <div id="existing-maps-list"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `);
-
-  const repoInput = need<HTMLInputElement>('new-repo-input');
-  const ticketInput = need<HTMLInputElement>('new-ticket-input');
-  const ticketPreviewBox = need<HTMLDivElement>('ticket-preview-box');
-  const ticketModelSelect = need<HTMLSelectElement>('ticket-model-select');
-  const ticketStartBtn = need<HTMLButtonElement>('ticket-start-btn');
-  const ticketCopyBtn = need<HTMLButtonElement>('ticket-copy-btn');
-  const ticketPromptDetails = need<HTMLDetailsElement>('ticket-prompt-details');
-  const ticketPromptCode = need<HTMLElement>('ticket-prompt-code');
-
-  const mapGoal = need<HTMLTextAreaElement>('new-map-goal');
-  const mapModelSelect = need<HTMLSelectElement>('map-model-select');
-  const mapStartBtn = need<HTMLButtonElement>('map-start-btn');
-  const mapCopyBtn = need<HTMLButtonElement>('map-copy-btn');
-  const mapPromptDetails = need<HTMLDetailsElement>('map-prompt-details');
-  const mapPromptCode = need<HTMLElement>('map-prompt-code');
-  const existingMapsHint = need<HTMLDivElement>('existing-maps-hint');
-  const existingMapsList = need<HTMLDivElement>('existing-maps-list');
-  const mapNote = need<HTMLParagraphElement>('map-note');
-  const mapClone = need<HTMLDivElement>('map-clone');
-
-  let activeResolvedTicket: { ticket: Ticket; map: { number: number; title: string } | null } | null = null;
-  let activeTicketPrompt: string | null = null;
-  let mapWorkspace: WorkspaceView | 'loading' | null = 'loading';
-  /** Why the last hand-off fell short of a running thread, until the inputs change. */
-  let mapNotice: string | null = null;
-  let workspaceAsk = 0;
-
-  function selectedRepo(): string | null {
-    return normalizeRepo(repoInput.value.trim());
-  }
-
-  /** Enable the actions, say why a hand-off can't start, and offer a clone when none is verified. */
-  function syncMapComposer(): void {
-    const repo = selectedRepo();
-    const state = composerState({ repo, goal: mapGoal.value, workspace: mapWorkspace, t3Unavailable });
-    mapStartBtn.disabled = !state.canStart;
-    mapCopyBtn.disabled = !state.canCopy;
-    const note = mapNotice ?? state.reason;
-    mapNote.hidden = note === null;
-    mapNote.textContent = note ?? '';
-
-    const workspace = mapWorkspace;
-    if (repo === null || workspace === null || workspace === 'loading' || workspace.status === 'ready') {
-      mapClone.innerHTML = '';
-      return;
-    }
-    const picker = workspace.canChoose
-      ? `<button type="button" class="${workspace.candidates.length === 0 ? 'primary' : 'ghost'}" id="map-choose-clone">${icon(icons.FOLDER)}Choose local clone</button>`
-      : '';
-    const list =
-      workspace.candidates.length === 0
-        ? ''
-        : `<div class="clone-row">
-            <select id="map-clone-path" aria-label="Local clone">${workspace.candidates.map((path) => `<option value="${escapeHtml(path)}">${escapeHtml(path)}</option>`).join('')}</select>
-            <button type="button" class="primary" id="map-use-clone">Use this clone</button>
-          </div>`;
-    const cli = workspace.canChoose || workspace.candidates.length > 0 ? '' : '<p class="hint">Run wayfinder-map inside a clone, or pick a folder in the desktop app.</p>';
-    mapClone.innerHTML = `${list}${cli}${picker ? `<div class="add-new-actions">${picker}</div>` : ''}`;
-    paintIcons(mapClone);
-  }
-
-  /** Ask which checkout T3 Code would run the selected repository in. Only the latest answer counts. */
-  async function loadMapWorkspace(): Promise<void> {
-    const repo = selectedRepo();
-    const ask = (workspaceAsk += 1);
-    mapNotice = null;
-    mapWorkspace = repo === null ? null : 'loading';
-    syncMapComposer();
-    if (repo === null) return;
-    let answer: WorkspaceView | null;
-    try {
-      answer = await getJson<WorkspaceView>(scopedApiPath(repo, 'workspace'));
-    } catch {
-      answer = null;
-    }
-    if (ask !== workspaceAsk) return;
-    mapWorkspace = answer;
-    syncMapComposer();
-  }
-
-  async function setMapClone(body: { choose: true } | { path: string }): Promise<void> {
-    const repo = selectedRepo();
-    if (repo === null) return;
-    for (const button of mapClone.querySelectorAll<HTMLButtonElement>('button')) button.disabled = true;
-    try {
-      const response = await fetch(scopedApiPath(repo, 'workspace'), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const result = (await response.json()) as Partial<WorkspaceView> & { error?: string; cancelled?: boolean };
-      if (result.status !== undefined) mapWorkspace = result as WorkspaceView;
-      if (typeof result.error === 'string') toast(result.error, 9000);
-      else if (result.cancelled !== true && result.status === 'ready') toast(`Threads will run in ${result.path}.`, 5000);
-    } catch (error) {
-      toast((error as Error).message, 9000);
-    }
-    syncMapComposer();
-  }
-
-  mapClone.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement;
-    if (target.closest('#map-choose-clone') !== null) void setMapClone({ choose: true });
-    if (target.closest('#map-use-clone') !== null) {
-      const path = mapClone.querySelector<HTMLSelectElement>('#map-clone-path')?.value;
-      if (path) void setMapClone({ path });
-    }
-  });
-
-  async function loadExistingMaps(repo: string): Promise<void> {
-    const normalized = normalizeRepo(repo);
-    if (!normalized) {
-      existingMapsHint.hidden = true;
-      return;
-    }
-    try {
-      const snap = await getJson<MapSnapshot>(scopedApiPath(normalized, 'snapshot'));
-      if (selectedRepo() !== normalized) return;
-      navigation?.setSnapshot(snap, null);
-      if (snap.maps.length > 0) {
-        existingMapsHint.hidden = false;
-        existingMapsList.innerHTML = snap.maps
-          .map((m) => `<a class="mini-map-pill" href="${mapPath(normalized, m.number)}"><span data-icon="compass"></span>#${String(m.number)} ${escapeHtml(m.title)}</a>`)
-          .join('');
-        paintIcons(existingMapsList);
-      } else {
-        existingMapsHint.hidden = true;
-      }
-    } catch {
-      existingMapsHint.hidden = true;
-    }
-  }
-
-  async function inspectTicket(ticketNum: number): Promise<void> {
-    const repo = normalizeRepo(repoInput.value.trim());
-    if (!repo) {
-      ticketPreviewBox.className = 'ticket-preview-box is-error';
-      ticketPreviewBox.textContent = 'Please enter a valid repository (owner/name) above first.';
-      activeResolvedTicket = null;
-      activeTicketPrompt = null;
-      ticketStartBtn.disabled = true;
-      ticketCopyBtn.disabled = true;
-      ticketPromptDetails.hidden = true;
-      return;
-    }
-
-    ticketPreviewBox.className = 'ticket-preview-box is-loading';
-    ticketPreviewBox.textContent = `Fetching ticket #${String(ticketNum)} from ${repo}...`;
-
-    try {
-      const data = await getJson<{ ticket: Ticket; map: { number: number; title: string } | null }>(
-        `${scopedApiPath(repo, 'ticket')}?number=${String(ticketNum)}`
-      );
-      activeResolvedTicket = data;
-      const t = data.ticket;
-      const metaItems = [
-        `<span>${escapeHtml(t.assignee ? `@${t.assignee}` : 'Unassigned')}</span>`,
-        `<a href="${escapeHtml(t.url)}" target="_blank" rel="noreferrer"><span data-icon="external"></span>GitHub #${String(t.number)}</a>`,
-      ];
-
-      const mapBadge = data.map
-        ? `<a class="ticket-map-badge" href="${mapPath(repo, data.map.number)}"><span data-icon="compass"></span>Part of Map #${String(data.map.number)}: ${escapeHtml(data.map.title)}</a>`
-        : '';
-
-      ticketPreviewBox.className = 'ticket-preview-box';
-      ticketPreviewBox.innerHTML = `
-        <div class="ticket-preview-header">
-          ${typeGlyph(t.type)}
-          <span class="ticket-preview-num">#${String(t.number)}</span>
-          ${stateChip(t.state)}
-        </div>
-        <h3 class="ticket-preview-title">${escapeHtml(t.title)}</h3>
-        ${mapBadge}
-        <div class="ticket-preview-meta">${metaItems.join('')}</div>
-      `;
-      paintIcons(ticketPreviewBox);
-
-      // Preload ticket prompt
-      const modelChoice = catalog ? readChoice(catalog, ticketModelSelect, null) : null;
-      const handOffPreview = await postJson<{ prompt: string }>(
-        scopedApiPath(repo, 'hand-off'),
-        {
-          ticket: t.number,
-          copyOnly: true,
-          ...(data.map ? { map: data.map.number } : {}),
-          ...(modelChoice ? { model: modelChoice } : {}),
-        }
-      );
-      activeTicketPrompt = handOffPreview.prompt;
-      ticketPromptCode.textContent = activeTicketPrompt;
-      ticketPromptDetails.hidden = false;
-
-      const canStart = t.state !== 'done' && t.state !== 'blocked';
-      ticketStartBtn.disabled = !canStart;
-      ticketStartBtn.title = canStart ? '' : `Ticket is ${t.state}`;
-      ticketCopyBtn.disabled = false;
-    } catch (err) {
-      activeResolvedTicket = null;
-      activeTicketPrompt = null;
-      ticketPreviewBox.className = 'ticket-preview-box is-error';
-      ticketPreviewBox.textContent = (err as Error).message || `Ticket #${String(ticketNum)} not found in ${repo}.`;
-      ticketStartBtn.disabled = true;
-      ticketCopyBtn.disabled = true;
-      ticketPromptDetails.hidden = true;
-    }
-  }
-
-  let ticketDebounce = 0;
-  function handleTicketInput(): void {
-    const trimmed = ticketInput.value.trim();
-    if (!trimmed) {
-      ticketPreviewBox.className = 'ticket-preview-box is-empty';
-      ticketPreviewBox.textContent = 'Enter a ticket number or paste an issue link above to inspect it.';
-      ticketStartBtn.disabled = true;
-      ticketCopyBtn.disabled = true;
-      ticketPromptDetails.hidden = true;
-      activeResolvedTicket = null;
-      activeTicketPrompt = null;
-      return;
-    }
-
-    // Match GitHub URL
-    const urlMatch = /github\.com\/([^/]+\/[^/]+)\/issues\/(\d+)/i.exec(trimmed);
-    if (urlMatch && urlMatch[1] && urlMatch[2]) {
-      const parsedRepo = normalizeRepo(urlMatch[1]);
-      const parsedNum = Number(urlMatch[2]);
-      if (parsedRepo) {
-        repoInput.value = parsedRepo;
-        remember(parsedRepo);
-        void loadExistingMaps(parsedRepo);
-        void loadMapWorkspace();
-      }
-      ticketInput.value = `#${String(parsedNum)}`;
-      void inspectTicket(parsedNum);
-      return;
-    }
-
-    const numMatch = /^#?(\d+)$/.exec(trimmed);
-    if (numMatch && numMatch[1]) {
-      window.clearTimeout(ticketDebounce);
-      ticketDebounce = window.setTimeout(() => {
-        void inspectTicket(Number(numMatch[1]));
-      }, 300);
-    }
-  }
-
-  ticketInput.addEventListener('input', handleTicketInput);
-  ticketInput.addEventListener('paste', () => setTimeout(handleTicketInput, 20));
-
-  function switchRepo(target: string): void {
-    const normalized = normalizeRepo(target);
-    repoInput.value = normalized ?? target;
-    navigation?.setCurrentRepo(normalized);
-    void loadMapWorkspace();
-    if (normalized) {
-      remember(normalized);
-      void loadExistingMaps(normalized);
-      const numMatch = /^#?(\d+)$/.exec(ticketInput.value.trim());
-      if (numMatch && numMatch[1]) {
-        void inspectTicket(Number(numMatch[1]));
-      }
-    }
-  }
-
-  bindRepoPicker(repoInput, need<HTMLUListElement>('new-repo-menu'), switchRepo);
-
-  repoInput.addEventListener('change', () => {
-    switchRepo(repoInput.value.trim());
-  });
-
-  for (const pill of els.main.querySelectorAll<HTMLButtonElement>('.repo-pill')) {
-    pill.addEventListener('click', () => {
-      const targetRepo = pill.dataset['repo'];
-      if (targetRepo) {
-        switchRepo(targetRepo);
-      }
-    });
-  }
-
-  ticketStartBtn.addEventListener('click', async () => {
-    if (!activeResolvedTicket) return;
-    const repo = normalizeRepo(repoInput.value.trim());
-    if (!repo) return;
-    const originalText = ticketStartBtn.innerHTML;
-    ticketStartBtn.disabled = true;
-    ticketStartBtn.textContent = 'Starting in T3 Code...';
-
-    try {
-      const modelChoice = catalog ? readChoice(catalog, ticketModelSelect, null) : null;
-      const res = await postJson<{ threadId?: string; copied?: boolean }>(
-        scopedApiPath(repo, 'hand-off'),
-        {
-          ticket: activeResolvedTicket.ticket.number,
-          ...(activeResolvedTicket.map ? { map: activeResolvedTicket.map.number } : {}),
-          ...(modelChoice ? { model: modelChoice } : {}),
-        }
-      );
-      if (res.copied) {
-        toast('Copied prompt to clipboard! Paste it into T3 Code.');
-      } else {
-        toast(`Started thread in T3 Code for #${String(activeResolvedTicket.ticket.number)}!`);
-      }
-    } catch (err) {
-      toast((err as Error).message);
-    } finally {
-      ticketStartBtn.disabled = false;
-      ticketStartBtn.innerHTML = originalText;
-      paintIcons(ticketStartBtn);
-    }
-  });
-
-  ticketCopyBtn.addEventListener('click', async () => {
-    if (!activeResolvedTicket) return;
-    const repo = normalizeRepo(repoInput.value.trim());
-    if (!repo) return;
-    try {
-      const modelChoice = catalog ? readChoice(catalog, ticketModelSelect, null) : null;
-      const res = await postJson<{ prompt: string; copied: boolean }>(
-        scopedApiPath(repo, 'hand-off'),
-        {
-          ticket: activeResolvedTicket.ticket.number,
-          copyOnly: true,
-          ...(activeResolvedTicket.map ? { map: activeResolvedTicket.map.number } : {}),
-          ...(modelChoice ? { model: modelChoice } : {}),
-        }
-      );
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(res.prompt);
-      }
-      toast('Copied prompt to clipboard!');
-    } catch (err) {
-      toast((err as Error).message);
-    }
-  });
-
-  let mapGoalTimer = 0;
-  mapGoal.addEventListener('input', () => {
-    mapNotice = null;
-    syncMapComposer();
-    window.clearTimeout(mapGoalTimer);
-    const goal = mapGoal.value.trim();
-    const repo = selectedRepo();
-    if (goal.length === 0 || repo === null) {
-      mapPromptDetails.hidden = true;
-      return;
-    }
-    mapGoalTimer = window.setTimeout(async () => {
-      try {
-        const { prompt } = await postJson<{ prompt: string }>(scopedApiPath(repo, 'new-map'), { goal, preview: true });
-        mapPromptCode.textContent = prompt;
-        mapPromptDetails.hidden = false;
-      } catch {
-        // The preview is a courtesy; the actions still build the prompt themselves.
-      }
-    }, 350);
-  });
-
-  mapStartBtn.addEventListener('click', async () => {
-    const goal = mapGoal.value.trim();
-    const repo = selectedRepo();
-    if (goal.length === 0 || repo === null) return;
-    const originalHtml = mapStartBtn.innerHTML;
-    mapStartBtn.disabled = true;
-    mapStartBtn.textContent = 'Starting in T3 Code…';
-    try {
-      const modelChoice = catalog ? readChoice(catalog, mapModelSelect, null) : null;
-      const result = await postJson<{
-        rung: 'thread' | 'app' | 'clipboard' | null;
-        copied: boolean;
-        notice: string | null;
-        error: string | null;
-        handOffId: string | null;
-        trackingWarning?: string;
-      }>(
-        scopedApiPath(repo, 'new-map'),
-        { goal, ...(modelChoice ? { model: modelChoice } : {}) },
-      );
-      if (result.handOffId !== null) {
-        window.location.assign(draftMapPath(repo, result.handOffId));
-        return;
-      }
-      if (result.rung === 'thread') {
-        mapNotice = null;
-        toast(result.trackingWarning ?? 'The planning thread started, but Wayfinder could not save its route.');
-      } else {
-        mapNotice = [result.notice, result.copied ? 'The prompt is on the clipboard.' : result.error].filter(Boolean).join(' ');
-        toast(result.copied ? 'Copied the prompt. Paste it into T3 Code.' : (result.error ?? 'Could not start the thread.'), 9000);
-      }
-    } catch (err) {
-      toast((err as Error).message, 9000);
-      // The clone may have gone away since the page asked.
-      void loadMapWorkspace();
-    } finally {
-      mapStartBtn.innerHTML = originalHtml;
-      paintIcons(mapStartBtn);
-      syncMapComposer();
-    }
-  });
-
-  mapCopyBtn.addEventListener('click', async () => {
-    const goal = mapGoal.value.trim();
-    const repo = selectedRepo();
-    if (goal.length === 0 || repo === null) return;
-    try {
-      const result = await postJson<{ prompt: string; copied: boolean }>(scopedApiPath(repo, 'new-map'), { goal, copyOnly: true });
-      if (!result.copied) await navigator.clipboard.writeText(result.prompt);
-      toast('Copied the prompt. Paste it into T3 Code.');
-    } catch (err) {
-      toast((err as Error).message);
-    }
-  });
-
-  void loadMapWorkspace();
-  if (initialRepo) {
-    void loadExistingMaps(initialRepo);
-  }
+  await renderNewMapPage(
+    {
+      main: els.main,
+      homeState,
+      recents: recentRepositories(),
+      catalog: catalogState.status === 'ready' ? catalogState.catalog : null,
+      t3Unavailable: catalogState.status === 'unavailable' ? catalogState.reason : null,
+      getJson,
+      postJson,
+      remember,
+      toast,
+    },
+    repositoryQuery,
+  );
 }
 
 /* ---------- routing ---------- */

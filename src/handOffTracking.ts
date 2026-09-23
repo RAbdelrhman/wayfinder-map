@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { gh } from './github.js';
+import type { Tier } from './models.js';
 
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
@@ -28,6 +29,7 @@ export interface StoredHandOff {
   mapNumber: number | null;
   ticketNumber: number | null;
   title: string | null;
+  tier?: Tier;
   environmentId: string | null;
   t3Origin: string | null;
   projectId: string | null;
@@ -55,6 +57,7 @@ export interface RecordHandOffInput {
   mapNumber: number | null;
   ticketNumber: number | null;
   title: string | null;
+  tier?: Tier | null;
   environmentId?: string | null;
   t3Origin?: string | null;
   projectId?: string | null;
@@ -71,6 +74,7 @@ export interface HandOffStatusDto {
   mapNumber: number | null;
   ticketNumber: number | null;
   title: string | null;
+  tier?: Tier;
   threadId: string | null;
   rung: HandOffRung;
   status: HandOffStatus;
@@ -279,6 +283,7 @@ export class HandOffStore {
       mapNumber: input.mapNumber,
       ticketNumber: input.ticketNumber,
       title: input.title,
+      ...(input.tier === undefined || input.tier === null ? {} : { tier: input.tier }),
       environmentId: input.environmentId ?? null,
       t3Origin: input.t3Origin ?? null,
       projectId: input.projectId ?? null,
@@ -703,6 +708,7 @@ export class HandOffTracker {
       mapNumber: item.mapNumber,
       ticketNumber: item.ticketNumber,
       title: item.title,
+      ...(item.tier === undefined ? {} : { tier: item.tier }),
       threadId: item.threadId,
       rung: item.rung,
       status: item.status,

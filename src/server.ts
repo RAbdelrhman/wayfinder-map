@@ -3,7 +3,8 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { parseModelChoice } from './models.js';
+import { parseModelChoice, TIERS } from './models.js';
+import type { Tier } from './models.js';
 import { copyToClipboard } from './clipboard.js';
 import { DEFAULT_TEMPLATE, buildNewMapPrompt, buildPrompt, ticketBranch } from './prompt.js';
 import { parsePrototypeFilePath } from './prototypes.js';
@@ -21,11 +22,12 @@ import { RepositoryStore } from './repositoryStore.js';
 import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './workspaces.js';
 import type { WorkspaceState } from './workspaces.js';
+import { cloneRepository as cloneRepo, RepositoryCloneError } from './clone.js';
 import { WAYFINDER_VERSION } from './version.js';
 import { resolveRepoIcon, type ResolvedRepoIcon } from './repoIcon.js';
-import { ProgressError, ProgressService, ProgressSettingsStore, readCompletedTickets } from './progress.js';
 import { HandOffStore, HandOffTracker, handOffStorePath } from './handOffTracking.js';
 import type { HandOffTrackingClient } from './handOffTracking.js';
+import { ProgressError, ProgressService, ProgressSettingsStore, readCompletedTickets } from './progress.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -78,7 +80,9 @@ export interface ServeOptions {
    * Ask the user for a folder, for the repositories no verified clone was found for.
    * Only the desktop shell can raise a native picker, so the CLI leaves this out.
    */
-  chooseDirectory?: () => Promise<string | null>;
+  chooseDirectory?: (purpose: 'workspace' | 'clone') => Promise<string | null>;
+  /** Clone runner override for server tests. The selected destination is never cached as a default. */
+  cloneRepository?: (repo: string, destination: string) => Promise<string>;
   /** Replaces the clone lookup in tests, which must not touch T3 Code or the home directory. */
   workspaces?: WorkspaceResolver;
   fetcher?: RepositoryFetcher;
@@ -92,10 +96,10 @@ export interface ServeOptions {
    */
   uiDir?: string;
   updater?: UpdaterService;
-  /** Replaces Home's progress panel data in tests, which must not touch gh or the home directory. */
-  progress?: Pick<ProgressService, 'state' | 'save'>;
   /** Lets tests use an isolated in-memory store instead of the user's home directory. */
   handOffStore?: HandOffStore;
+  /** Replaces Home's progress panel data in tests, which must not touch gh or the home directory. */
+  progress?: Pick<ProgressService, 'state' | 'save'>;
 }
 
 export interface UpdaterStatus {
@@ -179,6 +183,7 @@ export async function startServer({
   workspaceRoot,
   t3,
   chooseDirectory,
+  cloneRepository = cloneRepo,
   workspaces,
   fetcher,
   homeLoader,
@@ -186,8 +191,8 @@ export async function startServer({
   onShutdown,
   uiDir = join(process.cwd(), 'src', 'ui'),
   updater,
-  progress,
   handOffStore,
+  progress,
 }: ServeOptions): Promise<RunningServer> {
   const defaultUpdater: UpdaterService = {
     async check(): Promise<UpdaterStatus> {
@@ -233,16 +238,6 @@ export async function startServer({
   const repoIcons = new Map<string, Promise<ResolvedRepoIcon | null>>();
   let repoList: Promise<string[]> | null = null;
   const authFlow = new AuthFlow();
-  const progressPanel =
-    progress ??
-    new ProgressService({
-      login: async () => {
-        const account = homeState?.account ?? (await readAccount());
-        return account.status === 'ready' ? account.login : null;
-      },
-      store: new ProgressSettingsStore(),
-      completed: (login, since) => readCompletedTickets(login, { typePrefix: config.typePrefix, mapLabel: config.mapLabel, since }),
-    });
   const trackingClient: HandOffTrackingClient | null =
     t3.readHandOffSnapshot === undefined
       ? null
@@ -259,6 +254,16 @@ export async function startServer({
     handOffStore ?? new HandOffStore({ filePath: handOffStorePath() }),
     trackingClient,
   );
+  const progressPanel =
+    progress ??
+    new ProgressService({
+      login: async () => {
+        const account = homeState?.account ?? (await readAccount());
+        return account.status === 'ready' ? account.login : null;
+      },
+      store: new ProgressSettingsStore(),
+      completed: (login, since) => readCompletedTickets(login, { typePrefix: config.typePrefix, mapLabel: config.mapLabel, since }),
+    });
 
   /** One entry per repository and map, since every prototype list costs GitHub calls. */
   const prototypeCache = new Map<string, { at: number; list: Promise<Prototype[]> }>();
@@ -557,14 +562,27 @@ export async function startServer({
           return;
         }
         if (request.method === 'POST') {
-          const body = (await readBody(request)) as { path?: unknown; choose?: unknown };
+          const body = (await readBody(request)) as { path?: unknown; choose?: unknown; cloneTarget?: unknown };
+          if (body.cloneTarget === true) {
+            if (chooseDirectory === undefined) {
+              json(response, 409, { error: 'This window cannot open a folder picker.' });
+              return;
+            }
+            const target = await chooseDirectory('clone');
+            if (target === null) {
+              json(response, 200, { cancelled: true });
+              return;
+            }
+            json(response, 200, { target });
+            return;
+          }
           let picked = typeof body.path === 'string' && body.path.trim().length > 0 ? body.path.trim() : null;
           if (picked === null && body.choose === true) {
             if (chooseDirectory === undefined) {
               json(response, 409, { error: 'This window cannot open a folder picker.', ...(await workspaceView(requestedRepo)) });
               return;
             }
-            picked = await chooseDirectory();
+            picked = await chooseDirectory('workspace');
             if (picked === null) {
               json(response, 200, { cancelled: true, ...(await workspaceView(requestedRepo)) });
               return;
@@ -583,6 +601,25 @@ export async function startServer({
           json(response, 200, await workspaceView(requestedRepo));
           return;
         }
+      }
+
+      if (requestedRepo !== null && scoped?.action === 'clone' && request.method === 'POST') {
+        const body = (await readBody(request)) as { target?: unknown };
+        const target = typeof body.target === 'string' ? body.target.trim() : '';
+        if (target.length === 0) {
+          json(response, 400, { error: 'Choose a folder for the clone.', ...(await workspaceView(requestedRepo)) });
+          return;
+        }
+        try {
+          const clonedPath = await cloneRepository(requestedRepo, target);
+          await clones.choose(requestedRepo, clonedPath);
+        } catch (error) {
+          const status = error instanceof RepositoryCloneError ? error.statusCode : 502;
+          json(response, status, { error: (error as Error).message, ...(await workspaceView(requestedRepo)) });
+          return;
+        }
+        json(response, 201, await workspaceView(requestedRepo));
+        return;
       }
 
       if (requestedRepo !== null && scoped?.action === 'icon') {
@@ -611,7 +648,7 @@ export async function startServer({
       }
 
       if (requestedRepo !== null && scoped?.action === 'new-map' && request.method === 'POST') {
-        const body = (await readBody(request)) as { goal?: unknown; preview?: unknown; copyOnly?: unknown; model?: unknown };
+        const body = (await readBody(request)) as { goal?: unknown; preview?: unknown; copyOnly?: unknown; model?: unknown; tier?: unknown };
         const goal = typeof body.goal === 'string' ? body.goal.trim() : '';
         if (goal.length === 0) {
           json(response, 400, { error: 'Say what you want to accomplish first.' });
@@ -633,6 +670,7 @@ export async function startServer({
           return;
         }
         const runtime = await detectT3();
+        const tier = typeof body.tier === 'string' && TIERS.includes(body.tier as Tier) ? (body.tier as Tier) : null;
         const result = await handOff(
           {
             title: `New map: ${goal.replace(/\s+/g, ' ').slice(0, 48)}`,
@@ -650,6 +688,7 @@ export async function startServer({
             mapNumber: null,
             ticketNumber: null,
             title: goal,
+            tier,
             environmentId: tracking?.environmentId ?? null,
             t3Origin: runtime.origin,
             projectId: tracking?.projectId ?? null,
@@ -842,7 +881,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|icon)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;
