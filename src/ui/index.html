@@ -9,35 +9,20 @@
   </head>
   <body class="viz-root">
     <div class="app" id="app">
-      <nav class="rail" aria-label="App">
-        <a class="logo" href="/" data-icon="compass" title="Wayfinder Home" aria-label="Wayfinder Home"></a>
-        <button type="button" id="view-map" class="rail-btn is-on" aria-pressed="true" aria-label="Map view" title="Map" data-icon="graph"></button>
-        <button type="button" id="view-table" class="rail-btn" aria-pressed="false" aria-label="Table view" title="Table" data-icon="table"></button>
-        <button type="button" id="view-prototypes" class="rail-btn" aria-pressed="false" aria-label="Prototypes view" title="Prototypes" data-icon="beaker"></button>
-        <span class="rail-spacer"></span>
-        <button type="button" id="models" class="rail-btn" aria-label="Model defaults" title="Pick a T3 Code model for each task tier" data-icon="sliders"></button>
-        <button type="button" id="theme" class="rail-btn" aria-label="Theme" title="Switch light and dark" data-icon="moon"></button>
-        <button type="button" id="updater" class="rail-btn" aria-label="Check for updates" title="Check for updates" data-icon="download"></button>
-        <span class="rail-mark" id="account-mark" title="GitHub account">…</span>
-      </nav>
+      <aside class="sidebar-shell" id="sidebar-shell"></aside>
 
       <div class="main">
-        <header class="topbar">
-          <span class="crumbs" id="repo">loading…</span>
-          <div class="menu-anchor">
-            <button type="button" class="mapswitch" id="mapswitch" aria-haspopup="menu" aria-expanded="false" hidden></button>
-            <div class="menu" id="mapmenu" role="menu" hidden></div>
-          </div>
-          <label class="search">
-            <span data-icon="lens"></span>
-            <input id="search" type="search" placeholder="Jump to a ticket…" autocomplete="off" spellcheck="false" aria-label="Jump to a ticket" />
-            <kbd>Ctrl K</kbd>
-          </label>
-          <button type="button" class="synced" id="synced" aria-label="Resync from GitHub" title="Click to resync from GitHub">
-            <span class="synced-icon" data-icon="refresh"></span>
-            <span class="synced-label" id="synced-label"></span>
-          </button>
+        <header class="topbar map-topbar" id="topbar">
+          <div class="nav-topbar" id="nav-topbar"></div>
+          <span class="topbar-spacer"></span>
+          <button type="button" class="topbar-action nav-topbar-jump" id="jump-to-top" data-nav-action="jump" aria-label="Jump to" title="Jump to · Ctrl K" hidden><span data-icon="lens"></span><span class="topbar-action-label">Jump to</span></button>
+          <button type="button" class="primary map-start" id="map-start" hidden><span data-icon="play"></span><span class="topbar-action-label"></span></button>
         </header>
+
+        <label class="search map-local-search" for="search">
+          <span data-icon="lens" aria-hidden="true"></span>
+          <input id="search" type="search" placeholder="Filter tickets on this map…" autocomplete="off" spellcheck="false" aria-label="Filter tickets on this map" />
+        </label>
 
         <div class="warnings" id="warnings" hidden></div>
         <div class="filters" id="filters" role="toolbar" aria-label="Filter tickets"></div>

@@ -28,8 +28,10 @@ import type { Lineage, TicketFilter } from './focus.js';
 import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
-import { mapPath, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing, repoIconHtml } from './chrome.js';
+import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
+import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
+import { mountNavigation, viewFromQuery } from './navigation.js';
+import type { NavigationController, NavigationView } from './navigation.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -83,10 +85,6 @@ function need<T extends HTMLElement>(id: string): T {
 
 const els = {
   app: need('app'),
-  repo: need('repo'),
-  mapSwitch: need<HTMLButtonElement>('mapswitch'),
-  mapMenu: need('mapmenu'),
-  synced: need('synced'),
   search: need<HTMLInputElement>('search'),
   warnings: need('warnings'),
   filters: need('filters'),
@@ -118,8 +116,7 @@ if (pageRoute === null || pageRoute.mapNumber === null) window.location.replace(
 let selected: number | null = null;
 let hovered: number | null = null;
 let filter: TicketFilter | null = null;
-type View = 'map' | 'table' | 'prototypes';
-let view: View = 'map';
+let view: NavigationView = viewFromQuery(new URLSearchParams(window.location.search).get('view'));
 let zoom = 1;
 /** The map the canvas was last homed for, so a background refresh keeps the view where it is. */
 let homedMap: number | null = null;
@@ -127,10 +124,35 @@ let inspectorTab: 'brief' | 'ticket' = 'brief';
 let briefSection: keyof MapSections = 'destination';
 
 let query = '';
+let navigation: NavigationController | null = null;
 
 function currentMap(): WayfinderMap | null {
   return snapshot?.maps[activeMap] ?? null;
 }
+
+function syncedButton(): HTMLButtonElement {
+  return need<HTMLButtonElement>('synced');
+}
+
+navigation = mountNavigation({
+  shell: els.app,
+  sidebar: need('sidebar-shell'),
+  topbar: need('nav-topbar'),
+  topbarRoot: need('topbar'),
+  page: 'map',
+  repo: pageRoute?.repo ?? null,
+  mapNumber: pageRoute?.mapNumber ?? null,
+  view,
+  onStartTicket(ticketNumber) {
+    const ticket = currentMap()?.tickets.find((candidate) => candidate.number === ticketNumber);
+    if (ticket?.state !== 'frontier') return;
+    select(ticketNumber);
+    void handOff(false);
+  },
+  onViewChange(nextView) {
+    setView(nextView);
+  },
+});
 
 let toastTimer: number | undefined;
 let loadInFlight: Promise<boolean> | null = null;
@@ -149,8 +171,7 @@ function toast(message: string, ms = 4200): void {
 async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean> {
   if (loadInFlight !== null) return loadInFlight;
   const force = mode !== 'initial';
-  if (mode === 'initial') els.repo.textContent = 'reading GitHub…';
-  if (mode === 'manual') els.synced.classList.add('is-busy');
+  if (mode === 'manual') syncedButton().classList.add('is-busy');
 
   loadInFlight = (async () => {
     try {
@@ -160,7 +181,6 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       if (!response.ok) {
         const message = (body as { error?: string }).error ?? 'Could not read the maps.';
         if (mode !== 'background' || snapshot === null) {
-          if (snapshot === null) els.repo.textContent = 'failed';
           toast(message, 12000);
         }
         return false;
@@ -175,19 +195,31 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
         return true;
       }
       activeMap = routedMap >= 0 ? routedMap : Math.min(activeMap, Math.max(0, snapshot.maps.length - 1));
+      navigation?.setSnapshot(snapshot, currentMap()?.number ?? null);
+      navigation?.setActiveView(view);
+      if (mode === 'initial') {
+        const requestedTicket = Number(new URLSearchParams(window.location.search).get('ticket'));
+        const ticket = currentMap()?.tickets.find((candidate) => candidate.number === requestedTicket);
+        selected = ticket?.number ?? null;
+        inspectorTab = selected === null ? 'brief' : 'ticket';
+      }
       render();
+      if (mode === 'initial' && selected !== null && view === 'map') {
+        const node = els.nodes.querySelector<HTMLElement>(`.node[data-number="${String(selected)}"]`);
+        node?.focus();
+        node?.scrollIntoView({ block: 'center', inline: 'center' });
+      }
       // The repository is only known once the snapshot lands, and the clone lookup is keyed to it.
       if (!workspaceAsked) void loadWorkspace().then(refreshLaunch);
       return true;
     } catch (error) {
       if (mode !== 'background' || snapshot === null) {
-        if (snapshot === null) els.repo.textContent = 'failed';
         toast((error as Error).message || 'Could not read the maps.', 12000);
       }
       return false;
     } finally {
       loadInFlight = null;
-      els.synced.classList.remove('is-busy');
+      syncedButton().classList.remove('is-busy');
     }
   })();
   return loadInFlight;
@@ -214,10 +246,7 @@ function isOutside(map: WayfinderMap, number: number): boolean {
   return map.outside.some((ticket) => ticket.number === number);
 }
 
-/**
- * Linked ticket numbers, coloured by their state. Clicking one opens it in the panel; a number
- * the map has never read links out to GitHub instead.
- */
+/** Linked ticket numbers, coloured by their state; off-map issues link directly to GitHub. */
 function ticketPills(map: WayfinderMap, numbers: readonly number[], withTitles = false): string {
   if (numbers.length === 0) return '<span class="none">—</span>';
   return numbers
@@ -244,7 +273,8 @@ function dependents(map: WayfinderMap, number: number): number[] {
 
 function render(): void {
   if (snapshot === null) return;
-  document.title = `${snapshot.repo} · wayfinder map`;
+  const viewTitle = view === 'map' ? 'Map' : view === 'table' ? 'Table' : 'Prototypes';
+  document.title = `${viewTitle} · ${snapshot.repo} · Wayfinder`;
 
   els.warnings.hidden = snapshot.warnings.length === 0;
   els.warnings.textContent = snapshot.warnings.join('  ·  ');
@@ -252,7 +282,8 @@ function render(): void {
   const map = currentMap();
   if (selected !== null && (map === null || ticketAt(map, selected) === undefined)) selected = null;
 
-  renderHead();
+  els.app.classList.toggle('is-prototypes', view === 'prototypes');
+  renderSynced();
   renderFilters();
   renderKey();
   if (view === 'map') renderGraph();
@@ -261,43 +292,13 @@ function render(): void {
   renderInspector();
 }
 
-function renderHead(): void {
-  if (snapshot === null) return;
-  const [owner, name] = snapshot.repo.includes('/') ? snapshot.repo.split('/', 2) : ['', snapshot.repo];
-  els.repo.innerHTML = `<a href="/">Home</a><span class="crumb-sep">/</span><a class="is-repo" href="${repoPath(snapshot.repo)}">${repoIconHtml(snapshot.repo, 'sm')}<span>${owner ? `${escapeHtml(owner)}/${escapeHtml(name ?? '')}` : escapeHtml(name ?? '')}</span></a><span class="crumb-sep">/</span>`;
-
-  const map = currentMap();
-  els.mapSwitch.hidden = false;
-  if (map === null) {
-    els.mapSwitch.disabled = true;
-    els.mapSwitch.innerHTML = '<span class="t">No maps yet</span>';
-  } else {
-    const open = map.tickets.filter((ticket) => ticket.open).length;
-    els.mapSwitch.disabled = false;
-    els.mapSwitch.innerHTML = `<span class="t">${escapeHtml(map.title)}</span><span class="badge">${String(open)} open</span>${icon(icons.CHEVRON)}`;
-  }
-
-  els.mapMenu.innerHTML = `<div class="menu-label eyebrow">Maps in ${escapeHtml(snapshot.repo)}</div>${snapshot.maps
-    .map((candidate, index) => {
-      const open = candidate.tickets.filter((ticket) => ticket.open).length;
-      const total = candidate.tickets.length;
-      return `<button type="button" role="menuitem" class="menu-item${index === activeMap ? ' is-on' : ''}" data-index="${String(index)}">
-        ${miniRing(total - open, total)}<span class="grow">${escapeHtml(candidate.title)}</span>
-        <span class="badge">${open === 0 ? 'done' : `${String(open)} open`}</span>
-      </button>`;
-    })
-    .join('')}<a class="menu-item" href="${repoPath(snapshot.repo)}"><span class="grow">All maps</span></a>`;
-
-  renderSynced();
-}
-
 function renderSynced(): void {
   if (snapshot === null) return;
   const fetched = Date.parse(snapshot.fetchedAt);
   const text = Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched);
-  const label = els.synced.querySelector<HTMLElement>('.synced-label') ?? els.synced;
+  const synced = syncedButton();
+  const label = synced.querySelector<HTMLElement>('.synced-label') ?? synced;
   label.textContent = text;
-  els.synced.hidden = !text;
 }
 
 function renderFilters(): void {
@@ -995,7 +996,12 @@ async function handOff(copyOnly: boolean): Promise<void> {
   if (map === null || selected === null) return;
 
   const button = document.getElementById('start-thread');
+  const topbarButton = document.getElementById('map-start');
   if (button instanceof HTMLButtonElement && !copyOnly) button.disabled = true;
+  if (topbarButton instanceof HTMLButtonElement && !copyOnly) {
+    topbarButton.disabled = true;
+    topbarButton.setAttribute('aria-busy', 'true');
+  }
 
   try {
     const response = await fetch(scopedApiPath(repoName(), 'hand-off'), {
@@ -1037,6 +1043,10 @@ async function handOff(copyOnly: boolean): Promise<void> {
   } finally {
     // A blocked or closed ticket's button stays disabled; only undo what this call did.
     if (button instanceof HTMLButtonElement && !button.hasAttribute('title')) button.disabled = false;
+    if (topbarButton instanceof HTMLButtonElement) {
+      topbarButton.disabled = false;
+      topbarButton.removeAttribute('aria-busy');
+    }
   }
 }
 
@@ -1070,7 +1080,6 @@ function jumpToFirstMatch(): void {
 
 type Menu = { button: HTMLElement; menu: HTMLElement };
 const MENUS: Menu[] = [
-  { button: els.mapSwitch, menu: els.mapMenu },
   { button: els.keyButton, menu: els.keyMenu },
 ];
 
@@ -1122,7 +1131,12 @@ window.addEventListener('popstate', () => {
   const index = snapshot?.maps.findIndex((map) => map.number === route?.mapNumber) ?? -1;
   if (index < 0) return;
   activeMap = index;
-  selected = null;
+  view = viewFromQuery(new URLSearchParams(window.location.search).get('view'));
+  const requestedTicket = Number(new URLSearchParams(window.location.search).get('ticket'));
+  selected = currentMap()?.tickets.find((ticket) => ticket.number === requestedTicket)?.number ?? null;
+  inspectorTab = selected === null ? 'brief' : 'ticket';
+  if (snapshot !== null) navigation?.setSnapshot(snapshot, currentMap()?.number ?? null);
+  navigation?.setActiveView(view);
   render();
 });
 
@@ -1243,12 +1257,6 @@ els.modelsDialog.addEventListener('close', refreshTicketPicker);
 need('models').addEventListener('click', openModels);
 
 document.addEventListener('keydown', (event) => {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-    event.preventDefault();
-    els.search.focus();
-    els.search.select();
-    return;
-  }
   if (event.key !== 'Escape' || els.modelsDialog.open) return;
   if (MENUS.some((entry) => !entry.menu.hidden)) {
     closeMenus();
@@ -1259,7 +1267,7 @@ document.addEventListener('keydown', (event) => {
 
 void loadCatalog().then(refreshTicketPicker);
 
-els.synced.addEventListener('click', () => {
+syncedButton().addEventListener('click', () => {
   void load('manual').then(() => {
     const map = currentMap();
     prototypeLoads.clear();
@@ -1276,17 +1284,17 @@ bindTheme(need('theme'));
 bindUpdater(need('updater'), toast);
 bindAccountMark(document.getElementById('account-mark'));
 
-function setView(next: View): void {
+function setView(next: NavigationView): void {
+  if (next === view) return;
   view = next;
   els.app.classList.toggle('is-prototypes', next === 'prototypes');
-  for (const [id, on] of [
-    ['view-map', next === 'map'],
-    ['view-table', next === 'table'],
-    ['view-prototypes', next === 'prototypes'],
-  ] as const) {
-    const button = need(id);
-    button.classList.toggle('is-on', on);
-    button.setAttribute('aria-pressed', String(on));
+  navigation?.setActiveView(next);
+  const map = currentMap();
+  if (snapshot !== null && map !== null) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('view', next);
+    url.searchParams.delete('ticket');
+    history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`);
   }
   render();
 }
@@ -1297,7 +1305,7 @@ need('view-map').addEventListener('click', () => setView('map'));
 need('view-table').addEventListener('click', () => setView('table'));
 need('view-prototypes').addEventListener('click', () => setView('prototypes'));
 
-/* zoom and pan: the canvas sits in a padded stage, so it can be dragged anywhere and zoomed far out */
+/* Zoom and pan while keeping the point beneath the cursor anchored. */
 
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 1.6;
