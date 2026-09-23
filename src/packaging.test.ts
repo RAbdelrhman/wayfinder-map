@@ -51,6 +51,9 @@ describe('Windows packaging contract', () => {
     expect(smoke).toContain('delete appEnvironment.ELECTRON_RUN_AS_NODE');
     expect(smoke).toContain("marker.route !== '/' || marker.homeStatus !== 200");
     expect(smoke).toContain('Wayfinder left its loopback server listening');
+    expect(smoke.indexOf('if (existingWayfinderInstall())')).toBeLessThan(smoke.indexOf('const releaseDir'));
+    expect(smoke).toContain("await mkdtemp(join(tmpdir(), 'wayfinder-smoke-'))");
+    expect(smoke).toContain("await run(join(installDir, 'Uninstall Wayfinder.exe'), ['/S', '/currentuser'])");
   });
 
   it('checks signing credentials before Release Please can publish a tag', async () => {

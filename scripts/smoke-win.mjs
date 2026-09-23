@@ -1,5 +1,6 @@
-import { access, readFile, rm } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -10,6 +11,30 @@ const arch = process.argv[2] ?? 'x64';
 if (process.platform !== 'win32') throw new Error('The Windows package smoke test must run on Windows.');
 if (arch !== 'x64' && arch !== 'arm64') throw new Error(`Unsupported Windows architecture: ${arch}`);
 
+function existingWayfinderInstall() {
+  const localAppData = process.env.LOCALAPPDATA;
+  if (localAppData && existsSync(join(localAppData, 'Programs', 'Wayfinder', 'Wayfinder.exe'))) return true;
+
+  for (const hive of ['HKCU', 'HKLM']) {
+    const key = `${hive}\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall`;
+    const result = spawnSync('reg.exe', ['query', key, '/s', '/v', 'DisplayName'], {
+      encoding: 'utf8',
+      windowsHide: true,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0 && result.status !== 1) throw new Error(`Could not inspect ${key}: ${result.stderr}`);
+    if (/^\s*DisplayName\s+REG_SZ\s+Wayfinder\s*$/im.test(result.stdout)) return true;
+  }
+  return false;
+}
+
+// NSIS uses one uninstall registration per app ID, even when /D points to a temp folder.
+// Installing this smoke copy over a real installation replaces its registration and files.
+if (existingWayfinderInstall()) {
+  throw new Error('Wayfinder is already installed. Run the installer smoke test on a clean Windows runner or VM.');
+}
+
 const releaseDir = join(root, 'release', arch);
 const installerNames = (await import('node:fs/promises')).readdir(releaseDir)
   .then((names) => names.filter((name) => name.endsWith('-Setup.exe')).sort());
@@ -17,8 +42,8 @@ const installerName = (await installerNames).at(-1);
 if (installerName === undefined) throw new Error(`No ${arch} NSIS installer was found in ${releaseDir}.`);
 
 const installer = join(releaseDir, installerName);
-const installDir = join(tmpdir(), `wayfinder-smoke-${process.pid}`);
-const markerPath = join(tmpdir(), `wayfinder-smoke-${process.pid}.json`);
+const installDir = await mkdtemp(join(tmpdir(), 'wayfinder-smoke-'));
+const markerPath = join(installDir, 'smoke-marker.json');
 
 function run(command, args, timeoutMs = 120_000) {
   return new Promise((resolve, reject) => {
@@ -93,10 +118,10 @@ async function removeTemporaryDirectory(path) {
 }
 
 let appProcess;
+let installed = false;
 try {
-  await removeTemporaryDirectory(installDir);
-  await rm(markerPath, { force: true });
   await run(installer, ['/S', '/currentuser', `/D=${installDir}`]);
+  installed = true;
   const executable = join(installDir, 'Wayfinder.exe');
   await access(executable);
   await access(join(installDir, 'Uninstall Wayfinder.exe'));
@@ -128,6 +153,11 @@ try {
   if (appProcess !== undefined && appProcess.exitCode === null) appProcess.kill();
   throw error;
 } finally {
-  await removeTemporaryDirectory(installDir);
-  await rm(markerPath, { force: true });
+  try {
+    if (installed) {
+      await run(join(installDir, 'Uninstall Wayfinder.exe'), ['/S', '/currentuser']);
+    }
+  } finally {
+    await removeTemporaryDirectory(installDir);
+  }
 }
