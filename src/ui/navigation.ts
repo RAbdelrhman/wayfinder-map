@@ -1,6 +1,7 @@
 import type { MapSnapshot, WayfinderMap } from '../types.js';
 import { mapPath, normalizeRepo, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { escapeHtml } from './markdown.js';
+import { clickedOutside } from './outsideClick.js';
 import { allTickets, miniRing, paintIcons, repoIconHtml } from './chrome.js';
 
 export type NavigationView = 'map' | 'table' | 'prototypes';
@@ -629,10 +630,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   });
 
   document.addEventListener('click', (event) => {
-    if (openMenu === null) return;
-    const target = event.target;
-    if (!(target instanceof Node) || sidebar.contains(target) || topbarRoot.contains(target)) return;
-    closeMenu(false);
+    if (openMenu !== null && clickedOutside(event, sidebar, topbarRoot)) closeMenu(false);
   });
 
   document.addEventListener('keydown', (event) => {
