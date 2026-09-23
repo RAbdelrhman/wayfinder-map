@@ -147,8 +147,8 @@ const BAND_LABEL = 30;
 
 /**
  * The map's own layout, with issues off the map kept out of its columns: the ones it waits on
- * in a band above, the ones waiting on it in a band below. Each sits over the leftmost ticket it
- * links to, nudged right so none overlap.
+ * in a band above, the ones waiting on it in a band below. Each band fills from the left, so its
+ * cards are in view from the start, ordered by the column of the tickets they link to.
  */
 export function layoutWithOutside(
   tickets: readonly Ticket[],
@@ -172,12 +172,15 @@ export function layoutWithOutside(
     const anchored = items
       .map((item) => ({ item, anchor: Math.min(...linked(links(item)).map((node) => node.x)) }))
       .sort((a, b) => a.anchor - b.anchor || a.item.number - b.item.number);
-    let nextFree = padding;
-    return anchored.map(({ item, anchor }) => {
-      const x = Math.max(anchor, nextFree);
-      nextFree = x + nodeWidth + gapX;
-      return { number: item.number, x, y, width: nodeWidth, height: nodeHeight, layer: -1, band };
-    });
+    return anchored.map(({ item }, index) => ({
+      number: item.number,
+      x: padding + index * (nodeWidth + gapX),
+      y,
+      width: nodeWidth,
+      height: nodeHeight,
+      layer: -1,
+      band,
+    }));
   };
 
   const nodes = [

@@ -86,7 +86,7 @@ describe('layoutTickets', () => {
     expect(at(1)?.layer).toBe(0);
     expect(at(2)?.layer).toBe(1);
     expect(at(2)?.x).toBe(own.nodes.find((node) => node.number === 2)?.x);
-    expect(at(80)?.x).toBe(at(2)?.x);
+    expect(at(80)?.x).toBe(DEFAULT_LAYOUT.padding);
     expect(at(80)!.y + at(80)!.height).toBeLessThan(at(1)!.y);
     expect(at(90)!.y).toBeGreaterThan(at(2)!.y + at(2)!.height);
     expect(layout.edges).toEqual([
@@ -98,13 +98,15 @@ describe('layoutTickets', () => {
     expect(layout.bands.bottom).not.toBeNull();
   });
 
-  it('nudges band cards right so they never overlap', () => {
-    const layout = layoutWithOutside([ticket(1, [80, 81])], [
-      { number: 80, blocks: [1], waitsOn: [] },
-      { number: 81, blocks: [1], waitsOn: [] },
+  it('fills a band from the left, in the order of the columns its cards link to', () => {
+    const layout = layoutWithOutside([ticket(1), ticket(2, [1, 81]), ticket(3, [80])], [
+      { number: 81, blocks: [2], waitsOn: [] },
+      { number: 80, blocks: [3], waitsOn: [] },
     ]);
-    const [first, second] = layout.nodes.filter((node) => node.band === 'top');
-    expect(second!.x).toBeGreaterThanOrEqual(first!.x + first!.width);
+    const band = layout.nodes.filter((node) => node.band === 'top');
+    expect(band.map((node) => node.number)).toEqual([80, 81]);
+    expect(band[0]!.x).toBe(DEFAULT_LAYOUT.padding);
+    expect(band[1]!.x).toBeGreaterThanOrEqual(band[0]!.x + band[0]!.width);
   });
 
   it('adds no bands to a map with nothing off it', () => {
