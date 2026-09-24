@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { OutsideTicket, Ticket, WayfinderMap } from '../types.js';
 import {
+  FOG_BAND_LABEL,
+  FOG_KEY_ROW,
   allTickets,
   countStates,
   progressRing,
@@ -32,6 +34,14 @@ describe('countStates', () => {
     const map = { tickets: [ticket(1, 'blocked'), ticket(2, 'done')], outside: [fog(58, 'done'), fog(59, 'frontier')] } as unknown as WayfinderMap;
     expect(allTickets(map).map((t) => t.number)).toEqual([1, 2, 58, 59]);
     expect(countStates(map)).toEqual({ frontier: 1, claimed: 0, blocked: 1, done: 2 });
+  });
+});
+
+describe('fog labels', () => {
+  it('calls the off-map bands and their Key entry fog', () => {
+    expect(FOG_BAND_LABEL).toEqual({ top: 'Fog · the map waits on these', bottom: 'Fog · these wait on the map' });
+    expect(FOG_KEY_ROW).toContain('<b>Fog</b>');
+    expect(Object.values(FOG_BAND_LABEL).join(' ')).not.toMatch(/outside this map/i);
   });
 });
 

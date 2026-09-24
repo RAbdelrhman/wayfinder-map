@@ -23,6 +23,15 @@ export const STATE_STYLE = STATE_LOOKS;
 
 export const STATE_ORDER: TicketState[] = ['frontier', 'claimed', 'blocked', 'done'];
 
+/** Fog: issues linked to the map by a dependency but not among its sub-issues, drawn in dashed bands above and below it. */
+export const FOG_BAND_LABEL: Record<'top' | 'bottom', string> = {
+  top: 'Fog · the map waits on these',
+  bottom: 'Fog · these wait on the map',
+};
+
+/** The Key's fog entry, with a dashed swatch that matches the fog cards and bands. */
+export const FOG_KEY_ROW = '<div class="keyrow is-fog"><span class="fog-swatch" aria-hidden="true"></span><b>Fog</b>Linked by a dependency, not on this map</div>';
+
 /** Progress reads left to right: finished, in hand, ready, waiting. */
 export const PROGRESS_ORDER: TicketState[] = ['done', 'claimed', 'frontier', 'blocked'];
 

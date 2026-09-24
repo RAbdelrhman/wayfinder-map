@@ -29,7 +29,7 @@ import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import { PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
+import { FOG_BAND_LABEL, FOG_KEY_ROW, PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
 import type { NavigationController, NavigationView } from './navigation.js';
 import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
@@ -360,12 +360,12 @@ function ticketPills(map: WayfinderMap, numbers: readonly number[], withTitles =
       const other = ticketAt(map, number);
       if (other === undefined) {
         const url = `https://github.com/${repoName()}/issues/${String(number)}`;
-        return `<a class="pill is-outside" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="--accent: var(--text-muted)" title="Not on this map. Opens on GitHub."><span class="pill-text">#${String(number)}</span>${icon(icons.EXTERNAL)}</a>`;
+        return `<a class="pill is-outside" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="--accent: var(--text-muted)" title="Fog: not on this map. Opens on GitHub."><span class="pill-text">#${String(number)}</span>${icon(icons.EXTERNAL)}</a>`;
       }
       const accent = STATE_STYLE[other.state].variable;
       const title = withTitles ? ` ${other.title}` : '';
       const label = `<span class="pill-text">${escapeHtml(`#${String(number)}${title}`)}</span>`;
-      const tooltip = isOutside(map, number) ? `${other.title} (not on this map)` : other.title;
+      const tooltip = isOutside(map, number) ? `${other.title} (fog)` : other.title;
       return `<button type="button" class="pill" style="--accent: var(${accent})" data-jump="${String(number)}" title="${escapeHtml(tooltip)}">${label}</button>`;
     })
     .join('');
@@ -441,7 +441,7 @@ function renderKey(): void {
     const style = TYPE_STYLE[type];
     return `<div class="keyrow is-type">${icon(style.icon)}<b>${escapeHtml(style.label)}</b>${escapeHtml(style.blurb)}</div>`;
   }).join('');
-  els.keyMenu.innerHTML = `${states}<div class="menu-sep"></div>${types}`;
+  els.keyMenu.innerHTML = `${states}${FOG_KEY_ROW}<div class="menu-sep"></div>${types}`;
 }
 
 function nodeHtml(ticket: Ticket, position: PositionedNode): string {
@@ -477,19 +477,19 @@ function outsideNodeHtml(outside: OutsideTicket, position: PositionedNode): stri
   return `<button type="button" class="node is-outside${outside.state === 'done' ? ' is-done' : ''}"
     data-number="${String(outside.number)}"
     style="--accent: var(${style.variable}); left:${String(position.x)}px; top:${String(position.y)}px; width:${String(position.width)}px; height:${String(position.height)}px"
-    aria-label="${escapeHtml(`${kind} #${String(outside.number)} ${outside.title}, ${style.label}, not on this map${handOff === undefined ? '' : `, hand-off ${handOffPresentation(handOff).label}`}`)}">
+    aria-label="${escapeHtml(`${kind} #${String(outside.number)} ${outside.title}, ${style.label}, fog${handOff === undefined ? '' : `, hand-off ${handOffPresentation(handOff).label}`}`)}">
     <span class="node-top">
       <span class="num">#${String(outside.number)}</span>
       ${stateChip(outside.state)}
       ${handOff === undefined ? '' : handOffPill(handOff, true)}
     </span>
     <span class="title">${escapeHtml(outside.title)}</span>
-    <span class="meta">${kind} · not on this map</span>
+    <span class="meta">${kind} · fog</span>
   </button>`;
 }
 
 function bandHtml(band: Band, side: 'top' | 'bottom', width: number): string {
-  const label = side === 'top' ? 'Outside this map · the map waits on these' : 'Outside this map · these wait on the map';
+  const label = FOG_BAND_LABEL[side];
   return `<div class="band" style="top:${String(band.y - 10)}px; height:${String(band.height + 20)}px; width:${String(width - 32)}px"><span class="band-label">${label}</span></div>`;
 }
 
@@ -872,7 +872,7 @@ function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
     </div>
     <h2 class="dtitle">${escapeHtml(ticket.title)}</h2>
     ${banner === null ? '' : `<div class="banner" style="--accent: var(${style.variable})">${icon(style.icon)}<span>${banner}</span></div>`}
-    ${isOutside(map, ticket.number) ? '<p class="hint">Not on this map, but linked to it by a dependency.</p>' : ''}
+    ${isOutside(map, ticket.number) ? '<p class="hint">Fog: not a sub-issue of this map, but linked to it by a dependency.</p>' : ''}
     <dl class="facts">
       <dt>Type</dt><dd>${icon(typeStyle(ticket.type).icon)}${escapeHtml(typeStyle(ticket.type).label)}</dd>
       <dt>Assignee</dt><dd>${ticket.assignee === null ? '<span class="none">unclaimed</span>' : escapeHtml(`@${ticket.assignee}`)}</dd>
