@@ -254,6 +254,8 @@ export async function startServer({
     handOffStore ?? new HandOffStore({ filePath: handOffStorePath() }),
     trackingClient,
   );
+  /** Tickets whose hand-off request is still in flight, keyed `owner/name#number`, so a double click can't start two. */
+  const startingTickets = new Set<string>();
   const progressPanel =
     progress ??
     new ProgressService({
@@ -771,49 +773,65 @@ export async function startServer({
           return;
         }
 
-        const runtime = await detectT3();
-        const requestedBranch = ticketBranch(ticket);
-        const result = await handOff(
-          {
-            title: `#${String(ticket.number)} ${ticket.title}`,
-            workspaceRoot: await clones.resolve(requestedRepo),
-            branch: requestedBranch,
-            model: parseModelChoice(body.model),
-            prompt: (worktree) =>
-              buildPrompt({
-                repo: requestedRepo,
-                map,
-                ticket,
-                template: map ? template : undefined,
-                ...(worktree ? { worktree } : {}),
-              }),
-          },
-          t3.steps(runtime),
-        );
-        const { tracking, ...publicResult } = result;
+        const ticketKey = `${requestedRepo.toLowerCase()}#${String(ticket.number)}`;
+        const alreadyRunning = `#${String(ticket.number)} already has a hand-off in T3 Code. Open that thread instead of starting another.`;
+        if (startingTickets.has(ticketKey)) {
+          json(response, 409, { error: alreadyRunning, handOffId: null });
+          return;
+        }
+        startingTickets.add(ticketKey);
         try {
-          const saved = await handOffTracker.record({
-            repo: requestedRepo,
-            mapNumber: map?.number ?? null,
-            mapTitle: map?.title ?? null,
-            ticketNumber: ticket.number,
-            title: ticket.title,
-            environmentId: tracking?.environmentId ?? null,
-            t3Origin: runtime.origin,
-            projectId: tracking?.projectId ?? null,
-            branch: tracking?.branch ?? null,
-            worktreePath: tracking?.worktreePath ?? null,
-            threadId: result.threadId,
-            requestedBranch,
-            rung: result.rung,
-          });
-          json(response, 200, { ...publicResult, handOffId: saved.id });
-        } catch (error) {
-          json(response, 200, {
-            ...publicResult,
-            handOffId: null,
-            trackingWarning: `The hand-off started, but Wayfinder could not save its tracking record: ${(error as Error).message}`,
-          });
+          const live = await handOffTracker.liveTicketHandOff(requestedRepo, ticket.number);
+          if (live !== undefined) {
+            json(response, 409, { error: alreadyRunning, handOffId: live.id });
+            return;
+          }
+          const runtime = await detectT3();
+          const requestedBranch = ticketBranch(ticket);
+          const result = await handOff(
+            {
+              title: `#${String(ticket.number)} ${ticket.title}`,
+              workspaceRoot: await clones.resolve(requestedRepo),
+              branch: requestedBranch,
+              model: parseModelChoice(body.model),
+              prompt: (worktree) =>
+                buildPrompt({
+                  repo: requestedRepo,
+                  map,
+                  ticket,
+                  template: map ? template : undefined,
+                  ...(worktree ? { worktree } : {}),
+                }),
+            },
+            t3.steps(runtime),
+          );
+          const { tracking, ...publicResult } = result;
+          try {
+            const saved = await handOffTracker.record({
+              repo: requestedRepo,
+              mapNumber: map?.number ?? null,
+              mapTitle: map?.title ?? null,
+              ticketNumber: ticket.number,
+              title: ticket.title,
+              environmentId: tracking?.environmentId ?? null,
+              t3Origin: runtime.origin,
+              projectId: tracking?.projectId ?? null,
+              branch: tracking?.branch ?? null,
+              worktreePath: tracking?.worktreePath ?? null,
+              threadId: result.threadId,
+              requestedBranch,
+              rung: result.rung,
+            });
+            json(response, 200, { ...publicResult, handOffId: saved.id });
+          } catch (error) {
+            json(response, 200, {
+              ...publicResult,
+              handOffId: null,
+              trackingWarning: `The hand-off started, but Wayfinder could not save its tracking record: ${(error as Error).message}`,
+            });
+          }
+        } finally {
+          startingTickets.delete(ticketKey);
         }
         return;
       }

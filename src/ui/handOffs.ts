@@ -122,13 +122,13 @@ export function handOffSourcePath(handOff: HandOffStatusDto): string {
   return draftMapPath(handOff.repo, handOff.id);
 }
 
+/** Where "Try again" leads: the ticket panel or the new-map page, where the user starts it again (#98). */
 function retryPath(handOff: HandOffStatusDto): string {
   if (handOff.mapNumber !== null && handOff.ticketNumber !== null) {
-    return `${mapPath(handOff.repo, handOff.mapNumber)}?ticket=${String(handOff.ticketNumber)}&retry=1`;
+    return `${mapPath(handOff.repo, handOff.mapNumber)}?ticket=${String(handOff.ticketNumber)}`;
   }
   if (handOff.ticketNumber === null) return newMapPath(handOff.repo);
-  const source = handOffSourcePath(handOff);
-  return `${source}${source.includes('?') ? '&' : '?'}retry=1`;
+  return handOffSourcePath(handOff);
 }
 
 function handOffIcon(state: HandOffUiState): string {
@@ -145,11 +145,11 @@ export function handOffPill(handOff: HandOffStatusDto, compact = false): string 
   return `<span class="handoff-pill${compact ? ' is-compact node-handoff-pill' : ''} is-${presentation.state}" title="${escapeHtml(`${presentation.label}, updated ${at}`)}" aria-label="${escapeHtml(`${presentation.label}, updated ${at}`)}">${handOffIcon(presentation.state)}<span>${presentation.label}</span></span>`;
 }
 
-function handOffActions(handOff: HandOffStatusDto): string {
+function handOffActions(handOff: HandOffStatusDto, includeRetry = true): string {
   const presentation = handOffPresentation(handOff);
   const openLabel = handOff.stale ? 'Start T3 Code' : presentation.state === 'needs-you' ? 'Answer in T3 Code' : 'Open in T3 Code';
   const open = handOff.threadId === null ? '' : `<button type="button" class="ghost" data-handoff-action="focus" data-handoff-id="${escapeHtml(handOff.id)}" data-focus-key="${escapeHtml(`${handOff.id}:focus`)}">${icon(icons.PLAY)}${openLabel}</button>`;
-  const retry = presentation.state === 'failed'
+  const retry = includeRetry && presentation.state === 'failed'
     ? `<button type="button" class="ghost" data-handoff-action="retry" data-handoff-id="${escapeHtml(handOff.id)}" data-handoff-href="${escapeHtml(retryPath(handOff))}" data-focus-key="${escapeHtml(`${handOff.id}:retry`)}">${icon(icons.REFRESH)}Try again</button>`
     : '';
   const pullRequests = presentation.state === 'pr-ready'
@@ -158,7 +158,7 @@ function handOffActions(handOff: HandOffStatusDto): string {
   return `${retry}${pullRequests}${open}`;
 }
 
-export function handOffCardHtml(handOff: HandOffStatusDto, compact = false, includeSource = true): string {
+export function handOffCardHtml(handOff: HandOffStatusDto, compact = false, includeSource = true, includeRetry = true): string {
   const presentation = handOffPresentation(handOff);
   const source = handOffSourcePath(handOff);
   const branch = handOff.branch === null
@@ -174,7 +174,7 @@ export function handOffCardHtml(handOff: HandOffStatusDto, compact = false, incl
   return `<section class="handoff-card is-${presentation.state}${handOff.stale ? ' is-stale' : ''}" aria-label="${escapeHtml(`${presentation.label}: ${handOffTitle(handOff)}, ${handOff.repo}, ${handOffMapLabel(handOff)}`)}">
     <div class="handoff-card-head">${handOffPill(handOff)}<time datetime="${escapeHtml(handOff.lastSeenAt ?? handOff.updatedAt)}">${escapeHtml(handOffTime(handOff))}</time></div>
     <p class="handoff-report">${stale}${escapeHtml(presentation.report)}</p>
-    <div class="handoff-actions">${handOffActions(handOff)}${sourceLink}</div>
+    <div class="handoff-actions">${handOffActions(handOff, includeRetry)}${sourceLink}</div>
     ${details}
   </section>`;
 }

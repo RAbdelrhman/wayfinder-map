@@ -1,6 +1,7 @@
 import { DEFAULT_LAYOUT, layoutWithOutside } from '../layout.js';
 import type { Band, GraphTicket, PositionedNode } from '../layout.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
+import { isLiveHandOff } from '../handOffLiveness.js';
 import { prototypeBranch } from '../prompt.js';
 import { TICKET_TYPES } from '../types.js';
 import type { MapSections, MapSnapshot, OutsideTicket, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
@@ -121,7 +122,6 @@ let planningHandOffId = new URLSearchParams(window.location.search).get('plannin
 const handOffRoute = new URLSearchParams(window.location.search);
 const routedTicketText = handOffRoute.get('ticket');
 const routedTicketNumber = routedTicketText !== null && /^\d+$/.test(routedTicketText) ? Number(routedTicketText) : null;
-let retryTicketOnLoad = handOffRoute.get('retry') === '1' && routedTicketNumber !== null;
 let initialRouteTicketPending = routedTicketNumber !== null;
 let planningHandOff: HandOffStatusDto | null = null;
 let selected: number | null = null;
@@ -203,12 +203,9 @@ navigation = mountNavigation({
   repo: pageRoute?.repo ?? null,
   mapNumber: pageRoute?.mapNumber ?? null,
   view,
-  onStartTicket(ticketNumber) {
-    const map = currentMap();
-    const ticket = map === null ? undefined : ticketAt(map, ticketNumber);
-    if (ticket?.state !== 'frontier') return;
+  // Hand-offs start from the ticket panel only (#98), so the topbar just opens the ticket there.
+  onOpenTicket(ticketNumber) {
     select(ticketNumber);
-    void handOff(false);
   },
   onViewChange(nextView) {
     setView(nextView);
@@ -309,21 +306,7 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
         node?.scrollIntoView({ block: 'center', inline: 'center' });
       }
       // The repository is only known once the snapshot lands, and the clone lookup is keyed to it.
-      if (!workspaceAsked) {
-        if (retryTicketOnLoad) {
-          await loadWorkspace();
-          refreshLaunch();
-        } else {
-          void loadWorkspace().then(refreshLaunch);
-        }
-      }
-      if (retryTicketOnLoad && selected !== null) {
-        retryTicketOnLoad = false;
-        const retryUrl = new URL(window.location.href);
-        retryUrl.searchParams.delete('retry');
-        history.replaceState(null, '', `${retryUrl.pathname}${retryUrl.search}${retryUrl.hash}`);
-        void handOff(false);
-      }
+      if (!workspaceAsked) void loadWorkspace().then(refreshLaunch);
       return true;
     } catch (error) {
       if (mode !== 'background' || snapshot === null) {
@@ -882,7 +865,7 @@ function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
     <div id="ticket-proto">${ticketPrototypeHtml(map, ticket)}</div>
     <div class="launch">
       ${startable === null ? `<div class="runwith" id="runwith">${runWithHtml(ticket.number)}</div>` : ''}
-      <div id="launch-slot">${trackedHandOff === undefined ? launchHtml(ticket) : handOffCardHtml(trackedHandOff, false, false)}</div>
+      <div id="launch-slot">${launchSlotHtml(ticket, trackedHandOff)}</div>
     </div>
     <details class="sec"><summary>Prompt this sends</summary><pre class="prompt" id="prompt-preview">…</pre></details>
     <div class="body-text prose">${ticket.body.trim().length === 0 ? '<p class="none">No description on the issue.</p>' : renderMarkdown(ticket.body)}</div>`;
@@ -1049,10 +1032,17 @@ function launchHtml(ticket: Ticket): string {
     <div class="launch-actions">${chooser}${copy}</div>`;
 }
 
+/** A live hand-off offers only its thread; once it ends, its card sits above a fresh start. */
+function launchSlotHtml(ticket: Ticket, handOff: HandOffStatusDto | undefined): string {
+  if (handOff === undefined) return launchHtml(ticket);
+  const card = handOffCardHtml(handOff, false, false, false);
+  return isLiveHandOff(handOff) ? card : `${card}${launchHtml(ticket)}`;
+}
+
 function refreshLaunch(): void {
   const slot = document.getElementById('launch-slot');
   const ticket = selectedTicket();
-  if (slot !== null && ticket !== null) slot.innerHTML = launchHtml(ticket);
+  if (slot !== null && ticket !== null) slot.innerHTML = launchSlotHtml(ticket, ticketHandOff(currentMap(), ticket.number));
 }
 
 /** Take a clone for this repository: one the user typed in the list, or one they pick in a folder dialog. */
@@ -1083,6 +1073,11 @@ async function setClone(body: { choose: true } | { path: string }): Promise<void
 async function handOff(copyOnly: boolean): Promise<void> {
   const map = currentMap();
   if (map === null || selected === null) return;
+  const live = ticketHandOff(map, selected);
+  if (!copyOnly && live !== undefined && isLiveHandOff(live)) {
+    renderInspector();
+    return;
+  }
 
   const button = document.getElementById('start-thread');
   const topbarButton = document.getElementById('map-start');
@@ -1108,6 +1103,8 @@ async function handOff(copyOnly: boolean): Promise<void> {
 
     if (!response.ok) {
       toast(body.error ?? 'Hand-off failed.', 9000);
+      // A 409 means the ticket already has a live hand-off: show it.
+      if (response.status === 409) await handOffSurface.refresh();
       return;
     }
 
@@ -1122,7 +1119,8 @@ async function handOff(copyOnly: boolean): Promise<void> {
       toast('Prompt copied.', 4000);
       return;
     }
-    void handOffSurface.refresh();
+    // Wait for the new record so the panel swaps to its card before the button comes back.
+    await handOffSurface.refresh();
     if (body.rung === 'thread') {
       toast('Started in T3 Code.', 3000);
       return;
