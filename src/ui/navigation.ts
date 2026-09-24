@@ -1,7 +1,8 @@
 import type { MapSnapshot, WayfinderMap } from '../types.js';
-import { mapPath, normalizeRepo, repoPath, scopedApiPath } from '../repoRoutes.js';
+import { mapPath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { escapeHtml } from './markdown.js';
 import { clickedOutside } from './outsideClick.js';
+import { loadWayfinderRepositories } from './wayfinderRepositories.js';
 import { allTickets, miniRing, paintIcons, repoIconHtml } from './chrome.js';
 
 export type NavigationView = 'map' | 'table' | 'prototypes';
@@ -121,6 +122,12 @@ function currentMap(snapshot: MapSnapshot | undefined, mapNumber: number | null)
 
 function mapHref(repo: string, map: WayfinderMap, view: NavigationView): string {
   return `${mapPath(repo, map.number)}?view=${view}`;
+}
+
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url} is unavailable.`);
+  return (await response.json()) as T;
 }
 
 function requireElement<T extends Element>(element: T | null, selector: string): T {
@@ -498,12 +505,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
 
   async function loadRepositories(): Promise<void> {
     try {
-      const response = await fetch('/api/repositories');
-      if (!response.ok) throw new Error('Repository list unavailable.');
-      const body: unknown = await response.json();
-      const values = Array.isArray(body) ? body : [];
-      repositories = [...new Set(values.filter((value): value is string => typeof value === 'string').map((value) => normalizeRepo(value)).filter((value): value is string => value !== null))]
-        .sort((left, right) => left.localeCompare(right));
+      repositories = await loadWayfinderRepositories(localStorage, getJson);
       repositoryListLoaded = true;
       repositoryListFailed = false;
     } catch {

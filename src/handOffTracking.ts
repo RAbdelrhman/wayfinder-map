@@ -11,6 +11,8 @@ const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const PULL_REQUEST_LOOKUP_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_CONCURRENT_PULL_REQUEST_LOOKUPS = 2;
+// A thread just created may not be in a snapshot read moments earlier, so an unseen hand-off gets this long to show up.
+const NEW_THREAD_GRACE_MS = 2 * 60 * 1000;
 
 export type HandOffStatus = 'starting' | 'running' | 'waiting' | 'ready' | 'finished' | 'interrupted' | 'failed' | 'untracked';
 export type HandOffRung = 'thread' | 'app' | 'clipboard' | null;
@@ -239,6 +241,35 @@ export function mapT3Status(thread: unknown): MappedT3Thread | null {
   };
 }
 
+/** Lower is better: a thread T3 Code has moved past starting, then one still starting, then one that failed. */
+function handOffRank(handOff: HandOffStatusDto): number {
+  if (handOff.threadId === null || handOff.status === 'failed' || handOff.status === 'interrupted') return 2;
+  return handOff.status === 'starting' ? 1 : 0;
+}
+
+/**
+ * One hand-off per ticket: the thread that is actually running wins over a duplicate stuck at
+ * starting or a failed attempt, and the newest wins among equals. Polling bumps `updatedAt` on
+ * every live thread, so recency alone can't pick. Map hand-offs are each their own draft and stay.
+ */
+export function representativeHandOffs(records: readonly HandOffStatusDto[]): HandOffStatusDto[] {
+  const best = new Map<string, HandOffStatusDto>();
+  for (const handOff of records) {
+    if (handOff.ticketNumber === null) continue;
+    const key = `${handOff.repo.toLowerCase()}#${String(handOff.ticketNumber)}`;
+    const current = best.get(key);
+    if (
+      current === undefined ||
+      handOffRank(handOff) < handOffRank(current) ||
+      (handOffRank(handOff) === handOffRank(current) && Date.parse(handOff.createdAt) > Date.parse(current.createdAt))
+    ) {
+      best.set(key, handOff);
+    }
+  }
+  const kept = new Set(best.values());
+  return records.filter((handOff) => handOff.ticketNumber === null || kept.has(handOff));
+}
+
 export function handOffStorePath(home = homedir()): string {
   return join(home, '.wayfinder-map', 'hand-offs.json');
 }
@@ -354,16 +385,22 @@ export class HandOffStore {
     const threads = Array.isArray(shell['threads']) ? shell['threads'] : [];
     const byId = new Map<string, MappedT3Thread>();
     for (const raw of threads) {
+      if (text(record(raw)?.['deletedAt']) !== null) continue;
       const parsed = mapT3Status(raw);
       if (parsed !== null) byId.set(parsed.id, parsed);
     }
     let changed = false;
+    const deleted = new Set<StoredHandOff>();
     for (const handOff of this.current()) {
       if (handOff.threadId === null || !this.matchesEnvironment(handOff, environmentId, origin)) continue;
       const thread = byId.get(handOff.threadId);
-      if (thread === undefined) continue;
+      if (thread === undefined) {
+        if (this.isGoneFrom(handOff, sequence)) deleted.add(handOff);
+        continue;
+      }
       if (this.applyThread(handOff, thread, environmentId, origin, sequence)) changed = true;
     }
+    if (this.drop(deleted)) changed = true;
     if (this.prune()) changed = true;
     if (changed) await this.persist();
   }
@@ -372,7 +409,7 @@ export class HandOffStore {
     await this.ensureLoaded();
     const event = record(value);
     if (event === null) return;
-    const kind = firstText(event['type'], event['event'], event['_tag']);
+    const kind = firstText(event['kind'], event['type'], event['event'], event['_tag']);
     const eventValue = record(event['value']);
     const sequence = finiteNumber(event['sequence']) ?? finiteNumber(eventValue?.['sequence']);
 
@@ -383,6 +420,15 @@ export class HandOffStore {
         ? { ...shell, snapshotSequence: sequence }
         : snapshot;
       await this.applySnapshot(environmentId, origin, snapshotWithSequence);
+      return;
+    }
+    if (kind === 'thread-removed') {
+      const threadId = firstText(event['threadId'], eventValue?.['threadId']);
+      if (threadId === null) return;
+      const removed = this.current().filter(
+        (handOff) => handOff.threadId === threadId && this.matchesEnvironment(handOff, environmentId, origin),
+      );
+      if (this.drop(new Set(removed))) await this.persist();
       return;
     }
     if (kind !== 'thread-upserted') return;
@@ -440,6 +486,19 @@ export class HandOffStore {
       pullRequests: thread.pullRequests.length > 0 ? thread.pullRequests : handOff.pullRequests,
     };
     Object.assign(handOff, next);
+    return true;
+  }
+
+  /** A thread missing from a snapshot is deleted, unless it is new enough not to be in it yet or the snapshot is older. */
+  private isGoneFrom(handOff: StoredHandOff, sequence: number | null): boolean {
+    if (sequence !== null && handOff.sequence !== null && sequence < handOff.sequence) return false;
+    if (handOff.lastSeenAt !== null) return true;
+    return this.now().getTime() - Date.parse(handOff.createdAt) >= NEW_THREAD_GRACE_MS;
+  }
+
+  private drop(handOffs: ReadonlySet<StoredHandOff>): boolean {
+    if (handOffs.size === 0) return false;
+    this.records = this.current().filter((item) => !handOffs.has(item));
     return true;
   }
 
@@ -616,7 +675,7 @@ export class HandOffTracker {
     await this.refresh();
     const records = await this.store.list();
     return {
-      handOffs: records.map((item) => this.toDto(item)),
+      handOffs: representativeHandOffs(records.map((item) => this.toDto(item))),
       t3: { available: this.online, checkedAt: this.checkedAt },
     };
   }

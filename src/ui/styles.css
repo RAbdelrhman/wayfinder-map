@@ -385,6 +385,15 @@ code {
   color: var(--text-secondary);
 }
 
+/* Fog in the Key: a dashed swatch like the fog cards and bands. */
+.fog-swatch {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px dashed var(--text-muted);
+  border-radius: 4px;
+}
+
 /* ---------- layout ---------- */
 
 .app {
@@ -2420,13 +2429,6 @@ textarea.input {
   object-fit: contain;
   border-radius: inherit;
   z-index: 1;
-}
-
-:root[data-theme="light"] .repo-monogram-svg,
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .repo-monogram-svg {
-    filter: brightness(0.85) contrast(1.1);
-  }
 }
 
 .repo-option {
