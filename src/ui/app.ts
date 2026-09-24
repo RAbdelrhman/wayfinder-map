@@ -33,6 +33,7 @@ import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { FOG_KEY_ROW, PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
 import { mountSettings } from './settings.js';
+import { nextTabIndex, tabAttrs, tabPanelAttrs } from './tabs.js';
 import type { NavigationController, NavigationView } from './navigation.js';
 import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
 import { recordMapOpened } from './homeRecency.js';
@@ -740,13 +741,13 @@ function renderInspector(): void {
   els.inspector.innerHTML = `
     <div class="insp-tabs">
       <div class="segmented" role="tablist" aria-label="Panel">
-        <button type="button" role="tab" class="seg${tab === 'brief' ? ' is-on' : ''}" data-panel="brief" aria-selected="${String(tab === 'brief')}">Brief</button>
-        <button type="button" role="tab" class="seg${tab === 'ticket' ? ' is-on' : ''}" data-panel="ticket" aria-selected="${String(tab === 'ticket')}"${ticket === null ? ' disabled' : ''}>${
+        <button type="button" ${tabAttrs('insp-tab-brief', 'insp-panel', tab === 'brief')} class="seg${tab === 'brief' ? ' is-on' : ''}" data-panel="brief">Brief</button>
+        <button type="button" ${tabAttrs('insp-tab-ticket', 'insp-panel', tab === 'ticket')} class="seg${tab === 'ticket' ? ' is-on' : ''}" data-panel="ticket"${ticket === null ? ' disabled' : ''}>${
           ticket === null ? 'Ticket' : `Ticket #${String(ticket.number)}`
         }</button>
       </div>
     </div>
-    <div class="insp-panel" data-tab="${tab}:${String(selected)}">${tab === 'ticket' && ticket !== null ? ticketHtml(map, ticket) : briefHtml(map)}</div>`;
+    <div class="insp-panel" ${tabPanelAttrs('insp-panel', `insp-tab-${tab}`)} data-tab="${tab}:${String(selected)}">${tab === 'ticket' && ticket !== null ? ticketHtml(map, ticket) : briefHtml(map)}</div>`;
 
   const panel = els.inspector.querySelector('.insp-panel');
   if (panel !== null) panel.scrollTop = scrollTop;
@@ -769,7 +770,7 @@ function briefHtml(map: WayfinderMap): string {
   const tabs = sections
     .map(([key, label]) => {
       const count = key === 'destination' ? 0 : listItemCount(map.sections[key]);
-      return `<button type="button" class="tab${key === briefSection ? ' is-on' : ''}" data-section="${key}">${escapeHtml(label)}${
+      return `<button type="button" ${tabAttrs(`brief-tab-${key}`, 'brief-panel', key === briefSection)} class="tab${key === briefSection ? ' is-on' : ''}" data-section="${key}">${escapeHtml(label)}${
         count > 0 ? ` <span class="badge">${String(count)}</span>` : ''
       }</button>`;
     })
@@ -785,7 +786,7 @@ function briefHtml(map: WayfinderMap): string {
     ${
       sections.length === 0
         ? '<p class="hint">This map has no brief yet.</p>'
-        : `<div class="tabs" role="tablist" aria-label="Brief sections">${tabs}</div><div class="prose">${renderMarkdown(map.sections[briefSection])}</div>`
+        : `<div class="tabs" role="tablist" aria-label="Brief sections">${tabs}</div><div class="prose" ${tabPanelAttrs('brief-panel', `brief-tab-${briefSection}`)}>${renderMarkdown(map.sections[briefSection])}</div>`
     }
   </div>`;
 }
@@ -1273,6 +1274,20 @@ els.search.addEventListener('keydown', (event) => {
   query = '';
   syncHighlights();
   els.search.blur();
+});
+
+// Arrow keys move along a tablist and select as they go; the re-render replaces the tabs, so focus follows to the new one.
+els.inspector.addEventListener('keydown', (event) => {
+  const tab = (event.target as HTMLElement).closest<HTMLElement>('[role="tab"]');
+  const list = tab?.closest<HTMLElement>('[role="tablist"]');
+  if (tab === null || tab === undefined || list === null || list === undefined) return;
+  const tabs = [...list.querySelectorAll<HTMLButtonElement>('[role="tab"]:not(:disabled)')];
+  const next = nextTabIndex(event.key, tabs.indexOf(tab as HTMLButtonElement), tabs.length);
+  if (next === null) return;
+  event.preventDefault();
+  const id = tabs[next]?.id ?? '';
+  tabs[next]?.click();
+  document.getElementById(id)?.focus();
 });
 
 els.inspector.addEventListener('click', (event) => {

@@ -1504,6 +1504,11 @@ pre.prompt {
   background: var(--surface-1);
 }
 
+.tablewrap:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: -2px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
