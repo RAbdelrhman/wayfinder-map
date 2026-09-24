@@ -11,6 +11,8 @@ const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const PULL_REQUEST_LOOKUP_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_CONCURRENT_PULL_REQUEST_LOOKUPS = 2;
+// T3 Code reports a pull request's link but not whether it merged, so open ones are rechecked on GitHub this often.
+const PULL_REQUEST_STATE_INTERVAL_MS = 60 * 1000;
 // A thread just created may not be in a snapshot read moments earlier, so an unseen hand-off gets this long to show up.
 const NEW_THREAD_GRACE_MS = 2 * 60 * 1000;
 
@@ -24,6 +26,11 @@ export interface PullRequestRef {
   mergedAt: string | null;
   syncedAt: string | null;
   source: 't3' | 'github';
+}
+
+export interface PullRequestState {
+  state: string | null;
+  mergedAt: string | null;
 }
 
 export interface StoredHandOff {
@@ -304,6 +311,31 @@ async function lookupGitHubPullRequests(repo: string, branch: string): Promise<P
   }
 }
 
+async function lookupGitHubPullRequestState(url: string): Promise<PullRequestState | null> {
+  if (!/^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+$/.test(url)) return null;
+  try {
+    const parsed = record(JSON.parse(await gh(['pr', 'view', url, '--json', 'state,mergedAt'])) as unknown);
+    const state = text(parsed?.['state']);
+    if (state === null) return null;
+    return { state, mergedAt: state.toUpperCase() === 'MERGED' ? text(parsed?.['mergedAt']) : null };
+  } catch {
+    return null;
+  }
+}
+
+/** A pull request whose state can still change: open, or not looked up yet. */
+function isOpenPullRequest(ref: PullRequestRef): boolean {
+  const state = ref.state?.toUpperCase() ?? null;
+  return state !== 'MERGED' && state !== 'CLOSED';
+}
+
+/** T3 Code re-reports a pull request without its state on every update; keep what GitHub told us. */
+function keepKnownState(ref: PullRequestRef, known: readonly PullRequestRef[]): PullRequestRef {
+  if (ref.state !== null) return ref;
+  const previous = known.find((item) => item.url === ref.url);
+  return previous === undefined ? ref : { ...ref, state: previous.state, mergedAt: previous.mergedAt, syncedAt: previous.syncedAt };
+}
+
 export class HandOffStore {
   private records: StoredHandOff[] | null = null;
   private loading: Promise<void> | null = null;
@@ -379,6 +411,16 @@ export class HandOffStore {
     if (handOff === undefined || handOff.pullRequests.length > 0) return;
     handOff.pullRequests = refs.map((ref) => ({ ...ref }));
     handOff.updatedAt = this.now().toISOString();
+    await this.persist();
+  }
+
+  async setPullRequestState(id: string, url: string, update: PullRequestState): Promise<void> {
+    await this.ensureLoaded();
+    const ref = this.current().find((item) => item.id === id)?.pullRequests.find((item) => item.url === url);
+    if (ref === undefined || (ref.state === update.state && ref.mergedAt === update.mergedAt)) return;
+    ref.state = update.state;
+    ref.mergedAt = update.mergedAt;
+    ref.syncedAt = this.now().toISOString();
     await this.persist();
   }
 
@@ -488,7 +530,9 @@ export class HandOffStore {
       lastError: thread.lastError,
       pendingApproval: thread.pendingApproval,
       pendingUserInput: thread.pendingUserInput,
-      pullRequests: thread.pullRequests.length > 0 ? thread.pullRequests : handOff.pullRequests,
+      pullRequests: thread.pullRequests.length > 0
+        ? thread.pullRequests.map((ref) => keepKnownState(ref, handOff.pullRequests))
+        : handOff.pullRequests,
     };
     Object.assign(handOff, next);
     return true;
@@ -643,6 +687,7 @@ export class HandOffTracker {
   private readonly now: () => Date;
   private readonly pollIntervalMs: number;
   private readonly lookupPullRequests: (repo: string, branch: string) => Promise<PullRequestRef[]>;
+  private readonly lookupPullRequestState: (url: string) => Promise<PullRequestState | null>;
   private readonly pendingLookups = new Set<string>();
   private readonly pullRequestLookupAt = new Map<string, number>();
 
@@ -653,11 +698,13 @@ export class HandOffTracker {
       now?: () => Date;
       pollIntervalMs?: number;
       lookupPullRequests?: (repo: string, branch: string) => Promise<PullRequestRef[]>;
+      lookupPullRequestState?: (url: string) => Promise<PullRequestState | null>;
     } = {},
   ) {
     this.now = options.now ?? (() => new Date());
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.lookupPullRequests = options.lookupPullRequests ?? lookupGitHubPullRequests;
+    this.lookupPullRequestState = options.lookupPullRequestState ?? lookupGitHubPullRequestState;
   }
 
   start(): void {
@@ -679,6 +726,7 @@ export class HandOffTracker {
     this.start();
     await this.refresh();
     const records = await this.store.list();
+    this.syncPullRequestStates(records);
     return {
       handOffs: representativeHandOffs(records.map((item) => this.toDto(item))),
       t3: { available: this.online, checkedAt: this.checkedAt },
@@ -798,6 +846,26 @@ export class HandOffTracker {
         .then((refs) => this.store.addPullRequests(item.id, refs))
         .catch(() => undefined)
         .finally(() => this.pendingLookups.delete(key));
+    }
+  }
+
+  /** Asks GitHub whether open pull requests have merged or closed, at most once a minute each. */
+  private syncPullRequestStates(records: readonly StoredHandOff[]): void {
+    for (const item of records) {
+      for (const ref of item.pullRequests) {
+        if (!isOpenPullRequest(ref)) continue;
+        const key = `state:${item.id}:${ref.url}`;
+        if (this.pendingLookups.has(key)) continue;
+        const lastLookup = this.pullRequestLookupAt.get(key);
+        if (lastLookup !== undefined && this.now().getTime() - lastLookup < PULL_REQUEST_STATE_INTERVAL_MS) continue;
+        if (this.pendingLookups.size >= MAX_CONCURRENT_PULL_REQUEST_LOOKUPS) return;
+        this.pendingLookups.add(key);
+        this.pullRequestLookupAt.set(key, this.now().getTime());
+        void this.lookupPullRequestState(ref.url)
+          .then((update) => (update === null ? undefined : this.store.setPullRequestState(item.id, ref.url, update)))
+          .catch(() => undefined)
+          .finally(() => this.pendingLookups.delete(key));
+      }
     }
   }
 

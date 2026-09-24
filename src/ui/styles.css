@@ -3751,6 +3751,10 @@ textarea.input {
   background: var(--state-frontier);
 }
 
+.handoff-dots .is-merged {
+  background: var(--state-done);
+}
+
 .handoff-list {
   position: absolute;
   top: calc(100% + 8px);
@@ -3922,6 +3926,11 @@ textarea.input {
   color: var(--handoff-pr-ready);
 }
 
+.handoff-pill.is-merged {
+  border-color: color-mix(in srgb, var(--state-done) 44%, var(--hairline));
+  color: var(--text-secondary);
+}
+
 .handoff-pill.is-failed {
   border-color: color-mix(in srgb, var(--state-failed) 44%, var(--hairline));
   color: var(--state-failed);
@@ -4008,6 +4017,10 @@ textarea.input {
 .handoff-card.is-pr-ready {
   border-left-color: var(--state-frontier);
   background: color-mix(in srgb, var(--state-frontier) 5%, var(--surface-1));
+}
+
+.handoff-card.is-merged {
+  border-left-color: var(--state-done);
 }
 
 .handoff-card.is-failed {
@@ -4100,6 +4113,10 @@ textarea.input {
   color: var(--handoff-pr-ready);
 }
 
+.node-handoff-pill.is-merged {
+  color: var(--text-secondary);
+}
+
 .node-handoff-pill.is-failed {
   color: var(--state-failed);
 }
@@ -4109,8 +4126,10 @@ textarea.input {
   height: 11px;
 }
 
+/* Rows share the list's columns (subgrid) so pills, times, PR links and Open ticket line up row to row. */
 .home-handoff-history-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
   gap: 12px;
 }
 
@@ -4147,7 +4166,8 @@ textarea.input {
 
 .home-handoff-history {
   display: grid;
-  grid-template-columns: minmax(150px, 0.7fr) auto minmax(170px, 1fr) auto auto;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
   gap: 8px 12px;
   padding: 10px 12px;
@@ -4168,7 +4188,13 @@ textarea.input {
   font-size: 12px;
 }
 
-.home-handoff-history > a:not(.handoff-source) {
+.home-handoff-history > .handoff-row-prs {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.home-handoff-history > .handoff-row-prs a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -4206,13 +4232,18 @@ textarea.input {
     max-height: calc(100dvh - 68px);
   }
 
+  .home-handoff-history-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .home-handoff-history {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .home-handoff-history > .handoff-row-report,
-  .home-handoff-history > a:not(.handoff-source) {
+  .home-handoff-history > .handoff-row-prs {
     grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 
 }

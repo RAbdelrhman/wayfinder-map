@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { HandOffStatusDto } from '../handOffTracking.js';
-import { handOffCardHtml, handOffMapLabel, handOffPresentation, handOffSourcePath, handOffTime, handOffTriggerLabel, listedHandOffs } from './handOffs.js';
+import { handOffCardHtml, handOffMapLabel, handOffPresentation, handOffSourcePath, handOffTime, handOffTriggerLabel, homeHandOffHistoryHtml, listedHandOffs, recentHandOffs } from './handOffs.js';
 
 function handOff(overrides: Partial<HandOffStatusDto> = {}): HandOffStatusDto {
   return {
@@ -95,5 +95,48 @@ describe('Try again (#98)', () => {
 
   it('is left out of the ticket panel, which has its own start button', () => {
     expect(handOffCardHtml(handOff({ status: 'failed' }), false, false, false)).not.toContain('Try again');
+  });
+});
+
+describe('finished hand-offs', () => {
+  const pullRequest = (number: number, state: string | null): HandOffStatusDto['pullRequests'][number] => ({
+    number,
+    url: `https://github.com/octo/example/pull/${String(number)}`,
+    state,
+    mergedAt: null,
+    syncedAt: null,
+    source: 't3',
+  });
+
+  it('shows Merged once every reported pull request has merged', () => {
+    expect(handOffPresentation(handOff({ status: 'ready', pullRequests: [pullRequest(1, 'MERGED')] })).label).toBe('Merged');
+    expect(handOffPresentation(handOff({ status: 'ready', pullRequests: [pullRequest(1, 'MERGED'), pullRequest(2, 'OPEN')] })).label).toBe('PR ready');
+    expect(handOffPresentation(handOff({ status: 'ready', pullRequests: [pullRequest(1, null)] })).label).toBe('PR ready');
+    expect(handOffPresentation(handOff({ status: 'ready', pullRequests: [pullRequest(1, 'MERGED')] })).terminal).toBe(true);
+  });
+
+  it('does not repeat the pill in a report line', () => {
+    const card = handOffCardHtml(handOff({ status: 'ready', pullRequests: [pullRequest(96, null)] }), false, false);
+    expect(card).not.toContain('Pull request ready');
+    expect(card).not.toContain('handoff-report');
+    expect(card).toContain('Open PR #96');
+  });
+
+  it('lists the last three on Home, newest first, each opening its ticket', () => {
+    const records = [1, 2, 3, 4].map((n) =>
+      handOff({
+        id: `h${String(n)}`,
+        ticketNumber: n,
+        acknowledged: true,
+        status: 'ready',
+        updatedAt: `2026-09-23T12:0${String(n)}:00.000Z`,
+        pullRequests: [pullRequest(n, 'MERGED')],
+      }),
+    );
+    expect(recentHandOffs(records).map((item) => item.ticketNumber)).toEqual([4, 3, 2]);
+    const row = homeHandOffHistoryHtml(records[0] as HandOffStatusDto);
+    expect(row).toContain('Open ticket');
+    expect(row).not.toContain('Open source');
+    expect(row).toContain('<span class="handoff-row-prs"><a');
   });
 });

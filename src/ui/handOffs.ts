@@ -6,7 +6,7 @@ import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
 import { clickedOutside } from './outsideClick.js';
 
-export type HandOffUiState = 'starting' | 'working' | 'needs-you' | 'pr-ready' | 'failed';
+export type HandOffUiState = 'starting' | 'working' | 'needs-you' | 'pr-ready' | 'merged' | 'failed';
 
 export interface HandOffPresentation {
   state: HandOffUiState;
@@ -27,8 +27,9 @@ const POLL_INTERVAL_MS = 15_000;
 
 export function handOffPresentation(handOff: HandOffStatusDto): HandOffPresentation {
   let state: HandOffUiState;
+  const reported = t3PullRequests(handOff);
   if (handOff.threadId === null || handOff.status === 'failed' || handOff.status === 'interrupted') state = 'failed';
-  else if (handOff.pullRequests.some((pullRequest) => pullRequest.source === 't3')) state = 'pr-ready';
+  else if (reported.length > 0) state = reported.every((pullRequest) => pullRequest.state?.toUpperCase() === 'MERGED') ? 'merged' : 'pr-ready';
   else if (handOff.pendingApproval || handOff.pendingUserInput || handOff.status === 'waiting' || handOff.status === 'ready') state = 'needs-you';
   else if (handOff.status === 'starting') state = 'starting';
   else state = 'working';
@@ -41,8 +42,8 @@ export function handOffPresentation(handOff: HandOffStatusDto): HandOffPresentat
       : handOff.pendingUserInput || handOff.status === 'waiting'
         ? 'T3 Code is waiting for your input.'
         : 'T3 Code is ready for your next step.'
-    : state === 'pr-ready'
-      ? `Pull request${handOff.pullRequests.length === 1 ? '' : 's'} ready.`
+    : state === 'pr-ready' || state === 'merged'
+      ? '' // The pill already says it, and the pull request links sit beside it.
       : state === 'failed'
         ? 'T3 Code reported a problem.'
         : state === 'starting'
@@ -52,24 +53,28 @@ export function handOffPresentation(handOff: HandOffStatusDto): HandOffPresentat
             : 'T3 Code is working.';
   const group = state === 'failed' || state === 'needs-you'
     ? 'Waiting on you'
-    : state === 'pr-ready'
+    : state === 'pr-ready' || state === 'merged'
       ? 'Done'
       : 'In T3 Code';
   return {
     state,
-    label: state === 'needs-you' ? 'Needs you' : state === 'pr-ready' ? 'PR ready' : state === 'failed' ? handOff.threadId === null ? 'Needs attention' : 'Failed' : state === 'working' ? 'Working' : 'Starting',
+    label: state === 'needs-you' ? 'Needs you' : state === 'pr-ready' ? 'PR ready' : state === 'merged' ? 'Merged' : state === 'failed' ? handOff.threadId === null ? 'Needs attention' : 'Failed' : state === 'working' ? 'Working' : 'Starting',
     report,
     group,
     needsYou: state === 'failed' || state === 'needs-you',
-    terminal: state === 'failed' || state === 'pr-ready',
+    terminal: state === 'failed' || state === 'pr-ready' || state === 'merged',
   };
+}
+
+function t3PullRequests(handOff: HandOffStatusDto): HandOffStatusDto['pullRequests'] {
+  return handOff.pullRequests.filter((pullRequest) => pullRequest.source === 't3');
 }
 
 export function listedHandOffs(records: readonly HandOffStatusDto[]): HandOffStatusDto[] {
   return records
     .filter((handOff) => handOff.threadId !== null && !handOff.acknowledged)
     .sort((a, b) => {
-      const priority: Record<HandOffUiState, number> = { failed: 0, 'needs-you': 1, starting: 2, working: 3, 'pr-ready': 4 };
+      const priority: Record<HandOffUiState, number> = { failed: 0, 'needs-you': 1, starting: 2, working: 3, 'pr-ready': 4, merged: 5 };
       const stateDifference = priority[handOffPresentation(a).state] - priority[handOffPresentation(b).state];
       if (stateDifference !== 0) return stateDifference;
       return Date.parse(a.createdAt) - Date.parse(b.createdAt);
@@ -135,7 +140,7 @@ function handOffIcon(state: HandOffUiState): string {
   if (state === 'starting') return '<span class="handoff-spinner" aria-hidden="true"></span>';
   if (state === 'working') return icon(icons.PLAY);
   if (state === 'needs-you') return icon(icons.PERSON);
-  if (state === 'pr-ready') return icon(icons.CHECK);
+  if (state === 'pr-ready' || state === 'merged') return icon(icons.CHECK);
   return icon(icons.ALERT);
 }
 
@@ -152,8 +157,8 @@ function handOffActions(handOff: HandOffStatusDto, includeRetry = true): string 
   const retry = includeRetry && presentation.state === 'failed'
     ? `<button type="button" class="ghost" data-handoff-action="retry" data-handoff-id="${escapeHtml(handOff.id)}" data-handoff-href="${escapeHtml(retryPath(handOff))}" data-focus-key="${escapeHtml(`${handOff.id}:retry`)}">${icon(icons.REFRESH)}Try again</button>`
     : '';
-  const pullRequests = presentation.state === 'pr-ready'
-    ? handOff.pullRequests.filter((pullRequest) => pullRequest.source === 't3').map((pullRequest) => `<a class="ghost" href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer" data-handoff-ack="${escapeHtml(handOff.id)}" aria-label="Open pull request${pullRequest.number === null ? '' : ` #${String(pullRequest.number)}`}">${icon(icons.EXTERNAL)}${pullRequest.number === null ? 'Open PR' : `Open PR #${String(pullRequest.number)}`}</a>`).join('')
+  const pullRequests = presentation.state === 'pr-ready' || presentation.state === 'merged'
+    ? t3PullRequests(handOff).map((pullRequest) => `<a class="ghost" href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer" data-handoff-ack="${escapeHtml(handOff.id)}" aria-label="Open pull request${pullRequest.number === null ? '' : ` #${String(pullRequest.number)}`}">${icon(icons.EXTERNAL)}${pullRequest.number === null ? 'Open PR' : `Open PR #${String(pullRequest.number)}`}</a>`).join('')
     : '';
   return `${retry}${pullRequests}${open}`;
 }
@@ -173,7 +178,7 @@ export function handOffCardHtml(handOff: HandOffStatusDto, compact = false, incl
   const sourceLink = includeSource ? `<a class="ghost handoff-source" href="${escapeHtml(source)}">${icon(icons.ARROW)}Back to ${handOff.ticketNumber === null ? 'map' : 'ticket'}</a>` : '';
   return `<section class="handoff-card is-${presentation.state}${handOff.stale ? ' is-stale' : ''}" aria-label="${escapeHtml(`${presentation.label}: ${handOffTitle(handOff)}, ${handOff.repo}, ${handOffMapLabel(handOff)}`)}">
     <div class="handoff-card-head">${handOffPill(handOff)}<time datetime="${escapeHtml(handOff.lastSeenAt ?? handOff.updatedAt)}">${escapeHtml(handOffTime(handOff))}</time></div>
-    <p class="handoff-report">${stale}${escapeHtml(presentation.report)}</p>
+    ${stale === '' && presentation.report === '' ? '' : `<p class="handoff-report">${stale}${escapeHtml(presentation.report)}</p>`}
     <div class="handoff-actions">${handOffActions(handOff, includeRetry)}${sourceLink}</div>
     ${details}
   </section>`;
@@ -183,16 +188,24 @@ export function homeHandOffCardHtml(handOff: HandOffStatusDto): string {
   return `<article class="home-handoff"><header><b title="${escapeHtml(handOffTitle(handOff))}">${escapeHtml(handOffTitle(handOff))}</b><span title="${escapeHtml(`${handOff.repo} · ${handOffMapLabel(handOff)}`)}">${escapeHtml(handOff.repo)} · ${escapeHtml(handOffMapLabel(handOff))}</span></header>${handOffCardHtml(handOff, true)}</article>`;
 }
 
+/** Home's Recent hand-offs: the last few finished ones the user has already seen, newest first. */
+export function recentHandOffs(records: readonly HandOffStatusDto[], limit = 3): HandOffStatusDto[] {
+  return records
+    .filter((handOff) => handOff.acknowledged && handOff.threadId !== null && handOffPresentation(handOff).terminal)
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+    .slice(0, limit);
+}
+
 export function homeHandOffHistoryHtml(handOff: HandOffStatusDto): string {
   const presentation = handOffPresentation(handOff);
-  const prLinks = handOff.pullRequests
-    .filter((pullRequest) => pullRequest.source === 't3')
+  const prLinks = t3PullRequests(handOff)
     .map((pullRequest, index) => `<a href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer" data-focus-key="${escapeHtml(`${handOff.id}:pr:${String(index)}`)}">${pullRequest.number === null ? 'Pull request' : `PR #${String(pullRequest.number)}`}</a>`)
     .join('');
+  const report = presentation.report === '' ? handOffTime(handOff) : `${presentation.report} · ${handOffTime(handOff)}`;
   return `<article class="home-handoff-history is-${presentation.state}">
     <div><b title="${escapeHtml(handOffTitle(handOff))}">${escapeHtml(handOffTitle(handOff))}</b><span title="${escapeHtml(`${handOff.repo} · ${handOffMapLabel(handOff)}`)}">${escapeHtml(handOff.repo)} · ${escapeHtml(handOffMapLabel(handOff))}</span></div>
-    ${handOffPill(handOff)}<span class="handoff-row-report">${escapeHtml(presentation.report)} · ${escapeHtml(handOffTime(handOff))}</span>
-    ${prLinks}<a class="ghost handoff-source" href="${escapeHtml(handOffSourcePath(handOff))}" data-focus-key="${escapeHtml(`${handOff.id}:source`)}">${icon(icons.ARROW)}Open source</a>
+    ${handOffPill(handOff)}<span class="handoff-row-report">${escapeHtml(report)}</span>
+    <span class="handoff-row-prs">${prLinks}</span><a class="ghost handoff-source" href="${escapeHtml(handOffSourcePath(handOff))}" data-focus-key="${escapeHtml(`${handOff.id}:source`)}">${icon(icons.ARROW)}Open ${handOff.ticketNumber === null ? 'map' : 'ticket'}</a>
   </article>`;
 }
 
