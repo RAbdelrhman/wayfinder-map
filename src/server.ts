@@ -461,6 +461,20 @@ export async function startServer({
         return;
       }
 
+      if (path === '/api/auth/logout' && request.method === 'POST') {
+        const account = await readAccount();
+        if (account.login === null) {
+          json(response, 409, { error: 'No GitHub account is signed in.' });
+          return;
+        }
+        await gh(['auth', 'logout', '-h', account.host, '-u', account.login]);
+        homeState = null;
+        repoList = null;
+        repositories.clear();
+        json(response, 200, await readAccount());
+        return;
+      }
+
       if (path === '/api/shutdown' && request.method === 'POST') {
         json(response, 200, { stopped: true });
         authFlow.cancel();
