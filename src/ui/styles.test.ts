@@ -85,6 +85,11 @@ describe('styles.css', () => {
     expect({ lowest, depth }).toEqual({ lowest: 0, depth: 0 });
   });
 
+  it('never puts an at-rule inside a selector list, which browsers drop', async () => {
+    const preludes = topLevelBlocks(structure(await readFile(new URL('./styles.css', import.meta.url), 'utf8'))).map((block) => block.slice(0, block.indexOf('{')).trim());
+    expect(preludes.filter((prelude) => prelude.includes('@') && !prelude.startsWith('@'))).toEqual([]);
+  });
+
   it('does not repeat a rule block word for word', async () => {
     const blocks = topLevelBlocks(structure(await readFile(new URL('./styles.css', import.meta.url), 'utf8')));
     const repeated = blocks.filter((block, index) => blocks.indexOf(block) !== index);

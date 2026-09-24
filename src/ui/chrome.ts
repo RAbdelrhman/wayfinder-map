@@ -331,8 +331,8 @@ export function paintRepoIcons(root: ParentNode = document): void {
 
 /**
  * Renders a repository icon badge.
- * Defaults to T3 Code's deterministic monogram SVG badge,
- * and seamlessly loads the repository's own icon file when available.
+ * Defaults to T3 Code's deterministic monogram SVG badge. After inserting it, run
+ * `paintRepoIcons` (or `paintIcons`) on the container to swap in the repository's own icon once it loads.
  */
 export function repoIconHtml(repo: string, size: 'sm' | 'md' | 'lg' = 'md'): string {
   const trimmed = repo.trim();
@@ -344,31 +344,6 @@ export function repoIconHtml(repo: string, size: 'sm' | 'md' | 'lg' = 'md'): str
     : '';
 
   return `<span class="repo-icon-badge${sizeClass}" data-repo="${escapeHtml(repo)}" aria-hidden="true"><span class="repo-monogram">${monoSvg}</span>${imgTag}</span>`;
-}
-
-if (typeof window !== 'undefined') {
-  window.addEventListener(
-    'load',
-    (e) => {
-      const target = e.target;
-      if (target instanceof HTMLImageElement && target.classList.contains('repo-icon-img')) {
-        target.style.display = 'block';
-        const mono = target.previousElementSibling as HTMLElement | null;
-        if (mono) mono.style.display = 'none';
-      }
-    },
-    true,
-  );
-  window.addEventListener(
-    'error',
-    (e) => {
-      const target = e.target;
-      if (target instanceof HTMLImageElement && target.classList.contains('repo-icon-img')) {
-        target.remove();
-      }
-    },
-    true,
-  );
 }
 
 /** Every ticket the map counts: its sub-issues plus the fog, the issues linked to them by a dependency. */

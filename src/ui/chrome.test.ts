@@ -4,6 +4,7 @@ import type { OutsideTicket, Ticket, WayfinderMap } from '../types.js';
 import {
   allTickets,
   countStates,
+  paintRepoIcons,
   progressRing,
   renderAccountMarkContent,
   repoColorName,
@@ -156,5 +157,51 @@ describe('repoIconHtml', () => {
   it('supports sm and lg size variants', () => {
     expect(repoIconHtml('owner/repo', 'sm')).toContain('class="repo-icon-badge is-sm"');
     expect(repoIconHtml('owner/repo', 'lg')).toContain('class="repo-icon-badge is-lg"');
+  });
+});
+
+describe('paintRepoIcons', () => {
+  /** A repository icon `<img>` after its monogram, as `repoIconHtml` renders them. */
+  function badge(complete = false, naturalWidth = 0) {
+    const monogram = { style: { display: '' } };
+    const listeners = new Map<string, () => void>();
+    const img = {
+      dataset: {} as Record<string, string>,
+      style: { display: 'none' },
+      complete,
+      naturalWidth,
+      previousElementSibling: monogram,
+      removed: false,
+      addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
+      remove: () => {
+        img.removed = true;
+      },
+    };
+    const root = { querySelectorAll: () => [img] } as unknown as ParentNode;
+    return { root, img, monogram, fire: (type: string) => listeners.get(type)?.() };
+  }
+
+  it('swaps the monogram for the logo once it loads', () => {
+    const { root, img, monogram, fire } = badge();
+    paintRepoIcons(root);
+    expect(img.style.display).toBe('none');
+    fire('load');
+    expect(img.style.display).toBe('block');
+    expect(monogram.style.display).toBe('none');
+  });
+
+  it('shows a logo that is already loaded, as when a redrawn menu hits the cache', () => {
+    const { root, img, monogram } = badge(true, 64);
+    paintRepoIcons(root);
+    expect(img.style.display).toBe('block');
+    expect(monogram.style.display).toBe('none');
+  });
+
+  it('keeps the monogram when the repository has no logo', () => {
+    const { root, img, monogram, fire } = badge();
+    paintRepoIcons(root);
+    fire('error');
+    expect(img.removed).toBe(true);
+    expect(monogram.style.display).toBe('');
   });
 });
