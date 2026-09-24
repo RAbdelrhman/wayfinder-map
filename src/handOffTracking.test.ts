@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { HandOffStore, HandOffTracker, mapT3Status } from './handOffTracking.js';
+import { HandOffStore, HandOffTracker, mapT3Status, representativeHandOffs, type HandOffStatusDto } from './handOffTracking.js';
 
 const input = {
   repo: 'octo/one',
@@ -41,6 +41,60 @@ describe('mapT3Status', () => {
       branch: 'wayfinder/11-retire-api-agents-2',
       pullRequests: [{ number: 23, url: 'https://github.com/octo/one/pull/23', state: 'open' }],
     });
+  });
+});
+
+describe('representativeHandOffs', () => {
+  const dto = (id: string, overrides: Partial<HandOffStatusDto> = {}): HandOffStatusDto => ({
+    id,
+    repo: 'octo/one',
+    mapNumber: 5,
+    mapTitle: null,
+    ticketNumber: 57,
+    title: 'Audit',
+    threadId: `thread-${id}`,
+    rung: 'thread',
+    status: 'running',
+    acknowledged: false,
+    createdAt: '2026-09-23T10:00:00.000Z',
+    updatedAt: '2026-09-23T10:05:00.000Z',
+    lastSeenAt: '2026-09-23T10:05:00.000Z',
+    stale: false,
+    sequence: null,
+    branch: null,
+    pendingApproval: false,
+    pendingUserInput: false,
+    pullRequests: [],
+    ...overrides,
+  });
+  const ids = (records: HandOffStatusDto[]): string[] => representativeHandOffs(records).map((handOff) => handOff.id);
+
+  it('keeps the running thread over a newer duplicate stuck at starting', () => {
+    const running = dto('first');
+    const stuck = dto('second', { status: 'starting', createdAt: '2026-09-23T10:00:38.000Z', updatedAt: '2026-09-23T10:06:00.000Z' });
+    expect(ids([running, stuck])).toEqual(['first']);
+    expect(ids([stuck, running])).toEqual(['first']);
+  });
+
+  it('prefers a starting retry over a failed attempt, and the newest among equals', () => {
+    const failed = dto('failed', { status: 'failed' });
+    const noThread = dto('no-thread', { threadId: null, status: 'starting' });
+    const retry = dto('retry', { status: 'starting', createdAt: '2026-09-23T09:00:00.000Z' });
+    expect(ids([failed, noThread, retry])).toEqual(['retry']);
+    const newer = dto('newer', { status: 'waiting', createdAt: '2026-09-23T11:00:00.000Z' });
+    expect(ids([dto('older'), newer])).toEqual(['newer']);
+  });
+
+  it('groups by repository and ticket, and leaves map hand-offs alone', () => {
+    const records = [
+      dto('a'),
+      dto('b', { repo: 'OCTO/one', status: 'starting' }),
+      dto('other-ticket', { ticketNumber: 58 }),
+      dto('other-repo', { repo: 'octo/two' }),
+      dto('map-1', { ticketNumber: null }),
+      dto('map-2', { ticketNumber: null }),
+    ];
+    expect(ids(records)).toEqual(['a', 'other-ticket', 'other-repo', 'map-1', 'map-2']);
   });
 });
 
@@ -222,6 +276,27 @@ describe('HandOffTracker', () => {
         ]);
       });
       expect(lookupPullRequests).toHaveBeenCalledWith('octo/one', 'wayfinder/11-retire-api-agents');
+    } finally {
+      tracker.close();
+    }
+  });
+
+  it('serves one hand-off per ticket, the thread T3 Code is running', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    await store.record({ ...input, threadId: 'thread-2' });
+    const tracker = new HandOffTracker(store, {
+      readHandOffSnapshot: async () => ({
+        environmentId: 'env-1',
+        origin: input.t3Origin ?? '',
+        snapshot: { threads: [{ id: 'thread-1', projectId: 'project-1', session: { status: 'running' } }, { id: 'thread-2', projectId: 'project-1' }] },
+      }),
+    });
+
+    try {
+      expect(await store.list()).toHaveLength(2);
+      const snapshot = await tracker.snapshot();
+      expect(snapshot.handOffs).toMatchObject([{ threadId: 'thread-1', status: 'running' }]);
     } finally {
       tracker.close();
     }
