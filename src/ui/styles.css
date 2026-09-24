@@ -385,6 +385,15 @@ code {
   color: var(--text-secondary);
 }
 
+/* Fog in the Key: a dashed swatch like the fog cards and bands. */
+.fog-swatch {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px dashed var(--text-muted);
+  border-radius: 4px;
+}
+
 /* ---------- layout ---------- */
 
 .app {
