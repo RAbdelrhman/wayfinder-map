@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MapSnapshot, OutsideTicket, Ticket, WayfinderMap } from '../types.js';
-import { createJumpDestinations, loadingMapRows, prototypeCountBadge, repoLabel, viewFromQuery } from './navigation.js';
+import { createJumpDestinations, loadingMapRows, navFooterHtml, prototypeCountBadge, repoLabel, viewFromQuery } from './navigation.js';
 
 function ticket(number: number, title: string): Ticket {
   return {
@@ -133,5 +133,15 @@ describe('loadingMapRows', () => {
     expect(count(loadingMapRows(3))).toBe(3);
     expect(loadingMapRows(3).match(/aria-hidden="true"/g)).toHaveLength(2);
     expect(count(loadingMapRows(40))).toBe(12);
+  });
+});
+
+describe('sidebar footer', () => {
+  it('puts a labelled Settings button beside Updates and Theme on every page', () => {
+    for (const page of ['home', 'repository', 'new-map', 'map'] as const) {
+      const html = navFooterHtml(page);
+      expect(html).toContain('id="settings" class="rail-btn" aria-label="Settings" data-tip="Settings"');
+      expect(html.indexOf('id="theme"')).toBeLessThan(html.indexOf('id="settings"'));
+    }
   });
 });

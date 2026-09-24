@@ -56,31 +56,6 @@ function normalizedTitle(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 }
 
-export function orderRepositories(
-  repositories: readonly string[],
-  recentRepositories: readonly string[],
-  repositoryOpenedAt: Readonly<Record<string, string>>,
-): string[] {
-  const unique: string[] = [];
-  const seen = new Set<string>();
-  for (const repo of [...recentRepositories, ...repositories]) {
-    const key = repo.toLocaleLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(repo);
-  }
-  const recentPosition = new Map(recentRepositories.map((repo, index) => [repo.toLocaleLowerCase(), index]));
-  return unique.sort((left, right) => {
-    const leftOpened = timeValue(repositoryOpenedAt[left.toLocaleLowerCase()] ?? '');
-    const rightOpened = timeValue(repositoryOpenedAt[right.toLocaleLowerCase()] ?? '');
-    if (leftOpened !== rightOpened) return rightOpened - leftOpened;
-    const leftPosition = recentPosition.get(left.toLocaleLowerCase()) ?? Number.MAX_SAFE_INTEGER;
-    const rightPosition = recentPosition.get(right.toLocaleLowerCase()) ?? Number.MAX_SAFE_INTEGER;
-    if (leftPosition !== rightPosition) return leftPosition - rightPosition;
-    return left.localeCompare(right);
-  });
-}
-
 export function summarizeRepository(repo: string, snapshot: MapSnapshot | null | undefined): RepositorySummary {
   const maps = snapshot?.maps ?? [];
   const tickets = maps.flatMap((map) => [...map.tickets, ...map.outside]);

@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { OutsideTicket, Ticket, WayfinderMap } from '../types.js';
 import {
+  FOG_BAND_LABEL,
+  FOG_KEY_ROW,
   allTickets,
   countStates,
+  paintRepoIcons,
   progressRing,
   renderAccountMarkContent,
   repoColorName,
@@ -32,6 +35,14 @@ describe('countStates', () => {
     const map = { tickets: [ticket(1, 'blocked'), ticket(2, 'done')], outside: [fog(58, 'done'), fog(59, 'frontier')] } as unknown as WayfinderMap;
     expect(allTickets(map).map((t) => t.number)).toEqual([1, 2, 58, 59]);
     expect(countStates(map)).toEqual({ frontier: 1, claimed: 0, blocked: 1, done: 2 });
+  });
+});
+
+describe('fog labels', () => {
+  it('calls the off-map bands and their Key entry fog', () => {
+    expect(FOG_BAND_LABEL).toEqual({ top: 'Fog · the map waits on these', bottom: 'Fog · these wait on the map' });
+    expect(FOG_KEY_ROW).toContain('<b>Fog</b>');
+    expect(Object.values(FOG_BAND_LABEL).join(' ')).not.toMatch(/outside this map/i);
   });
 });
 
@@ -156,5 +167,51 @@ describe('repoIconHtml', () => {
   it('supports sm and lg size variants', () => {
     expect(repoIconHtml('owner/repo', 'sm')).toContain('class="repo-icon-badge is-sm"');
     expect(repoIconHtml('owner/repo', 'lg')).toContain('class="repo-icon-badge is-lg"');
+  });
+});
+
+describe('paintRepoIcons', () => {
+  /** A repository icon `<img>` after its monogram, as `repoIconHtml` renders them. */
+  function badge(complete = false, naturalWidth = 0) {
+    const monogram = { style: { display: '' } };
+    const listeners = new Map<string, () => void>();
+    const img = {
+      dataset: {} as Record<string, string>,
+      style: { display: 'none' },
+      complete,
+      naturalWidth,
+      previousElementSibling: monogram,
+      removed: false,
+      addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
+      remove: () => {
+        img.removed = true;
+      },
+    };
+    const root = { querySelectorAll: () => [img] } as unknown as ParentNode;
+    return { root, img, monogram, fire: (type: string) => listeners.get(type)?.() };
+  }
+
+  it('swaps the monogram for the logo once it loads', () => {
+    const { root, img, monogram, fire } = badge();
+    paintRepoIcons(root);
+    expect(img.style.display).toBe('none');
+    fire('load');
+    expect(img.style.display).toBe('block');
+    expect(monogram.style.display).toBe('none');
+  });
+
+  it('shows a logo that is already loaded, as when a redrawn menu hits the cache', () => {
+    const { root, img, monogram } = badge(true, 64);
+    paintRepoIcons(root);
+    expect(img.style.display).toBe('block');
+    expect(monogram.style.display).toBe('none');
+  });
+
+  it('keeps the monogram when the repository has no logo', () => {
+    const { root, img, monogram, fire } = badge();
+    paintRepoIcons(root);
+    fire('error');
+    expect(img.removed).toBe(true);
+    expect(monogram.style.display).toBe('');
   });
 });

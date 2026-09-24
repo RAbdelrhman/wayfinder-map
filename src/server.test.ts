@@ -624,6 +624,105 @@ describe('local clone for a hand-off', () => {
     }
   });
 
+  describe('one live hand-off per ticket (#98)', () => {
+    /** T3 Code whose threads report whatever session status the test sets. */
+    function liveT3() {
+      const sessions = new Map<string, string>();
+      let started = 0;
+      const startThread = vi.fn(async () => {
+        const threadId = `thread-${String((started += 1))}`;
+        sessions.set(threadId, 'running');
+        return { threadId, prompt: 'prompt' };
+      });
+      const server: ServerT3 = {
+        ...t3,
+        steps: () => ({ startThread, openApp: async () => undefined, copy: async () => undefined }),
+        readHandOffSnapshot: async () => ({
+          environmentId: 't3-env',
+          origin: 'http://127.0.0.1:3773',
+          snapshot: {
+            threads: [...sessions].map(([id, status]) =>
+              status === 'finished'
+                ? { id, session: { status: 'ready' }, latestTurn: { state: 'completed', settledAt: '2026-09-24T00:00:00.000Z' } }
+                : { id, session: { status } },
+            ),
+          },
+        }),
+        subscribeShell: async () => () => undefined,
+      };
+      return { server, sessions, startThread };
+    }
+
+    const start = (url: string) =>
+      fetch(`${url}/api/repos/octo/one/hand-off`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: url },
+        body: JSON.stringify({ map: 5, ticket: 11 }),
+      });
+
+    it('refuses a second hand-off while the first is live, and allows one once it ends', async () => {
+      const { server, sessions, startThread } = liveT3();
+      const running = await serve({ t3: server, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+
+      try {
+        const first = await start(running.url);
+        expect(first.status).toBe(200);
+        const { handOffId } = (await first.json()) as { handOffId: string };
+
+        const second = await start(running.url);
+        expect(second.status).toBe(409);
+        await expect(second.json()).resolves.toEqual({
+          error: '#11 already has a hand-off in T3 Code. Open that thread instead of starting another.',
+          handOffId,
+        });
+        expect(startThread).toHaveBeenCalledTimes(1);
+
+        sessions.set('thread-1', 'finished');
+        const again = await start(running.url);
+        expect(again.status).toBe(200);
+        await expect(again.json()).resolves.toMatchObject({ threadId: 'thread-2' });
+        expect(startThread).toHaveBeenCalledTimes(2);
+
+        // The retry is live even while it is still starting and the thread before it has ended.
+        sessions.set('thread-2', 'starting');
+        expect((await start(running.url)).status).toBe(409);
+        expect(startThread).toHaveBeenCalledTimes(2);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('lets only one of two simultaneous requests start a thread', async () => {
+      const { server, startThread } = liveT3();
+      const running = await serve({ t3: server, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+
+      try {
+        const statuses = (await Promise.all([start(running.url), start(running.url)])).map((response) => response.status);
+        expect(statuses.sort()).toEqual([200, 409]);
+        expect(startThread).toHaveBeenCalledTimes(1);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('still copies the prompt for a ticket with a live hand-off', async () => {
+      const { server } = liveT3();
+      const running = await serve({ t3: server, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+
+      try {
+        expect((await start(running.url)).status).toBe(200);
+        const copy = await fetch(`${running.url}/api/repos/octo/one/hand-off`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', origin: running.url },
+          body: JSON.stringify({ map: 5, ticket: 11, copyOnly: true }),
+        });
+        expect(copy.status).toBe(200);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+  });
+
   it('records a T3-down hand-off as untracked without failing the copy fallback', async () => {
     const steps = {
       startThread: async (): Promise<never> => {

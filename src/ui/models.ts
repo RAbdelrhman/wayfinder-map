@@ -13,6 +13,25 @@ export const DEFAULT_TIER: Tier = 'mid';
 
 const TIER_DEFAULTS_KEY = 'wayfinder-map:tier-models:v1';
 const TICKET_TIER_KEY = 'wayfinder-map:ticket-tier:v1';
+const DEFAULT_TIER_KEY = 'wayfinder-map:default-tier:v1';
+
+function isTier(value: string | null): value is Tier {
+  return (TIERS as readonly string[]).includes(value ?? '');
+}
+
+/** The tier a ticket or new map starts on until the user picks another. Set in Settings. */
+export function defaultTier(storage: Pick<Storage, 'getItem'> = localStorage): Tier {
+  try {
+    const saved = storage.getItem(DEFAULT_TIER_KEY);
+    return isTier(saved) ? saved : DEFAULT_TIER;
+  } catch {
+    return DEFAULT_TIER;
+  }
+}
+
+export function saveDefaultTier(tier: Tier, storage: Pick<Storage, 'setItem'> = localStorage): void {
+  storage.setItem(DEFAULT_TIER_KEY, tier);
+}
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -35,8 +54,8 @@ export function saveTierDefault(tier: Tier, choice: ModelChoice | null): void {
 }
 
 export function ticketTier(repo: string, ticket: number): Tier {
-  const saved = readJson<Record<string, string>>(TICKET_TIER_KEY, {})[`${repo}#${String(ticket)}`];
-  return (TIERS as readonly string[]).includes(saved ?? '') ? (saved as Tier) : DEFAULT_TIER;
+  const saved = readJson<Record<string, string>>(TICKET_TIER_KEY, {})[`${repo}#${String(ticket)}`] ?? null;
+  return isTier(saved) ? saved : defaultTier();
 }
 
 export function saveTicketTier(repo: string, ticket: number, tier: Tier): void {

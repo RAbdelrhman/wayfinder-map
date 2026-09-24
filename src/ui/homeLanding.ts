@@ -3,13 +3,14 @@ import type { HandOffStatusDto } from '../handOffTracking.js';
 import { normalizeRepo, repoPath, scopedApiPath } from '../repoRoutes.js';
 import type { MapSnapshot, TicketState } from '../types.js';
 import { PROGRESS_ORDER, STATE_STYLE, paintIcons, repoIconHtml } from './chrome.js';
-import { buildHomeWorkItems, chooseContinueDestination, inFlightStatusLabel, orderRepositories, relativeTimeLabel, summarizeRepository } from './homeView.js';
+import { buildHomeWorkItems, chooseContinueDestination, inFlightStatusLabel, relativeTimeLabel, summarizeRepository } from './homeView.js';
 import type { ContinueDestination, HomeWorkItem, RepositorySummary } from './homeView.js';
 import { readHomeRecency } from './homeRecency.js';
 import type { HomeStorage } from './homeRecency.js';
 import { escapeHtml } from './markdown.js';
 import { miniGraphSvg } from './miniGraph.js';
 import { bone, boneButton } from './skeleton.js';
+import { orderWayfinderRepositories } from './wayfinderRepositories.js';
 
 const HOME_REPOSITORY_LIMIT = 6;
 const HOME_INITIAL_SNAPSHOT_LIMIT = 8;
@@ -301,7 +302,7 @@ export async function renderHomeLanding(options: HomeLandingOptions): Promise<vo
   options.setAccount(state);
   options.setSynced('');
   const recency = readHomeRecency(options.storage);
-  const repositories = orderRepositories(state.repositories, recency.repositories, recency.repositoryOpenedAt);
+  const repositories = orderWayfinderRepositories({ mapRepositories: state.repositories, recency, handOffs });
   const accountReady = state.account.status === 'ready';
   const recentWorkRepos = handOffs
     .slice()
