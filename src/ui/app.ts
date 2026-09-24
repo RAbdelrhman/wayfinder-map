@@ -32,6 +32,7 @@ import { icon } from './icons.js';
 import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { FOG_BAND_LABEL, FOG_KEY_ROW, PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
+import { mountSettings } from './settings.js';
 import type { NavigationController, NavigationView } from './navigation.js';
 import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
 import { recordMapOpened } from './homeRecency.js';
@@ -1404,6 +1405,7 @@ syncedButton().addEventListener('click', () => {
 
 bindTheme(need('theme'));
 bindUpdater(need('updater'), toast);
+mountSettings(need('settings'), toast);
 bindAccountMark(document.getElementById('account-mark'));
 
 function setView(next: NavigationView): void {

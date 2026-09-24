@@ -17,6 +17,7 @@ import { draftToMapPath, initialRepository, isNewMapHandOff } from './newMap.js'
 import type { NewMapHandOff } from './newMap.js';
 import { renderNewMapPage } from './newMapPage.js';
 import { mountNavigation } from './navigation.js';
+import { mountSettings } from './settings.js';
 import type { NavigationController, NavigationPage } from './navigation.js';
 import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
 import { homeLoadingMarkup, renderHomeLanding } from './homeLanding.js';
@@ -610,6 +611,7 @@ async function show(refresh = false): Promise<void> {
 paintIcons();
 bindTheme(need('theme'));
 bindUpdater(need('updater'), toast);
+mountSettings(need('settings'), toast);
 syncedButton().addEventListener('click', () => void show(true));
 document.addEventListener('visibilitychange', () => draftAutoRefresh?.visibilityChanged());
 window.addEventListener('pagehide', () => draftAutoRefresh?.stop());

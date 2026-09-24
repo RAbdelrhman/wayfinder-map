@@ -2,9 +2,9 @@ import type { HomeState } from '../home.js';
 import { draftMapPath, normalizeRepo, scopedApiPath } from '../repoRoutes.js';
 import type { ModelCatalog, ModelChoice } from '../models.js';
 import { escapeHtml } from './markdown.js';
-import { liveChoice, TIER_HINT, TIER_LABEL, tierDefaults, TIERS } from './models.js';
+import { defaultTier, liveChoice, TIER_HINT, TIER_LABEL, tierDefaults, TIERS } from './models.js';
 import type { Tier } from './models.js';
-import { composerState, consumeNewMapRetryGoal, DEFAULT_NEW_MAP_TIER, initialRepository, NEW_MAP_EXAMPLES, repositoryOptions } from './newMap.js';
+import { composerState, consumeNewMapRetryGoal, initialRepository, NEW_MAP_EXAMPLES, repositoryOptions } from './newMap.js';
 import type { WorkspaceView } from './newMap.js';
 import { paintIcons, repoIconHtml } from './chrome.js';
 import * as icons from './icons.js';
@@ -72,7 +72,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
     new Set([...(context.homeState?.repositories ?? []), ...(initialRepo === '' ? [] : [initialRepo])]),
   );
   let repo: string | null = initialRepo === '' ? null : initialRepo;
-  let tier: Tier = DEFAULT_NEW_MAP_TIER;
+  let tier: Tier = defaultTier();
   let workspace: WorkspaceView | 'loading' | null = repo === null ? null : 'loading';
   let cloneOpen = false;
   let cloneRequest = 0;

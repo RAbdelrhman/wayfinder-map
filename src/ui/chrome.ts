@@ -42,6 +42,8 @@ const STATIC_ICONS: Record<string, string> = {
   table: icons.TABLE,
   beaker: icons.BEAKER,
   sliders: icons.SLIDERS,
+  gear: icons.GEAR,
+  'sign-out': icons.SIGN_OUT,
   refresh: icons.REFRESH,
   moon: icons.MOON,
   lens: icons.LENS,
@@ -78,22 +80,34 @@ export function paintIcons(root: ParentNode = document): void {
   paintRepoIcons(root);
 }
 
+export type Theme = 'light' | 'dark';
+
+export const THEME_CHANGE_EVENT = 'wayfinder:theme-change';
+
+export function currentTheme(): Theme {
+  return getComputedStyle(document.body).getPropertyValue('color-scheme').trim() === 'dark' ? 'dark' : 'light';
+}
+
+/** Saves the theme and tells every control that shows it, the rail switch and Settings. */
+export function setTheme(next: Theme): void {
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem('wayfinder-map:theme', next);
+  document.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT));
+}
+
 /** The rail's light/dark switch. Each page stamps the saved theme before its first paint. */
 export function bindTheme(button: HTMLElement): void {
   const updateLabel = (): void => {
-    const dark = getComputedStyle(document.body).getPropertyValue('color-scheme').trim() === 'dark';
+    const dark = currentTheme() === 'dark';
     const label = dark ? 'Switch to light theme' : 'Switch to dark theme';
     button.setAttribute('aria-label', label);
     button.setAttribute('title', label);
     button.setAttribute('aria-pressed', String(dark));
   };
   updateLabel();
+  document.addEventListener(THEME_CHANGE_EVENT, updateLabel);
   button.addEventListener('click', () => {
-    const dark = getComputedStyle(document.body).getPropertyValue('color-scheme').trim() === 'dark';
-    const next = dark ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next;
-    localStorage.setItem('wayfinder-map:theme', next);
-    updateLabel();
+    setTheme(currentTheme() === 'dark' ? 'light' : 'dark');
   });
 }
 

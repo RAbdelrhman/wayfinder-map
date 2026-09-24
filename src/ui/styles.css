@@ -1636,6 +1636,60 @@ tbody tr.is-selected {
   color: var(--text-muted);
 }
 
+/* ---------- settings dialog ---------- */
+
+.settings-section {
+  padding: 12px 0;
+  border-top: 1px solid var(--gridline);
+}
+
+.settings-section h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.settings-account,
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.settings-row {
+  padding: 8px 0;
+}
+
+.settings-account .rail-mark {
+  margin: 0;
+  flex: none;
+  width: 36px;
+  height: 36px;
+}
+
+.settings-account p,
+.settings-row .hint {
+  display: block;
+  margin: 2px 0 0;
+  font-size: 12px;
+}
+
+.settings-account .ghost .i {
+  width: 14px;
+  height: 14px;
+}
+
+.settings-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 /* ---------- toast ---------- */
 
 .toast {
