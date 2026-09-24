@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_LAYOUT, assignLayers, layoutTickets, layoutWithOutside } from './layout.js';
+import { DEFAULT_LAYOUT, assignLayers, graphTickets, layoutTickets } from './layout.js';
 import type { Ticket } from './types.js';
 
 function ticket(number: number, blockedBy: number[] = []): Ticket {
@@ -72,47 +72,25 @@ describe('layoutTickets', () => {
     expect(edges).toEqual([{ from: 1, to: 2 }]);
   });
 
-  it('keeps issues off the map out of its columns: blockers above, dependents below', () => {
-    const tickets = [ticket(1), ticket(2, [1, 80])];
-    const layout = layoutWithOutside(tickets, [
-      { number: 80, blocks: [2], waitsOn: [] },
-      { number: 90, blocks: [], waitsOn: [2] },
-    ]);
-    const at = (number: number) => layout.nodes.find((node) => node.number === number);
-    const own = layoutTickets(tickets);
+  it('places issues off the map in the columns their dependencies put them in', () => {
+    const graph = graphTickets({
+      tickets: [ticket(1), ticket(2, [1, 80])],
+      outside: [
+        { ...ticket(80), pullRequest: false, blocks: [2], waitsOn: [] },
+        { ...ticket(90, [2]), pullRequest: false, blocks: [], waitsOn: [2] },
+      ],
+    });
+    const layout = layoutTickets(graph);
+    const layerOf = (number: number) => layout.nodes.find((node) => node.number === number)?.layer;
 
-    expect(at(80)?.band).toBe('top');
-    expect(at(90)?.band).toBe('bottom');
-    expect(at(1)?.layer).toBe(0);
-    expect(at(2)?.layer).toBe(1);
-    expect(at(2)?.x).toBe(own.nodes.find((node) => node.number === 2)?.x);
-    expect(at(80)?.x).toBe(DEFAULT_LAYOUT.padding);
-    expect(at(80)!.y + at(80)!.height).toBeLessThan(at(1)!.y);
-    expect(at(90)!.y).toBeGreaterThan(at(2)!.y + at(2)!.height);
+    expect(layerOf(80)).toBe(0);
+    expect(layerOf(2)).toBe(1);
+    expect(layerOf(90)).toBe(2);
     expect(layout.edges).toEqual([
       { from: 1, to: 2 },
-      { from: 80, to: 2, vertical: true },
-      { from: 2, to: 90, vertical: true },
+      { from: 80, to: 2 },
+      { from: 2, to: 90 },
     ]);
-    expect(layout.bands.top).not.toBeNull();
-    expect(layout.bands.bottom).not.toBeNull();
-  });
-
-  it('fills a band from the left, in the order of the columns its cards link to', () => {
-    const layout = layoutWithOutside([ticket(1), ticket(2, [1, 81]), ticket(3, [80])], [
-      { number: 81, blocks: [2], waitsOn: [] },
-      { number: 80, blocks: [3], waitsOn: [] },
-    ]);
-    const band = layout.nodes.filter((node) => node.band === 'top');
-    expect(band.map((node) => node.number)).toEqual([80, 81]);
-    expect(band[0]!.x).toBe(DEFAULT_LAYOUT.padding);
-    expect(band[1]!.x).toBeGreaterThanOrEqual(band[0]!.x + band[0]!.width);
-  });
-
-  it('adds no bands to a map with nothing off it', () => {
-    const layout = layoutWithOutside([ticket(1)], []);
-    expect(layout.bands).toEqual({ top: null, bottom: null });
-    expect(layout.height).toBe(layoutTickets([ticket(1)]).height);
   });
 
   it('sizes the canvas around the nodes', () => {

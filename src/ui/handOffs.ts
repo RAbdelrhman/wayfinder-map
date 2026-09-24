@@ -1,4 +1,5 @@
 import type { HandOffStatusDto } from '../handOffTracking.js';
+import type { TicketState } from '../types.js';
 import { draftMapPath, mapPath, repoPath } from '../repoRoutes.js';
 import { newMapPath, rememberNewMapRetry } from './newMap.js';
 import * as icons from './icons.js';
@@ -144,10 +145,20 @@ function handOffIcon(state: HandOffUiState): string {
   return icon(icons.ALERT);
 }
 
+/**
+ * A map card shows one status. An open ticket's hand-off says more than its state, so it stands in;
+ * a closed ticket stays "done" unless its hand-off merged, since a stale or failed run no longer matters.
+ */
+export function cardShowsHandOff(ticketState: TicketState, handOff: HandOffStatusDto | undefined): handOff is HandOffStatusDto {
+  if (handOff === undefined) return false;
+  return ticketState !== 'done' || handOffPresentation(handOff).state === 'merged';
+}
+
+/** The hand-off's status. Compact, on a map card, it is plain text like the state chip it stands in for. */
 export function handOffPill(handOff: HandOffStatusDto, compact = false): string {
   const presentation = handOffPresentation(handOff);
   const at = handOffTime(handOff);
-  return `<span class="handoff-pill${compact ? ' is-compact node-handoff-pill' : ''} is-${presentation.state}" title="${escapeHtml(`${presentation.label}, updated ${at}`)}" aria-label="${escapeHtml(`${presentation.label}, updated ${at}`)}">${handOffIcon(presentation.state)}<span>${presentation.label}</span></span>`;
+  return `<span class="${compact ? 'chip node-handoff-pill' : 'handoff-pill'} is-${presentation.state}" title="${escapeHtml(`${presentation.label}, updated ${at}`)}" aria-label="${escapeHtml(`${presentation.label}, updated ${at}`)}">${handOffIcon(presentation.state)}<span>${presentation.label}</span></span>`;
 }
 
 function handOffActions(handOff: HandOffStatusDto, includeRetry = true): string {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { HandOffStatusDto } from '../handOffTracking.js';
-import { handOffCardHtml, handOffMapLabel, handOffPresentation, handOffSourcePath, handOffTime, handOffTriggerLabel, homeHandOffHistoryHtml, listedHandOffs, recentHandOffs } from './handOffs.js';
+import { cardShowsHandOff, handOffCardHtml, handOffMapLabel, handOffPresentation, handOffSourcePath, handOffTime, handOffTriggerLabel, homeHandOffHistoryHtml, listedHandOffs, recentHandOffs } from './handOffs.js';
 
 function handOff(overrides: Partial<HandOffStatusDto> = {}): HandOffStatusDto {
   return {
@@ -106,6 +106,14 @@ describe('finished hand-offs', () => {
     mergedAt: null,
     syncedAt: null,
     source: 't3',
+  });
+
+  it('gives a map card one status: the hand-off while open, done once closed unless it merged', () => {
+    const merged = handOff({ status: 'ready', pullRequests: [pullRequest(1, 'MERGED')] });
+    expect(cardShowsHandOff('claimed', undefined)).toBe(false);
+    expect(cardShowsHandOff('claimed', handOff())).toBe(true);
+    expect(cardShowsHandOff('done', handOff({ status: 'failed' }))).toBe(false);
+    expect(cardShowsHandOff('done', merged)).toBe(true);
   });
 
   it('shows Merged once every reported pull request has merged', () => {

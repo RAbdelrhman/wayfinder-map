@@ -1,5 +1,5 @@
-import { DEFAULT_LAYOUT, layoutWithOutside } from '../layout.js';
-import type { Band, GraphTicket, PositionedNode } from '../layout.js';
+import { DEFAULT_LAYOUT, graphTickets, layoutTickets } from '../layout.js';
+import type { PositionedNode } from '../layout.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import { isLiveHandOff } from '../handOffLiveness.js';
 import { prototypeBranch } from '../prompt.js';
@@ -30,13 +30,13 @@ import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import { FOG_BAND_LABEL, FOG_KEY_ROW, PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
+import { FOG_KEY_ROW, PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
 import { mountSettings } from './settings.js';
 import type { NavigationController, NavigationView } from './navigation.js';
 import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
 import { recordMapOpened } from './homeRecency.js';
-import { handOffCardHtml, handOffPill, handOffPresentation, mountHandOffs } from './handOffs.js';
+import { cardShowsHandOff, handOffCardHtml, handOffPill, handOffPresentation, mountHandOffs } from './handOffs.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -428,58 +428,30 @@ function renderKey(): void {
   els.keyMenu.innerHTML = `${states}${FOG_KEY_ROW}<div class="menu-sep"></div>${types}`;
 }
 
-function nodeHtml(ticket: Ticket, position: PositionedNode): string {
+/** A card on the canvas. An issue off the map gets the same card under a fog effect, placed where its dependencies put it. */
+function nodeHtml(ticket: Ticket | OutsideTicket, position: PositionedNode): string {
   const style = STATE_STYLE[ticket.state];
+  const fog = 'pullRequest' in ticket;
   const handOff = ticketHandOff(currentMap(), ticket.number);
   const meta =
     ticket.state === 'blocked'
       ? `blocked by ${ticket.openBlockers.map((n) => `#${String(n)}`).join(', ')}`
       : ticket.assignee !== null
         ? `@${ticket.assignee}`
-        : (ticket.type ?? 'untyped');
+        : (ticket.type ?? (fog && ticket.pullRequest ? 'pull request' : 'untyped'));
 
-  return `<button type="button" class="node${ticket.state === 'done' ? ' is-done' : ''}"
+  return `<button type="button" class="node${ticket.state === 'done' ? ' is-done' : ''}${fog ? ' is-outside' : ''}"
     data-number="${String(ticket.number)}"
     style="--accent: var(${style.variable}); left:${String(position.x)}px; top:${String(position.y)}px; width:${String(position.width)}px; height:${String(position.height)}px"
-    aria-label="${escapeHtml(`#${String(ticket.number)} ${ticket.title}, ${style.label}${handOff === undefined ? '' : `, hand-off ${handOffPresentation(handOff).label}`}`)}">
+    aria-label="${escapeHtml(`#${String(ticket.number)} ${ticket.title}, ${style.label}${fog ? ', fog' : ''}${handOff === undefined ? '' : `, hand-off ${handOffPresentation(handOff).label}`}`)}">
     <span class="node-top">
       ${typeGlyph(ticket.type)}
       <span class="num">#${String(ticket.number)}</span>
-      ${stateChip(ticket.state)}
-      ${handOff === undefined ? '' : handOffPill(handOff, true)}
+      ${cardShowsHandOff(ticket.state, handOff) ? handOffPill(handOff, true) : stateChip(ticket.state)}
     </span>
     <span class="title">${escapeHtml(ticket.title)}</span>
     <span class="meta">${escapeHtml(meta)}</span>
   </button>`;
-}
-
-/** An issue off this map: coloured by state and opened in the panel like any card, but dashed so it never reads as part of the map. */
-function outsideNodeHtml(outside: OutsideTicket, position: PositionedNode): string {
-  const style = STATE_STYLE[outside.state];
-  const kind = outside.pullRequest ? 'PR' : 'Issue';
-  const handOff = ticketHandOff(currentMap(), outside.number);
-  return `<button type="button" class="node is-outside${outside.state === 'done' ? ' is-done' : ''}"
-    data-number="${String(outside.number)}"
-    style="--accent: var(${style.variable}); left:${String(position.x)}px; top:${String(position.y)}px; width:${String(position.width)}px; height:${String(position.height)}px"
-    aria-label="${escapeHtml(`${kind} #${String(outside.number)} ${outside.title}, ${style.label}, fog${handOff === undefined ? '' : `, hand-off ${handOffPresentation(handOff).label}`}`)}">
-    <span class="node-top">
-      <span class="num">#${String(outside.number)}</span>
-      ${stateChip(outside.state)}
-      ${handOff === undefined ? '' : handOffPill(handOff, true)}
-    </span>
-    <span class="title">${escapeHtml(outside.title)}</span>
-    <span class="meta">${kind} · fog</span>
-  </button>`;
-}
-
-function bandHtml(band: Band, side: 'top' | 'bottom', width: number): string {
-  const label = FOG_BAND_LABEL[side];
-  return `<div class="band" style="top:${String(band.y - 10)}px; height:${String(band.height + 20)}px; width:${String(width - 32)}px"><span class="band-label">${label}</span></div>`;
-}
-
-/** Every card's dependencies, the issues off the map included, for tracing a chain on hover. */
-function graphTickets(map: WayfinderMap): GraphTicket[] {
-  return [...map.tickets, ...map.outside.map((outside) => ({ number: outside.number, blockedBy: outside.waitsOn }))];
 }
 
 function renderGraph(): void {
@@ -495,7 +467,7 @@ function renderGraph(): void {
     return;
   }
 
-  const layout = layoutWithOutside(map.tickets, map.outside, DEFAULT_LAYOUT);
+  const layout = layoutTickets(graphTickets(map), DEFAULT_LAYOUT);
   const byNumber = new Map(map.tickets.map((ticket) => [ticket.number, ticket]));
   const outsideByNumber = new Map(map.outside.map((outside) => [outside.number, outside]));
   const positions = new Map(layout.nodes.map((node) => [node.number, node]));
@@ -503,16 +475,10 @@ function renderGraph(): void {
   els.canvas.style.width = `${String(layout.width)}px`;
   els.canvas.style.height = `${String(layout.height)}px`;
 
-  const bands = [
-    layout.bands.top === null ? '' : bandHtml(layout.bands.top, 'top', layout.width),
-    layout.bands.bottom === null ? '' : bandHtml(layout.bands.bottom, 'bottom', layout.width),
-  ].join('');
-  els.nodes.innerHTML = bands + layout.nodes
+  els.nodes.innerHTML = layout.nodes
     .map((position) => {
-      const ticket = byNumber.get(position.number);
-      if (ticket) return nodeHtml(ticket, position);
-      const outside = outsideByNumber.get(position.number);
-      return outside ? outsideNodeHtml(outside, position) : '';
+      const ticket = byNumber.get(position.number) ?? outsideByNumber.get(position.number);
+      return ticket ? nodeHtml(ticket, position) : '';
     })
     .join('');
 
@@ -531,14 +497,6 @@ function renderGraph(): void {
       if (!from || !to) return '';
       const target = byNumber.get(edge.to);
       const live = target === undefined ? byNumber.get(edge.from)?.open === true : target.openBlockers.includes(edge.from);
-      if (edge.vertical === true) {
-        const x1 = from.x + from.width / 2;
-        const y1 = from.y + from.height;
-        const x2 = to.x + to.width / 2;
-        const y2 = to.y;
-        const bend = Math.max(28, (y2 - y1) / 2);
-        return `<path class="${live ? 'is-live' : ''}" data-from="${String(edge.from)}" data-to="${String(edge.to)}" d="M${String(x1)},${String(y1)} C${String(x1)},${String(y1 + bend)} ${String(x2)},${String(y2 - bend)} ${String(x2)},${String(y2)}" />`;
-      }
       const x1 = from.x + from.width;
       const y1 = from.y + from.height / 2;
       const x2 = to.x;
@@ -694,7 +652,8 @@ function syncHighlights(): void {
   const shown = (number: number): boolean => {
     const ticket = byNumber.get(number);
     return ticket !== undefined && matches(ticket);
-  };  const chain: Lineage | null = hovered === null ? null : lineage(graphTickets(map), hovered);
+  };
+  const chain: Lineage | null = hovered === null ? null : lineage(graphTickets(map), hovered);
   const related = (number: number): boolean =>
     chain === null || number === hovered || chain.upstream.has(number) || chain.downstream.has(number);
 

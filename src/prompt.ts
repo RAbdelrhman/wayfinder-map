@@ -24,7 +24,9 @@ there.
 
 Once you are in the dedicated worktree, claim the ticket before doing ticket
 work. Close it the way the wayfinder flow does: answer in a comment, close it,
-then add the context pointer to the map's Decisions-so-far.
+then add the context pointer to the map's Decisions-so-far. File any follow-up
+tickets as sub-issues of map #{{mapNumber}}, labeled like its other tickets, so
+they land on the map rather than in its fog.
 `;
 
 export const DEFAULT_STANDALONE_TEMPLATE = `Pick up ticket #{{ticketNumber}} in {{repo}}.

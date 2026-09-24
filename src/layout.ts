@@ -1,4 +1,4 @@
-import type { OutsideTicket, Ticket } from './types.js';
+import type { Ticket, WayfinderMap } from './types.js';
 
 /** All the layout needs of a card: its number and what it waits on. */
 export type GraphTicket = Pick<Ticket, 'number' | 'blockedBy'>;
@@ -30,15 +30,11 @@ export interface PositionedNode {
   height: number;
   /** Dependency depth. 0 means nothing in this map blocks it. */
   layer: number;
-  /** Set on issues off the map, which sit in a band above or below it. */
-  band?: 'top' | 'bottom';
 }
 
 export interface LayoutEdge {
   from: number;
   to: number;
-  /** A link between a band and the map, drawn top to bottom rather than left to right. */
-  vertical?: boolean;
 }
 
 export interface Layout {
@@ -132,78 +128,10 @@ export function layoutTickets(tickets: readonly GraphTicket[], options: LayoutOp
   return { nodes, edges, width, height, layerSizes };
 }
 
-export interface Band {
-  y: number;
-  height: number;
-}
-
-export interface BandedLayout extends Layout {
-  /** The strips above and below the map that hold issues off it, or null when a side is empty. */
-  bands: { top: Band | null; bottom: Band | null };
-}
-
-/** Room at the head of a band for its label. */
-const BAND_LABEL = 30;
-
 /**
- * The map's own layout, with issues off the map kept out of its columns: the ones it waits on
- * in a band above, the ones waiting on it in a band below. Each band fills from the left, so its
- * cards are in view from the start, ordered by the column of the tickets they link to.
+ * Every card's dependencies, the issues off the map included. Laid out together, an issue off the
+ * map lands in the column its dependencies put it in, like any card.
  */
-export function layoutWithOutside(
-  tickets: readonly Ticket[],
-  outside: readonly Pick<OutsideTicket, 'number' | 'blocks' | 'waitsOn'>[],
-  options: LayoutOptions = DEFAULT_LAYOUT,
-): BandedLayout {
-  const { nodeWidth, nodeHeight, gapX, gapY, padding } = options;
-  const main = layoutTickets(tickets, options);
-  const byNumber = new Map(main.nodes.map((node) => [node.number, node]));
-  const linked = (numbers: readonly number[]): PositionedNode[] =>
-    numbers.map((number) => byNumber.get(number)).filter((node): node is PositionedNode => node !== undefined);
-
-  const top = outside.filter((item) => linked(item.blocks).length > 0);
-  const bottom = outside.filter((item) => !top.includes(item) && linked(item.waitsOn).length > 0);
-  const bandGap = gapY * 3;
-  const bandHeight = BAND_LABEL + nodeHeight + bandGap;
-  const topShift = top.length > 0 ? bandHeight : 0;
-  const mainBottom = main.nodes.reduce((max, node) => Math.max(max, node.y + node.height), padding) + topShift;
-
-  const row = (items: typeof outside, links: (item: (typeof outside)[number]) => number[], y: number, band: 'top' | 'bottom'): PositionedNode[] => {
-    const anchored = items
-      .map((item) => ({ item, anchor: Math.min(...linked(links(item)).map((node) => node.x)) }))
-      .sort((a, b) => a.anchor - b.anchor || a.item.number - b.item.number);
-    return anchored.map(({ item }, index) => ({
-      number: item.number,
-      x: padding + index * (nodeWidth + gapX),
-      y,
-      width: nodeWidth,
-      height: nodeHeight,
-      layer: -1,
-      band,
-    }));
-  };
-
-  const nodes = [
-    ...row(top, (item) => item.blocks, padding + BAND_LABEL, 'top'),
-    ...main.nodes.map((node) => ({ ...node, y: node.y + topShift })),
-    ...row(bottom, (item) => item.waitsOn, mainBottom + bandGap + BAND_LABEL, 'bottom'),
-  ];
-
-  const edges: LayoutEdge[] = [...main.edges];
-  for (const item of top) for (const target of linked(item.blocks)) edges.push({ from: item.number, to: target.number, vertical: true });
-  for (const item of bottom) for (const source of linked(item.waitsOn)) edges.push({ from: source.number, to: item.number, vertical: true });
-
-  const width = nodes.reduce((max, node) => Math.max(max, node.x + node.width), 0) + padding;
-  const height = nodes.reduce((max, node) => Math.max(max, node.y + node.height), 0) + padding;
-  return {
-    nodes,
-    edges,
-    width,
-    height,
-    layerSizes: main.layerSizes,
-    bands: {
-      top: top.length > 0 ? { y: padding, height: BAND_LABEL + nodeHeight } : null,
-      bottom: bottom.length > 0 ? { y: mainBottom + bandGap, height: BAND_LABEL + nodeHeight } : null,
-    },
-  };
+export function graphTickets(map: Pick<WayfinderMap, 'tickets' | 'outside'>): GraphTicket[] {
+  return [...map.tickets, ...map.outside.map((outside) => ({ number: outside.number, blockedBy: outside.waitsOn }))];
 }
