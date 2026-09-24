@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MapSnapshot, OutsideTicket, Ticket, WayfinderMap } from '../types.js';
-import { createJumpDestinations, loadingMapRows, navFooterHtml, prototypeCountBadge, repoLabel, viewFromQuery } from './navigation.js';
+import { createJumpDestinations, loadingMapRows, navFooterHtml, prototypeCountBadge, repoLabel, sidebarLoadsMaps, viewFromQuery } from './navigation.js';
 
 function ticket(number: number, title: string): Ticket {
   return {
@@ -46,6 +46,15 @@ describe('navigation view query', () => {
     expect(viewFromQuery('prototypes')).toBe('prototypes');
     expect(viewFromQuery('unknown')).toBe('map');
     expect(viewFromQuery(null)).toBe('map');
+  });
+});
+
+describe('sidebarLoadsMaps', () => {
+  it('fetches the expanded repository only on /new-map, where no page supplies a snapshot', () => {
+    expect(sidebarLoadsMaps('new-map')).toBe(true);
+    expect(sidebarLoadsMaps('repository')).toBe(false);
+    expect(sidebarLoadsMaps('map')).toBe(false);
+    expect(sidebarLoadsMaps('home')).toBe(false);
   });
 });
 

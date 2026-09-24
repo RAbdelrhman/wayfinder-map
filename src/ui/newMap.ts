@@ -109,6 +109,11 @@ export function initialRepository(query: string | null): string {
   return query === null ? '' : (normalizeRepo(query) ?? '');
 }
 
+/** The repository chip names just the repository; its tooltip carries `owner/name`. */
+export function repoChipLabel(repo: string): string {
+  return repo.slice(repo.indexOf('/') + 1) || repo;
+}
+
 /** Recent repositories lead the searchable list; account repositories fill in the rest. */
 export function repositoryOptions(query: string, recents: readonly string[], known: readonly string[]): string[] {
   const search = query.trim().toLowerCase();

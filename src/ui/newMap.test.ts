@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { composerState, consumeNewMapRetryGoal, DEFAULT_NEW_MAP_TIER, draftToMapPath, initialRepository, isNewMapHandOff, newMapPath, rememberNewMapRetry, repositoryOptions } from './newMap.js';
+import { composerState, consumeNewMapRetryGoal, DEFAULT_NEW_MAP_TIER, draftToMapPath, initialRepository, isNewMapHandOff, newMapPath, rememberNewMapRetry, repoChipLabel, repositoryOptions } from './newMap.js';
 import type { ComposerInput } from './newMap.js';
 
 function fakeStorage(): Pick<Storage, 'getItem' | 'removeItem' | 'setItem'> {
@@ -11,6 +11,16 @@ function fakeStorage(): Pick<Storage, 'getItem' | 'removeItem' | 'setItem'> {
     setItem: (key, value) => values.set(key, value),
   };
 }
+
+describe('repoChipLabel', () => {
+  it('names the repository without its owner', () => {
+    expect(repoChipLabel('Energy-Control-Power-Lockout/ECPL-Lockstep')).toBe('ECPL-Lockstep');
+  });
+
+  it('keeps a name with no owner as it is', () => {
+    expect(repoChipLabel('wayfinder')).toBe('wayfinder');
+  });
+});
 
 describe('newMapPath', () => {
   it('opens on the repository it is given', () => {
