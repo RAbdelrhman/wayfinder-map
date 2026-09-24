@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { gh } from './github.js';
+import { gh, ghProblem } from './github.js';
 
 /** How Home draws the day's cleared fog (#43): A's trail, B's hexes, or C's bar. */
 export const PROGRESS_STYLES = ['trail', 'hex', 'bar'] as const;
@@ -189,7 +189,7 @@ export class ProgressService {
       const days = dailyCounts(await this.dependencies.completed(login, since), now);
       return { login, settings, days, streak: streak(days), warning: null };
     } catch (error) {
-      return { login, settings, days: null, streak: 0, warning: `Could not read completed tickets. ${error instanceof Error ? error.message : String(error)}` };
+      return { login, settings, days: null, streak: 0, warning: `Couldn't count closed tickets. ${ghProblem(error)}` };
     }
   }
 

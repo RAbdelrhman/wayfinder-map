@@ -156,7 +156,7 @@ describe('ProgressService', () => {
 
   it('keeps the settings and reports a warning when GitHub fails', async () => {
     const state = await new ProgressService(dependencies({ completed: async () => Promise.reject(new Error('rate limit')) })).state();
-    expect(state).toMatchObject({ settings: { style: 'bar', goal: 3 }, days: null, warning: 'Could not read completed tickets. rate limit' });
+    expect(state).toMatchObject({ settings: { style: 'bar', goal: 3 }, days: null, warning: "Couldn't count closed tickets. Wayfinder hit GitHub's rate limit. Try again in a few minutes." });
   });
 
   it('saves for the signed-in user and refuses when signed out or invalid', async () => {

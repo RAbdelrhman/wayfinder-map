@@ -335,7 +335,7 @@ export async function renderHomeLanding(options: HomeLandingOptions): Promise<vo
   const emptyRepositories = accountReady
     ? '<p class="wf-quiet">Repositories you open show up here, most recent first.</p>'
     : '<p class="wf-quiet">Sign in to load the repositories that hold Wayfinder maps.</p>';
-  const handOffNotice = handOffError ? '<p class="wf-quiet is-warning" role="status">Hand-off status could not be loaded. Refresh to try again.</p>' : '';
+  const handOffNotice = handOffError ? `<p class="wf-quiet is-warning" role="status">Couldn't load hand-off status. Refresh to try again.</p>` : '';
   const needsYou = workItems.filter((item) => item.lane === 'needs-you');
   const running = workItems.filter((item) => item.lane === 'running');
   const hiddenWork = needsYou.length > LANE_LIMIT || running.length > LANE_LIMIT;
