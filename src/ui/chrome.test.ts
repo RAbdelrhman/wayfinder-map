@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import type { OutsideTicket, Ticket, WayfinderMap } from '../types.js';
 import {
-  FOG_BAND_LABEL,
   FOG_KEY_ROW,
   allTickets,
   countStates,
@@ -39,10 +38,9 @@ describe('countStates', () => {
 });
 
 describe('fog labels', () => {
-  it('calls the off-map bands and their Key entry fog', () => {
-    expect(FOG_BAND_LABEL).toEqual({ top: 'Fog · the map waits on these', bottom: 'Fog · these wait on the map' });
+  it('calls the off-map cards fog in the Key', () => {
     expect(FOG_KEY_ROW).toContain('<b>Fog</b>');
-    expect(Object.values(FOG_BAND_LABEL).join(' ')).not.toMatch(/outside this map/i);
+    expect(FOG_KEY_ROW).toContain('fog-swatch');
   });
 });
 

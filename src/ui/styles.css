@@ -385,13 +385,14 @@ code {
   color: var(--text-secondary);
 }
 
-/* Fog in the Key: a dashed swatch like the fog cards and bands. */
+/* Fog in the Key: a dashed, hazy swatch like the fog cards. */
 .fog-swatch {
   flex: none;
   width: 14px;
   height: 14px;
   border: 1.5px dashed var(--text-muted);
   border-radius: 4px;
+  background: radial-gradient(circle at 70% 80%, color-mix(in srgb, var(--text-muted) 45%, transparent), transparent 75%);
 }
 
 /* ---------- layout ---------- */
@@ -2491,42 +2492,41 @@ textarea.input {
   gap: 8px;
 }
 
-/* An issue off this map: state-coloured like any card, dashed so it never reads as part of the map. */
+/* Fog: an issue off this map. The same card as any other, under a haze that lifts on hover or selection. */
 .node.is-outside {
   border-style: dashed;
   border-left-style: solid;
-  text-decoration: none;
 }
 
-.node.is-outside .meta {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.node.is-outside > * {
+  filter: blur(0.7px);
+  opacity: 0.75;
+  transition: filter 160ms, opacity 160ms;
 }
 
-.node.is-outside .meta .i {
-  width: 11px;
-  height: 11px;
-}
-
-/* The strips above and below the map that hold those issues. */
-.band {
+.node.is-outside::after {
+  content: '';
   position: absolute;
-  left: 16px;
-  border: 1px dashed var(--baseline);
-  border-radius: 14px;
+  inset: 0;
   pointer-events: none;
+  background:
+    radial-gradient(90% 80% at 80% 100%, color-mix(in srgb, var(--text-muted) 42%, transparent), transparent 72%),
+    radial-gradient(70% 60% at 15% 0%, color-mix(in srgb, var(--text-muted) 30%, transparent), transparent 72%),
+    linear-gradient(color-mix(in srgb, var(--text-muted) 10%, transparent), color-mix(in srgb, var(--text-muted) 10%, transparent));
+  transition: opacity 160ms;
 }
 
-.band-label {
-  position: absolute;
-  top: 8px;
-  left: 14px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+.node.is-outside:hover > *,
+.node.is-outside:focus-visible > *,
+.node.is-outside.is-selected > * {
+  filter: none;
+  opacity: 1;
+}
+
+.node.is-outside:hover::after,
+.node.is-outside:focus-visible::after,
+.node.is-outside.is-selected::after {
+  opacity: 0;
 }
 
 .progress-panel {

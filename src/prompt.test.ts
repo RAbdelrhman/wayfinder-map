@@ -54,6 +54,11 @@ describe('buildPrompt', () => {
     }
   });
 
+  it('files follow-up tickets on the map, not in its fog', () => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket });
+    expect(prompt).toContain('File any follow-up\ntickets as sub-issues of map #4');
+  });
+
   it('sends prototype tickets to their prototype/<n>-<slug> branch', () => {
     const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
     expect(prompt).toContain('commit it to the branch prototype/11-retire-api-agents-once-nothing-needs-it');
