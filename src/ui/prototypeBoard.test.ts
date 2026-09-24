@@ -226,6 +226,9 @@ describe('prototype decision board states', () => {
       'When a prototype ticket on this map pushes its prototype branch, its canvas shows up here.',
     );
     expect(prototypeBoardLoadingHtml()).toContain('role="status" aria-live="polite"');
+    expect(prototypeBoardLoadingHtml()).toContain('<div class="wf-board-page is-loading"');
+    expect(prototypeBoardLoadingHtml().match(/wf-node wf-proto is-skeleton/g)).toHaveLength(2);
+    expect(prototypeBoardLoadingHtml().match(/class="wf-var"/g)).toHaveLength(8);
     expect(prototypeBoardErrorHtml('GitHub is unavailable.')).toContain('data-prototype-retry');
     expect(prototypeBoardErrorHtml('<script>')).not.toContain('<script>');
   });

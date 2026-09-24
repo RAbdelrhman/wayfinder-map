@@ -4,6 +4,7 @@ import { escapeHtml } from './markdown.js';
 import { clickedOutside } from './outsideClick.js';
 import { loadWayfinderRepositories } from './wayfinderRepositories.js';
 import { allTickets, miniRing, paintIcons, repoIconHtml } from './chrome.js';
+import { bone } from './skeleton.js';
 
 export type NavigationView = 'map' | 'table' | 'prototypes';
 export type NavigationPage = 'home' | 'repository' | 'new-map' | 'map';
@@ -40,6 +41,25 @@ const SIDEBAR_STATE = 'wayfinder-map:navigation-expanded';
 const VIEWS: readonly NavigationView[] = ['map', 'table', 'prototypes'];
 const VIEW_LABEL: Record<NavigationView, string> = { map: 'Map', table: 'Table', prototypes: 'Prototypes' };
 const VIEW_ICON: Record<NavigationView, string> = { map: 'graph', table: 'table', prototypes: 'beaker' };
+
+export const MAP_COUNTS_KEY = 'wayfinder-map:navigation-map-counts';
+const LOADING_ROW_LIMIT = 12;
+
+/** "Loading maps…" plus a placeholder per map the repository had last time, so the tree below it does not jump. */
+export function loadingMapRows(lastCount: number | undefined): string {
+  const placeholders = Math.min(Math.max(lastCount ?? 1, 1), LOADING_ROW_LIMIT) - 1;
+  return `<li class="nav-tree-status">Loading maps…</li>${`<li class="nav-tree-status" aria-hidden="true">${bone('70%')}</li>`.repeat(placeholders)}`;
+}
+
+function readMapCounts(): Record<string, number> {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(MAP_COUNTS_KEY) ?? '{}');
+    if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return {};
+    return Object.fromEntries(Object.entries(stored).filter((entry): entry is [string, number] => Number.isSafeInteger(entry[1]) && entry[1] >= 0));
+  } catch {
+    return {};
+  }
+}
 
 function iconName(name: string): string {
   return `<span class="i" data-icon="${name}" aria-hidden="true"></span>`;
@@ -203,6 +223,19 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   let snapshotErrors = new Set<string>();
   const snapshotRequests = new Map<string, Promise<MapSnapshot | null>>();
   const expandedRepos = new Set<string>();
+  const mapCounts = readMapCounts();
+
+  function storeSnapshot(repo: string, snapshot: MapSnapshot): void {
+    mapSnapshots.set(repo, snapshot);
+    const key = repo.toLocaleLowerCase();
+    if (mapCounts[key] === snapshot.maps.length) return;
+    mapCounts[key] = snapshot.maps.length;
+    try {
+      localStorage.setItem(MAP_COUNTS_KEY, JSON.stringify(mapCounts));
+    } catch {
+      // The loading rows fall back to one.
+    }
+  }
 
   if ((page === 'repository' || page === 'map' || page === 'new-map') && currentRepo !== null) expandedRepos.add(currentRepo);
 
@@ -254,7 +287,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
         const body: unknown = await response.json();
         if (typeof body !== 'object' || body === null || !Array.isArray((body as MapSnapshot).maps)) throw new Error('Map response was invalid.');
         const snapshot = body as MapSnapshot;
-        mapSnapshots.set(repo, snapshot);
+        storeSnapshot(repo, snapshot);
         snapshotErrors.delete(repo);
         renderSidebar();
         renderTopbar();
@@ -354,7 +387,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
             ? `<ul class="kids" id="${treeId}">${mapListMarkup(repo, snapshot.maps, page === 'map' && repo === currentRepo ? currentMapNumber : null, activeView)}</ul>`
             : snapshotErrors.has(repo)
               ? `<ul class="kids" id="${treeId}"><li class="nav-tree-status">Could not load maps.</li><li><button type="button" class="nav-retry" data-nav-retry="${String(index)}">Retry</button></li></ul>`
-              : `<ul class="kids" id="${treeId}"><li class="nav-tree-status">Loading maps…</li></ul>`;
+              : `<ul class="kids" id="${treeId}">${loadingMapRows(mapCounts[repo.toLocaleLowerCase()])}</ul>`;
         const label = repoLabel(repo, repositories);
         return `<li class="nav-repo">
           <div class="row${currentPage ? ' is-on' : isContext ? ' is-trail' : ''}">
@@ -711,7 +744,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   return {
     setSnapshot(snapshot, mapNumber = currentMapNumber) {
       if (currentMapNumber !== mapNumber) prototypeCount = null;
-      mapSnapshots.set(snapshot.repo, snapshot);
+      storeSnapshot(snapshot.repo, snapshot);
       currentRepo = snapshot.repo;
       if (mapNumber !== undefined) currentMapNumber = mapNumber;
       expandedRepos.add(snapshot.repo);

@@ -9,6 +9,7 @@ import { readHomeRecency } from './homeRecency.js';
 import type { HomeStorage } from './homeRecency.js';
 import { escapeHtml } from './markdown.js';
 import { miniGraphSvg } from './miniGraph.js';
+import { bone, boneButton } from './skeleton.js';
 import { orderWayfinderRepositories } from './wayfinderRepositories.js';
 
 const HOME_REPOSITORY_LIMIT = 6;
@@ -160,13 +161,124 @@ function inFlightLaneMarkup(title: string, glyph: string, lane: HomeWorkItem['la
   return `<div class="wf-lane"><h3 class="wf-lane-h"><span data-icon="${glyph}" aria-hidden="true"></span>${title}<b>${String(items.length)}</b></h3>${rows}</div>`;
 }
 
-export function homeLoadingMarkup(): string {
+export const HOME_SHAPE_KEY = 'wayfinder-map:home-shape';
+
+/** The sizes of Home's data-dependent blocks the last time it loaded, so the next skeleton matches them. */
+export interface HomeShape {
+  continueHeight: number;
+  inFlightHeight: number;
+  /** Visible cards per In flight lane; empty when In flight is a single note. */
+  laneItems: number[];
+  /** Height of the Recent hand-offs list; 0 when the section is hidden. */
+  historyHeight: number;
+  repositoryRows: number;
+  progressHeight: number;
+}
+
+export const DEFAULT_HOME_SHAPE: HomeShape = {
+  continueHeight: 236,
+  inFlightHeight: 166,
+  laneItems: [1, 1],
+  historyHeight: 0,
+  repositoryRows: HOME_REPOSITORY_LIMIT,
+  progressHeight: 618,
+};
+
+const MAX_BLOCK_HEIGHT = 2400;
+
+function blockHeight(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_BLOCK_HEIGHT ? Math.round(value) : fallback;
+}
+
+function itemCount(value: unknown, max: number): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? Math.min(value, max) : null;
+}
+
+export function readHomeShape(storage: HomeStorage): HomeShape {
+  let stored: unknown = null;
+  try {
+    stored = JSON.parse(storage.getItem(HOME_SHAPE_KEY) ?? 'null') as unknown;
+  } catch {
+    stored = null;
+  }
+  if (typeof stored !== 'object' || stored === null) return DEFAULT_HOME_SHAPE;
+  const record = stored as Record<string, unknown>;
+  const lanes = Array.isArray(record['laneItems']) ? record['laneItems'].slice(0, 2).map((value) => itemCount(value, LANE_LIMIT)) : null;
+  return {
+    continueHeight: blockHeight(record['continueHeight'], DEFAULT_HOME_SHAPE.continueHeight),
+    inFlightHeight: blockHeight(record['inFlightHeight'], DEFAULT_HOME_SHAPE.inFlightHeight),
+    laneItems: lanes === null || lanes.some((count) => count === null) ? DEFAULT_HOME_SHAPE.laneItems : (lanes as number[]),
+    historyHeight: blockHeight(record['historyHeight'], DEFAULT_HOME_SHAPE.historyHeight),
+    repositoryRows: itemCount(record['repositoryRows'], HOME_REPOSITORY_LIMIT) ?? DEFAULT_HOME_SHAPE.repositoryRows,
+    progressHeight: blockHeight(record['progressHeight'], DEFAULT_HOME_SHAPE.progressHeight),
+  };
+}
+
+/** Reads the loaded Home's block sizes; null while Home is not on screen. */
+export function measureHomeShape(root: ParentNode, previous: HomeShape = DEFAULT_HOME_SHAPE): HomeShape | null {
+  const home = root.querySelector('.wf-home:not(.is-loading)');
+  const left = home?.querySelector('.wf-left');
+  if (home === null || home === undefined || left === null || left === undefined) return null;
+  const height = (element: Element | null | undefined): number | null => element === null || element === undefined ? null : Math.round(element.getBoundingClientRect().height);
+  const continueCard = left.querySelector('section[aria-label="Continue"] > *');
+  const inFlight = left.querySelector('section[aria-labelledby="home-inflight-heading"] > :is(.wf-lanes, .wf-none)');
+  const history = left.querySelector<HTMLElement>('#home-handoff-history-section');
+  const panel = home.querySelector('.wf-side > .progress-panel');
+  return {
+    continueHeight: height(continueCard) ?? previous.continueHeight,
+    inFlightHeight: height(inFlight) ?? previous.inFlightHeight,
+    laneItems: [...left.querySelectorAll('.wf-lane')].map((lane) => Math.min(lane.querySelectorAll('.wf-fly:not([hidden])').length, LANE_LIMIT)),
+    historyHeight: history === null || history.hidden ? 0 : height(history.querySelector('#home-handoff-history-list')) ?? 0,
+    repositoryRows: left.querySelectorAll('[data-home-repo-row]:not([hidden])').length,
+    progressHeight: height(panel) ?? previous.progressHeight,
+  };
+}
+
+export function rememberHomeShape(root: ParentNode, storage: HomeStorage): void {
+  try {
+    const shape = measureHomeShape(root, readHomeShape(storage));
+    if (shape !== null) storage.setItem(HOME_SHAPE_KEY, JSON.stringify(shape));
+  } catch {
+    // The skeleton falls back to typical sizes.
+  }
+}
+
+function flyCardSkeleton(): string {
+  return `<div class="wf-node wf-fly"><div class="wf-fly-link"><span class="top">${bone('40%')}</span><strong>${bone('85%')}</strong><span class="meta">${bone('55%')}</span></div></div>`;
+}
+
+function laneSkeleton(items: number): string {
+  const rows = items === 0 ? `<div class="wf-none">${bone('60%')}</div>` : Array.from({ length: items }, flyCardSkeleton).join('');
+  return `<div class="wf-lane"><h3 class="wf-lane-h">${bone('45%')}</h3>${rows}</div>`;
+}
+
+function repositoryRowSkeleton(): string {
+  return `<div class="wf-repo"><span class="wf-bone is-block"></span><span class="who"><span class="name">${bone('38%')}</span><span class="wf-stack"></span></span><span class="stat">${bone('96px')}</span><span class="when">${bone('56px')}</span></div>`;
+}
+
+/** Home's progress panel before /api/progress answers: its card at its last size. */
+export function progressSkeletonMarkup(height: number = DEFAULT_HOME_SHAPE.progressHeight): string {
+  return `<div class="card progress-panel is-skeleton" style="height: ${String(height)}px" aria-hidden="true"><div class="progress-head"><p class="eyebrow">${bone('90px')}</p></div><div class="progress-today"><b>${bone('56px')}</b></div><span class="wf-skeleton is-fill"></span></div>`;
+}
+
+export function homeLoadingMarkup(shape: HomeShape = DEFAULT_HOME_SHAPE): string {
+  const inFlight = shape.laneItems.length === 0
+    ? `<div class="wf-none" style="height: ${String(shape.inFlightHeight)}px">${bone('60%')}</div>`
+    : `<div class="wf-lanes is-skeleton" style="height: ${String(shape.inFlightHeight)}px">${shape.laneItems.map(laneSkeleton).join('')}</div>`;
+  const history = shape.historyHeight === 0
+    ? ''
+    : `<section><div class="wf-label">Recent hand-offs</div><div class="wf-skeleton" style="height: ${String(shape.historyHeight)}px"></div></section>`;
+  const rows = Math.max(shape.repositoryRows, 1);
   return `<div class="wf-home is-loading" role="status" aria-live="polite" aria-label="Loading Home">
-    <div class="wf-cols"><div class="wf-left">
-      <section><div class="wf-label">Continue</div><div class="wf-skeleton is-card"></div></section>
-      <section><div class="wf-label">In flight</div><div class="wf-skeleton is-lanes"></div></section>
-      <section><div class="wf-label">Repositories</div><div class="wf-skeleton is-search"></div><div class="wf-skeleton is-list"></div></section>
-    </div><aside class="wf-side"><div class="wf-skeleton is-progress"></div></aside></div>
+    <div class="wf-cols" aria-hidden="true"><div class="wf-left">
+      <section><div class="wf-node wf-continue is-skeleton" style="height: ${String(shape.continueHeight)}px"><div class="txt"><p class="eyebrow">${bone('45%')}</p><h2>${bone('85%')}</h2><div class="next">${bone('70%')}</div><div class="go">${boneButton()}</div></div><div class="graph"></div></div></section>
+      <section><div class="wf-label">In flight</div>${inFlight}</section>
+      ${history}
+      <section><div class="wf-label">Repositories<span class="grow"></span><span class="wf-icon-btn"></span></div>
+        <div class="wf-find"><span class="search"></span></div>
+        <div class="wf-node wf-list">${Array.from({ length: rows }, repositoryRowSkeleton).join('')}</div>
+      </section>
+    </div><aside class="wf-side">${progressSkeletonMarkup(shape.progressHeight)}</aside></div>
   </div>`;
 }
 
@@ -241,7 +353,7 @@ export async function renderHomeLanding(options: HomeLandingOptions): Promise<vo
         <form class="wf-find" id="repo-entry" role="search"><label class="search repo-picker"><span data-icon="lens" aria-hidden="true"></span><span class="sr-only">Find a repository</span><input id="repo-name" name="repo" type="search" placeholder="Search your repositories, or type owner/name" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="repo-menu" aria-autocomplete="list" /><ul class="repo-menu" id="repo-menu" role="listbox" hidden></ul></label></form>
         <div class="wf-node wf-list" id="home-repo-list">${rows === '' ? emptyRepositories : `${rows}<p class="wf-quiet" data-home-repo-no-match hidden>No recent repository matches. Press Enter to open it as owner/name.</p>${showAll}`}</div>
       </section>
-    </div><aside class="wf-side" id="progress-host" aria-label="Progress"></aside></div>
+    </div><aside class="wf-side" id="progress-host" aria-label="Progress">${progressSkeletonMarkup(readHomeShape(options.storage).progressHeight)}</aside></div>
   </div>`);
 
   const form = document.getElementById('repo-entry');
