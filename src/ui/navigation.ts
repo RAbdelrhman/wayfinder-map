@@ -24,7 +24,7 @@ export interface NavigationOptions {
   repo: string | null;
   mapNumber: number | null;
   view: NavigationView;
-  onStartTicket?: (ticketNumber: number) => void;
+  onOpenTicket?: (ticketNumber: number) => void;
   onViewChange?: (view: NavigationView) => void;
 }
 
@@ -454,10 +454,10 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
       mapStartButton.hidden = page !== 'map' || startTicket === undefined;
       if (startTicket !== undefined) {
         mapStartButton.dataset['ticket'] = String(startTicket.number);
-        mapStartButton.setAttribute('aria-label', `Start #${String(startTicket.number)} in T3 Code`);
-        mapStartButton.title = `Start #${String(startTicket.number)} in T3 Code: ${startTicket.title}`;
+        mapStartButton.setAttribute('aria-label', `Open #${String(startTicket.number)}, the next ticket to start`);
+        mapStartButton.title = `Open #${String(startTicket.number)} to start it: ${startTicket.title}`;
         const label = mapStartButton.querySelector<HTMLElement>('.topbar-action-label');
-        if (label !== null) label.textContent = `Start #${String(startTicket.number)} in T3 Code`;
+        if (label !== null) label.textContent = `Next: #${String(startTicket.number)}`;
       }
     }
     if (topbarActionJump !== null) topbarActionJump.hidden = page !== 'map' || expanded;
@@ -610,7 +610,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     }
     const start = target.closest<HTMLButtonElement>('#map-start');
     if (start !== null && start.dataset['ticket'] !== undefined) {
-      options.onStartTicket?.(Number(start.dataset['ticket']));
+      options.onOpenTicket?.(Number(start.dataset['ticket']));
       return;
     }
     const trigger = target.closest<HTMLButtonElement>('[data-nav-menu-trigger]');

@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { gh } from './github.js';
+import { isLiveHandOff } from './handOffLiveness.js';
 import type { Tier } from './models.js';
 
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -622,6 +623,12 @@ export class HandOffTracker {
 
   async acknowledge(id: string): Promise<boolean> {
     return this.store.acknowledge(id);
+  }
+
+  /** The ticket's live hand-off, read after a fresh look at T3 Code, if it has one. */
+  async liveTicketHandOff(repo: string, ticketNumber: number): Promise<HandOffStatusDto | undefined> {
+    const { handOffs } = await this.snapshot();
+    return handOffs.find((item) => item.repo.toLowerCase() === repo.toLowerCase() && item.ticketNumber === ticketNumber && isLiveHandOff(item));
   }
 
   close(): void {
