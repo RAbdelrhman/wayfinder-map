@@ -154,10 +154,11 @@ export function cardShowsHandOff(ticketState: TicketState, handOff: HandOffStatu
   return ticketState !== 'done' || handOffPresentation(handOff).state === 'merged';
 }
 
+/** The hand-off's status. Compact, on a map card, it is plain text like the state chip it stands in for. */
 export function handOffPill(handOff: HandOffStatusDto, compact = false): string {
   const presentation = handOffPresentation(handOff);
   const at = handOffTime(handOff);
-  return `<span class="handoff-pill${compact ? ' is-compact node-handoff-pill' : ''} is-${presentation.state}" title="${escapeHtml(`${presentation.label}, updated ${at}`)}" aria-label="${escapeHtml(`${presentation.label}, updated ${at}`)}">${handOffIcon(presentation.state)}<span>${presentation.label}</span></span>`;
+  return `<span class="${compact ? 'chip node-handoff-pill' : 'handoff-pill'} is-${presentation.state}" title="${escapeHtml(`${presentation.label}, updated ${at}`)}" aria-label="${escapeHtml(`${presentation.label}, updated ${at}`)}">${handOffIcon(presentation.state)}<span>${presentation.label}</span></span>`;
 }
 
 function handOffActions(handOff: HandOffStatusDto, includeRetry = true): string {

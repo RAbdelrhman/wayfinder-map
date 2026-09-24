@@ -4085,24 +4085,9 @@ textarea.input {
   color: var(--text-secondary);
 }
 
+/* A hand-off status on a map card: a plain chip in the hand-off's colour. */
 .node-handoff-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 19px;
-  height: 19px;
-  max-width: 130px;
-  margin-left: auto;
-  padding: 0 6px;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, currentColor 32%, var(--hairline));
-  border-radius: 999px;
-  background: var(--surface-1);
   color: var(--handoff-working);
-  font-size: 10.5px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .node-handoff-pill.is-needs-you {
@@ -4122,8 +4107,7 @@ textarea.input {
 }
 
 .node-handoff-pill .i {
-  width: 11px;
-  height: 11px;
+  color: currentColor;
 }
 
 /* Rows share the list's columns (subgrid) so pills, times, PR links and Open ticket line up row to row. */
