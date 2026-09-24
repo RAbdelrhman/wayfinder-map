@@ -146,9 +146,8 @@ function currentMap(): WayfinderMap | null {
 
 function ticketHandOff(map: WayfinderMap | null, ticketNumber: number): HandOffStatusDto | undefined {
   if (map === null || snapshot === null) return undefined;
-  return handOffRecords
-    .filter((handOff) => handOff.repo.toLowerCase() === snapshot?.repo.toLowerCase() && handOff.mapNumber === map.number && handOff.ticketNumber === ticketNumber)
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+  // /api/hand-offs already keeps one record per ticket, the one that is actually running.
+  return handOffRecords.find((handOff) => handOff.repo.toLowerCase() === snapshot?.repo.toLowerCase() && handOff.mapNumber === map.number && handOff.ticketNumber === ticketNumber);
 }
 
 function activeTicketHandOffs(map: WayfinderMap | null): HandOffStatusDto[] {

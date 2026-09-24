@@ -238,6 +238,35 @@ export function mapT3Status(thread: unknown): MappedT3Thread | null {
   };
 }
 
+/** Lower is better: a thread T3 Code has moved past starting, then one still starting, then one that failed. */
+function handOffRank(handOff: HandOffStatusDto): number {
+  if (handOff.threadId === null || handOff.status === 'failed' || handOff.status === 'interrupted') return 2;
+  return handOff.status === 'starting' ? 1 : 0;
+}
+
+/**
+ * One hand-off per ticket: the thread that is actually running wins over a duplicate stuck at
+ * starting or a failed attempt, and the newest wins among equals. Polling bumps `updatedAt` on
+ * every live thread, so recency alone can't pick. Map hand-offs are each their own draft and stay.
+ */
+export function representativeHandOffs(records: readonly HandOffStatusDto[]): HandOffStatusDto[] {
+  const best = new Map<string, HandOffStatusDto>();
+  for (const handOff of records) {
+    if (handOff.ticketNumber === null) continue;
+    const key = `${handOff.repo.toLowerCase()}#${String(handOff.ticketNumber)}`;
+    const current = best.get(key);
+    if (
+      current === undefined ||
+      handOffRank(handOff) < handOffRank(current) ||
+      (handOffRank(handOff) === handOffRank(current) && Date.parse(handOff.createdAt) > Date.parse(current.createdAt))
+    ) {
+      best.set(key, handOff);
+    }
+  }
+  const kept = new Set(best.values());
+  return records.filter((handOff) => handOff.ticketNumber === null || kept.has(handOff));
+}
+
 export function handOffStorePath(home = homedir()): string {
   return join(home, '.wayfinder-map', 'hand-offs.json');
 }
@@ -615,7 +644,7 @@ export class HandOffTracker {
     await this.refresh();
     const records = await this.store.list();
     return {
-      handOffs: records.map((item) => this.toDto(item)),
+      handOffs: representativeHandOffs(records.map((item) => this.toDto(item))),
       t3: { available: this.online, checkedAt: this.checkedAt },
     };
   }
