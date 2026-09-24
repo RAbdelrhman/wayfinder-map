@@ -36,7 +36,7 @@ import { mountSettings } from './settings.js';
 import type { NavigationController, NavigationView } from './navigation.js';
 import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
 import { recordMapOpened } from './homeRecency.js';
-import { handOffCardHtml, handOffPill, handOffPresentation, mountHandOffs } from './handOffs.js';
+import { cardShowsHandOff, handOffCardHtml, handOffPill, handOffPresentation, mountHandOffs } from './handOffs.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -447,8 +447,7 @@ function nodeHtml(ticket: Ticket | OutsideTicket, position: PositionedNode): str
     <span class="node-top">
       ${typeGlyph(ticket.type)}
       <span class="num">#${String(ticket.number)}</span>
-      ${stateChip(ticket.state)}
-      ${handOff === undefined ? '' : handOffPill(handOff, true)}
+      ${cardShowsHandOff(ticket.state, handOff) ? handOffPill(handOff, true) : stateChip(ticket.state)}
     </span>
     <span class="title">${escapeHtml(ticket.title)}</span>
     <span class="meta">${escapeHtml(meta)}</span>
