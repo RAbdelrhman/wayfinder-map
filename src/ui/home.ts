@@ -21,7 +21,7 @@ import { mountSettings } from './settings.js';
 import type { NavigationController, NavigationPage } from './navigation.js';
 import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
 import { homeLoadingMarkup, readHomeShape, rememberHomeShape, renderHomeLanding } from './homeLanding.js';
-import { handOffCardHtml, handOffPresentation, homeHandOffHistoryHtml, mountHandOffs } from './handOffs.js';
+import { handOffCardHtml, handOffPresentation, homeHandOffHistoryHtml, mountHandOffs, recentHandOffs } from './handOffs.js';
 import { countRunningHandOffs, mapMatchesRepositoryFilter, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml } from './repositoryView.js';
 import type { RepositoryHandOffStatus, RepositoryMapFilter } from './repositoryView.js';
 
@@ -43,11 +43,9 @@ function renderHomeHandOffHistory(records: readonly HandOffStatusDto[]): void {
   const section = document.getElementById('home-handoff-history-section');
   const list = document.getElementById('home-handoff-history-list');
   if (!(section instanceof HTMLElement) || !(list instanceof HTMLElement)) return;
-  const history = records
-    .filter((handOff) => handOff.acknowledged && handOff.threadId !== null && handOffPresentation(handOff).terminal)
-    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  const history = recentHandOffs(records);
   const key = history
-    .map((handOff) => `${handOff.id}:${handOff.status}:${String(handOff.stale)}:${handOff.repo}:${handOff.title ?? ''}:${handOff.pullRequests.map((pullRequest) => pullRequest.url).join(',')}`)
+    .map((handOff) => `${handOff.id}:${handOff.status}:${String(handOff.stale)}:${handOff.repo}:${handOff.title ?? ''}:${handOff.pullRequests.map((pullRequest) => `${pullRequest.url}=${pullRequest.state ?? ''}`).join(',')}`)
     .join('|');
   if (key === homeHandOffHistoryKey) return;
   homeHandOffHistoryKey = key;

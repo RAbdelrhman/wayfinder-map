@@ -135,7 +135,7 @@ export function homeErrorMarkup(message: string, recentRepositories: readonly st
 }
 
 function handOffHistorySection(): string {
-  return '<section id="home-handoff-history-section" aria-labelledby="home-handoff-history-heading" hidden><div class="wf-label" id="home-handoff-history-heading">Recent hand-offs<span class="grow"></span><span class="wf-label-note">Kept for 30 days</span></div><div class="home-handoff-history-list" id="home-handoff-history-list"></div></section>';
+  return '<section id="home-handoff-history-section" aria-labelledby="home-handoff-history-heading" hidden><div class="wf-label" id="home-handoff-history-heading">Recent hand-offs</div><div class="home-handoff-history-list" id="home-handoff-history-list"></div></section>';
 }
 
 function workItemMarkup(item: HomeWorkItem, extra: boolean): string {

@@ -363,6 +363,39 @@ describe('HandOffTracker', () => {
     }
   });
 
+  it('asks GitHub whether a T3-reported pull request merged, and keeps the answer across T3 updates', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    const url = 'https://github.com/octo/one/pull/42';
+    const lookupPullRequestState = vi.fn(async () => ({ state: 'MERGED', mergedAt: '2026-09-24T12:00:00Z' }));
+    const tracker = new HandOffTracker(
+      store,
+      {
+        readHandOffSnapshot: async () => ({
+          environmentId: 'env-1',
+          origin: input.t3Origin ?? '',
+          snapshot: { snapshotSequence: 3, threads: [{ id: 'thread-1', projectId: 'project-1', pullRequests: [{ number: 42, url }] }] },
+        }),
+      },
+      { lookupPullRequestState, lookupPullRequests: async () => [] },
+    );
+
+    try {
+      await tracker.snapshot();
+      await vi.waitFor(async () => {
+        await expect(store.list()).resolves.toMatchObject([{ pullRequests: [{ url, state: 'MERGED', mergedAt: '2026-09-24T12:00:00Z' }] }]);
+      });
+      // T3 Code reports the same pull request again, still without a state.
+      await store.applySnapshot('env-1', input.t3Origin ?? '', { snapshotSequence: 4, threads: [{ id: 'thread-1', projectId: 'project-1', pullRequests: [{ number: 42, url }] }] });
+      await expect(store.list()).resolves.toMatchObject([{ pullRequests: [{ url, state: 'MERGED' }] }]);
+      // Merged pull requests are not looked up again.
+      await tracker.snapshot();
+      expect(lookupPullRequestState).toHaveBeenCalledTimes(1);
+    } finally {
+      tracker.close();
+    }
+  });
+
   it('serves one hand-off per ticket, the thread T3 Code is running', async () => {
     const store = new HandOffStore({ filePath: null });
     await store.record(input);
