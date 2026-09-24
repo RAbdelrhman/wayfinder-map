@@ -2431,13 +2431,6 @@ textarea.input {
   z-index: 1;
 }
 
-:root[data-theme="light"] .repo-monogram-svg,
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .repo-monogram-svg {
-    filter: brightness(0.85) contrast(1.1);
-  }
-}
-
 .repo-option {
   display: flex;
   align-items: center;
