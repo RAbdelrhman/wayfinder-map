@@ -241,9 +241,14 @@ export function mapT3Status(thread: unknown): MappedT3Thread | null {
   };
 }
 
-/** Lower is better: a thread T3 Code has moved past starting, then one still starting, then one that failed. */
+/**
+ * Lower is better: a live thread T3 Code has moved past starting, then one still starting, then one
+ * that finished, then one that failed. A retry that is still starting outranks the finished thread
+ * before it, because it is the one that is live (#98).
+ */
 function handOffRank(handOff: HandOffStatusDto): number {
-  if (handOff.threadId === null || handOff.status === 'failed' || handOff.status === 'interrupted') return 2;
+  if (handOff.threadId === null || handOff.status === 'failed' || handOff.status === 'interrupted') return 3;
+  if (handOff.status === 'finished') return 2;
   return handOff.status === 'starting' ? 1 : 0;
 }
 
@@ -684,10 +689,13 @@ export class HandOffTracker {
     return this.store.acknowledge(id);
   }
 
-  /** The ticket's live hand-off, read after a fresh look at T3 Code, if it has one. */
+  /** The ticket's live hand-off, read from every stored record after a fresh look at T3 Code, if it has one. */
   async liveTicketHandOff(repo: string, ticketNumber: number): Promise<HandOffStatusDto | undefined> {
-    const { handOffs } = await this.snapshot();
-    return handOffs.find((item) => item.repo.toLowerCase() === repo.toLowerCase() && item.ticketNumber === ticketNumber && isLiveHandOff(item));
+    this.start();
+    await this.refresh();
+    const records = await this.store.list();
+    const live = records.find((item) => item.repo.toLowerCase() === repo.toLowerCase() && item.ticketNumber === ticketNumber && isLiveHandOff(item));
+    return live === undefined ? undefined : this.toDto(live);
   }
 
   close(): void {

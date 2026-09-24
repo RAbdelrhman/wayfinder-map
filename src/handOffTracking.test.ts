@@ -85,6 +85,13 @@ describe('representativeHandOffs', () => {
     expect(ids([dto('older'), newer])).toEqual(['newer']);
   });
 
+  it('prefers a live retry over the finished thread before it', () => {
+    const finished = dto('finished', { status: 'finished' });
+    const retry = dto('retry', { status: 'starting', createdAt: '2026-09-23T09:00:00.000Z' });
+    expect(ids([finished, retry])).toEqual(['retry']);
+    expect(ids([retry, finished])).toEqual(['retry']);
+  });
+
   it('groups by repository and ticket, and leaves map hand-offs alone', () => {
     const records = [
       dto('a'),

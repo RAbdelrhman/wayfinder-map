@@ -640,7 +640,13 @@ describe('local clone for a hand-off', () => {
         readHandOffSnapshot: async () => ({
           environmentId: 't3-env',
           origin: 'http://127.0.0.1:3773',
-          snapshot: { threads: [...sessions].map(([id, status]) => ({ id, session: { status } })) },
+          snapshot: {
+            threads: [...sessions].map(([id, status]) =>
+              status === 'finished'
+                ? { id, session: { status: 'ready' }, latestTurn: { state: 'completed', settledAt: '2026-09-24T00:00:00.000Z' } }
+                : { id, session: { status } },
+            ),
+          },
         }),
         subscribeShell: async () => () => undefined,
       };
@@ -671,10 +677,15 @@ describe('local clone for a hand-off', () => {
         });
         expect(startThread).toHaveBeenCalledTimes(1);
 
-        sessions.set('thread-1', 'error');
+        sessions.set('thread-1', 'finished');
         const again = await start(running.url);
         expect(again.status).toBe(200);
         await expect(again.json()).resolves.toMatchObject({ threadId: 'thread-2' });
+        expect(startThread).toHaveBeenCalledTimes(2);
+
+        // The retry is live even while it is still starting and the thread before it has ended.
+        sessions.set('thread-2', 'starting');
+        expect((await start(running.url)).status).toBe(409);
         expect(startThread).toHaveBeenCalledTimes(2);
       } finally {
         await new Promise<void>((resolve) => running.server.close(() => resolve()));
