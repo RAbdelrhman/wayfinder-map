@@ -43,7 +43,6 @@ export function readHomeRecency(storage: HomeStorage): HomeRecency {
           .map((value) => normalizeRepo(value))
           .filter((value): value is string => value !== null)
           .filter((repo, index, all) => all.findIndex((candidate) => repoKey(candidate) === repoKey(repo)) === index)
-          .slice(0, 8)
       : [];
     const openedValue = readJson(storage.getItem(REPOSITORY_OPENED_KEY));
     const repositoryOpenedAt: Record<string, string> = {};
@@ -85,7 +84,7 @@ export function recordRepositoryOpened(repoValue: string, now: number, storage: 
   try {
     const current = readHomeRecency(storage);
     const openedAt = { ...current.repositoryOpenedAt, [repoKey(repo)]: new Date(now).toISOString() };
-    const repositories = [repo, ...current.repositories.filter((candidate) => repoKey(candidate) !== repoKey(repo))].slice(0, 8);
+    const repositories = [repo, ...current.repositories.filter((candidate) => repoKey(candidate) !== repoKey(repo))];
     storage.setItem(RECENT_REPOSITORIES_KEY, JSON.stringify(repositories));
     storage.setItem(REPOSITORY_OPENED_KEY, JSON.stringify(openedAt));
   } catch {
