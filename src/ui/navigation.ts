@@ -158,6 +158,11 @@ function scopeMenuMarkup(id: string, label: string, repositories: readonly strin
   return `<div class="menu nav-popover" id="nav-menu-${id}" data-nav-menu="${id}" aria-label="${escapeHtml(label)}"${open ? '' : ' hidden'}><div class="menu-label">Switch repository</div><ul>${items}</ul></div>`;
 }
 
+/** Repository and map pages hand the sidebar their snapshot; /new-map has none, so the sidebar fetches the expanded repository's maps itself. */
+export function sidebarLoadsMaps(page: NavigationPage): boolean {
+  return page === 'new-map';
+}
+
 export function mountNavigation(options: NavigationOptions): NavigationController {
   const { shell, sidebar, topbar, topbarRoot } = options;
   const page = options.page;
@@ -184,6 +189,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   const expandedRepos = new Set<string>();
 
   if ((page === 'repository' || page === 'map' || page === 'new-map') && currentRepo !== null) expandedRepos.add(currentRepo);
+  if (sidebarLoadsMaps(page) && currentRepo !== null) void getMapSnapshot(currentRepo);
 
   const topbarActionJump = topbarRoot.querySelector<HTMLButtonElement>('#jump-to-top');
   const mapStartButton = topbarRoot.querySelector<HTMLButtonElement>('#map-start');
@@ -711,6 +717,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     setCurrentRepo(repo) {
       currentRepo = repo;
       if (repo !== null && (page === 'repository' || page === 'map' || page === 'new-map')) expandedRepos.add(repo);
+      if (repo !== null && sidebarLoadsMaps(page)) void getMapSnapshot(repo);
       render();
     },
     setActiveView(view) {

@@ -2965,19 +2965,20 @@ textarea.input {
 /* ---------- goal-first new-map composer ---------- */
 
 .new-map-stage {
+  --new-map-control-height: 30px;
   width: min(100%, 720px);
   margin: 0 auto;
   padding: 42px 0 64px;
 }
 
+/* Heading, composer, notes and examples all start on the stage's left edge. */
 .new-map-stage > h1 {
-  margin: 0 0 18px;
+  margin: 0 0 16px;
   color: var(--text-primary);
   font-size: 19px;
   font-weight: 600;
   line-height: 1.4;
   letter-spacing: -0.02em;
-  text-align: center;
 }
 
 .new-map-composer {
@@ -2998,7 +2999,7 @@ textarea.input {
   width: 100%;
   height: 104px;
   min-height: 104px;
-  padding: 12px 14px 4px;
+  padding: 12px 8px 4px;
   resize: none;
   overflow: auto;
   border: 0;
@@ -3018,20 +3019,42 @@ textarea.input {
 .new-map-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 8px;
   flex-wrap: wrap;
   padding: 6px 8px 8px;
 }
 
+/* One row of chips on the left; Copy prompt and Start map together on the right. */
+.new-map-chips,
+.new-map-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.new-map-chips {
+  flex: 1 1 auto;
+}
+
+.new-map-actions {
+  flex: none;
+  margin-left: auto;
+}
+
 .new-map-control {
   position: relative;
+  display: flex;
   min-width: 0;
 }
 
 .new-map-chip {
   display: inline-flex;
-  min-height: 30px;
-  max-width: 280px;
+  height: var(--new-map-control-height);
+  min-width: 0;
+  max-width: 240px;
+  flex: none;
   align-items: center;
   justify-content: flex-start;
   gap: 6px;
@@ -3042,9 +3065,18 @@ textarea.input {
   color: var(--text-secondary);
   font: inherit;
   font-size: 12px;
-  line-height: 1.35;
+  line-height: 1;
+  white-space: nowrap;
   text-align: left;
   cursor: pointer;
+}
+
+.new-map-repo-control {
+  flex: 0 1 auto;
+}
+
+.new-map-repo-control .new-map-chip {
+  flex: 0 1 auto;
 }
 
 .new-map-chip:hover,
@@ -3067,7 +3099,12 @@ textarea.input {
   flex: none;
 }
 
-.new-map-chip-label,
+.new-map-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .new-map-option-name {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -3088,14 +3125,11 @@ textarea.input {
   color: var(--handoff-needs-you);
 }
 
-.new-map-toolbar-spacer {
-  flex: 1;
-  min-width: 8px;
-}
-
 .new-map-action {
-  min-height: 30px;
-  padding: 6px 10px;
+  height: var(--new-map-control-height);
+  padding: 0 12px;
+  font-size: 12px;
+  line-height: 1;
   white-space: nowrap;
 }
 
@@ -3106,7 +3140,7 @@ textarea.input {
 
 .new-map-intent {
   margin: 0;
-  padding: 1px 12px 9px;
+  padding: 0 8px 9px;
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.45;
@@ -3177,7 +3211,8 @@ textarea.input {
 .new-map-examples {
   display: grid;
   gap: 4px;
-  margin-top: 28px;
+  /* Bleed the hover wash so the title and example icons sit on the stage edge. */
+  margin: 32px -9px 0;
 }
 
 .new-map-examples h2 {
@@ -3331,12 +3366,17 @@ textarea.input {
     padding: 50px 8px 64px;
   }
 
-  .new-map-toolbar-spacer {
-    display: none;
+  .new-map-chips {
+    flex-wrap: wrap;
+  }
+
+  .new-map-actions {
+    width: 100%;
   }
 
   .new-map-action {
     flex: 1;
+    justify-content: center;
   }
 
   .new-map-clone-panel {

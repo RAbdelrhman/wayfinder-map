@@ -4,7 +4,7 @@ import type { ModelCatalog, ModelChoice } from '../models.js';
 import { escapeHtml } from './markdown.js';
 import { liveChoice, TIER_HINT, TIER_LABEL, tierDefaults, TIERS } from './models.js';
 import type { Tier } from './models.js';
-import { composerState, consumeNewMapRetryGoal, DEFAULT_NEW_MAP_TIER, initialRepository, NEW_MAP_EXAMPLES, repositoryOptions } from './newMap.js';
+import { composerState, consumeNewMapRetryGoal, DEFAULT_NEW_MAP_TIER, initialRepository, NEW_MAP_EXAMPLES, repoChipLabel, repositoryOptions } from './newMap.js';
 import type { WorkspaceView } from './newMap.js';
 import { paintIcons, repoIconHtml } from './chrome.js';
 import * as icons from './icons.js';
@@ -87,22 +87,25 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
       <label class="new-map-visually-hidden" for="new-map-goal">Goal</label>
       <textarea id="new-map-goal" aria-label="Goal" placeholder="Describe a goal. T3 Code interviews you about it, then drafts the map.">${escapeHtml(initialGoal)}</textarea>
       <div class="new-map-toolbar">
-        <div class="new-map-control new-map-repo-control">
-          <button type="button" class="new-map-chip" id="repo-chip" aria-haspopup="listbox" aria-expanded="false" aria-controls="repo-options"></button>
-          <div class="new-map-popover new-map-repo-popover" id="repo-menu" hidden>
-            <label class="new-map-visually-hidden" for="repo-search">Search repositories</label>
-            <input class="input new-map-search" id="repo-search" type="search" placeholder="Search repositories" autocomplete="off" spellcheck="false" />
-            <div class="new-map-options" id="repo-options" role="listbox" aria-label="Repositories"></div>
+        <div class="new-map-chips">
+          <div class="new-map-control new-map-repo-control">
+            <button type="button" class="new-map-chip" id="repo-chip" aria-haspopup="listbox" aria-expanded="false" aria-controls="repo-options"></button>
+            <div class="new-map-popover new-map-repo-popover" id="repo-menu" hidden>
+              <label class="new-map-visually-hidden" for="repo-search">Search repositories</label>
+              <input class="input new-map-search" id="repo-search" type="search" placeholder="Search repositories" autocomplete="off" spellcheck="false" />
+              <div class="new-map-options" id="repo-options" role="listbox" aria-label="Repositories"></div>
+            </div>
+          </div>
+          <button type="button" class="new-map-chip new-map-clone-chip" id="clone-chip" aria-controls="map-clone" aria-expanded="false" hidden></button>
+          <div class="new-map-control new-map-model-control">
+            <button type="button" class="new-map-chip is-quiet" id="model-chip" aria-haspopup="listbox" aria-expanded="false" aria-controls="model-menu"></button>
+            <div class="new-map-popover new-map-model-popover" id="model-menu" role="listbox" aria-label="Model tier" hidden></div>
           </div>
         </div>
-        <button type="button" class="new-map-chip new-map-clone-chip" id="clone-chip" aria-controls="map-clone" aria-expanded="false" hidden></button>
-        <div class="new-map-control new-map-model-control">
-          <button type="button" class="new-map-chip is-quiet" id="model-chip" aria-haspopup="listbox" aria-expanded="false" aria-controls="model-menu"></button>
-          <div class="new-map-popover new-map-model-popover" id="model-menu" role="listbox" aria-label="Model tier" hidden></div>
+        <div class="new-map-actions">
+          <button type="button" class="ghost new-map-action" id="map-copy-btn" disabled>${icon(icons.COPY)}Copy prompt</button>
+          <button type="button" class="primary new-map-action" id="map-start-btn" disabled aria-describedby="map-note">Start map${icon(icons.ARROW)}</button>
         </div>
-        <span class="new-map-toolbar-spacer"></span>
-        <button type="button" class="ghost new-map-action" id="map-copy-btn" disabled>${icon(icons.COPY)}Copy prompt</button>
-        <button type="button" class="primary new-map-action" id="map-start-btn" disabled aria-describedby="map-note">Start map${icon(icons.ARROW)}</button>
       </div>
       <p class="new-map-intent" id="map-note" role="status" aria-live="polite" hidden></p>
     </div>
@@ -168,8 +171,10 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
   function renderRepositoryChip(): void {
     repoChip.innerHTML = repo === null
       ? `${icon(icons.REPO)}<span>Choose a repository</span>${icon(icons.CHEVRON)}`
-      : `${repoIconHtml(repo, 'sm')}<span class="new-map-chip-label">${escapeHtml(repo)}</span>${icon(icons.CHEVRON)}`;
+      : `${repoIconHtml(repo, 'sm')}<span class="new-map-chip-label">${escapeHtml(repoChipLabel(repo))}</span>${icon(icons.CHEVRON)}`;
     repoChip.setAttribute('aria-label', repo === null ? 'Choose a repository' : `Repository ${repo}`);
+    if (repo === null) repoChip.removeAttribute('title');
+    else repoChip.title = repo;
     paintIcons(repoChip);
   }
 
