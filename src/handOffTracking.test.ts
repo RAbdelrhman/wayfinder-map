@@ -134,6 +134,56 @@ describe('HandOffStore', () => {
     now = new Date('2026-10-03T00:00:00.000Z');
     await expect(store.list()).resolves.toHaveLength(0);
   });
+  it('drops a hand-off whose thread is gone from a snapshot of the same environment', async () => {
+    const store = new HandOffStore({ filePath: null, now: () => new Date('2026-09-01T00:00:00.000Z') });
+    await store.record(input);
+    const other = await store.record({ ...input, ticketNumber: 12, threadId: 'thread-2' });
+    await store.applySnapshot('env-1', input.t3Origin ?? '', {
+      snapshotSequence: 1,
+      threads: [{ id: 'thread-1' }, { id: 'thread-2' }],
+    });
+
+    await store.applySnapshot('env-2', 'http://127.0.0.1:4000', { snapshotSequence: 2, threads: [] });
+    await expect(store.list()).resolves.toHaveLength(2);
+
+    await store.applySnapshot('env-1', input.t3Origin ?? '', {
+      snapshotSequence: 2,
+      threads: [{ id: 'thread-1', deletedAt: '2026-09-01T00:00:00.000Z' }, { id: 'thread-2' }],
+    });
+    await expect(store.list()).resolves.toMatchObject([{ id: other.id }]);
+
+    await store.applySnapshot('env-1', input.t3Origin ?? '', { snapshotSequence: 3, threads: [] });
+    await expect(store.list()).resolves.toHaveLength(0);
+  });
+
+  it('gives a hand-off T3 has not shown yet a grace period before treating it as deleted', async () => {
+    let now = new Date('2026-09-01T00:00:00.000Z');
+    const store = new HandOffStore({ filePath: null, now: () => now });
+    await store.record(input);
+    await store.applySnapshot('env-1', input.t3Origin ?? '', { snapshotSequence: 1, threads: [] });
+    await expect(store.list()).resolves.toHaveLength(1);
+
+    now = new Date('2026-09-01T00:05:00.000Z');
+    await store.applySnapshot('env-1', input.t3Origin ?? '', { snapshotSequence: 2, threads: [] });
+    await expect(store.list()).resolves.toHaveLength(0);
+  });
+
+  it('ignores a missing thread in a snapshot older than the last one seen', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    await store.applySnapshot('env-1', input.t3Origin ?? '', { snapshotSequence: 10, threads: [{ id: 'thread-1' }] });
+    await store.applySnapshot('env-1', input.t3Origin ?? '', { snapshotSequence: 9, threads: [] });
+    await expect(store.list()).resolves.toHaveLength(1);
+  });
+
+  it('drops a hand-off when T3 streams thread-removed for its thread', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    await store.applyEvent('env-2', 'http://127.0.0.1:4000', { kind: 'thread-removed', sequence: 5, threadId: 'thread-1' });
+    await expect(store.list()).resolves.toHaveLength(1);
+    await store.applyEvent('env-1', input.t3Origin ?? '', { kind: 'thread-removed', sequence: 5, threadId: 'thread-1' });
+    await expect(store.list()).resolves.toHaveLength(0);
+  });
 });
 
 describe('HandOffTracker', () => {
@@ -150,6 +200,31 @@ describe('HandOffTracker', () => {
       const snapshot = await tracker.snapshot();
       expect(snapshot.t3.available).toBe(false);
       expect(snapshot.handOffs).toMatchObject([{ status: 'starting', stale: true, threadId: 'thread-1' }]);
+    } finally {
+      tracker.close();
+    }
+  });
+
+  it('keeps a stale hand-off while T3 Code is offline and drops it once T3 reports the thread deleted', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    let online = false;
+    let threads: unknown[] = [{ id: 'thread-1', session: { status: 'running' } }];
+    const tracker = new HandOffTracker(store, {
+      readHandOffSnapshot: async () => {
+        if (!online) throw new Error('T3 Code is not running');
+        return { environmentId: 'env-1', origin: input.t3Origin ?? '', snapshot: { snapshotSequence: 1, threads } };
+      },
+    });
+
+    try {
+      online = true;
+      await expect(tracker.snapshot()).resolves.toMatchObject({ handOffs: [{ status: 'running', stale: false }] });
+      online = false;
+      threads = [];
+      await expect(tracker.snapshot()).resolves.toMatchObject({ handOffs: [{ status: 'running', stale: true }] });
+      online = true;
+      await expect(tracker.snapshot()).resolves.toMatchObject({ handOffs: [], t3: { available: true } });
     } finally {
       tracker.close();
     }
@@ -175,7 +250,7 @@ describe('HandOffTracker', () => {
     try {
       const snapshot = await tracker.snapshot();
       expect(subscribeShell).toHaveBeenCalledWith(10, expect.any(Function), expect.any(Function));
-      deliver({ type: 'thread-upserted', sequence: 11, thread: { id: 'thread-1', projectId: 'project-1', hasPendingUserInput: true } });
+      deliver({ kind: 'thread-upserted', sequence: 11, thread: { id: 'thread-1', projectId: 'project-1', hasPendingUserInput: true } });
       await vi.waitFor(async () => {
         const current = await store.list();
         expect(current[0]?.status).toBe('waiting');
