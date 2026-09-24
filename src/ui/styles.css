@@ -4507,6 +4507,15 @@ textarea.input {
   line-height: 1.45;
 }
 
+/* "Loading maps…" holds one map row's height, so a one-map repository opens without a jump */
+.kids .nav-tree-status {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding-block: 0;
+  box-sizing: border-box;
+}
+
 .nav-retry {
   margin: 2px 8px 6px;
   padding: 2px 8px;
@@ -5533,8 +5542,9 @@ textarea.input {
   margin: 0;
 }
 
-/* loading placeholders in the same shapes */
+/* loading placeholders: the loaded markup with its words swapped for bars (skeleton.ts) */
 .wf-skeleton {
+  display: block;
   border-radius: 12px;
   background: linear-gradient(100deg, var(--surface-1) 30%, var(--wash) 50%, var(--surface-1) 70%);
   background-size: 300% 100%;
@@ -5542,25 +5552,83 @@ textarea.input {
   animation: wf-shimmer 1.4s ease-in-out infinite;
 }
 
-.wf-skeleton.is-card {
-  height: 210px;
+.wf-skeleton.is-fill {
+  flex: 1;
+  min-height: 0;
+  margin-top: 14px;
+  border-radius: 10px;
 }
 
-.wf-skeleton.is-lanes {
-  height: 110px;
+.wf-bone {
+  position: relative;
+  display: inline-block;
+  width: var(--w, 60%);
+  max-width: 100%;
+  color: transparent;
+  user-select: none;
 }
 
-.wf-skeleton.is-search {
-  height: 38px;
-  margin-bottom: 10px;
+.wf-bone::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 0.72em;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text-muted) 20%, transparent);
+  transform: translateY(-50%);
+  animation: wf-bone-pulse 1.4s ease-in-out infinite;
 }
 
-.wf-skeleton.is-list {
-  height: 280px;
+.wf-bone.is-button,
+.wf-bone.is-block {
+  flex: none;
+  height: 34px;
 }
 
-.wf-skeleton.is-progress {
-  height: 620px;
+.wf-bone.is-button::before,
+.wf-bone.is-block::before {
+  top: 0;
+  height: 100%;
+  border-radius: 8px;
+  transform: none;
+}
+
+.wf-map .row2 .wf-bone.is-button,
+.wf-proto .acts .wf-bone.is-button {
+  height: 30px;
+}
+
+.wf-repo .wf-bone.is-block {
+  width: 20px;
+  height: 20px;
+}
+
+.wf-repo .wf-bone.is-block::before {
+  border-radius: 5px;
+}
+
+.wf-lanes.is-skeleton .wf-lane {
+  grid-auto-rows: 1fr;
+  grid-template-rows: auto;
+  align-content: stretch;
+}
+
+.wf-lanes.is-skeleton .wf-none {
+  align-self: start;
+}
+
+.progress-panel.is-skeleton {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+@keyframes wf-bone-pulse {
+  50% {
+    opacity: 0.45;
+  }
 }
 
 @keyframes wf-shimmer {
@@ -5829,7 +5897,8 @@ textarea.input {
 
 @media (prefers-reduced-motion: reduce) {
   .mini-graph .is-frontier,
-  .wf-skeleton {
+  .wf-skeleton,
+  .wf-bone::before {
     animation: none;
   }
 

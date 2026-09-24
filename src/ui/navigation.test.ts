@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MapSnapshot, OutsideTicket, Ticket, WayfinderMap } from '../types.js';
-import { createJumpDestinations, navFooterHtml, prototypeCountBadge, repoLabel, sidebarLoadsMaps, viewFromQuery } from './navigation.js';
+import { createJumpDestinations, loadingMapRows, navFooterHtml, prototypeCountBadge, repoLabel, sidebarLoadsMaps, viewFromQuery } from './navigation.js';
 
 function ticket(number: number, title: string): Ticket {
   return {
@@ -129,6 +129,19 @@ describe('repoLabel', () => {
 
     expect(repoLabel('octo/wayfinder', repos)).toBe('wayfinder');
     expect(repoLabel('team/FRC2026', repos)).toBe('team/FRC2026');
+  });
+});
+
+describe('loadingMapRows', () => {
+  it('reserves a row for each map the repository had last time, capped at twelve', () => {
+    const count = (html: string): number => html.match(/<li class="nav-tree-status"/g)?.length ?? 0;
+
+    expect(count(loadingMapRows(undefined))).toBe(1);
+    expect(count(loadingMapRows(0))).toBe(1);
+    expect(loadingMapRows(3)).toContain('Loading maps…');
+    expect(count(loadingMapRows(3))).toBe(3);
+    expect(loadingMapRows(3).match(/aria-hidden="true"/g)).toHaveLength(2);
+    expect(count(loadingMapRows(40))).toBe(12);
   });
 });
 

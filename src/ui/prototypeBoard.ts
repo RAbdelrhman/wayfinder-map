@@ -1,6 +1,7 @@
 import type { Prototype, Ticket, WayfinderMap } from '../types.js';
 import { prototypeFileUrl, prototypeShotUrl } from '../prototypes.js';
 import { escapeHtml } from './markdown.js';
+import { bone, boneButton } from './skeleton.js';
 import { previewUrl, verdictGist } from './prototypeTile.js';
 
 export type PrototypeDecisionState = 'waiting' | 'building' | 'decided';
@@ -241,8 +242,15 @@ export function prototypeBoardHtml(repo: string, map: WayfinderMap, prototypes: 
     .join('')}</div></div>`;
 }
 
+const PROTOTYPE_CARD_SKELETON = `<section class="wf-node wf-proto is-skeleton">
+    <div class="h"><span class="chip">${bone('110px')}</span><span class="wf-proto-title">${bone('50%')}</span><span class="acts">${boneButton('84px')}</span></div>
+    <p class="gist">${bone('80%')}</p>
+    <div class="wf-strip">${`<span class="wf-var"><span class="wf-frame"></span><span class="lbl">${bone('60%')}</span></span>`.repeat(4)}</div>
+  </section>`;
+
+/** Prototypes before the branch list arrives: two cards in the loaded board's frame. */
 export function prototypeBoardLoadingHtml(): string {
-  return '<p class="empty decision-board-status" role="status" aria-live="polite">Looking for prototype branches…</p>';
+  return `<div class="wf-board-page is-loading" role="status" aria-live="polite" aria-label="Looking for prototype branches"><div class="wf-board" aria-hidden="true">${PROTOTYPE_CARD_SKELETON.repeat(2)}</div></div>`;
 }
 
 export function prototypeBoardErrorHtml(message: string): string {
