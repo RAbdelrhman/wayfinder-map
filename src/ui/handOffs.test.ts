@@ -85,3 +85,15 @@ describe('hand-off presentation', () => {
     expect(card).not.toContain('worktreePath');
   });
 });
+
+describe('Try again (#98)', () => {
+  it('leads to the ticket panel without starting a thread', () => {
+    const card = handOffCardHtml(handOff({ status: 'failed' }));
+    expect(card).toContain('data-handoff-href="/repos/octo/example/maps/5?ticket=11"');
+    expect(card).not.toContain('retry=1');
+  });
+
+  it('is left out of the ticket panel, which has its own start button', () => {
+    expect(handOffCardHtml(handOff({ status: 'failed' }), false, false, false)).not.toContain('Try again');
+  });
+});

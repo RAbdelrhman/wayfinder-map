@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { HandOffStore, HandOffTracker, mapT3Status } from './handOffTracking.js';
+import { HandOffStore, HandOffTracker, mapT3Status, representativeHandOffs, type HandOffStatusDto } from './handOffTracking.js';
 
 const input = {
   repo: 'octo/one',
@@ -41,6 +41,67 @@ describe('mapT3Status', () => {
       branch: 'wayfinder/11-retire-api-agents-2',
       pullRequests: [{ number: 23, url: 'https://github.com/octo/one/pull/23', state: 'open' }],
     });
+  });
+});
+
+describe('representativeHandOffs', () => {
+  const dto = (id: string, overrides: Partial<HandOffStatusDto> = {}): HandOffStatusDto => ({
+    id,
+    repo: 'octo/one',
+    mapNumber: 5,
+    mapTitle: null,
+    ticketNumber: 57,
+    title: 'Audit',
+    threadId: `thread-${id}`,
+    rung: 'thread',
+    status: 'running',
+    acknowledged: false,
+    createdAt: '2026-09-23T10:00:00.000Z',
+    updatedAt: '2026-09-23T10:05:00.000Z',
+    lastSeenAt: '2026-09-23T10:05:00.000Z',
+    stale: false,
+    sequence: null,
+    branch: null,
+    pendingApproval: false,
+    pendingUserInput: false,
+    pullRequests: [],
+    ...overrides,
+  });
+  const ids = (records: HandOffStatusDto[]): string[] => representativeHandOffs(records).map((handOff) => handOff.id);
+
+  it('keeps the running thread over a newer duplicate stuck at starting', () => {
+    const running = dto('first');
+    const stuck = dto('second', { status: 'starting', createdAt: '2026-09-23T10:00:38.000Z', updatedAt: '2026-09-23T10:06:00.000Z' });
+    expect(ids([running, stuck])).toEqual(['first']);
+    expect(ids([stuck, running])).toEqual(['first']);
+  });
+
+  it('prefers a starting retry over a failed attempt, and the newest among equals', () => {
+    const failed = dto('failed', { status: 'failed' });
+    const noThread = dto('no-thread', { threadId: null, status: 'starting' });
+    const retry = dto('retry', { status: 'starting', createdAt: '2026-09-23T09:00:00.000Z' });
+    expect(ids([failed, noThread, retry])).toEqual(['retry']);
+    const newer = dto('newer', { status: 'waiting', createdAt: '2026-09-23T11:00:00.000Z' });
+    expect(ids([dto('older'), newer])).toEqual(['newer']);
+  });
+
+  it('prefers a live retry over the finished thread before it', () => {
+    const finished = dto('finished', { status: 'finished' });
+    const retry = dto('retry', { status: 'starting', createdAt: '2026-09-23T09:00:00.000Z' });
+    expect(ids([finished, retry])).toEqual(['retry']);
+    expect(ids([retry, finished])).toEqual(['retry']);
+  });
+
+  it('groups by repository and ticket, and leaves map hand-offs alone', () => {
+    const records = [
+      dto('a'),
+      dto('b', { repo: 'OCTO/one', status: 'starting' }),
+      dto('other-ticket', { ticketNumber: 58 }),
+      dto('other-repo', { repo: 'octo/two' }),
+      dto('map-1', { ticketNumber: null }),
+      dto('map-2', { ticketNumber: null }),
+    ];
+    expect(ids(records)).toEqual(['a', 'other-ticket', 'other-repo', 'map-1', 'map-2']);
   });
 });
 
@@ -134,6 +195,56 @@ describe('HandOffStore', () => {
     now = new Date('2026-10-03T00:00:00.000Z');
     await expect(store.list()).resolves.toHaveLength(0);
   });
+  it('drops a hand-off whose thread is gone from a snapshot of the same environment', async () => {
+    const store = new HandOffStore({ filePath: null, now: () => new Date('2026-09-01T00:00:00.000Z') });
+    await store.record(input);
+    const other = await store.record({ ...input, ticketNumber: 12, threadId: 'thread-2' });
+    await store.applySnapshot('env-1', input.t3Origin ?? '', {
+      snapshotSequence: 1,
+      threads: [{ id: 'thread-1' }, { id: 'thread-2' }],
+    });
+
+    await store.applySnapshot('env-2', 'http://127.0.0.1:4000', { snapshotSequence: 2, threads: [] });
+    await expect(store.list()).resolves.toHaveLength(2);
+
+    await store.applySnapshot('env-1', input.t3Origin ?? '', {
+      snapshotSequence: 2,
+      threads: [{ id: 'thread-1', deletedAt: '2026-09-01T00:00:00.000Z' }, { id: 'thread-2' }],
+    });
+    await expect(store.list()).resolves.toMatchObject([{ id: other.id }]);
+
+    await store.applySnapshot('env-1', input.t3Origin ?? '', { snapshotSequence: 3, threads: [] });
+    await expect(store.list()).resolves.toHaveLength(0);
+  });
+
+  it('gives a hand-off T3 has not shown yet a grace period before treating it as deleted', async () => {
+    let now = new Date('2026-09-01T00:00:00.000Z');
+    const store = new HandOffStore({ filePath: null, now: () => now });
+    await store.record(input);
+    await store.applySnapshot('env-1', input.t3Origin ?? '', { snapshotSequence: 1, threads: [] });
+    await expect(store.list()).resolves.toHaveLength(1);
+
+    now = new Date('2026-09-01T00:05:00.000Z');
+    await store.applySnapshot('env-1', input.t3Origin ?? '', { snapshotSequence: 2, threads: [] });
+    await expect(store.list()).resolves.toHaveLength(0);
+  });
+
+  it('ignores a missing thread in a snapshot older than the last one seen', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    await store.applySnapshot('env-1', input.t3Origin ?? '', { snapshotSequence: 10, threads: [{ id: 'thread-1' }] });
+    await store.applySnapshot('env-1', input.t3Origin ?? '', { snapshotSequence: 9, threads: [] });
+    await expect(store.list()).resolves.toHaveLength(1);
+  });
+
+  it('drops a hand-off when T3 streams thread-removed for its thread', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    await store.applyEvent('env-2', 'http://127.0.0.1:4000', { kind: 'thread-removed', sequence: 5, threadId: 'thread-1' });
+    await expect(store.list()).resolves.toHaveLength(1);
+    await store.applyEvent('env-1', input.t3Origin ?? '', { kind: 'thread-removed', sequence: 5, threadId: 'thread-1' });
+    await expect(store.list()).resolves.toHaveLength(0);
+  });
 });
 
 describe('HandOffTracker', () => {
@@ -150,6 +261,31 @@ describe('HandOffTracker', () => {
       const snapshot = await tracker.snapshot();
       expect(snapshot.t3.available).toBe(false);
       expect(snapshot.handOffs).toMatchObject([{ status: 'starting', stale: true, threadId: 'thread-1' }]);
+    } finally {
+      tracker.close();
+    }
+  });
+
+  it('keeps a stale hand-off while T3 Code is offline and drops it once T3 reports the thread deleted', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    let online = false;
+    let threads: unknown[] = [{ id: 'thread-1', session: { status: 'running' } }];
+    const tracker = new HandOffTracker(store, {
+      readHandOffSnapshot: async () => {
+        if (!online) throw new Error('T3 Code is not running');
+        return { environmentId: 'env-1', origin: input.t3Origin ?? '', snapshot: { snapshotSequence: 1, threads } };
+      },
+    });
+
+    try {
+      online = true;
+      await expect(tracker.snapshot()).resolves.toMatchObject({ handOffs: [{ status: 'running', stale: false }] });
+      online = false;
+      threads = [];
+      await expect(tracker.snapshot()).resolves.toMatchObject({ handOffs: [{ status: 'running', stale: true }] });
+      online = true;
+      await expect(tracker.snapshot()).resolves.toMatchObject({ handOffs: [], t3: { available: true } });
     } finally {
       tracker.close();
     }
@@ -175,7 +311,7 @@ describe('HandOffTracker', () => {
     try {
       const snapshot = await tracker.snapshot();
       expect(subscribeShell).toHaveBeenCalledWith(10, expect.any(Function), expect.any(Function));
-      deliver({ type: 'thread-upserted', sequence: 11, thread: { id: 'thread-1', projectId: 'project-1', hasPendingUserInput: true } });
+      deliver({ kind: 'thread-upserted', sequence: 11, thread: { id: 'thread-1', projectId: 'project-1', hasPendingUserInput: true } });
       await vi.waitFor(async () => {
         const current = await store.list();
         expect(current[0]?.status).toBe('waiting');
@@ -222,6 +358,27 @@ describe('HandOffTracker', () => {
         ]);
       });
       expect(lookupPullRequests).toHaveBeenCalledWith('octo/one', 'wayfinder/11-retire-api-agents');
+    } finally {
+      tracker.close();
+    }
+  });
+
+  it('serves one hand-off per ticket, the thread T3 Code is running', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    await store.record({ ...input, threadId: 'thread-2' });
+    const tracker = new HandOffTracker(store, {
+      readHandOffSnapshot: async () => ({
+        environmentId: 'env-1',
+        origin: input.t3Origin ?? '',
+        snapshot: { threads: [{ id: 'thread-1', projectId: 'project-1', session: { status: 'running' } }, { id: 'thread-2', projectId: 'project-1' }] },
+      }),
+    });
+
+    try {
+      expect(await store.list()).toHaveLength(2);
+      const snapshot = await tracker.snapshot();
+      expect(snapshot.handOffs).toMatchObject([{ threadId: 'thread-1', status: 'running' }]);
     } finally {
       tracker.close();
     }

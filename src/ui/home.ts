@@ -3,7 +3,7 @@ import type { AuthFlowState } from '../authFlow.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import { draftMapPath, normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import type { MapSnapshot, WayfinderMap } from '../types.js';
-import { bindTheme, bindUpdater, paintIcons, repoIconHtml, updateAccountMark } from './chrome.js';
+import { bindTheme, bindUpdater, paintIcons, paintRepoIcons, repoIconHtml, updateAccountMark } from './chrome.js';
 import type { AccountMark, AccountProfile } from './chrome.js';
 import * as icons from './icons.js';
 import { loadCatalog } from './models.js';
@@ -17,6 +17,7 @@ import { draftToMapPath, initialRepository, isNewMapHandOff } from './newMap.js'
 import type { NewMapHandOff } from './newMap.js';
 import { renderNewMapPage } from './newMapPage.js';
 import { mountNavigation } from './navigation.js';
+import { mountSettings } from './settings.js';
 import type { NavigationController, NavigationPage } from './navigation.js';
 import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
 import { homeLoadingMarkup, renderHomeLanding } from './homeLanding.js';
@@ -368,6 +369,7 @@ function bindRepoPicker(
                   `<li role="option" class="repo-option${index === active ? ' is-active' : ''}" aria-selected="${String(index === active)}" data-repo="${escapeHtml(repo)}">${repoIconHtml(repo, 'sm')}<span>${escapeHtml(repo)}</span></li>`,
               )
               .join('');
+      paintRepoIcons(menu);
       menu.querySelector('.is-active')?.scrollIntoView({ block: 'nearest' });
     }
     menu.hidden = false;
@@ -609,6 +611,7 @@ async function show(refresh = false): Promise<void> {
 paintIcons();
 bindTheme(need('theme'));
 bindUpdater(need('updater'), toast);
+mountSettings(need('settings'), toast);
 syncedButton().addEventListener('click', () => void show(true));
 document.addEventListener('visibilitychange', () => draftAutoRefresh?.visibilityChanged());
 window.addEventListener('pagehide', () => draftAutoRefresh?.stop());

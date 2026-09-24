@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MapSnapshot, OutsideTicket, Ticket, WayfinderMap } from '../types.js';
-import { createJumpDestinations, prototypeCountBadge, repoLabel, sidebarLoadsMaps, viewFromQuery } from './navigation.js';
+import { createJumpDestinations, navFooterHtml, prototypeCountBadge, repoLabel, sidebarLoadsMaps, viewFromQuery } from './navigation.js';
 
 function ticket(number: number, title: string): Ticket {
   return {
@@ -129,5 +129,15 @@ describe('repoLabel', () => {
 
     expect(repoLabel('octo/wayfinder', repos)).toBe('wayfinder');
     expect(repoLabel('team/FRC2026', repos)).toBe('team/FRC2026');
+  });
+});
+
+describe('sidebar footer', () => {
+  it('puts a labelled Settings button beside Updates and Theme on every page', () => {
+    for (const page of ['home', 'repository', 'new-map', 'map'] as const) {
+      const html = navFooterHtml(page);
+      expect(html).toContain('id="settings" class="rail-btn" aria-label="Settings" data-tip="Settings"');
+      expect(html.indexOf('id="theme"')).toBeLessThan(html.indexOf('id="settings"'));
+    }
   });
 });

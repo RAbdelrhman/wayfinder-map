@@ -1,7 +1,8 @@
 import type { MapSnapshot, WayfinderMap } from '../types.js';
-import { mapPath, normalizeRepo, repoPath, scopedApiPath } from '../repoRoutes.js';
+import { mapPath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { escapeHtml } from './markdown.js';
 import { clickedOutside } from './outsideClick.js';
+import { loadWayfinderRepositories } from './wayfinderRepositories.js';
 import { allTickets, miniRing, paintIcons, repoIconHtml } from './chrome.js';
 
 export type NavigationView = 'map' | 'table' | 'prototypes';
@@ -24,7 +25,7 @@ export interface NavigationOptions {
   repo: string | null;
   mapNumber: number | null;
   view: NavigationView;
-  onStartTicket?: (ticketNumber: number) => void;
+  onOpenTicket?: (ticketNumber: number) => void;
   onViewChange?: (view: NavigationView) => void;
 }
 
@@ -44,6 +45,20 @@ function iconName(name: string): string {
   return `<span class="i" data-icon="${name}" aria-hidden="true"></span>`;
 }
 
+
+/**
+ * The sidebar's footer, shared by the open sidebar and the folded rail: the account, then
+ * Updates, Theme and Settings. Settings holds the account panel and the app-wide preferences.
+ */
+export function navFooterHtml(page: NavigationPage): string {
+  return `<div class="nav-footer">
+    <span class="rail-mark nav-account" id="account-mark" role="img" aria-label="GitHub account, loading" title="GitHub account">…</span><span class="nav-account-label grow" id="account-label">GitHub account</span>
+    ${page === 'map' ? `<button type="button" id="models" class="rail-btn" aria-label="Model defaults" data-tip="Model defaults" title="Pick a T3 Code model for each task tier">${iconName('sliders')}</button>` : ''}
+    <button type="button" id="updater" class="rail-btn" aria-label="Check for updates" data-tip="Updates">${iconName('download')}</button>
+    <button type="button" id="theme" class="rail-btn" aria-label="Switch light and dark" data-tip="Theme">${iconName('moon')}</button>
+    <button type="button" id="settings" class="rail-btn" aria-label="Settings" data-tip="Settings">${iconName('gear')}</button>
+  </div>`;
+}
 
 export function viewFromQuery(value: string | null): NavigationView {
   return value === 'table' || value === 'prototypes' ? value : 'map';
@@ -121,6 +136,12 @@ function currentMap(snapshot: MapSnapshot | undefined, mapNumber: number | null)
 
 function mapHref(repo: string, map: WayfinderMap, view: NavigationView): string {
   return `${mapPath(repo, map.number)}?view=${view}`;
+}
+
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url} is unavailable.`);
+  return (await response.json()) as T;
 }
 
 function requireElement<T extends Element>(element: T | null, selector: string): T {
@@ -407,12 +428,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
         <span class="mini-sep" role="separator"></span>
         <ul class="mini-repos" aria-label="Repositories">${compactMarks}</ul>
       </div>
-      <div class="nav-footer">
-        <span class="rail-mark nav-account" id="account-mark" role="img" aria-label="GitHub account, loading" title="GitHub account">…</span><span class="nav-account-label grow" id="account-label">GitHub account</span>
-        ${page === 'map' ? `<button type="button" id="models" class="rail-btn" aria-label="Model defaults" data-tip="Model defaults" title="Pick a T3 Code model for each task tier">${iconName('sliders')}</button>` : ''}
-        <button type="button" id="updater" class="rail-btn" aria-label="Check for updates" data-tip="Updates">${iconName('download')}</button>
-        <button type="button" id="theme" class="rail-btn" aria-label="Switch light and dark" data-tip="Theme">${iconName('moon')}</button>
-      </div>
+      ${navFooterHtml(page)}
     </nav>`;
     if (existingFooter !== null) sidebar.querySelector('.nav-footer')?.replaceWith(existingFooter);
     const tree = sidebar.querySelector<HTMLElement>('.tree');
@@ -460,10 +476,10 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
       mapStartButton.hidden = page !== 'map' || startTicket === undefined;
       if (startTicket !== undefined) {
         mapStartButton.dataset['ticket'] = String(startTicket.number);
-        mapStartButton.setAttribute('aria-label', `Start #${String(startTicket.number)} in T3 Code`);
-        mapStartButton.title = `Start #${String(startTicket.number)} in T3 Code: ${startTicket.title}`;
+        mapStartButton.setAttribute('aria-label', `Open #${String(startTicket.number)}, the next ticket to start`);
+        mapStartButton.title = `Open #${String(startTicket.number)} to start it: ${startTicket.title}`;
         const label = mapStartButton.querySelector<HTMLElement>('.topbar-action-label');
-        if (label !== null) label.textContent = `Start #${String(startTicket.number)} in T3 Code`;
+        if (label !== null) label.textContent = `Next: #${String(startTicket.number)}`;
       }
     }
     if (topbarActionJump !== null) topbarActionJump.hidden = page !== 'map' || expanded;
@@ -504,12 +520,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
 
   async function loadRepositories(): Promise<void> {
     try {
-      const response = await fetch('/api/repositories');
-      if (!response.ok) throw new Error('Repository list unavailable.');
-      const body: unknown = await response.json();
-      const values = Array.isArray(body) ? body : [];
-      repositories = [...new Set(values.filter((value): value is string => typeof value === 'string').map((value) => normalizeRepo(value)).filter((value): value is string => value !== null))]
-        .sort((left, right) => left.localeCompare(right));
+      repositories = await loadWayfinderRepositories(localStorage, getJson);
       repositoryListLoaded = true;
       repositoryListFailed = false;
     } catch {
@@ -616,7 +627,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     }
     const start = target.closest<HTMLButtonElement>('#map-start');
     if (start !== null && start.dataset['ticket'] !== undefined) {
-      options.onStartTicket?.(Number(start.dataset['ticket']));
+      options.onOpenTicket?.(Number(start.dataset['ticket']));
       return;
     }
     const trigger = target.closest<HTMLButtonElement>('[data-nav-menu-trigger]');

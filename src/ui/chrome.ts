@@ -23,6 +23,15 @@ export const STATE_STYLE = STATE_LOOKS;
 
 export const STATE_ORDER: TicketState[] = ['frontier', 'claimed', 'blocked', 'done'];
 
+/** Fog: issues linked to the map by a dependency but not among its sub-issues, drawn in dashed bands above and below it. */
+export const FOG_BAND_LABEL: Record<'top' | 'bottom', string> = {
+  top: 'Fog · the map waits on these',
+  bottom: 'Fog · these wait on the map',
+};
+
+/** The Key's fog entry, with a dashed swatch that matches the fog cards and bands. */
+export const FOG_KEY_ROW = '<div class="keyrow is-fog"><span class="fog-swatch" aria-hidden="true"></span><b>Fog</b>Linked by a dependency, not on this map</div>';
+
 /** Progress reads left to right: finished, in hand, ready, waiting. */
 export const PROGRESS_ORDER: TicketState[] = ['done', 'claimed', 'frontier', 'blocked'];
 
@@ -33,6 +42,8 @@ const STATIC_ICONS: Record<string, string> = {
   table: icons.TABLE,
   beaker: icons.BEAKER,
   sliders: icons.SLIDERS,
+  gear: icons.GEAR,
+  'sign-out': icons.SIGN_OUT,
   refresh: icons.REFRESH,
   moon: icons.MOON,
   lens: icons.LENS,
@@ -69,22 +80,34 @@ export function paintIcons(root: ParentNode = document): void {
   paintRepoIcons(root);
 }
 
+export type Theme = 'light' | 'dark';
+
+export const THEME_CHANGE_EVENT = 'wayfinder:theme-change';
+
+export function currentTheme(): Theme {
+  return getComputedStyle(document.body).getPropertyValue('color-scheme').trim() === 'dark' ? 'dark' : 'light';
+}
+
+/** Saves the theme and tells every control that shows it, the rail switch and Settings. */
+export function setTheme(next: Theme): void {
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem('wayfinder-map:theme', next);
+  document.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT));
+}
+
 /** The rail's light/dark switch. Each page stamps the saved theme before its first paint. */
 export function bindTheme(button: HTMLElement): void {
   const updateLabel = (): void => {
-    const dark = getComputedStyle(document.body).getPropertyValue('color-scheme').trim() === 'dark';
+    const dark = currentTheme() === 'dark';
     const label = dark ? 'Switch to light theme' : 'Switch to dark theme';
     button.setAttribute('aria-label', label);
     button.setAttribute('title', label);
     button.setAttribute('aria-pressed', String(dark));
   };
   updateLabel();
+  document.addEventListener(THEME_CHANGE_EVENT, updateLabel);
   button.addEventListener('click', () => {
-    const dark = getComputedStyle(document.body).getPropertyValue('color-scheme').trim() === 'dark';
-    const next = dark ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next;
-    localStorage.setItem('wayfinder-map:theme', next);
-    updateLabel();
+    setTheme(currentTheme() === 'dark' ? 'light' : 'dark');
   });
 }
 
@@ -331,8 +354,8 @@ export function paintRepoIcons(root: ParentNode = document): void {
 
 /**
  * Renders a repository icon badge.
- * Defaults to T3 Code's deterministic monogram SVG badge,
- * and seamlessly loads the repository's own icon file when available.
+ * Defaults to T3 Code's deterministic monogram SVG badge. After inserting it, run
+ * `paintRepoIcons` (or `paintIcons`) on the container to swap in the repository's own icon once it loads.
  */
 export function repoIconHtml(repo: string, size: 'sm' | 'md' | 'lg' = 'md'): string {
   const trimmed = repo.trim();
@@ -344,31 +367,6 @@ export function repoIconHtml(repo: string, size: 'sm' | 'md' | 'lg' = 'md'): str
     : '';
 
   return `<span class="repo-icon-badge${sizeClass}" data-repo="${escapeHtml(repo)}" aria-hidden="true"><span class="repo-monogram">${monoSvg}</span>${imgTag}</span>`;
-}
-
-if (typeof window !== 'undefined') {
-  window.addEventListener(
-    'load',
-    (e) => {
-      const target = e.target;
-      if (target instanceof HTMLImageElement && target.classList.contains('repo-icon-img')) {
-        target.style.display = 'block';
-        const mono = target.previousElementSibling as HTMLElement | null;
-        if (mono) mono.style.display = 'none';
-      }
-    },
-    true,
-  );
-  window.addEventListener(
-    'error',
-    (e) => {
-      const target = e.target;
-      if (target instanceof HTMLImageElement && target.classList.contains('repo-icon-img')) {
-        target.remove();
-      }
-    },
-    true,
-  );
 }
 
 /** Every ticket the map counts: its sub-issues plus the fog, the issues linked to them by a dependency. */

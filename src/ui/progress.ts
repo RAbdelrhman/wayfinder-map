@@ -8,6 +8,9 @@ import { escapeHtml } from './markdown.js';
 export const STYLE_LABELS: Record<ProgressStyle, string> = { trail: 'Trail', hex: 'Hexes', bar: 'Bar' };
 export const GOALS: readonly DailyGoal[] = [3, 5, 8];
 
+/** Fired with saved progress settings, so the panel follows a goal changed in Settings. */
+export const PROGRESS_SETTINGS_EVENT = 'wayfinder:progress-settings';
+
 /** Trail and Hexes show five weeks; Bar shows twelve. */
 const SHORT_DAYS = 35;
 const LONG_DAYS = 84;
@@ -190,6 +193,12 @@ export function mountProgressPanel(host: HTMLElement, initial: ProgressState, sa
     host.innerHTML = progressPanelHtml(state);
   };
   draw();
+  // Settings saves the goal too; follow it while this panel is on the page.
+  document.addEventListener(PROGRESS_SETTINGS_EVENT, (event) => {
+    if (!host.isConnected || !(event instanceof CustomEvent)) return;
+    state = { ...state, settings: event.detail as ProgressSettings };
+    draw();
+  });
   host.addEventListener('click', (event) => {
     const patch = choiceFrom(event.target instanceof Element ? event.target : null, state.settings);
     if (patch === null) return;
