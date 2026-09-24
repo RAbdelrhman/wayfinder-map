@@ -1,4 +1,4 @@
-import { GhError, gh } from './github.js';
+import { RATE_LIMIT_WARNING, gh, ghProblem } from './github.js';
 import { WAYFINDER_VERSION } from './version.js';
 
 const REQUIRED_SCOPES = ['repo', 'read:org'] as const;
@@ -88,7 +88,7 @@ export async function readAccount(runGh: HomeGh = gh): Promise<HomeAccount> {
     raw = JSON.parse(await runGh(['auth', 'status', '--json', 'hosts'])) as RawAuthStatus;
   } catch (error) {
     return isMissingGh(error)
-      ? unavailableAccount('missing-gh', 'GitHub CLI is not installed or is too old for account discovery.')
+      ? unavailableAccount('missing-gh', 'Wayfinder needs the GitHub CLI. Install gh, or update it if it is already installed.')
       : unavailableAccount('unavailable', messageOf(error));
   }
 
@@ -114,7 +114,7 @@ export async function readAccount(runGh: HomeGh = gh): Promise<HomeAccount> {
     accounts,
     missingScopes,
     tokenSource: typeof active.tokenSource === 'string' ? active.tokenSource : null,
-    message: missingScopes.length === 0 ? null : `Grant ${missingScopes.join(' and ')} access to discover repositories.`,
+    message: missingScopes.length === 0 ? null : `Wayfinder needs the ${missingScopes.join(' and ')} scope to find your repositories.`,
   };
 }
 
@@ -171,15 +171,13 @@ export async function loadHomeState(mapLabels: readonly string[], runGh: HomeGh 
   try {
     return { version: WAYFINDER_VERSION, account, ...(await discoverRepositories(account, mapLabels, runGh)), warning: null };
   } catch (error) {
-    const message = error instanceof GhError ? error.message : messageOf(error);
+    const problem = ghProblem(error);
     return {
       version: WAYFINDER_VERSION,
       account,
       repositories: [],
       skippedOrganizations: [],
-      warning: message.toLowerCase().includes('rate limit')
-        ? `GitHub rate limit reached. ${message}`
-        : `Repository discovery failed. ${message}`,
+      warning: problem === RATE_LIMIT_WARNING ? problem : `Couldn't list your repositories. ${problem}`,
     };
   }
 }

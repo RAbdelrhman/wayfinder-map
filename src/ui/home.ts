@@ -114,7 +114,7 @@ function accountPanel(state: HomeState): string {
   if (account.status === 'ready') {
     return state.skippedOrganizations.length === 0
       ? ''
-      : `<div class="panel is-warning home-alert"><span class="grow"><strong>Some organization results are hidden</strong><p>GitHub skipped ${escapeHtml(state.skippedOrganizations.join(', '))}. Authorize those organizations on GitHub, then refresh.</p></span><button type="button" class="ghost" data-refresh-home>Refresh</button></div>`;
+      : `<div class="panel is-warning home-alert"><span class="grow"><strong>Some organizations are missing</strong><p>GitHub left out ${escapeHtml(state.skippedOrganizations.join(', '))}. Give the GitHub CLI access to them on GitHub, then refresh.</p></span><button type="button" class="ghost" data-refresh-home>Refresh</button></div>`;
   }
   const action =
     account.status === 'missing-gh'
@@ -126,7 +126,7 @@ function accountPanel(state: HomeState): string {
           : '<button type="button" class="ghost" data-refresh-home>Retry</button>';
   return `<div class="panel is-warning is-block">
     <div class="panel" style="margin: 0; padding: 0; border: 0; background: none">
-      <span class="grow"><strong>GitHub needs attention</strong><p>${escapeHtml(account.message ?? 'GitHub account information is unavailable.')}</p></span>
+      <span class="grow"><strong>GitHub needs attention</strong><p>${escapeHtml(account.message ?? "Wayfinder couldn't read your GitHub account.")}</p></span>
       ${action}
     </div>
     <div id="auth-flow"></div>
@@ -228,7 +228,7 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
   try {
     snapshot = await getJson<MapSnapshot>(`${scopedApiPath(repo, 'snapshot')}?refresh=1`);
   } catch {
-    snapshotWarning = '<div class="panel is-warning"><span class="grow">Could not check for the new map issue. Wayfinder will try again.</span></div>';
+    snapshotWarning = `<div class="panel is-warning"><span class="grow">Couldn't check GitHub for the new map yet. Wayfinder will keep trying.</span></div>`;
   }
   if (snapshot !== null) {
     navigation?.setSnapshot(snapshot, null);

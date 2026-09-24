@@ -16,6 +16,30 @@ export function plainGhOutput(output: string): string {
   return output.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '');
 }
 
+/** Shown in place of GitHub's own rate-limit text, which is a wall of request IDs and terms-of-service links. */
+export const RATE_LIMIT_WARNING = "Wayfinder hit GitHub's rate limit. Try again in a few minutes.";
+
+/** A failed gh call, put in words a person can act on. */
+export function ghProblem(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return /rate limit/i.test(message) ? RATE_LIMIT_WARNING : message;
+}
+
+/** `#3`, `#3 and #14`, `#3, #14 and #35`. */
+function numberList(numbers: readonly number[]): string {
+  const tags = numbers.map((number) => `#${String(number)}`);
+  return tags.length < 2 ? tags.join('') : `${tags.slice(0, -1).join(', ')} and ${tags[tags.length - 1]!}`;
+}
+
+/** One line for every map whose sub-issues GitHub didn't return, instead of one line each. */
+export function fallbackWarning(mapNumbers: readonly number[], rateLimited: boolean): string {
+  const why = rateLimited ? "Wayfinder hit GitHub's rate limit" : "GitHub didn't return sub-issues";
+  const maps = mapNumbers.length === 1
+    ? `map ${numberList(mapNumbers)} is showing the tickets listed in its description`
+    : `maps ${numberList(mapNumbers)} are showing the tickets listed in their descriptions`;
+  return `${why}, so ${maps}. Sub-issues not listed there won't show until the next sync.`;
+}
+
 export class GhError extends Error {
   constructor(
     message: string,
@@ -237,17 +261,23 @@ export async function fetchTicket(repo: string, number: number, typePrefix = 'wa
   };
 }
 
-async function fetchChildren(repo: string, map: RawIssue, warnings: string[]): Promise<RawIssue[]> {
+interface Fallbacks {
+  maps: number[];
+  rateLimited: boolean;
+}
+
+async function fetchChildren(repo: string, map: RawIssue, fallbacks: Fallbacks): Promise<RawIssue[]> {
   try {
     return await ghJson<RawIssue[]>([
       'api',
       '--paginate',
       `repos/${repo}/issues/${map.number}/sub_issues?per_page=100`,
     ]);
-  } catch {
+  } catch (error) {
     const numbers = parseChildNumbers(map.body ?? '', repo).filter((number) => number !== map.number);
     if (numbers.length > 0) {
-      warnings.push(`Map #${map.number}: sub-issues unavailable, read ${numbers.length} children from the map body.`);
+      fallbacks.maps.push(map.number);
+      if (ghProblem(error) === RATE_LIMIT_WARNING) fallbacks.rateLimited = true;
     }
     const fetched = await pool(numbers, 8, (number) => fetchIssue(repo, number));
     return fetched.filter((issue): issue is RawIssue => issue !== null);
@@ -264,6 +294,7 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
   const { repo, mapLabel, typePrefix } = options;
   const concurrency = options.concurrency ?? 6;
   const warnings: string[] = [];
+  const fallbacks: Fallbacks = { maps: [], rateLimited: false };
 
   const mapIssues = await ghJson<RawIssue[]>([
     'issue',
@@ -281,11 +312,11 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
   ]);
 
   if (mapIssues.length === 0) {
-    warnings.push(`No issue in ${repo} carries the ${mapLabel} label.`);
+    warnings.push(`No maps in ${repo} yet. Wayfinder looks for issues labeled ${mapLabel}.`);
   }
 
   const maps = await pool(mapIssues, concurrency, async (mapIssue): Promise<WayfinderMap> => {
-    const children = await fetchChildren(repo, mapIssue, warnings);
+    const children = await fetchChildren(repo, mapIssue, fallbacks);
     const openByNumber = new Map(children.map((child) => [child.number, isOpenState(child.state)]));
 
     const blockerLists = await pool(children, concurrency, (child) => fetchBlockers(repo, child));
@@ -383,6 +414,7 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
   });
 
   maps.sort((a, b) => Number(b.open) - Number(a.open) || a.number - b.number);
+  if (fallbacks.maps.length > 0) warnings.push(fallbackWarning(fallbacks.maps.sort((a, b) => a - b), fallbacks.rateLimited));
   return { maps, warnings };
 }
 

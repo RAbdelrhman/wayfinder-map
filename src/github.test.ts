@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { branchFacts, isOpenState, mapPrototypeBranches, plainGhOutput, sortPrototypes, ticketStateOf, toOutsideTicket } from './github.js';
+import { RATE_LIMIT_WARNING, branchFacts, fallbackWarning, ghProblem, isOpenState, mapPrototypeBranches, plainGhOutput, sortPrototypes, ticketStateOf, toOutsideTicket } from './github.js';
 import type { Prototype } from './types.js';
 
 describe('plainGhOutput', () => {
@@ -133,5 +133,19 @@ describe('branchFacts', () => {
 
   it('says nothing rather than guessing when both reads fail', () => {
     expect(branchFacts(null, null)).toEqual({ updatedAt: null, files: [] });
+  });
+});
+
+describe('warnings', () => {
+  it("swaps GitHub's rate-limit wall of text for one plain line", () => {
+    expect(ghProblem(new Error('gh: API rate limit exceeded for user ID 1. If you reach out to GitHub Support (HTTP 403)'))).toBe(RATE_LIMIT_WARNING);
+    expect(ghProblem(new Error('HTTP 404: Not Found'))).toBe('HTTP 404: Not Found');
+  });
+
+  it('names every map that fell back to its description in one line', () => {
+    expect(fallbackWarning([3, 14, 35], true)).toBe(
+      "Wayfinder hit GitHub's rate limit, so maps #3, #14 and #35 are showing the tickets listed in their descriptions. Sub-issues not listed there won't show until the next sync.",
+    );
+    expect(fallbackWarning([35], false)).toMatch(/^GitHub didn't return sub-issues, so map #35 is showing the tickets listed in its description\./);
   });
 });
