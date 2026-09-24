@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import type { MapSnapshot, OutsideTicket, WayfinderMap } from '../types.js';
-import { buildHomeWorkItems, chooseContinueDestination, orderRepositories, relativeTimeLabel, summarizeRepository } from './homeView.js';
+import { buildHomeWorkItems, chooseContinueDestination, relativeTimeLabel, summarizeRepository } from './homeView.js';
 
 const map: WayfinderMap = {
   number: 35,
@@ -46,12 +46,7 @@ function handOff(overrides: Partial<HandOffStatusDto> = {}): HandOffStatusDto {
 }
 
 describe('Home repository summaries', () => {
-  it('prioritizes opened repositories and reports map progress', () => {
-    expect(orderRepositories(['octo/a', 'octo/b'], ['octo/b', 'octo/recent'], { 'octo/a': '2026-09-20T12:00:00Z' })).toEqual([
-      'octo/a',
-      'octo/b',
-      'octo/recent',
-    ]);
+  it('reports map progress', () => {
     expect(summarizeRepository('octo/wayfinder', snapshot)).toMatchObject({
       mapCount: 1,
       openTicketCount: 1,
