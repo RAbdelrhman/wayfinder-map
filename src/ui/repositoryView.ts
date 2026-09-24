@@ -4,6 +4,7 @@ import { newMapPath } from './newMap.js';
 import { STATE_ORDER, STATE_STYLE, countStates, repoIconHtml } from './chrome.js';
 import { miniGraphSvg } from './miniGraph.js';
 import { escapeHtml } from './markdown.js';
+import { bone, boneButton } from './skeleton.js';
 
 export type RepositoryMapFilter = 'all' | 'active' | 'completed';
 
@@ -123,6 +124,26 @@ export function repositoryPageHtml(
     <header class="wf-head">${repoIconHtml(repo, 'lg')}<div class="grow"><h1>${escapeHtml(name)}</h1><p>${escapeHtml(repo)} · ${counts}</p></div></header>
     ${warnings}
     ${mapContent}
+  </div>`;
+}
+
+const MAP_CARD_SKELETON = `<div class="wf-node wf-map is-skeleton"><div class="graph"></div><div class="txt">
+    <p class="eyebrow">${bone('90px')}</p>
+    <h2>${bone('60%')}</h2>
+    <p class="dest">${bone('95%')}<br />${bone('70%')}</p>
+    <div class="wf-counts">${bone('64px')}${bone('72px')}${bone('56px')}</div>
+    <div class="row2"><span class="grow">${bone('45%')}</span>${boneButton('74px')}</div>
+  </div></div>`;
+
+/** The repository page before its snapshot arrives: the real header, then placeholder filters and map cards. */
+export function repositoryLoadingHtml(repo: string): string {
+  const name = repo.split('/')[1] ?? repo;
+  return `<div class="repository-page wf-repo-page is-loading" role="status" aria-live="polite" aria-label="Loading ${escapeHtml(repo)} maps">
+    <header class="wf-head">${repoIconHtml(repo, 'lg')}<div class="grow"><h1>${escapeHtml(name)}</h1><p>${escapeHtml(repo)} · ${bone('150px')}</p></div></header>
+    <div class="repo-map-section" aria-hidden="true">
+      <div class="wf-filters"><div class="wf-filter-chips"><span class="fchip">${bone('26px')}</span><span class="fchip">${bone('44px')}</span><span class="fchip">${bone('70px')}</span></div><span class="search"></span></div>
+      <div class="wf-maps">${MAP_CARD_SKELETON.repeat(3)}</div>
+    </div>
   </div>`;
 }
 

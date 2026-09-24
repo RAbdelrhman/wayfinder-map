@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MapSnapshot, Ticket, TicketState, WayfinderMap } from '../types.js';
-import { countRunningHandOffs, mapMatchesRepositoryFilter, repositoryLoadErrorHtml, repositoryPageHtml, sortRepositoryMaps } from './repositoryView.js';
+import { countRunningHandOffs, mapMatchesRepositoryFilter, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml, sortRepositoryMaps } from './repositoryView.js';
 
 function ticket(number: number, title: string, state: TicketState, blockedBy: number[] = []): Ticket {
   return {
@@ -128,5 +128,18 @@ describe('repositoryPageHtml', () => {
     expect(html).toContain('data-retry-page');
     expect(html).toContain('&lt;script&gt;failed&lt;/script&gt;');
     expect(html).not.toContain('<script>');
+  });
+});
+
+describe('repositoryLoadingHtml', () => {
+  it('shows the real header and placeholder filters and map cards in the loaded page frame', () => {
+    const html = repositoryLoadingHtml('octo/<wayfinder>');
+
+    expect(html).toContain('class="repository-page wf-repo-page is-loading" role="status" aria-live="polite"');
+    expect(html).toContain('<h1>&lt;wayfinder&gt;</h1>');
+    expect(html).toContain('<div class="repo-map-section" aria-hidden="true">');
+    expect(html).toContain('class="wf-filters"');
+    expect(html.match(/wf-node wf-map is-skeleton/g)).toHaveLength(3);
+    expect(html).not.toContain('<wayfinder>');
   });
 });

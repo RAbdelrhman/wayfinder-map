@@ -19,9 +19,9 @@ import { renderNewMapPage } from './newMapPage.js';
 import { mountNavigation } from './navigation.js';
 import type { NavigationController, NavigationPage } from './navigation.js';
 import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
-import { homeLoadingMarkup, renderHomeLanding } from './homeLanding.js';
+import { homeLoadingMarkup, readHomeShape, rememberHomeShape, renderHomeLanding } from './homeLanding.js';
 import { handOffCardHtml, handOffPresentation, homeHandOffHistoryHtml, mountHandOffs } from './handOffs.js';
-import { countRunningHandOffs, mapMatchesRepositoryFilter, repositoryLoadErrorHtml, repositoryPageHtml } from './repositoryView.js';
+import { countRunningHandOffs, mapMatchesRepositoryFilter, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml } from './repositoryView.js';
 import type { RepositoryHandOffStatus, RepositoryMapFilter } from './repositoryView.js';
 
 function need<T extends HTMLElement>(id: string): T {
@@ -595,8 +595,8 @@ async function run(work: () => Promise<unknown> | unknown): Promise<void> {
 
 async function show(refresh = false): Promise<void> {
   if (refresh) setSyncBusy(true);
-  else if (page.kind === 'repository') paint('<p class="loading" role="status" aria-live="polite">Loading repository maps…</p>', 'repository-sheet');
-  else if (page.kind === 'home') paint(homeLoadingMarkup());
+  else if (page.kind === 'repository') paint(repositoryLoadingHtml(page.repo), 'repository-sheet');
+  else if (page.kind === 'home') paint(homeLoadingMarkup(readHomeShape(localStorage)));
   else paint('<p class="loading" role="status" aria-live="polite">Reading GitHub…</p>');
   await run(async () => {
     if (page.kind === 'new-map') await renderNewMap();
@@ -611,7 +611,10 @@ bindTheme(need('theme'));
 bindUpdater(need('updater'), toast);
 syncedButton().addEventListener('click', () => void show(true));
 document.addEventListener('visibilitychange', () => draftAutoRefresh?.visibilityChanged());
-window.addEventListener('pagehide', () => draftAutoRefresh?.stop());
+window.addEventListener('pagehide', () => {
+  draftAutoRefresh?.stop();
+  if (page.kind === 'home') rememberHomeShape(els.main, localStorage);
+});
 document.addEventListener('click', (event) => {
   const target = (event.target as HTMLElement | null)?.closest('[data-refresh-home], [data-auth], [data-retry-page]');
   if (target === null || target === undefined) return;
