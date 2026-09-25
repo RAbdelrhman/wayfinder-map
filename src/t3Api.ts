@@ -27,6 +27,8 @@ export function parseServerCommand(line: string, exe?: string): ServerCommand | 
     bin = head[1] ?? head[2] ?? '';
     rest = head[3] ?? '';
   }
+  // Newer builds preload a compile cache (`--require …compileCache.cjs`) before the script. The CLI does not need it.
+  rest = rest.replace(/^(?:\s*(?:--require|-r)\s+(?:"[^"]+"|.+?\.[mc]?js)(?=\s|$))+/, '');
   const script = /^\s*(?:"([^"]+\.[mc]?js)"|(.+?\.[mc]?js))(?=\s|$)/.exec(rest);
   if (script === null) return null;
   return { exe: bin, script: script[1] ?? script[2] ?? '' };
@@ -45,7 +47,7 @@ export async function serverCommand(pid: number): Promise<ServerCommand | null> 
     }
     if (process.platform === 'linux') {
       const argv = (await readFile(`/proc/${String(pid)}/cmdline`, 'utf8')).split('\0');
-      const script = argv.slice(1).find((arg) => /\.[mc]?js$/.test(arg));
+      const script = argv.find((arg, i) => i > 0 && /\.[mc]?js$/.test(arg) && !['--require', '-r'].includes(argv[i - 1] ?? ''));
       return argv[0] && script ? { exe: argv[0], script } : null;
     }
     const [comm, args] = await Promise.all([
