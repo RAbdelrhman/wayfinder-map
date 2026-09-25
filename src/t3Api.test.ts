@@ -22,6 +22,24 @@ describe('parseServerCommand', () => {
     });
   });
 
+  it('skips a --require preload ahead of the script', () => {
+    const line =
+      '"C:\\Programs\\t3code\\T3 Code (Nightly).exe" --require C:\\Programs\\t3code\\resources\\app.asar\\apps\\desktop\\dist-electron\\compileCache.cjs C:\\Programs\\t3code\\resources\\server.asar\\apps\\server\\dist\\bin.mjs --bootstrap-fd 3';
+    expect(parseServerCommand(line)).toEqual({
+      exe: 'C:\\Programs\\t3code\\T3 Code (Nightly).exe',
+      script: 'C:\\Programs\\t3code\\resources\\server.asar\\apps\\server\\dist\\bin.mjs',
+    });
+  });
+
+  it('skips an unquoted preload path with spaces', () => {
+    const exe = '/Applications/T3 Code.app/Contents/MacOS/T3 Code';
+    const line = `${exe} -r /Applications/T3 Code.app/Contents/Resources/app.asar/compileCache.cjs /Applications/T3 Code.app/Contents/Resources/server.asar/apps/server/dist/bin.mjs --bootstrap-fd 3`;
+    expect(parseServerCommand(line, exe)).toEqual({
+      exe,
+      script: '/Applications/T3 Code.app/Contents/Resources/server.asar/apps/server/dist/bin.mjs',
+    });
+  });
+
   it('handles a plain node server', () => {
     expect(parseServerCommand('node /usr/lib/node_modules/t3/dist/bin.mjs serve')).toEqual({
       exe: 'node',
