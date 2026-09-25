@@ -146,12 +146,11 @@ function handOffIcon(state: HandOffUiState): string {
 }
 
 /**
- * A map card shows one status. An open ticket's hand-off says more than its state, so it stands in;
- * a closed ticket stays "done" unless its hand-off merged, since a stale or failed run no longer matters.
+ * A map card shows one status. An open ticket's hand-off says more than its state, so it stands in.
+ * Every closed ticket reads "done", handed off or not; the panel still shows the merged pull request.
  */
 export function cardShowsHandOff(ticketState: TicketState, handOff: HandOffStatusDto | undefined): handOff is HandOffStatusDto {
-  if (handOff === undefined) return false;
-  return ticketState !== 'done' || handOffPresentation(handOff).state === 'merged';
+  return handOff !== undefined && ticketState !== 'done';
 }
 
 /** The hand-off's status. Compact, on a map card, it is plain text like the state chip it stands in for. */
