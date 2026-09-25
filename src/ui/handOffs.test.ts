@@ -108,12 +108,12 @@ describe('finished hand-offs', () => {
     source: 't3',
   });
 
-  it('gives a map card one status: the hand-off while open, done once closed unless it merged', () => {
+  it('gives a map card one status: the hand-off while open, done once closed', () => {
     const merged = handOff({ status: 'ready', pullRequests: [pullRequest(1, 'MERGED')] });
     expect(cardShowsHandOff('claimed', undefined)).toBe(false);
     expect(cardShowsHandOff('claimed', handOff())).toBe(true);
     expect(cardShowsHandOff('done', handOff({ status: 'failed' }))).toBe(false);
-    expect(cardShowsHandOff('done', merged)).toBe(true);
+    expect(cardShowsHandOff('done', merged)).toBe(false);
   });
 
   it('shows Merged once every reported pull request has merged', () => {
