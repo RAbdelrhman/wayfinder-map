@@ -29,6 +29,7 @@ function map(number: number, title: string, tickets: Ticket[] = []): WayfinderMa
     sections: { destination: '', notes: '', decisions: '', fog: '', outOfScope: '' },
     tickets,
     outside: [],
+    criticalPath: { tickets: [], remaining: 0 },
   };
 }
 

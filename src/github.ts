@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import { criticalPath } from './criticalPath.js';
 import { parseBlockedByLine, parseChildNumbers, parseMapBody } from './mapBody.js';
 import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SHOTS_DIR, PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, pickPreview, prototypeTicketNumber, prototypeVariantInfo, unlistedCanvasBoards, verdictComment } from './prototypes.js';
 import { TICKET_TYPES } from './types.js';
@@ -410,6 +411,7 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
       sections: parseMapBody(mapIssue.body ?? ''),
       tickets,
       outside,
+      criticalPath: criticalPath(tickets),
     };
   });
 

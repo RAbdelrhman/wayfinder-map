@@ -75,6 +75,7 @@ function map(number: number): WayfinderMap {
     sections: { destination: '', fog: '', decisions: '', notes: '', outOfScope: '' },
     tickets: [],
     outside: [],
+    criticalPath: { tickets: [], remaining: 0 },
   };
 }
 
