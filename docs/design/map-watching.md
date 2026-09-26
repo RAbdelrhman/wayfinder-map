@@ -108,6 +108,6 @@ A full re-read cannot watch more than one repository at a 5-minute interval with
 
 ## Not verified
 
-- That a PR which only mentions a ticket (without closing it) changes the ticket's `sub_issues` ETag. It should not, because `cross-referenced` lives on the timeline, not on the issue. Branch-prefix PR lookup covers this case.
+- Whether a PR that only mentions a ticket changes the map's `sub_issues` ETag. Opening PR #133 ("Research note for #122") added a `cross-referenced` event to #122's timeline but left its `updated_at` at `00:16:52Z`, so the issue object did not change. The map's ETag did change in the same window, but other tickets on #121 were being claimed at the time, so the ETag test was inconclusive. Either way, a watcher should not count on the issue to reveal its PR; the branch-prefix lookup covers this.
 - Behaviour of `sub_issues` past 100 children (needs `--paginate`, one conditional request per page).
 - Secondary-limit accounting for `304` responses. The docs only exempt them from the primary limit, so the watcher should still cap concurrency, as `fetchMaps` does.
