@@ -58,6 +58,16 @@ export interface WayfinderMap {
   tickets: Ticket[];
   /** Blockers named by this map's tickets that live outside the map, so the UI can still link them. */
   outside: OutsideTicket[];
+  /** The chain of tickets most of what is left waits on. See `criticalPath`. */
+  criticalPath: CriticalPath;
+}
+
+/** The longest chain of open tickets along blocker edges, ending at a ticket nothing on the map waits on. */
+export interface CriticalPath {
+  /** Ticket numbers from the first blocker to the ticket nothing waits on. Closed tickets in the chain stay in it. */
+  tickets: number[];
+  /** Of `tickets`, how many are still open. */
+  remaining: number;
 }
 
 /** A prototype branch belonging to one of a map's tickets. */

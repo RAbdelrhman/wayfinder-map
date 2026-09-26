@@ -79,6 +79,7 @@ const sampleMap: WayfinderMap = {
   },
   tickets: [sampleTicket],
   outside: [],
+  criticalPath: { tickets: [], remaining: 0 },
 };
 
 describe('repository-scoped server', () => {

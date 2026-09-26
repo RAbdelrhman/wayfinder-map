@@ -43,6 +43,7 @@ function map(tickets: Ticket[]): WayfinderMap {
     sections: { destination: '', notes: '', decisions: '', fog: '', outOfScope: '' },
     tickets,
     outside: [],
+    criticalPath: { tickets: [], remaining: 0 },
   };
 }
 

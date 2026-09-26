@@ -18,6 +18,7 @@ const map: WayfinderMap = {
   },
   tickets: [],
   outside: [],
+  criticalPath: { tickets: [], remaining: 0 },
 };
 
 const ticket: Ticket = {

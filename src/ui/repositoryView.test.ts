@@ -29,6 +29,7 @@ function map(number: number, title: string, open: boolean, tickets: Ticket[] = [
     sections: { destination: `Reach ${title}`, notes: '', decisions: '', fog: '', outOfScope: '' },
     tickets,
     outside: [],
+    criticalPath: { tickets: [], remaining: 0 },
   };
 }
 

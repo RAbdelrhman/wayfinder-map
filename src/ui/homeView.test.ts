@@ -16,6 +16,7 @@ const map: WayfinderMap = {
     { number: 2, title: 'Choose a direction', url: 'https://github.com/octo/wayfinder/issues/2', body: '', type: 'grilling', labels: [], open: true, assignee: null, blockedBy: [], openBlockers: [], state: 'frontier' },
   ],
   outside: [],
+  criticalPath: { tickets: [], remaining: 0 },
 };
 
 const snapshot: MapSnapshot = { repo: 'octo/wayfinder', fetchedAt: '2026-09-20T11:00:00.000Z', maps: [map], warnings: [] };
