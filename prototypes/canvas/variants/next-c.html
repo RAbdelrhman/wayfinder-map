@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>C · A Next tab in the panel</title>
+    <!-- PROTOTYPE (#125), C: the canvas barely changes. The panel gets a Next tab, before Brief, that lists what just unblocked (with Start next), the critical path in order, open PRs, and stalled tickets. Cards carry only small glyphs. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="next.css" />
+    <style>
+      /* Canvas: the path's edges a little heavier and solid, its cards numbered; a CI glyph and a stalled clock ride in node-top. */
+      .edges path.c-path {
+        stroke-width: 3;
+      }
+      .edges path.c-path:not(.is-live) {
+        stroke: var(--text-muted);
+      }
+      .c-ord {
+        margin-left: 2px;
+        padding: 0 5px;
+        border: 1px solid var(--baseline);
+        border-radius: 999px;
+        color: var(--text-secondary);
+        font-size: 10.5px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .c-glyphs {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin-left: 4px;
+      }
+      .c-glyphs .i {
+        width: 13px;
+        height: 13px;
+      }
+      .c-clock {
+        color: var(--text-secondary);
+      }
+
+      /* Tab badge. */
+      .seg .c-badge {
+        margin-left: 5px;
+        padding: 0 5px;
+        border-radius: 999px;
+        background: var(--text-primary);
+        color: var(--surface-1);
+        font-size: 10.5px;
+        font-weight: 700;
+      }
+
+      /* Topbar: path count next to Synced. */
+      .c-left {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 4px 0 10px;
+        color: var(--text-secondary);
+        font-size: 12.5px;
+        white-space: nowrap;
+        border: 0;
+        background: none;
+      }
+      .c-left b {
+        color: var(--text-primary);
+      }
+      .c-left .i {
+        width: 14px;
+        height: 14px;
+      }
+      .c-left:hover {
+        color: var(--text-primary);
+      }
+      .c-left:focus-visible {
+        outline: 2px solid var(--state-claimed);
+        outline-offset: 2px;
+        border-radius: 6px;
+      }
+
+      /* The Next tab. */
+      .c-next h3 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 22px 0 8px;
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .c-next h3:first-child {
+        margin-top: 0;
+      }
+      .c-next h3 .grow {
+        flex: 1;
+      }
+      .c-next h3 b {
+        color: var(--text-primary);
+        letter-spacing: 0;
+        text-transform: none;
+        font-size: 12px;
+      }
+      .c-news {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid color-mix(in srgb, var(--state-frontier) 40%, var(--hairline));
+        border-left: 3px solid var(--state-frontier);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--state-frontier) 6%, var(--surface-1));
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+      .c-news-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .c-news-head .i {
+        width: 15px;
+        height: 15px;
+        color: var(--state-frontier);
+      }
+      .c-news-head b {
+        color: var(--text-primary);
+      }
+      .c-news-head time {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+      .c-news .c-row {
+        border: 0;
+        padding: 4px 0;
+      }
+      .c-news-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .c-news p {
+        margin: 0;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .c-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .c-row {
+        display: grid;
+        grid-template-columns: 22px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 2px 8px;
+        width: 100%;
+        padding: 8px 12px;
+        border: 0;
+        border-top: 1px solid var(--hairline);
+        background: none;
+        text-align: left;
+        color: var(--text-secondary);
+        font-size: 12.5px;
+      }
+      .c-list li:first-child .c-row {
+        border-top: 0;
+      }
+      .c-row:hover {
+        background: var(--wash);
+      }
+      .c-row:focus-visible {
+        outline: 2px solid var(--state-claimed);
+        outline-offset: -2px;
+      }
+      .c-row .c-t {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--text-primary);
+      }
+      .c-row .c-t .num {
+        color: var(--text-muted);
+        margin-right: 4px;
+      }
+      .c-row .c-sub {
+        grid-column: 2 / 4;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        color: var(--text-muted);
+        font-size: 11.5px;
+      }
+      .c-row .c-sub .i {
+        width: 12px;
+        height: 12px;
+      }
+      .c-row .chip {
+        margin: 0;
+      }
+      .c-row > .c-n {
+        display: grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 1px solid var(--baseline);
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--text-secondary);
+      }
+      .c-row > .c-n .i {
+        width: 11px;
+        height: 11px;
+      }
+      .c-row > .nx-tone .i,
+      .c-row > .c-ic .i {
+        width: 15px;
+        height: 15px;
+      }
+      .c-row > .c-ic {
+        color: var(--text-secondary);
+      }
+      .c-row.is-first {
+        background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+      }
+
+      /* Ticket panel: the PR line under the hand-off pill. */
+      .c-prline {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 10px;
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+      .c-prline > span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .c-prline .i {
+        width: 13px;
+        height: 13px;
+      }
+      .c-prline a {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="next.js"></script>
+    <script>
+      const { state, esc, icon, TICKETS, byNumber, PATH, PATH_LEFT, onPath, pathEdge, READY, STARTABLE, FRESH, STALLED, WITH_PR, CI, REVIEW, STATE, stateChip, handOffPill, ciIcon, reviewIcon, numbers } = NEXT;
+
+      if (!new URLSearchParams(location.search).get('tab')) state.tab = 'next';
+      const OPEN_PATH = PATH.filter((n) => byNumber.get(n).open);
+      const attention = () => STALLED.length + WITH_PR.filter((t) => t.pr.ci === 'fail').length + (state.notice ? FRESH.length : 0);
+
+      const chipFor = (t) => (t.handOff && t.open ? handOffPill(t, true) : stateChip(t.state));
+
+      function row(t, lead, sub, extra = '') {
+        return `<li><button type="button" class="c-row${extra}" data-select="${t.n}">${lead}<span class="c-t"><span class="num">#${t.n}</span>${esc(t.title)}</span>${chipFor(t)}${sub ? `<span class="c-sub">${sub}</span>` : ''}</button></li>`;
+      }
+
+      function nextTab() {
+        const news = state.notice
+          ? `<h3>Just now</h3><section class="c-news" role="status" aria-live="polite">
+              <div class="c-news-head">${icon('unlock')}<span><b>#203 closed.</b> ${numbers(FRESH)} are ready.</span><time>2 min ago</time></div>
+              <ul class="c-list">${FRESH.map((t) => row(t, `<span class="c-ic">${icon('arrow')}</span>`, `${t.type} · unblocked by #203`)).join('')}</ul>
+              <div class="c-news-actions">${state.started ? `<span>${icon('check')} Handed off to T3 Code</span>` : `<button type="button" class="primary" data-action="start">${icon('play')}Start next · ${STARTABLE.length}</button>`}<button type="button" class="ghost" data-action="dismiss">Dismiss</button></div>
+              <p>#215 is also ready, but it's a grilling ticket: it needs you, so Start next leaves it.</p>
+            </section>`
+          : `<h3>Ready <span class="grow"></span>${state.started ? '' : `<button type="button" class="ghost" data-action="start">${icon('play')}Start next · ${STARTABLE.length}</button>`}</h3><ul class="c-list">${READY.map((t) => row(t, `<span class="c-ic">${icon('arrow')}</span>`, t.type)).join('')}</ul>`;
+
+        const path = `<h3>Critical path <span class="grow"></span><b>${PATH_LEFT} left</b></h3><ul class="c-list">${PATH.map((n) => {
+          const t = byNumber.get(n);
+          const k = OPEN_PATH.indexOf(n);
+          const lead = `<span class="c-n">${t.open ? k + 1 : icon('check')}</span>`;
+          const sub = t.stalled ? `${icon('clock')}Holding up the path · ${esc(t.stalled.short.toLowerCase())}` : k === 0 ? 'Next on the path' : '';
+          return row(t, lead, sub, k === 0 ? ' is-first' : '');
+        }).join('')}</ul>`;
+
+        const prs = `<h3>Pull requests <span class="grow"></span><b>${WITH_PR.length} open</b></h3><ul class="c-list">${WITH_PR.map((t) =>
+          row(t, ciIcon(t.pr), `${icon('pr')}#${t.pr.n} · ${CI[t.pr.ci].word.toLowerCase()} · ${REVIEW[t.pr.review].word.toLowerCase()}`),
+        ).join('')}</ul>`;
+
+        const stalled = `<h3>Stalled <span class="grow"></span><b>${STALLED.length}</b></h3><ul class="c-list">${STALLED.map((t) =>
+          row(t, `<span class="c-ic">${icon('clock')}</span>`, `${esc(t.stalled.short)}${onPath(t.n) ? ' · on the critical path' : ''}`),
+        ).join('')}</ul>`;
+
+        return `<div class="c-next">${news}${path}${prs}${stalled}</div>`;
+      }
+
+      NEXT.start({
+        tabs: () => [{ id: 'next', label: `Next${attention() ? `<span class="c-badge" aria-label="${attention()} need attention">${attention()}</span>` : ''}`, render: nextTab }],
+
+        topbarBeforeSynced: () =>
+          `<button type="button" class="c-left" data-tab="next" title="Open the Next tab">${icon('route')}<b>${PATH_LEFT}</b> left on the critical path</button>`,
+
+        startButton: () =>
+          `<button type="button" class="primary map-start" data-tab="next" title="Open the Next tab">${icon('play')}<span class="topbar-action-label">${READY.length} ready</span></button>`,
+
+        edgeClasses: (from, to) => (pathEdge(from, to) ? ['c-path'] : []),
+
+        node: (t) => {
+          const o = { aria: [] };
+          if (onPath(t.n) && t.open) {
+            const k = OPEN_PATH.indexOf(t.n) + 1;
+            o.beforeChip = `<span class="c-ord" title="Step ${k} of ${PATH_LEFT} on the critical path">${k}/${PATH_LEFT}</span>`;
+            o.aria.push(`step ${k} of ${PATH_LEFT} on the critical path`);
+          }
+          const glyphs = [];
+          if (t.pr) {
+            glyphs.push(ciIcon(t.pr));
+            o.aria.push(`PR #${t.pr.n}, ${CI[t.pr.ci].word}, ${REVIEW[t.pr.review].word}`);
+          }
+          if (t.stalled) {
+            glyphs.push(`<span class="c-clock" title="${esc(t.stalled.short)}">${icon('clock')}</span>`);
+            o.meta = `stalled ${t.stalled.age}`;
+            o.aria.push(`stalled: ${t.stalled.short}`);
+          }
+          if (glyphs.length) o.afterChip = `<span class="c-glyphs">${glyphs.join('')}</span>`;
+          if (t.fresh && state.notice) {
+            o.classes = ['nx-fresh'];
+            o.aria.push('just unblocked');
+          }
+          return o;
+        },
+
+        handOffCard: (t) =>
+          t.pr
+            ? {
+                body: `<div class="c-prline"><span>${icon('pr')}<a href="#" data-to="PR #${t.pr.n} on GitHub">PR #${t.pr.n}</a></span><span>${ciIcon(t.pr)}${CI[t.pr.ci].word}</span><span>${reviewIcon(t.pr)}${REVIEW[t.pr.review].word}</span></div>`,
+              }
+            : {},
+
+        panel: (t) =>
+          t.stalled
+            ? { banner: `<div class="banner" style="--accent: var(--text-muted)">${icon('clock')}<span><b>Stalled.</b> ${esc(t.stalled.long)}</span></div>` }
+            : {},
+
+        action: (name) => {
+          if (name === 'dismiss') state.notice = false;
+          if (name === 'start') {
+            state.started = true;
+            Kit.toast(`Would hand off ${numbers(STARTABLE)} to T3 Code`);
+          }
+        },
+      });
+    </script>
+  </body>
+</html>
