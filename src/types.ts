@@ -60,6 +60,19 @@ export interface WayfinderMap {
   outside: OutsideTicket[];
   /** The chain of tickets most of what is left waits on. See `criticalPath`. */
   criticalPath: CriticalPath;
+  /** Why and since when the map sits in the Settled section, or null while it is active. */
+  settled: MapSettlement | null;
+  /** False for a settled map whose tickets were not read, to save GitHub calls until it is opened. */
+  ticketsLoaded: boolean;
+}
+
+/** Why a map settled: its issue closed, nothing on it changed for 30 days, or someone settled it by hand. */
+export type SettleReason = 'closed' | 'idle' | 'manual';
+
+export interface MapSettlement {
+  reason: SettleReason;
+  /** When it settled, as an ISO timestamp. */
+  since: string;
 }
 
 /** The longest chain of open tickets along blocker edges, ending at a ticket nothing on the map waits on. */

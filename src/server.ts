@@ -30,6 +30,7 @@ import { HandOffStore, HandOffTracker, handOffStorePath } from './handOffTrackin
 import type { HandOffTrackingClient } from './handOffTracking.js';
 import { MapWatcher } from './mapWatcher.js';
 import { ProgressError, ProgressService, ProgressSettingsStore, readCompletedTickets } from './progress.js';
+import { SettleStore } from './settling.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -105,6 +106,16 @@ export interface ServeOptions {
   progress?: Pick<ProgressService, 'state' | 'save'>;
   /** Replaces the GitHub map watcher in tests. */
   mapWatcher?: MapWatcher;
+  /**
+   * Whose settle choices apply and where they are kept. Defaults to the signed-in GitHub login and
+   * `~/.wayfinder-map/settled.json`, except when tests inject a `fetcher`, where it is off unless given.
+   */
+  settling?: Settling;
+}
+
+export interface Settling {
+  login: () => Promise<string | null>;
+  store: Pick<SettleStore, 'choices' | 'set'>;
 }
 
 export interface UpdaterStatus {
@@ -200,6 +211,7 @@ export async function startServer({
   handOffStore,
   progress,
   mapWatcher = new MapWatcher(),
+  settling,
 }: ServeOptions): Promise<RunningServer> {
   const defaultUpdater: UpdaterService = {
     async check(): Promise<UpdaterStatus> {
@@ -235,14 +247,27 @@ export async function startServer({
       };
     },
   };
+  const loadHome = homeLoader ?? ((labels: readonly string[]) => loadHomeState(labels));
+  let homeState: HomeState | null = null;
+  const signedInLogin = async (): Promise<string | null> => {
+    const account = homeState?.account ?? (await readAccount());
+    return account.status === 'ready' ? account.login : null;
+  };
+  const settle: Settling | null = settling ?? (fetcher === undefined ? { login: signedInLogin, store: new SettleStore() } : null);
   const repositories = new RepositoryStore({
     mapLabel: config.mapLabel,
     typePrefix: config.typePrefix,
     ...(fetcher === undefined ? {} : { fetcher }),
     ...(changeChecker === undefined ? {} : { changeChecker }),
+    ...(settle === null
+      ? {}
+      : {
+          choices: async (forRepo: string) => {
+            const login = await settle.login();
+            return login === null ? {} : settle.store.choices(login, forRepo);
+          },
+        }),
   });
-  const loadHome = homeLoader ?? ((labels: readonly string[]) => loadHomeState(labels));
-  let homeState: HomeState | null = null;
   const repoIcons = new Map<string, Promise<ResolvedRepoIcon | null>>();
   let repoList: Promise<string[]> | null = null;
   const authFlow = new AuthFlow();
@@ -267,10 +292,7 @@ export async function startServer({
   const progressPanel =
     progress ??
     new ProgressService({
-      login: async () => {
-        const account = homeState?.account ?? (await readAccount());
-        return account.status === 'ready' ? account.login : null;
-      },
+      login: signedInLogin,
       store: new ProgressSettingsStore(),
       completed: (login, since) => readCompletedTickets(login, { typePrefix: config.typePrefix, mapLabel: config.mapLabel, since }),
     });
@@ -297,7 +319,7 @@ export async function startServer({
 
   /** `mapNumber` null asks for the whole repository, which the repository page wants in one read. */
   const prototypesOf = async (forRepo: string, mapNumber: number | null, force: boolean): Promise<Prototype[] | null> => {
-    const snapshot = await repositories.snapshot(forRepo, false);
+    const snapshot = await repositories.snapshot(forRepo, false, mapNumber === null ? [] : [mapNumber]);
     const map = mapNumber === null ? null : snapshot.maps.find((candidate) => candidate.number === mapNumber);
     if (mapNumber !== null && map === undefined) return null;
     const key = `${forRepo}#${mapNumber === null ? 'all' : String(mapNumber)}`;
@@ -347,7 +369,7 @@ export async function startServer({
         const force = requestUrl.searchParams.get('refresh') === '1';
         const check = !force && requestUrl.searchParams.get('check') === '1';
         try {
-          json(response, 200, check ? await repositories.refreshIfChanged(repo) : await repositories.snapshot(repo, force));
+          json(response, 200, check ? await repositories.refreshIfChanged(repo, openedMaps(requestUrl)) : await repositories.snapshot(repo, force, openedMaps(requestUrl)));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
@@ -591,7 +613,37 @@ export async function startServer({
           json(response, 400, { error: 'Name a map with ?map=<number>.' });
           return;
         }
+        // A settled map costs no calls, so it is never watched. The page read the snapshot before listening.
+        if (repositories.cached(requestedRepo)?.maps.some((candidate) => candidate.number === mapNumber && candidate.settled !== null)) {
+          json(response, 409, { error: `Map #${String(mapNumber)} is settled. Unsettle it to watch it.` });
+          return;
+        }
         streamMapEvents(request, response, mapWatcher, requestedRepo, mapNumber);
+        return;
+      }
+
+      if (requestedRepo !== null && scoped?.action === 'settle' && request.method === 'POST') {
+        const body = (await readBody(request)) as { map?: unknown; settled?: unknown };
+        const mapNumber = Number(body.map);
+        if (!Number.isSafeInteger(mapNumber) || mapNumber <= 0 || typeof body.settled !== 'boolean') {
+          json(response, 400, { error: 'Name a map and whether it is settled.' });
+          return;
+        }
+        const login = settle === null ? null : await settle.login();
+        if (settle === null || login === null) {
+          json(response, 409, { error: 'Sign in with GitHub to settle maps.' });
+          return;
+        }
+        try {
+          const at = new Date().toISOString();
+          await settle.store.set(login, requestedRepo, mapNumber, { settled: body.settled, at });
+          const snapshot =
+            (await repositories.settle(requestedRepo, mapNumber, body.settled ? { reason: 'manual', since: at } : null)) ??
+            (await repositories.snapshot(requestedRepo, false));
+          json(response, 200, snapshot);
+        } catch (error) {
+          json(response, 502, { error: (error as Error).message });
+        }
         return;
       }
 
@@ -599,7 +651,7 @@ export async function startServer({
         const force = requestUrl.searchParams.get('refresh') === '1';
         const check = !force && requestUrl.searchParams.get('check') === '1';
         try {
-          json(response, 200, check ? await repositories.refreshIfChanged(requestedRepo) : await repositories.snapshot(requestedRepo, force));
+          json(response, 200, check ? await repositories.refreshIfChanged(requestedRepo, openedMaps(requestUrl)) : await repositories.snapshot(requestedRepo, force, openedMaps(requestUrl)));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
@@ -768,7 +820,7 @@ export async function startServer({
           model?: unknown;
         };
 
-        const snapshot = await repositories.snapshot(requestedRepo, false);
+        const snapshot = await repositories.snapshot(requestedRepo, false, Number.isSafeInteger(Number(body.map)) ? [Number(body.map)] : []);
         let map: WayfinderMap | null = null;
         let ticket: Ticket | null = null;
 
@@ -971,7 +1023,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;
@@ -979,6 +1031,12 @@ function parseScopedApiPath(path: string): { repo: string; action: ScopedApiActi
 }
 
 type MapTicket = WayfinderMap['tickets'][number];
+
+/** `?map=N`: the settled map a page opened, whose tickets it needs read. */
+function openedMaps(url: URL): number[] {
+  const mapNumber = Number(url.searchParams.get('map'));
+  return Number.isSafeInteger(mapNumber) && mapNumber > 0 ? [mapNumber] : [];
+}
 
 /**
  * Server-sent events for one map: its recent history first, then each change as the

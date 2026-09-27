@@ -176,9 +176,16 @@ export function repoLabel(repo: string, repositories: readonly string[]): string
   return clashes ? repo : name;
 }
 
+/** The maps the tree lists: settled ones stay out, unless one is the page you are on. */
+export function sidebarMaps(maps: readonly WayfinderMap[], currentMapNumber: number | null): WayfinderMap[] {
+  return maps.filter((map) => map.settled === null || map.number === currentMapNumber);
+}
+
 function mapListMarkup(repo: string, maps: readonly WayfinderMap[], currentMapNumber: number | null, view: NavigationView): string {
   if (maps.length === 0) return '<li class="nav-tree-status">No maps yet</li>';
-  return maps
+  const shown = sidebarMaps(maps, currentMapNumber);
+  if (shown.length === 0) return '<li class="nav-tree-status">Every map here has settled</li>';
+  return shown
     .map((map) => {
       const selected = currentMapNumber === map.number;
       return `<li><a class="row${selected ? ' is-on' : ''}" href="${mapHref(repo, map, view)}"${selected ? ' aria-current="page"' : ''} title="#${String(map.number)} ${escapeHtml(map.title)}">

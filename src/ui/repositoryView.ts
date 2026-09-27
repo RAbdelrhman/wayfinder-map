@@ -1,12 +1,10 @@
-import type { MapSnapshot, Ticket, WayfinderMap } from '../types.js';
+import type { MapSettlement, MapSnapshot, Ticket, WayfinderMap } from '../types.js';
 import { mapPath } from '../repoRoutes.js';
 import { newMapPath } from './newMap.js';
 import { STATE_ORDER, STATE_STYLE, countStates, repoIconHtml } from './chrome.js';
 import { miniGraphSvg } from './miniGraph.js';
 import { escapeHtml } from './markdown.js';
 import { bone, boneButton } from './skeleton.js';
-
-export type RepositoryMapFilter = 'all' | 'active' | 'completed';
 
 export interface RepositoryHandOffStatus {
   repo: string;
@@ -24,17 +22,17 @@ export function countRunningHandOffs(repo: string, handOffs: readonly Repository
   return counts;
 }
 
+/** Active maps, open first and newest first within each state. */
 export function sortRepositoryMaps(maps: readonly WayfinderMap[]): WayfinderMap[] {
   return [...maps].sort((a, b) => Number(b.open) - Number(a.open) || b.number - a.number);
 }
 
-export function mapMatchesRepositoryFilter(
-  map: WayfinderMap,
-  filter: RepositoryMapFilter,
-  query: string,
-): boolean {
-  if (filter === 'active' && !map.open) return false;
-  if (filter === 'completed' && map.open) return false;
+/** Settled maps, the most recently settled first. */
+export function sortSettledMaps(maps: readonly WayfinderMap[]): WayfinderMap[] {
+  return [...maps].sort((a, b) => (b.settled?.since ?? '').localeCompare(a.settled?.since ?? '') || b.number - a.number);
+}
+
+export function mapMatchesRepositorySearch(map: WayfinderMap, query: string): boolean {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   return normalizedQuery.length === 0 || `#${String(map.number)} ${map.title}`.toLocaleLowerCase().includes(normalizedQuery);
 }
@@ -56,6 +54,49 @@ function runningHandOffChip(mapNumber: number, count: number | undefined): strin
   return `<span class="chip" data-map-handoffs="${String(mapNumber)}" style="--accent: var(--state-frontier)"${visible ? '' : ' hidden'}><span data-icon="bolt" aria-hidden="true"></span>${visible ? `${String(count)} running in T3 Code` : ''}</span>`;
 }
 
+function settleButton(map: WayfinderMap): string {
+  return `<button type="button" class="ghost" data-settle-map="${String(map.number)}" aria-label="${escapeHtml(`Settle map #${String(map.number)}: ${map.title}`)}" title="Move to Settled. The issue on GitHub is not changed.">Settle</button>`;
+}
+
+const SETTLE_REASON: Record<MapSettlement['reason'], string> = {
+  closed: 'closed',
+  idle: 'quiet for 30 days',
+  manual: 'settled by you',
+};
+
+/** How long ago a map settled: `today`, `3 days ago`, `2 months ago`, `1 year ago`. */
+export function settledAgo(since: string, now: number): string {
+  const parsed = Date.parse(since);
+  if (Number.isNaN(parsed)) return '';
+  const days = Math.floor(Math.max(0, now - parsed) / 86_400_000);
+  const ago = (count: number, unit: string): string => `${String(count)} ${unit}${count === 1 ? '' : 's'} ago`;
+  if (days === 0) return 'today';
+  if (days < 30) return ago(days, 'day');
+  if (days < 365) return ago(Math.floor(days / 30), 'month');
+  return ago(Math.floor(days / 365), 'year');
+}
+
+function settledRow(repo: string, map: WayfinderMap, now: number): string {
+  const href = mapPath(repo, map.number);
+  const since = map.settled?.since ?? '';
+  const ago = settledAgo(since, now);
+  const why = map.settled === null ? '' : SETTLE_REASON[map.settled.reason];
+  return `<li class="wf-settled-row" data-map-card data-map-number="${String(map.number)}" data-map-search="${escapeHtml(`#${String(map.number)} ${map.title}`)}">
+      <a class="grow" href="${escapeHtml(href)}"><span class="num">#${String(map.number)}</span> ${escapeHtml(map.title)}</a>
+      <span class="when">${ago === '' ? '' : `Settled <time datetime="${escapeHtml(since)}">${escapeHtml(ago)}</time>`}${why === '' ? '' : ` · ${escapeHtml(why)}`}</span>
+      <button type="button" class="ghost" data-unsettle-map="${String(map.number)}" aria-label="${escapeHtml(`Unsettle map #${String(map.number)}: ${map.title}`)}">Unsettle</button>
+    </li>`;
+}
+
+/** Collapsed behind "Show N settled"; the page's script opens it. */
+function settledSection(repo: string, maps: readonly WayfinderMap[], now: number): string {
+  if (maps.length === 0) return '';
+  return `<section class="wf-settled" aria-label="Settled maps" data-repo-settled>
+      <button type="button" class="wf-settled-toggle" data-settled-toggle aria-expanded="false" aria-controls="repo-settled-list"><span data-icon="right" aria-hidden="true"></span><span data-settled-label>Show ${String(maps.length)} settled</span></button>
+      <ul class="wf-settled-list" id="repo-settled-list" hidden>${maps.map((map) => settledRow(repo, map, now)).join('')}</ul>
+    </section>`;
+}
+
 function mapCard(repo: string, map: WayfinderMap, runningHandOffCount?: number): string {
   const href = mapPath(repo, map.number);
   const next = nextTicket(map);
@@ -65,8 +106,8 @@ function mapCard(repo: string, map: WayfinderMap, runningHandOffCount?: number):
   const total = countStates(map);
   const ticketCount = STATE_ORDER.reduce((sum, state) => sum + total[state], 0);
   const footer = !map.open
-    ? `<span class="grow">All ${String(ticketCount)} tickets done</span><a class="ghost" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">Open</a>`
-    : `<span class="grow">${next === undefined ? 'Nothing next up' : `<span class="chip" style="--accent: var(--state-frontier)"><span data-icon="arrow" aria-hidden="true"></span>next</span> <a href="${escapeHtml(`${href}?view=map&ticket=${String(next.number)}`)}">#${String(next.number)} ${escapeHtml(next.title)}</a>`}</span>${runningHandOffChip(map.number, runningHandOffCount)}<a class="primary" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">Open<span data-icon="arrow" aria-hidden="true"></span></a>`;
+    ? `<span class="grow">All ${String(ticketCount)} tickets done</span>${settleButton(map)}<a class="ghost" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">Open</a>`
+    : `<span class="grow">${next === undefined ? 'Nothing next up' : `<span class="chip" style="--accent: var(--state-frontier)"><span data-icon="arrow" aria-hidden="true"></span>next</span> <a href="${escapeHtml(`${href}?view=map&ticket=${String(next.number)}`)}">#${String(next.number)} ${escapeHtml(next.title)}</a>`}</span>${runningHandOffChip(map.number, runningHandOffCount)}${settleButton(map)}<a class="primary" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">Open<span data-icon="arrow" aria-hidden="true"></span></a>`;
   return `<article class="wf-node wf-map${map.open ? '' : ' is-closed'}" data-map-card data-map-number="${String(map.number)}" data-map-status="${status}" data-map-search="${escapeHtml(`#${String(map.number)} ${map.title}`)}" style="--accent: var(${map.open ? '--state-claimed' : '--state-done'})">
     <a class="graph" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}" tabindex="-1" title="Ticket dependency graph with ${String(map.tickets.length)} tickets">${miniGraphSvg(map)}</a>
     <div class="txt">
@@ -95,26 +136,22 @@ export function repositoryPageHtml(
   repo: string,
   snapshot: MapSnapshot,
   runningHandOffs: ReadonlyMap<number, number> = new Map(),
+  now: number = Date.now(),
 ): string {
-  const maps = sortRepositoryMaps(snapshot.maps);
-  const activeCount = maps.filter((map) => map.open).length;
-  const completedCount = maps.length - activeCount;
+  const maps = sortRepositoryMaps(snapshot.maps.filter((map) => map.settled === null));
+  const settled = sortSettledMaps(snapshot.maps.filter((map) => map.settled !== null));
   const name = repo.split('/')[1] ?? repo;
-  const counts = maps.length === 0 ? 'no maps yet' : `${String(activeCount)} active, ${String(completedCount)} completed`;
-  const mapContent = maps.length === 0
+  const counts = snapshot.maps.length === 0 ? 'no maps yet' : `${String(maps.length)} active, ${String(settled.length)} settled`;
+  const mapContent = snapshot.maps.length === 0
     ? repositoryEmpty(repo)
     : `<section class="repo-map-section" aria-label="Repository maps">
         <div class="wf-filters">
-          <div class="wf-filter-chips" role="group" aria-label="Filter maps">
-            <button type="button" class="fchip is-on" data-map-filter="all" aria-pressed="true">All <b>${String(maps.length)}</b></button>
-            <button type="button" class="fchip" data-map-filter="active" aria-pressed="false">Active <b>${String(activeCount)}</b></button>
-            <button type="button" class="fchip" data-map-filter="completed" aria-pressed="false">Completed <b>${String(completedCount)}</b></button>
-          </div>
           <label class="search"><span data-icon="lens" aria-hidden="true"></span><span class="sr-only">Filter maps</span><input id="repo-map-search" type="search" placeholder="Filter maps" autocomplete="off" /></label>
         </div>
         <div class="wf-maps" data-repo-map-list>${maps.map((map) => mapCard(repo, map, runningHandOffs.get(map.number))).join('')}</div>
-        <p class="wf-none" data-repo-map-no-match role="status" aria-live="polite" hidden>No maps match this filter.</p>
+        <p class="wf-none" data-repo-map-no-match role="status" aria-live="polite"${maps.length === 0 ? '' : ' hidden'}>${maps.length === 0 ? 'Every map here has settled.' : 'No maps match this filter.'}</p>
         <p class="sr-only" data-repo-map-count role="status" aria-live="polite"></p>
+        ${settledSection(repo, settled, now)}
       </section>`;
   const warnings = snapshot.warnings
     .map((warning) => `<div class="panel is-warning"><span class="grow">${escapeHtml(warning)}</span></div>`)
@@ -141,7 +178,7 @@ export function repositoryLoadingHtml(repo: string): string {
   return `<div class="repository-page wf-repo-page is-loading" role="status" aria-live="polite" aria-label="Loading ${escapeHtml(repo)} maps">
     <header class="wf-head">${repoIconHtml(repo, 'lg')}<div class="grow"><h1>${escapeHtml(name)}</h1><p>${escapeHtml(repo)} · ${bone('150px')}</p></div></header>
     <div class="repo-map-section" aria-hidden="true">
-      <div class="wf-filters"><div class="wf-filter-chips"><span class="fchip">${bone('26px')}</span><span class="fchip">${bone('44px')}</span><span class="fchip">${bone('70px')}</span></div><span class="search"></span></div>
+      <div class="wf-filters"><span class="search"></span></div>
       <div class="wf-maps">${MAP_CARD_SKELETON.repeat(3)}</div>
     </div>
   </div>`;

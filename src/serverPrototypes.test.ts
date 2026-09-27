@@ -42,6 +42,7 @@ vi.mock('./github.js', () => ({
   fetchBranchFile: (repo: string, branch: string, file: string) => fetchBranchFile(repo, branch, file),
   fetchMaps: async () => ({ maps: [], warnings: [] }),
   haveMapTicketsChanged: async () => false,
+  fetchMapDetails: async () => ({ maps: [], warnings: [] }),
   gh: async () => '',
 }));
 
@@ -77,6 +78,8 @@ function map(number: number): WayfinderMap {
     tickets: [],
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
+    settled: null,
+    ticketsLoaded: true,
   };
 }
 

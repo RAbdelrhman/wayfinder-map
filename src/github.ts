@@ -4,8 +4,10 @@ import { promisify } from 'node:util';
 import { criticalPath } from './criticalPath.js';
 import { parseBlockedByLine, parseChildNumbers, parseMapBody } from './mapBody.js';
 import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SHOTS_DIR, PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, pickPreview, prototypeTicketNumber, prototypeVariantInfo, unlistedCanvasBoards, verdictComment } from './prototypes.js';
+import { idleCutoff, isIdleCandidate, settlementOf } from './settling.js';
+import type { MapIssueFacts, SettleChoices } from './settling.js';
 import { TICKET_TYPES } from './types.js';
-import type { OutsideTicket, Prototype, PrototypeVariant, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
+import type { MapSettlement, OutsideTicket, Prototype, PrototypeVariant, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
 
 const run = promisify(execFile);
 
@@ -160,7 +162,7 @@ function ticketType(labels: string[], prefix: string): TicketType | null {
   return null;
 }
 
-function issueUrl(raw: RawIssue, repo: string): string {
+function issueUrl(raw: { number: number; html_url?: string; url?: string }, repo: string): string {
   return raw.html_url ?? raw.url ?? `https://github.com/${repo}/issues/${raw.number}`;
 }
 
@@ -463,7 +465,7 @@ interface Fallbacks {
   unattachedTickets: Array<{ mapNumber: number; ticketNumbers: number[] }>;
 }
 
-async function fetchChildren(repo: string, map: RawIssue, fallbacks: Fallbacks): Promise<RawIssue[]> {
+async function fetchChildren(repo: string, map: { number: number; body?: string | null }, fallbacks: Fallbacks): Promise<RawIssue[]> {
   const numbers = parseChildNumbers(map.body ?? '', repo).filter((number) => number !== map.number);
   let subIssues: RawIssue[];
   subIssueWatcher.resetBodyIssues(repo, map.number);
@@ -493,14 +495,79 @@ export interface FetchResult {
   warnings: string[];
 }
 
-/** Read every wayfinder map in `repo`, with its tickets, states and blocker edges. */
-export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
-  const { repo, mapLabel, typePrefix } = options;
-  const concurrency = options.concurrency ?? 6;
+/** The map issue as `gh issue list` returns it. */
+interface MapIssue {
+  number: number;
+  title: string;
+  url?: string;
+  body?: string | null;
+  state: string;
+  updatedAt?: string | null;
+  closedAt?: string | null;
+}
+
+export interface MapListOptions extends FetchOptions {
+  /** Hand-made settle choices for this repository. */
+  choices?: SettleChoices;
+  /** Settled maps to read in full anyway, because someone opened them. */
+  expand?: readonly number[];
+  /** Tickets each map had when last read, so the idle rule can see them without reading the map again. */
+  knownTickets?: ReadonlyMap<number, readonly number[]>;
+  now?: Date;
+}
+
+/** GitHub search stops at 1000 results. Past that Wayfinder can't tell what went quiet, so nothing settles as idle. */
+const SEARCH_CAP = 1000;
+
+const RECENT_QUERY = `query($q: String!, $endCursor: String) {
+  search(query: $q, type: ISSUE, first: 100, after: $endCursor) {
+    issueCount
+    pageInfo { hasNextPage endCursor }
+    nodes { ... on Issue { number parent { number } } }
+  }
+}`;
+
+/**
+ * Issues in `repo` updated since `since`, and the issues they are sub-issues of, or null when there
+ * are too many to tell. One paginated GraphQL search.
+ */
+async function recentlyUpdated(repo: string, since: Date): Promise<Set<number> | null> {
+  const output = await gh([
+    'api',
+    'graphql',
+    '--paginate',
+    '-f',
+    `query=${RECENT_QUERY}`,
+    '-f',
+    `q=repo:${repo} is:issue updated:>=${since.toISOString().slice(0, 10)}`,
+    '--jq',
+    '"count \\(.data.search.issueCount)", (.data.search.nodes[] | "\\(.number) \\(.parent.number // 0)")',
+  ]);
+  const numbers = new Set<number>();
+  for (const line of output.split(/\r?\n/)) {
+    const [first = '', second = ''] = line.trim().split(' ');
+    if (first === 'count') {
+      if (Number(second) > SEARCH_CAP) return null;
+      continue;
+    }
+    for (const number of [Number(first), Number(second)]) if (Number.isSafeInteger(number) && number > 0) numbers.add(number);
+  }
+  return numbers;
+}
+
+/**
+ * Read every wayfinder map in `repo`. Active maps come with their tickets, states and blocker edges;
+ * settled ones (see `settlementOf`) come as their issue alone, until someone opens them.
+ */
+export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
+  const { repo, mapLabel } = options;
+  const now = options.now ?? new Date();
+  const choices = options.choices ?? {};
+  const expand = new Set(options.expand ?? []);
   const warnings: string[] = [];
   const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [] };
 
-  const mapIssues = await ghJson<RawIssue[]>([
+  const mapIssues = await ghJson<MapIssue[]>([
     'issue',
     'list',
     '--repo',
@@ -512,7 +579,7 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
     '--limit',
     '100',
     '--json',
-    'number,title,url,body,state',
+    'number,title,url,body,state,updatedAt,closedAt',
   ]);
 
   if (mapIssues.length === 0) {
@@ -520,113 +587,179 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
   }
   subIssueWatcher.retainMaps(repo, mapIssues.map((map) => map.number));
 
-  const maps = await pool(mapIssues, concurrency, async (mapIssue): Promise<WayfinderMap> => {
-    const children = await fetchChildren(repo, mapIssue, fallbacks);
-    const openByNumber = new Map(children.map((child) => [child.number, isOpenState(child.state)]));
-
-    const blockerLists = await pool(children, concurrency, (child) => fetchBlockers(repo, child));
-
-    // Issues off this map on either side of a dependency: blockers above it, dependents below.
-    const onMap = new Set(children.map((child) => child.number));
-    const outsideRaw = new Map<number, RawIssue | null>();
-    const blocks = new Map<number, number[]>();
-    const waitsOn = new Map<number, number[]>();
-    const dependentsOnMap = new Map<number, number>();
-    const link = (store: Map<number, number[]>, key: number, value: number): void => {
-      store.set(key, [...(store.get(key) ?? []), value]);
-    };
-
-    children.forEach((child, index) => {
-      for (const blocker of blockerLists[index] ?? []) {
-        if (onMap.has(blocker.number)) {
-          dependentsOnMap.set(blocker.number, (dependentsOnMap.get(blocker.number) ?? 0) + 1);
-          continue;
-        }
-        link(blocks, blocker.number, child.number);
-        if (blocker.raw !== undefined || !outsideRaw.has(blocker.number)) outsideRaw.set(blocker.number, blocker.raw ?? null);
-      }
-    });
-
-    // Only ask the tickets whose blocking count says a dependent lives off the map.
-    const blockingElsewhere = children.filter(
-      (child) => (child.issue_dependencies_summary?.total_blocking ?? 0) > (dependentsOnMap.get(child.number) ?? 0),
-    );
-    const blockingLists = await pool(blockingElsewhere, concurrency, (child) => fetchBlocking(repo, child.number));
-    blockingElsewhere.forEach((child, index) => {
-      for (const dependent of blockingLists[index] ?? []) {
-        if (onMap.has(dependent.number)) continue;
-        link(waitsOn, dependent.number, child.number);
-        outsideRaw.set(dependent.number, dependent);
-      }
-    });
-
-    const missing = [...outsideRaw].filter(([, raw]) => raw === null).map(([number]) => number);
-    for (const raw of await pool(missing, concurrency, (number) => fetchIssue(repo, number))) {
-      if (raw !== null) outsideRaw.set(raw.number, raw);
+  const facts = (issue: MapIssue): MapIssueFacts => ({
+    open: isOpenState(issue.state),
+    closedAt: issue.closedAt ?? null,
+    updatedAt: issue.updatedAt ?? null,
+  });
+  // Only ask what changed lately when some open map has itself gone quiet.
+  const quiet = mapIssues.some((issue) => choices[issue.number] === undefined && isIdleCandidate(facts(issue), now));
+  let recent: Set<number> | null = new Set();
+  if (quiet) {
+    try {
+      recent = await recentlyUpdated(repo, idleCutoff(now));
+    } catch {
+      recent = null;
     }
-    const outsideIssues = [...outsideRaw.values()].filter((raw): raw is RawIssue => raw !== null);
-    for (const raw of outsideIssues) openByNumber.set(raw.number, isOpenState(raw.state));
-    // Their own blockers too, so they open in the panel like any ticket.
-    const outsideBlockers = await pool(outsideIssues, concurrency, (raw) => fetchBlockers(repo, raw));
-    const outside = outsideIssues.map((raw, index) =>
-      toOutsideTicket(raw, repo, {
-        blocks: blocks.get(raw.number) ?? [],
-        waitsOn: waitsOn.get(raw.number) ?? [],
-        blockers: (outsideBlockers[index] ?? []).map((blocker) => ({
-          number: blocker.number,
-          open: blocker.open ?? openByNumber.get(blocker.number) ?? true,
-        })),
-        typePrefix,
-      }),
-    );
+  }
+  const ticketsChanged = (issue: MapIssue): boolean => {
+    if (recent === null) return true;
+    // A sub-issue names the map as its parent; a ticket only listed in the body is matched by number.
+    const tickets = [issue.number, ...parseChildNumbers(issue.body ?? '', repo), ...(options.knownTickets?.get(issue.number) ?? [])];
+    return tickets.some((number) => recent.has(number));
+  };
 
-    const tickets = children.map((child, index): Ticket => {
-      const labels = labelNames(child);
-      const open = isOpenState(child.state);
-      const assignee = child.assignee?.login ?? child.assignees?.[0]?.login ?? null;
-      const blockers = blockerLists[index] ?? [];
-      const blockedBy = blockers.map((blocker) => blocker.number);
-      // Trust what the dependency read said; otherwise ask what we fetched, and assume open
-      // if the blocker lives somewhere we cannot see.
-      const openBlockers = blockers
-        .filter((blocker) => blocker.open ?? openByNumber.get(blocker.number) ?? true)
-        .map((blocker) => blocker.number);
-      return {
-        number: child.number,
-        title: child.title,
-        url: issueUrl(child, repo),
-        body: child.body ?? '',
-        type: ticketType(labels, typePrefix),
-        labels,
-        open,
-        assignee,
-        blockedBy,
-        openBlockers,
-        state: ticketStateOf(open, openBlockers, assignee),
-      };
-    });
-
-    return {
-      number: mapIssue.number,
-      title: mapIssue.title,
-      url: issueUrl(mapIssue, repo),
-      body: mapIssue.body ?? '',
-      open: isOpenState(mapIssue.state),
-      sections: parseMapBody(mapIssue.body ?? ''),
-      tickets,
-      outside,
-      criticalPath: criticalPath(tickets),
-    };
+  const maps = await pool(mapIssues, options.concurrency ?? 6, async (mapIssue): Promise<WayfinderMap> => {
+    const issueFacts = facts(mapIssue);
+    const settled = settlementOf(issueFacts, choices[mapIssue.number], ticketsChanged(mapIssue), now);
+    if (settled !== null && !expand.has(mapIssue.number)) return settledMap(repo, mapIssue, settled);
+    return { ...(await loadMap(options, mapIssue, fallbacks)), settled };
   });
 
   maps.sort((a, b) => Number(b.open) - Number(a.open) || a.number - b.number);
-  if (fallbacks.maps.length > 0) warnings.push(fallbackWarning(fallbacks.maps.sort((a, b) => a - b), fallbacks.rateLimited));
-  warnings.push(
+  return { maps, warnings: [...warnings, ...fallbackWarnings(fallbacks)] };
+}
+
+/** What the maps' ticket reads had to fall back on, in words. */
+function fallbackWarnings(fallbacks: Fallbacks): string[] {
+  const warnings = fallbacks.maps.length > 0 ? [fallbackWarning(fallbacks.maps.sort((a, b) => a - b), fallbacks.rateLimited)] : [];
+  return [
+    ...warnings,
     ...fallbacks.unattachedTickets
       .sort((a, b) => a.mapNumber - b.mapNumber)
       .map(({ mapNumber, ticketNumbers }) => unattachedTicketsWarning(mapNumber, ticketNumbers)),
+  ];
+}
+
+/** Read the tickets of maps that were listed settled, keeping their settlement. */
+export async function fetchMapDetails(options: FetchOptions, maps: readonly WayfinderMap[]): Promise<FetchResult> {
+  const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [] };
+  const loaded = await pool(maps, options.concurrency ?? 6, async (map) => ({
+    ...(await loadMap(options, { number: map.number, title: map.title, url: map.url, body: map.body, state: map.open ? 'open' : 'closed' }, fallbacks)),
+    settled: map.settled,
+  }));
+  return { maps: loaded, warnings: fallbackWarnings(fallbacks) };
+}
+
+/** A settled map as the list shows it: its issue, without a single ticket read. */
+function settledMap(repo: string, mapIssue: MapIssue, settled: MapSettlement): WayfinderMap {
+  return {
+    number: mapIssue.number,
+    title: mapIssue.title,
+    url: issueUrl(mapIssue, repo),
+    body: mapIssue.body ?? '',
+    open: isOpenState(mapIssue.state),
+    sections: parseMapBody(mapIssue.body ?? ''),
+    tickets: [],
+    outside: [],
+    criticalPath: { tickets: [], remaining: 0 },
+    settled,
+    ticketsLoaded: false,
+  };
+}
+
+/** One map with its tickets, states and blocker edges. */
+async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fallbacks): Promise<WayfinderMap> {
+  const { repo, typePrefix } = options;
+  const concurrency = options.concurrency ?? 6;
+  const children = await fetchChildren(repo, mapIssue, fallbacks);
+  const openByNumber = new Map(children.map((child) => [child.number, isOpenState(child.state)]));
+
+  const blockerLists = await pool(children, concurrency, (child) => fetchBlockers(repo, child));
+
+  // Issues off this map on either side of a dependency: blockers above it, dependents below.
+  const onMap = new Set(children.map((child) => child.number));
+  const outsideRaw = new Map<number, RawIssue | null>();
+  const blocks = new Map<number, number[]>();
+  const waitsOn = new Map<number, number[]>();
+  const dependentsOnMap = new Map<number, number>();
+  const link = (store: Map<number, number[]>, key: number, value: number): void => {
+    store.set(key, [...(store.get(key) ?? []), value]);
+  };
+
+  children.forEach((child, index) => {
+    for (const blocker of blockerLists[index] ?? []) {
+      if (onMap.has(blocker.number)) {
+        dependentsOnMap.set(blocker.number, (dependentsOnMap.get(blocker.number) ?? 0) + 1);
+        continue;
+      }
+      link(blocks, blocker.number, child.number);
+      if (blocker.raw !== undefined || !outsideRaw.has(blocker.number)) outsideRaw.set(blocker.number, blocker.raw ?? null);
+    }
+  });
+
+  // Only ask the tickets whose blocking count says a dependent lives off the map.
+  const blockingElsewhere = children.filter(
+    (child) => (child.issue_dependencies_summary?.total_blocking ?? 0) > (dependentsOnMap.get(child.number) ?? 0),
   );
-  return { maps, warnings };
+  const blockingLists = await pool(blockingElsewhere, concurrency, (child) => fetchBlocking(repo, child.number));
+  blockingElsewhere.forEach((child, index) => {
+    for (const dependent of blockingLists[index] ?? []) {
+      if (onMap.has(dependent.number)) continue;
+      link(waitsOn, dependent.number, child.number);
+      outsideRaw.set(dependent.number, dependent);
+    }
+  });
+
+  const missing = [...outsideRaw].filter(([, raw]) => raw === null).map(([number]) => number);
+  for (const raw of await pool(missing, concurrency, (number) => fetchIssue(repo, number))) {
+    if (raw !== null) outsideRaw.set(raw.number, raw);
+  }
+  const outsideIssues = [...outsideRaw.values()].filter((raw): raw is RawIssue => raw !== null);
+  for (const raw of outsideIssues) openByNumber.set(raw.number, isOpenState(raw.state));
+  // Their own blockers too, so they open in the panel like any ticket.
+  const outsideBlockers = await pool(outsideIssues, concurrency, (raw) => fetchBlockers(repo, raw));
+  const outside = outsideIssues.map((raw, index) =>
+    toOutsideTicket(raw, repo, {
+      blocks: blocks.get(raw.number) ?? [],
+      waitsOn: waitsOn.get(raw.number) ?? [],
+      blockers: (outsideBlockers[index] ?? []).map((blocker) => ({
+        number: blocker.number,
+        open: blocker.open ?? openByNumber.get(blocker.number) ?? true,
+      })),
+      typePrefix,
+    }),
+  );
+
+  const tickets = children.map((child, index): Ticket => {
+    const labels = labelNames(child);
+    const open = isOpenState(child.state);
+    const assignee = child.assignee?.login ?? child.assignees?.[0]?.login ?? null;
+    const blockers = blockerLists[index] ?? [];
+    const blockedBy = blockers.map((blocker) => blocker.number);
+    // Trust what the dependency read said; otherwise ask what we fetched, and assume open
+    // if the blocker lives somewhere we cannot see.
+    const openBlockers = blockers
+      .filter((blocker) => blocker.open ?? openByNumber.get(blocker.number) ?? true)
+      .map((blocker) => blocker.number);
+    return {
+      number: child.number,
+      title: child.title,
+      url: issueUrl(child, repo),
+      body: child.body ?? '',
+      type: ticketType(labels, typePrefix),
+      labels,
+      open,
+      assignee,
+      blockedBy,
+      openBlockers,
+      state: ticketStateOf(open, openBlockers, assignee),
+    };
+  });
+
+  return {
+    number: mapIssue.number,
+    title: mapIssue.title,
+    url: issueUrl(mapIssue, repo),
+    body: mapIssue.body ?? '',
+    open: isOpenState(mapIssue.state),
+    sections: parseMapBody(mapIssue.body ?? ''),
+    tickets,
+    outside,
+    criticalPath: criticalPath(tickets),
+    settled: null,
+    ticketsLoaded: true,
+  };
 }
 
 interface RawRef {

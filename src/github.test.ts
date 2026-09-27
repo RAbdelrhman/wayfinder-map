@@ -6,7 +6,7 @@ type MockExecFile = (
   options: unknown,
 ) => Promise<{ stdout: Buffer; stderr: Buffer }>;
 
-const { execFileMock } = vi.hoisted(() => ({ execFileMock: vi.fn<MockExecFile>() }));
+const { execFileMock, ghCalls } = vi.hoisted(() => ({ execFileMock: vi.fn<MockExecFile>(), ghCalls: [] as string[][] }));
 
 vi.mock('node:child_process', () => {
   Object.defineProperty(execFileMock, Symbol.for('nodejs.util.promisify.custom'), {
@@ -20,6 +20,7 @@ import {
   SubIssueWatcher,
   branchFacts,
   fallbackWarning,
+  fetchMapDetails,
   fetchMaps,
   gh304Output,
   ghProblem,
@@ -357,5 +358,92 @@ describe('fetchMaps child tickets', () => {
 
     expect(result.maps[0]?.tickets.map(({ number }) => number)).toEqual([12, 15]);
     expect(result.warnings).toEqual(["#15 is listed on map #10 but isn't attached as a sub-issue."]);
+  });
+});
+
+describe('fetchMaps settling', () => {
+  const NOW = new Date('2026-09-26T12:00:00.000Z');
+  const RECENT = '2026-09-20T12:00:00.000Z';
+  const OLD = '2026-07-01T12:00:00.000Z';
+  const mapIssues = [
+    { number: 1, title: 'Active', url: 'https://github.com/o/r/issues/1', body: '', state: 'OPEN', updatedAt: RECENT, closedAt: null },
+    { number: 2, title: 'Closed', url: 'https://github.com/o/r/issues/2', body: '', state: 'CLOSED', updatedAt: OLD, closedAt: OLD },
+    { number: 3, title: 'Quiet', url: 'https://github.com/o/r/issues/3', body: '', state: 'OPEN', updatedAt: OLD, closedAt: null },
+    { number: 4, title: 'Quiet map, busy ticket', url: 'https://github.com/o/r/issues/4', body: '', state: 'OPEN', updatedAt: OLD, closedAt: null },
+    { number: 5, title: 'Settled by hand', url: 'https://github.com/o/r/issues/5', body: '', state: 'OPEN', updatedAt: RECENT, closedAt: null },
+  ];
+  const child = (number: number) => ({ number, title: `Ticket ${String(number)}`, state: 'open', body: '', labels: [] });
+
+  function answer(args: string[]): unknown {
+    if (args[0] === 'issue' && args.includes('--label')) return mapIssues;
+    // Ticket 40 changed last week; it is a sub-issue of map 4.
+    if (args[1] === 'graphql') return ['count 2', '40 4', '77 0', ''].join('\n');
+    const path = args.find((arg) => arg.startsWith('repos/')) ?? '';
+    const subIssues = /issues\/(\d+)\/sub_issues/.exec(path);
+    if (subIssues !== null) return [child(Number(subIssues[1]) * 10)];
+    if (path.includes('/dependencies/')) return [];
+    throw new Error(`Unexpected gh call: ${args.join(' ')}`);
+  }
+
+  beforeEach(() => {
+    ghCalls.length = 0;
+    execFileMock.mockImplementation(async (_file, args) => {
+      ghCalls.push(args);
+      const result = answer(args);
+      const text = typeof result === 'string' ? result : JSON.stringify(result);
+      return { stdout: Buffer.from(args.includes('--include') ? ['HTTP/2.0 200 OK', 'ETag: "mock"', '', text].join('\r\n') : text), stderr: Buffer.alloc(0) };
+    });
+  });
+
+  const ticketCalls = (): string[] =>
+    ghCalls.map((args) => args.find((arg) => arg.startsWith('repos/')) ?? '').filter((path) => /sub_issues|dependencies/.test(path));
+
+  it('reads no sub-issues or dependencies for settled maps', async () => {
+    const { maps } = await fetchMaps({
+      repo: 'o/r',
+      mapLabel: 'wayfinder:map',
+      typePrefix: 'wayfinder:',
+      choices: { 5: { settled: true, at: RECENT } },
+      now: NOW,
+    });
+
+    const byNumber = new Map(maps.map((map) => [map.number, map]));
+    expect(byNumber.get(1)?.settled).toBeNull();
+    expect(byNumber.get(4)?.settled).toBeNull();
+    expect(byNumber.get(2)?.settled).toEqual({ reason: 'closed', since: OLD });
+    expect(byNumber.get(3)?.settled).toEqual({ reason: 'idle', since: '2026-07-31T12:00:00.000Z' });
+    expect(byNumber.get(5)?.settled).toEqual({ reason: 'manual', since: RECENT });
+    for (const settled of [2, 3, 5]) expect(byNumber.get(settled)).toMatchObject({ tickets: [], ticketsLoaded: false });
+    expect(byNumber.get(1)).toMatchObject({ ticketsLoaded: true, tickets: [{ number: 10 }] });
+
+    // One map list, one recent-activity search, then tickets for the two active maps only.
+    expect(ghCalls.filter((args) => args[0] === 'issue' || args[1] === 'graphql')).toHaveLength(2);
+    expect(ticketCalls().sort()).toEqual([
+      'repos/o/r/issues/1/sub_issues',
+      'repos/o/r/issues/10/dependencies/blocked_by',
+      'repos/o/r/issues/4/sub_issues',
+      'repos/o/r/issues/40/dependencies/blocked_by',
+    ]);
+  });
+
+  it('reads a settled map only once it is opened', async () => {
+    const { maps } = await fetchMaps({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', now: NOW });
+    const closed = maps.find((map) => map.number === 2);
+    ghCalls.length = 0;
+
+    const { maps: [opened] } = await fetchMapDetails({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' }, closed === undefined ? [] : [closed]);
+
+    expect(opened).toMatchObject({ number: 2, ticketsLoaded: true, tickets: [{ number: 20 }], settled: { reason: 'closed' } });
+    expect(ticketCalls()).toEqual(['repos/o/r/issues/2/sub_issues', 'repos/o/r/issues/20/dependencies/blocked_by']);
+  });
+
+  it('skips the activity search when no open map has gone quiet', async () => {
+    const saved = mapIssues.splice(2, 2);
+    try {
+      await fetchMaps({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', now: NOW });
+      expect(ghCalls.some((args) => args[1] === 'graphql')).toBe(false);
+    } finally {
+      mapIssues.splice(2, 0, ...saved);
+    }
   });
 });

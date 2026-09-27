@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MapSnapshot, OutsideTicket, Ticket, WayfinderMap } from '../types.js';
-import { createJumpDestinations, loadingMapRows, navFooterHtml, prototypeCountBadge, repoLabel, sidebarLoadsMaps, viewFromQuery } from './navigation.js';
+import { createJumpDestinations, loadingMapRows, navFooterHtml, prototypeCountBadge, repoLabel, sidebarLoadsMaps, sidebarMaps, viewFromQuery } from './navigation.js';
 
 function ticket(number: number, title: string): Ticket {
   return {
@@ -30,6 +30,8 @@ function map(number: number, title: string, tickets: Ticket[] = []): WayfinderMa
     tickets,
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
+    settled: null,
+    ticketsLoaded: true,
   };
 }
 
@@ -134,6 +136,13 @@ describe('repoLabel', () => {
 });
 
 describe('loadingMapRows', () => {
+  it('keeps settled maps out of the tree unless one is open', () => {
+    const settled = { ...map(8, 'Old map'), settled: { reason: 'closed' as const, since: '2026-08-01T00:00:00.000Z' } };
+    const active = map(12, 'Current map');
+    expect(sidebarMaps([active, settled], null).map(({ number }) => number)).toEqual([12]);
+    expect(sidebarMaps([active, settled], 8).map(({ number }) => number)).toEqual([12, 8]);
+  });
+
   it('reserves a row for each map the repository had last time, capped at twelve', () => {
     const count = (html: string): number => html.match(/<li class="nav-tree-status"/g)?.length ?? 0;
 
