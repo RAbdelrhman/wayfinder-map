@@ -28,7 +28,7 @@ import { WAYFINDER_VERSION } from './version.js';
 import { resolveRepoIcon, type ResolvedRepoIcon } from './repoIcon.js';
 import { HandOffStore, HandOffTracker, handOffStorePath } from './handOffTracking.js';
 import type { HandOffTrackingClient } from './handOffTracking.js';
-import { MapWatcher } from './mapWatcher.js';
+import { githubMapWatchReader, MapWatcher } from './mapWatcher.js';
 import { ProgressError, ProgressService, ProgressSettingsStore, readCompletedTickets } from './progress.js';
 import { SettleStore } from './settling.js';
 
@@ -210,7 +210,7 @@ export async function startServer({
   updater,
   handOffStore,
   progress,
-  mapWatcher = new MapWatcher(),
+  mapWatcher: givenMapWatcher,
   settling,
 }: ServeOptions): Promise<RunningServer> {
   const defaultUpdater: UpdaterService = {
@@ -287,6 +287,10 @@ export async function startServer({
     handOffStore ?? new HandOffStore({ filePath: handOffStorePath() }),
     trackingClient,
   );
+  const mapWatcher =
+    givenMapWatcher ?? new MapWatcher(githubMapWatchReader, { trackedPullRequests: (forRepo) => handOffTracker.trackedPullRequests(forRepo) });
+  // A thread change is often a PR, CI or review change, so its map is read now rather than in two minutes.
+  handOffTracker.onThreadChange((change) => mapWatcher.nudge(change.repo, change.mapNumber));
   /** Tickets whose hand-off request is still in flight, keyed `owner/name#number`, so a double click can't start two. */
   const startingTickets = new Set<string>();
   const progressPanel =

@@ -547,4 +547,58 @@ describe('HandOffTracker', () => {
       tracker.close();
     }
   });
+
+  it('offers T3 PR snapshots to the map watcher while online, and announces thread changes', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    await store.record({ ...input, ticketNumber: 12, threadId: 'thread-2', requestedBranch: 'wayfinder/12-other' });
+    let online = true;
+    let deliver: (value: unknown) => void = () => undefined;
+    const snapshotPullRequest = { number: 42, url: 'https://github.com/octo/one/pull/42', snapshot: { state: 'open', checksState: 'pending', reviewDecision: null } };
+    const tracker = new HandOffTracker(store, {
+      readHandOffSnapshot: async () => {
+        if (!online) throw new Error('T3 Code is not running');
+        return {
+          environmentId: 'env-1',
+          origin: input.t3Origin ?? '',
+          snapshot: {
+            snapshotSequence: 1,
+            threads: [
+              { id: 'thread-1', session: { status: 'running' }, pullRequests: [snapshotPullRequest] },
+              { id: 'thread-2', session: { status: 'running' }, pullRequests: ['https://github.com/octo/one/pull/43'] },
+            ],
+          },
+        };
+      },
+      subscribeShell: async (_sequence, listener) => {
+        deliver = listener;
+        return () => undefined;
+      },
+    }, { lookupPullRequests: async () => [], lookupPullRequestState: async () => null });
+    const changes: unknown[] = [];
+    tracker.onThreadChange((change) => changes.push(change));
+
+    try {
+      await tracker.snapshot();
+      // Ticket 12's PR has no snapshot yet, so the watcher asks GitHub for that one.
+      await expect(tracker.trackedPullRequests('OCTO/one')).resolves.toEqual(
+        new Map([[11, [{ number: 42, url: 'https://github.com/octo/one/pull/42', state: 'open', checks: 'pending', review: null }]]]),
+      );
+      await expect(tracker.trackedPullRequests('octo/two')).resolves.toEqual(new Map());
+
+      deliver({
+        kind: 'thread-upserted',
+        sequence: 2,
+        thread: { id: 'thread-1', session: { status: 'running' }, pullRequests: [{ ...snapshotPullRequest, snapshot: { state: 'open', checksState: 'passing' } }] },
+      });
+      await vi.waitFor(() => expect(changes).toEqual([{ repo: 'octo/one', mapNumber: 5, ticketNumber: 11 }]));
+      await expect(tracker.trackedPullRequests('octo/one')).resolves.toMatchObject(new Map([[11, [{ checks: 'passing' }]]]));
+
+      online = false;
+      await tracker.snapshot();
+      await expect(tracker.trackedPullRequests('octo/one')).resolves.toEqual(new Map());
+    } finally {
+      tracker.close();
+    }
+  });
 });

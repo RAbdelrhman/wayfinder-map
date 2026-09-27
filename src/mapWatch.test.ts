@@ -10,9 +10,10 @@ import {
   parseHttpResponse,
   pullRequestsByTicket,
   rateLimitOf,
+  trackedPullRequestsByTicket,
   watchedTickets,
 } from './mapWatch.js';
-import type { WatchedPullRequest, WatchedTicket } from './mapWatch.js';
+import type { TrackedPullRequestRef, WatchedPullRequest, WatchedTicket } from './mapWatch.js';
 import type { TicketState } from './types.js';
 
 function ticket(number: number, state: TicketState, pullRequests: WatchedPullRequest[] = []): WatchedTicket {
@@ -206,5 +207,45 @@ describe('nextPollDelay', () => {
 
   it('respects the poll interval GitHub asks for', () => {
     expect(nextPollDelay({ intervalMs: 30_000, now, rateLimits: [], failures: 0, pollIntervalSeconds: 60 })).toBe(60_000);
+  });
+});
+
+describe('trackedPullRequestsByTicket', () => {
+  const ref = (overrides: Partial<TrackedPullRequestRef> = {}): TrackedPullRequestRef => ({
+    number: 42,
+    url: 'https://github.com/o/r/pull/42',
+    state: 'open',
+    checksState: 'passing',
+    reviewDecision: 'approved',
+    hasSnapshot: true,
+    ...overrides,
+  });
+
+  it('keys T3 Code PR snapshots by ticket, in the words the watcher uses', () => {
+    expect(
+      trackedPullRequestsByTicket([
+        { ticketNumber: 7, pullRequests: [ref(), ref({ number: null, url: 'https://github.com/o/r/pull/43', state: 'MERGED', checksState: 'failing', reviewDecision: 'CHANGES_REQUESTED' })] },
+        { ticketNumber: 8, pullRequests: [ref({ number: 50, url: 'https://github.com/o/r/pull/50', state: 'closed', checksState: 'none', reviewDecision: null })] },
+      ]),
+    ).toEqual(
+      new Map([
+        [7, [
+          { number: 42, url: 'https://github.com/o/r/pull/42', state: 'open', checks: 'passing', review: 'approved' },
+          { number: 43, url: 'https://github.com/o/r/pull/43', state: 'merged', checks: 'failing', review: 'changes_requested' },
+        ]],
+        [8, [{ number: 50, url: 'https://github.com/o/r/pull/50', state: 'closed', checks: null, review: null }]],
+      ]),
+    );
+  });
+
+  it('leaves out PRs without a snapshot, hand-offs without a ticket, and duplicates across hand-offs', () => {
+    const tracked = trackedPullRequestsByTicket([
+      { ticketNumber: null, pullRequests: [ref()] },
+      { ticketNumber: 7, pullRequests: [ref({ hasSnapshot: false })] },
+      { ticketNumber: 9, pullRequests: [ref()] },
+      { ticketNumber: 9, pullRequests: [ref({ checksState: 'pending' })] },
+    ]);
+    expect([...tracked.keys()]).toEqual([9]);
+    expect(tracked.get(9)).toHaveLength(1);
   });
 });

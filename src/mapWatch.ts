@@ -158,6 +158,48 @@ export function pullRequestsByTicket(nodes: unknown): Map<number, WatchedPullReq
   return byTicket;
 }
 
+/** A PR as T3 Code's shell reports it on a hand-off, after `parsePullRequest` in `handOffTracking.ts`. */
+export interface TrackedPullRequestRef {
+  number: number | null;
+  url: string;
+  state: string | null;
+  checksState: string | null;
+  reviewDecision: string | null;
+  hasSnapshot: boolean;
+}
+
+/**
+ * The PRs T3 Code has a snapshot for, keyed by ticket. Only a PR with a snapshot counts:
+ * without one T3 Code knows the URL but not the state, CI or review.
+ */
+export function trackedPullRequestsByTicket(
+  handOffs: ReadonlyArray<{ ticketNumber: number | null; pullRequests: readonly TrackedPullRequestRef[] }>,
+): Map<number, WatchedPullRequest[]> {
+  const byTicket = new Map<number, WatchedPullRequest[]>();
+  for (const handOff of handOffs) {
+    if (handOff.ticketNumber === null) continue;
+    for (const ref of handOff.pullRequests) {
+      const number = ref.number ?? Number(/\/pull\/(\d+)/.exec(ref.url)?.[1]);
+      if (!ref.hasSnapshot || !Number.isSafeInteger(number)) continue;
+      const known = byTicket.get(handOff.ticketNumber) ?? [];
+      if (known.some((pullRequest) => pullRequest.number === number)) continue;
+      const state = ref.state?.toUpperCase();
+      known.push({
+        number,
+        url: ref.url,
+        state: state === 'MERGED' ? 'merged' : state === 'CLOSED' ? 'closed' : 'open',
+        checks: T3_CHECKS[ref.checksState?.toLowerCase() ?? ''] ?? CHECKS[ref.checksState?.toUpperCase() ?? ''] ?? null,
+        review: REVIEWS[ref.reviewDecision?.toUpperCase() ?? ''] ?? null,
+      });
+      byTicket.set(handOff.ticketNumber, known);
+    }
+  }
+  return byTicket;
+}
+
+/** T3 Code's own `checksState` words. GitHub's rollup states are accepted too. */
+const T3_CHECKS: Record<string, ChecksState> = { passing: 'passing', failing: 'failing', pending: 'pending' };
+
 export interface HttpResponse {
   status: number;
   /** Header names in lower case. */

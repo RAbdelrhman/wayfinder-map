@@ -5,6 +5,8 @@ import type { MapEvent, RateLimit, WatchedPullRequest, WatchedTicket } from './m
 /** #122's interval: a `304` is free, and list responses are cached for 60 s anyway. */
 export const WATCH_INTERVAL_MS = 2 * 60 * 1000;
 const HISTORY_SIZE = 50;
+/** The closest two reads of one map get when T3 Code keeps nudging it. */
+export const NUDGE_GAP_MS = 10 * 1000;
 
 export type MapRead =
   | { status: 'unchanged'; rateLimit: RateLimit | null; pollIntervalSeconds: number | null }
@@ -23,6 +25,12 @@ export interface MapWatchReader {
   readPullRequests: (repo: string) => Promise<PullRequestRead>;
 }
 
+/**
+ * PRs T3 Code already tracks, keyed by ticket, for tickets with a hand-off (#135). They cost no
+ * GitHub call, so the watcher reads GitHub only for the tickets this leaves out.
+ */
+export type TrackedPullRequests = (repo: string) => Promise<Map<number, WatchedPullRequest[]>>;
+
 export type MapEventListener = (event: MapEvent) => void;
 
 interface WatchedMap {
@@ -33,12 +41,18 @@ interface WatchedMap {
   history: MapEvent[];
   listeners: Set<MapEventListener>;
   timer: NodeJS.Timeout | null;
+  /** When `timer` fires, in `now()` milliseconds. */
+  dueAt: number;
+  /** When the last read started, in `now()` milliseconds. */
+  polledAt: number;
+  /** A nudge arrived during a read, so the next read comes early. */
+  nudged: boolean;
   /** A read is in flight. It schedules the next one itself. */
   polling: boolean;
   failures: number;
   pollIntervalSeconds: number | null;
-  /** Whether pull requests have been read for this map yet. The first read is a baseline, not news. */
-  pullRequestsRead: boolean;
+  /** Tickets whose pull requests have been read. Each ticket's first read is a baseline, not news. */
+  pullRequestsRead: Set<number>;
 }
 
 /**
@@ -52,15 +66,17 @@ export class MapWatcher {
   private readonly pullRequestReads = new Map<string, { at: number; read: Promise<PullRequestRead> }>();
   private readonly intervalMs: number;
   private readonly now: () => number;
+  private readonly tracked: TrackedPullRequests | null;
   private nextId = 1;
   private closed = false;
 
   constructor(
     private readonly reader: MapWatchReader = githubMapWatchReader,
-    options: { intervalMs?: number; now?: () => number } = {},
+    options: { intervalMs?: number; now?: () => number; trackedPullRequests?: TrackedPullRequests } = {},
   ) {
     this.intervalMs = options.intervalMs ?? WATCH_INTERVAL_MS;
     this.now = options.now ?? Date.now;
+    this.tracked = options.trackedPullRequests ?? null;
   }
 
   /** Start watching a map for `listener`. Returns the call that stops it. */
@@ -76,6 +92,25 @@ export class MapWatcher {
         map.timer = null;
       }
     };
+  }
+
+  /**
+   * Read a watched map soon instead of at its next interval: T3 Code saw one of its threads
+   * change. Reads stay `NUDGE_GAP_MS` apart, and a map backing off after failures waits.
+   */
+  nudge(repo: string, mapNumber: number): void {
+    const map = this.maps.get(key(repo, mapNumber));
+    if (this.closed || map === undefined || map.listeners.size === 0 || map.failures > 0) return;
+    if (map.polling) {
+      map.nudged = true;
+      return;
+    }
+    const delay = Math.max(0, map.polledAt + NUDGE_GAP_MS - this.now());
+    if (map.timer !== null) {
+      if (map.dueAt <= this.now() + delay) return;
+      clearTimeout(map.timer);
+    }
+    this.schedule(map, delay);
   }
 
   /** The map's recent events, oldest first, after `afterId` when given. */
@@ -96,7 +131,7 @@ export class MapWatcher {
     const id = key(repo, mapNumber);
     let map = this.maps.get(id);
     if (map === undefined) {
-      map = { repo, mapNumber, etag: null, tickets: null, history: [], listeners: new Set(), timer: null, polling: false, failures: 0, pollIntervalSeconds: null, pullRequestsRead: false };
+      map = { repo, mapNumber, etag: null, tickets: null, history: [], listeners: new Set(), timer: null, dueAt: 0, polledAt: Number.NEGATIVE_INFINITY, nudged: false, polling: false, failures: 0, pollIntervalSeconds: null, pullRequestsRead: new Set() };
       this.maps.set(id, map);
     }
     return map;
@@ -104,12 +139,17 @@ export class MapWatcher {
 
   private schedule(map: WatchedMap, delayMs: number): void {
     if (this.closed || map.listeners.size === 0) return;
+    map.dueAt = this.now() + delayMs;
     map.timer = setTimeout(() => {
       map.timer = null;
       map.polling = true;
+      map.nudged = false;
+      map.polledAt = this.now();
       void this.poll(map).then((delay) => {
         map.polling = false;
-        this.schedule(map, delay);
+        const nudged = map.nudged && map.failures === 0;
+        map.nudged = false;
+        this.schedule(map, nudged ? Math.min(delay, Math.max(0, map.polledAt + NUDGE_GAP_MS - this.now())) : delay);
       });
     }, delayMs);
     map.timer.unref();
@@ -152,14 +192,19 @@ export class MapWatcher {
     }
     // A pull request doesn't change the map's ETag, so this runs even after a `304`.
     if (needsPullRequests(tickets)) {
-      const pullRequests = await this.pullRequests(map.repo).catch(() => null);
-      if (pullRequests !== null) {
-        const withPullRequests = (ticket: WatchedTicket): WatchedTicket => ({ ...ticket, pullRequests: pullRequests.byTicket.get(ticket.number) ?? ticket.pullRequests });
-        tickets = tickets.map(withPullRequests);
-        // Without this, every PR merged before watching began would arrive as just merged.
-        if (!map.pullRequestsRead) previous = previous?.map(withPullRequests) ?? null;
-        map.pullRequestsRead = true;
+      const tracked = (await this.tracked?.(map.repo).catch(() => null)) ?? new Map<number, WatchedPullRequest[]>();
+      const untracked = tickets.filter((ticket) => !tracked.has(ticket.number));
+      const github = needsPullRequests(untracked) ? await this.pullRequests(map.repo).catch(() => null) : null;
+      const read = new Map<number, WatchedPullRequest[]>();
+      for (const ticket of tickets) {
+        const found = tracked.get(ticket.number) ?? (github === null ? undefined : (github.byTicket.get(ticket.number) ?? ticket.pullRequests));
+        if (found !== undefined) read.set(ticket.number, found);
       }
+      const withPullRequests = (ticket: WatchedTicket): WatchedTicket => ({ ...ticket, pullRequests: read.get(ticket.number) ?? ticket.pullRequests });
+      tickets = tickets.map(withPullRequests);
+      // Without this, every PR merged before watching began would arrive as just merged.
+      previous = previous?.map((ticket) => (map.pullRequestsRead.has(ticket.number) ? ticket : withPullRequests(ticket))) ?? null;
+      for (const number of read.keys()) map.pullRequestsRead.add(number);
     }
     map.tickets = tickets;
     if (previous === null || this.closed) return;
