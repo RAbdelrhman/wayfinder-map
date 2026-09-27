@@ -20,6 +20,8 @@ describe('fetchMaps pagination', () => {
       html_url: `https://github.com/octo/repo/issues/${String(number)}`,
       body: '',
       state: 'open',
+      updated_at: '2026-09-27T00:00:00Z',
+      closed_at: null,
     });
     const pages = [
       Array.from({ length: 100 }, (_, index) => mapIssue(index + 1)),

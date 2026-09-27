@@ -1,7 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
 import type { HandOffStatusDto } from '../handOffTracking.js';
-import { cardShowsHandOff, handOffCardHtml, handOffMapLabel, handOffPresentation, handOffSourcePath, handOffTime, handOffTriggerLabel, homeHandOffHistoryHtml, listedHandOffs, recentHandOffs } from './handOffs.js';
+import {
+  cardShowsHandOff,
+  focusedMapTicketNumber,
+  handOffCardHtml,
+  handOffMapLabel,
+  handOffPresentation,
+  handOffSourcePath,
+  handOffTime,
+  handOffTriggerLabel,
+  handOffVisualSignature,
+  homeHandOffHistoryHtml,
+  listedHandOffs,
+  recentHandOffs,
+  restoreMapTicketFocus,
+} from './handOffs.js';
 
 function handOff(overrides: Partial<HandOffStatusDto> = {}): HandOffStatusDto {
   return {
@@ -39,14 +53,36 @@ describe('hand-off presentation', () => {
     expect(handOffPresentation(handOff({ status: 'interrupted' })).label).toBe('Failed');
     expect(handOffPresentation(handOff({
       status: 'finished',
-      pullRequests: [{ number: 42, url: 'https://github.com/octo/example/pull/42', state: 'open', mergedAt: null, syncedAt: null, source: 't3' }],
+      pullRequests: [{
+        number: 42,
+        url: 'https://github.com/octo/example/pull/42',
+        state: 'open',
+        checksState: null,
+        reviewDecision: null,
+        isDraft: null,
+        hasSnapshot: false,
+        mergedAt: null,
+        syncedAt: null,
+        source: 't3',
+      }],
     })).label).toBe('PR ready');
   });
 
   it('does not treat GitHub fallback pull requests as T3-reported status', () => {
     const item = handOff({
       status: 'finished',
-      pullRequests: [{ number: 42, url: 'https://github.com/octo/example/pull/42', state: 'open', mergedAt: null, syncedAt: null, source: 'github' }],
+      pullRequests: [{
+        number: 42,
+        url: 'https://github.com/octo/example/pull/42',
+        state: 'open',
+        checksState: null,
+        reviewDecision: null,
+        isDraft: null,
+        hasSnapshot: false,
+        mergedAt: null,
+        syncedAt: null,
+        source: 'github',
+      }],
     });
     expect(handOffPresentation(item).label).toBe('Working');
     expect(handOffCardHtml(item)).not.toContain('Open PR #42');
@@ -86,6 +122,69 @@ describe('hand-off presentation', () => {
   });
 });
 
+describe('hand-off visual signature', () => {
+  it('changes when PR state, CI, review, draft, or merge time changes', () => {
+    const pullRequest: HandOffStatusDto['pullRequests'][number] = {
+      number: 42,
+      url: 'https://github.com/octo/example/pull/42',
+      state: 'OPEN',
+      checksState: 'pending',
+      reviewDecision: 'REVIEW_REQUIRED',
+      isDraft: false,
+      hasSnapshot: true,
+      mergedAt: null,
+      syncedAt: '2026-09-24T12:00:00Z',
+      source: 't3',
+    };
+    const initial = handOffVisualSignature([handOff({ pullRequests: [pullRequest] })]);
+    const updates: HandOffStatusDto['pullRequests'][number][] = [
+      { ...pullRequest, state: 'MERGED' },
+      { ...pullRequest, checksState: 'passing' },
+      { ...pullRequest, reviewDecision: 'APPROVED' },
+      { ...pullRequest, isDraft: true },
+      { ...pullRequest, mergedAt: '2026-09-24T12:01:00Z' },
+    ];
+
+    for (const update of updates) {
+      expect(handOffVisualSignature([handOff({ pullRequests: [update] })])).not.toBe(initial);
+    }
+  });
+});
+
+describe('map ticket focus after redraw', () => {
+  it('restores focus to the same ticket node', () => {
+    let focused = false;
+    let preventScroll = false;
+    const previousNode = { dataset: { number: '11' }, focus: () => undefined };
+    const replacementNode = {
+      dataset: { number: '11' },
+      focus: (options?: FocusOptions) => {
+        focused = true;
+        preventScroll = options?.preventScroll === true;
+      },
+    };
+    const ticketNumber = focusedMapTicketNumber(previousNode, true);
+
+    restoreMapTicketFocus(ticketNumber, (number) => number === 11 ? replacementNode : null);
+
+    expect(focused).toBe(true);
+    expect(preventScroll).toBe(true);
+  });
+
+  it('does not restore a ticket when focus was outside the map or the node has no valid ticket number', () => {
+    const node = { dataset: { number: '0' }, focus: () => undefined };
+    expect(focusedMapTicketNumber(node, false)).toBeNull();
+    expect(focusedMapTicketNumber(node, true)).toBeNull();
+
+    let lookedUp = false;
+    restoreMapTicketFocus(null, () => {
+      lookedUp = true;
+      return node;
+    });
+    expect(lookedUp).toBe(false);
+  });
+});
+
 describe('Try again (#98)', () => {
   it('leads to the ticket panel without starting a thread', () => {
     const card = handOffCardHtml(handOff({ status: 'failed' }));
@@ -103,6 +202,10 @@ describe('finished hand-offs', () => {
     number,
     url: `https://github.com/octo/example/pull/${String(number)}`,
     state,
+    checksState: null,
+    reviewDecision: null,
+    isDraft: null,
+    hasSnapshot: false,
     mergedAt: null,
     syncedAt: null,
     source: 't3',

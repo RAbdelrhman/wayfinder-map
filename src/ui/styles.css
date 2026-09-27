@@ -5696,11 +5696,6 @@ textarea.input {
   margin-bottom: 14px;
 }
 
-.wf-filter-chips {
-  display: flex;
-  gap: 6px;
-}
-
 .wf-filters .search {
   width: 260px;
   height: 32px;
@@ -5812,6 +5807,114 @@ textarea.input {
   opacity: 0.75;
 }
 
+/* Settled maps: one quiet line each, collapsed at the foot of the list. */
+.wf-settled {
+  margin-top: 20px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 12px;
+}
+
+.wf-settled[hidden] {
+  display: none;
+}
+
+.wf-settled-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 10px 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.wf-settled-toggle:hover {
+  background: var(--wash);
+  color: var(--text-primary);
+}
+
+.wf-settled-toggle:focus-visible,
+.wf-settled-row a:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+.wf-settled-toggle .i {
+  width: 14px;
+  height: 14px;
+  transition: transform 120ms ease;
+}
+
+.wf-settled-toggle.is-open .i {
+  transform: rotate(90deg);
+}
+
+.wf-settled-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-1);
+}
+
+.wf-settled-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px 8px 16px;
+  font-size: 13px;
+}
+
+.wf-settled-row[hidden] {
+  display: none;
+}
+
+.wf-settled-row + .wf-settled-row {
+  border-top: 1px solid var(--hairline);
+}
+
+.wf-settled-row .grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.wf-settled-row .grow:hover {
+  text-decoration: underline;
+}
+
+.wf-settled-row .num,
+.wf-settled-row .when {
+  color: var(--text-muted);
+}
+
+.wf-settled-row .when {
+  flex: none;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.wf-settled-row .ghost {
+  flex: none;
+  height: 28px;
+  font-size: 12.5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wf-settled-toggle .i {
+    transition: none;
+  }
+}
+
 .wf-counts {
   display: flex;
   flex-wrap: wrap;
@@ -5911,6 +6014,10 @@ textarea.input {
 
   .wf-repo .when {
     display: none;
+  }
+
+  .wf-settled-row {
+    flex-wrap: wrap;
   }
 
 }

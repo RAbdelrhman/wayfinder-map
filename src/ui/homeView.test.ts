@@ -17,6 +17,8 @@ const map: WayfinderMap = {
   ],
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
+  settled: null,
+  ticketsLoaded: true,
 };
 
 const snapshot: MapSnapshot = { repo: 'octo/wayfinder', fetchedAt: '2026-09-20T11:00:00.000Z', maps: [map], warnings: [] };
@@ -123,7 +125,18 @@ describe('Home in-flight lanes', () => {
     const item = buildHomeWorkItems([
       handOff({
         status: 'finished',
-        pullRequests: [{ number: 88, url: 'https://github.com/octo/wayfinder/pull/88', state: 'OPEN', mergedAt: null, syncedAt: null, source: 'github' }],
+        pullRequests: [{
+          number: 88,
+          url: 'https://github.com/octo/wayfinder/pull/88',
+          state: 'OPEN',
+          checksState: null,
+          reviewDecision: null,
+          isDraft: null,
+          hasSnapshot: false,
+          mergedAt: null,
+          syncedAt: null,
+          source: 'github',
+        }],
       }),
     ], []).find(({ kind }) => kind === 'pull-request');
 

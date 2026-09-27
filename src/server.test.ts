@@ -82,6 +82,8 @@ const sampleMap: WayfinderMap = {
   tickets: [sampleTicket],
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
+  settled: null,
+  ticketsLoaded: true,
 };
 
 describe('repository-scoped server', () => {
@@ -984,6 +986,90 @@ describe('progress panel endpoints', () => {
       await expect(rejected.json()).resolves.toEqual({ error: 'Choose a goal of 3, 5, 8.' });
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+});
+
+describe('settling maps', () => {
+  function settlingServer(login: string | null, mapWatcher?: MapWatcher) {
+    const saved = new Map<string, { settled: boolean; at: string }>();
+    const store = {
+      choices: vi.fn(async (_login: string, _repo: string) => Object.fromEntries([...saved].map(([key, choice]) => [Number(key), choice]))),
+      set: vi.fn(async (_login: string, _repo: string, mapNumber: number, choice: { settled: boolean; at: string }) => {
+        saved.set(String(mapNumber), choice);
+      }),
+    };
+    const fetcher = vi.fn<RepositoryFetcher>(async ({ choices }) => ({
+      maps: [{ ...sampleMap, settled: choices?.[5]?.settled === true ? { reason: 'manual', since: choices[5].at } : null }],
+      warnings: [],
+    }));
+    const running = startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      fetcher,
+      homeLoader: async () => home,
+      handOffStore: new HandOffStore({ filePath: null }),
+      settling: { login: async () => login, store },
+      ...(mapWatcher === undefined ? {} : { mapWatcher }),
+    });
+    return { running, store, fetcher };
+  }
+
+  const post = (url: string, body: unknown) =>
+    fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+  it('stores a settle for the signed-in login and keeps it for the next read', async () => {
+    const { running: started, store, fetcher } = settlingServer('octo');
+    const running = await started;
+    try {
+      await fetch(`${running.url}/api/repos/octo/one/snapshot`);
+      const response = await post(`${running.url}/api/repos/octo/one/settle`, { map: 5, settled: true });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { maps: WayfinderMap[] };
+      expect(body.maps[0]?.settled).toMatchObject({ reason: 'manual' });
+      expect(store.set).toHaveBeenCalledWith('octo', 'octo/one', 5, expect.objectContaining({ settled: true }));
+
+      // A fresh read, as after a restart, applies the stored choice.
+      const refreshed = (await (await fetch(`${running.url}/api/repos/octo/one/snapshot?refresh=1`)).json()) as { maps: WayfinderMap[] };
+      expect(refreshed.maps[0]?.settled).toMatchObject({ reason: 'manual' });
+      expect(fetcher).toHaveBeenLastCalledWith(expect.objectContaining({ choices: { 5: expect.objectContaining({ settled: true }) } }));
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('refuses a settle with no one signed in or no map named', async () => {
+    const { running: started } = settlingServer(null);
+    const running = await started;
+    try {
+      expect((await post(`${running.url}/api/repos/octo/one/settle`, { map: 5, settled: true })).status).toBe(409);
+      expect((await post(`${running.url}/api/repos/octo/one/settle`, { map: 'x', settled: true })).status).toBe(400);
+      expect((await post(`${running.url}/api/repos/octo/one/settle`, { map: 5 })).status).toBe(400);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('never watches a settled map', async () => {
+    const readMap = vi.fn(async (): Promise<MapRead> => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }));
+    const mapWatcher = new MapWatcher({ readMap, readPullRequests: async () => ({ byTicket: new Map(), rateLimit: null }) }, { intervalMs: 10 });
+    const { running: started } = settlingServer('octo', mapWatcher);
+    const running = await started;
+    try {
+      await post(`${running.url}/api/repos/octo/one/settle`, { map: 5, settled: true });
+      await fetch(`${running.url}/api/repos/octo/one/snapshot?refresh=1`);
+      const response = await fetch(`${running.url}/api/repos/octo/one/events?map=5`);
+      expect(response.status).toBe(409);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(readMap).not.toHaveBeenCalled();
+    } finally {
+      await new Promise<void>((resolve) => {
+        running.server.close(() => resolve());
+        running.server.closeAllConnections();
+      });
     }
   });
 });
