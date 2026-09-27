@@ -123,7 +123,18 @@ describe('Home in-flight lanes', () => {
     const item = buildHomeWorkItems([
       handOff({
         status: 'finished',
-        pullRequests: [{ number: 88, url: 'https://github.com/octo/wayfinder/pull/88', state: 'OPEN', mergedAt: null, syncedAt: null, source: 'github' }],
+        pullRequests: [{
+          number: 88,
+          url: 'https://github.com/octo/wayfinder/pull/88',
+          state: 'OPEN',
+          checksState: null,
+          reviewDecision: null,
+          isDraft: null,
+          hasSnapshot: false,
+          mergedAt: null,
+          syncedAt: null,
+          source: 'github',
+        }],
       }),
     ], []).find(({ kind }) => kind === 'pull-request');
 

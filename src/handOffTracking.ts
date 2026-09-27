@@ -11,7 +11,7 @@ const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const PULL_REQUEST_LOOKUP_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_CONCURRENT_PULL_REQUEST_LOOKUPS = 2;
-// T3 Code reports a pull request's link but not whether it merged, so open ones are rechecked on GitHub this often.
+// T3 Code's PR snapshot is authoritative; GitHub fills in when T3 is offline or has no snapshot.
 const PULL_REQUEST_STATE_INTERVAL_MS = 60 * 1000;
 // A thread just created may not be in a snapshot read moments earlier, so an unseen hand-off gets this long to show up.
 const NEW_THREAD_GRACE_MS = 2 * 60 * 1000;
@@ -23,6 +23,10 @@ export interface PullRequestRef {
   number: number | null;
   url: string;
   state: string | null;
+  checksState: string | null;
+  reviewDecision: string | null;
+  isDraft: boolean | null;
+  hasSnapshot: boolean;
   mergedAt: string | null;
   syncedAt: string | null;
   source: 't3' | 'github';
@@ -149,6 +153,13 @@ function flag(value: unknown): boolean {
   return value === true;
 }
 
+function firstFlag(...values: unknown[]): boolean | null {
+  for (const value of values) {
+    if (typeof value === 'boolean') return value;
+  }
+  return null;
+}
+
 function firstText(...values: unknown[]): string | null {
   for (const value of values) {
     const found = text(value);
@@ -160,19 +171,35 @@ function firstText(...values: unknown[]): string | null {
 function parsePullRequest(value: unknown): PullRequestRef | null {
   if (typeof value === 'string') {
     return value.startsWith('https://')
-      ? { number: null, url: value, state: null, mergedAt: null, syncedAt: null, source: 't3' }
+      ? {
+          number: null,
+          url: value,
+          state: null,
+          checksState: null,
+          reviewDecision: null,
+          isDraft: null,
+          hasSnapshot: false,
+          mergedAt: null,
+          syncedAt: null,
+          source: 't3',
+        }
       : null;
   }
   const item = record(value);
   if (item === null) return null;
+  const snapshot = record(item['snapshot']);
   const url = firstText(item['url'], item['htmlUrl'], item['html_url']);
   if (url === null || !url.startsWith('https://')) return null;
   return {
     number: finiteNumber(item['number']),
     url,
-    state: firstText(item['state'], item['status']),
-    mergedAt: firstText(item['mergedAt'], item['merged_at']),
-    syncedAt: firstText(item['syncedAt'], item['synced_at']),
+    state: snapshot === null ? firstText(item['state'], item['status']) : text(snapshot['state']),
+    checksState: snapshot === null ? text(item['checksState']) : text(snapshot['checksState']),
+    reviewDecision: snapshot === null ? text(item['reviewDecision']) : text(snapshot['reviewDecision']),
+    isDraft: snapshot === null ? firstFlag(item['isDraft']) : firstFlag(snapshot['isDraft']),
+    hasSnapshot: snapshot !== null,
+    mergedAt: snapshot === null ? firstText(item['mergedAt'], item['merged_at']) : text(snapshot['mergedAt']),
+    syncedAt: snapshot === null ? firstText(item['syncedAt'], item['synced_at']) : text(snapshot['syncedAt']),
     source: 't3',
   };
 }
@@ -329,11 +356,19 @@ function isOpenPullRequest(ref: PullRequestRef): boolean {
   return state !== 'MERGED' && state !== 'CLOSED';
 }
 
-/** T3 Code re-reports a pull request without its state on every update; keep what GitHub told us. */
+/** If T3 omits a PR snapshot on an update, keep its last known values until one returns. */
 function keepKnownState(ref: PullRequestRef, known: readonly PullRequestRef[]): PullRequestRef {
-  if (ref.state !== null) return ref;
   const previous = known.find((item) => item.url === ref.url);
-  return previous === undefined ? ref : { ...ref, state: previous.state, mergedAt: previous.mergedAt, syncedAt: previous.syncedAt };
+  if (previous === undefined || ref.hasSnapshot) return ref;
+  return {
+    ...ref,
+    state: ref.state ?? previous.state,
+    mergedAt: ref.state === null ? previous.mergedAt : ref.mergedAt,
+    checksState: ref.checksState ?? previous.checksState,
+    reviewDecision: ref.reviewDecision ?? previous.reviewDecision,
+    isDraft: ref.isDraft ?? previous.isDraft,
+    syncedAt: ref.syncedAt ?? previous.syncedAt,
+  };
 }
 
 export class HandOffStore {
@@ -580,7 +615,18 @@ export class HandOffStore {
         if ((root?.['version'] !== 1 && root?.['version'] !== 2) || !Array.isArray(root['records'])) throw new Error('Unsupported hand-off store format.');
         this.records = root['records']
           .filter(isStoredHandOff)
-          .map((item) => ({ ...item, mapTitle: item.mapTitle ?? null, acknowledged: item.acknowledged === true }));
+          .map((item) => ({
+            ...item,
+            mapTitle: item.mapTitle ?? null,
+            acknowledged: item.acknowledged === true,
+            pullRequests: item.pullRequests.map((ref) => ({
+              ...ref,
+              checksState: ref.checksState ?? null,
+              reviewDecision: ref.reviewDecision ?? null,
+              isDraft: ref.isDraft ?? null,
+              hasSnapshot: ref.hasSnapshot === true,
+            })),
+          }));
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
           this.records = [];
@@ -656,6 +702,10 @@ function isStoredHandOff(value: unknown): value is StoredHandOff {
         nullableNumberValue(pullRequest['number']) &&
         typeof pullRequest['url'] === 'string' &&
         nullableStringValue(pullRequest['state']) &&
+        optionalNullableStringValue(pullRequest['checksState']) &&
+        optionalNullableStringValue(pullRequest['reviewDecision']) &&
+        optionalNullableBooleanValue(pullRequest['isDraft']) &&
+        (pullRequest['hasSnapshot'] === undefined || typeof pullRequest['hasSnapshot'] === 'boolean') &&
         nullableStringValue(pullRequest['mergedAt']) &&
         nullableStringValue(pullRequest['syncedAt']) &&
         (pullRequest['source'] === 't3' || pullRequest['source'] === 'github')
@@ -666,6 +716,14 @@ function isStoredHandOff(value: unknown): value is StoredHandOff {
 
 function nullableStringValue(value: unknown): boolean {
   return value === null || typeof value === 'string';
+}
+
+function optionalNullableStringValue(value: unknown): boolean {
+  return value === undefined || nullableStringValue(value);
+}
+
+function optionalNullableBooleanValue(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === 'boolean';
 }
 
 function nullableNumberValue(value: unknown): boolean {
@@ -853,7 +911,7 @@ export class HandOffTracker {
   private syncPullRequestStates(records: readonly StoredHandOff[]): void {
     for (const item of records) {
       for (const ref of item.pullRequests) {
-        if (!isOpenPullRequest(ref)) continue;
+        if (!isOpenPullRequest(ref) || (this.online && ref.hasSnapshot)) continue;
         const key = `state:${item.id}:${ref.url}`;
         if (this.pendingLookups.has(key)) continue;
         const lastLookup = this.pullRequestLookupAt.get(key);

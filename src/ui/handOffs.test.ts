@@ -39,14 +39,36 @@ describe('hand-off presentation', () => {
     expect(handOffPresentation(handOff({ status: 'interrupted' })).label).toBe('Failed');
     expect(handOffPresentation(handOff({
       status: 'finished',
-      pullRequests: [{ number: 42, url: 'https://github.com/octo/example/pull/42', state: 'open', mergedAt: null, syncedAt: null, source: 't3' }],
+      pullRequests: [{
+        number: 42,
+        url: 'https://github.com/octo/example/pull/42',
+        state: 'open',
+        checksState: null,
+        reviewDecision: null,
+        isDraft: null,
+        hasSnapshot: false,
+        mergedAt: null,
+        syncedAt: null,
+        source: 't3',
+      }],
     })).label).toBe('PR ready');
   });
 
   it('does not treat GitHub fallback pull requests as T3-reported status', () => {
     const item = handOff({
       status: 'finished',
-      pullRequests: [{ number: 42, url: 'https://github.com/octo/example/pull/42', state: 'open', mergedAt: null, syncedAt: null, source: 'github' }],
+      pullRequests: [{
+        number: 42,
+        url: 'https://github.com/octo/example/pull/42',
+        state: 'open',
+        checksState: null,
+        reviewDecision: null,
+        isDraft: null,
+        hasSnapshot: false,
+        mergedAt: null,
+        syncedAt: null,
+        source: 'github',
+      }],
     });
     expect(handOffPresentation(item).label).toBe('Working');
     expect(handOffCardHtml(item)).not.toContain('Open PR #42');
@@ -103,6 +125,10 @@ describe('finished hand-offs', () => {
     number,
     url: `https://github.com/octo/example/pull/${String(number)}`,
     state,
+    checksState: null,
+    reviewDecision: null,
+    isDraft: null,
+    hasSnapshot: false,
     mergedAt: null,
     syncedAt: null,
     source: 't3',
