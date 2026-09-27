@@ -144,6 +144,8 @@ interface RawIssue {
   issue_dependencies_summary?: { blocked_by?: number; total_blocking?: number } | null;
   /** Present when the issue is really a pull request. */
   pull_request?: unknown;
+  /** Set when the issue is a sub-issue, e.g. of a map. */
+  parent_issue_url?: string | null;
 }
 
 function labelNames(raw: RawIssue): string[] {
@@ -434,8 +436,18 @@ interface Blocker {
 
 /** Read a single ticket directly from GitHub as a Ticket. */
 export async function fetchTicket(repo: string, number: number, typePrefix = 'wayfinder:'): Promise<Ticket | null> {
+  return (await fetchTicketWithParent(repo, number, typePrefix))?.ticket ?? null;
+}
+
+/** The same, with the issue it is a sub-issue of, so a caller can find its map without reading every map. */
+export async function fetchTicketWithParent(
+  repo: string,
+  number: number,
+  typePrefix = 'wayfinder:',
+): Promise<{ ticket: Ticket; parent: number | null } | null> {
   const raw = await fetchIssue(repo, number);
   if (raw === null) return null;
+  const parent = Number(/\/issues\/(\d+)$/.exec(raw.parent_issue_url ?? '')?.[1]);
   const labels = labelNames(raw);
   const open = isOpenState(raw.state);
   const assignee = raw.assignee?.login ?? raw.assignees?.[0]?.login ?? null;
@@ -444,7 +456,7 @@ export async function fetchTicket(repo: string, number: number, typePrefix = 'wa
   const openBlockers = blockers
     .filter((blocker) => blocker.open ?? true)
     .map((blocker) => blocker.number);
-  return {
+  const ticket: Ticket = {
     number: raw.number,
     title: raw.title,
     url: issueUrl(raw, repo),
@@ -457,6 +469,7 @@ export async function fetchTicket(repo: string, number: number, typePrefix = 'wa
     openBlockers,
     state: ticketStateOf(open, openBlockers, assignee),
   };
+  return { ticket, parent: Number.isSafeInteger(parent) && parent > 0 ? parent : null };
 }
 
 interface Fallbacks {

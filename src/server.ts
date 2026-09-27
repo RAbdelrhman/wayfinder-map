@@ -15,7 +15,7 @@ import type { MapSnapshot, Prototype, Ticket, WayfinderMap } from './types.js';
 import type { MapEvent } from './mapWatch.js';
 import { listRepositories, loadHomeState, readAccount } from './home.js';
 import type { HomeState } from './home.js';
-import { fetchAllPrototypes, fetchBranchFile, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, gh } from './github.js';
+import { fetchAllPrototypes, fetchBranchFile, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, fetchTicketWithParent, gh } from './github.js';
 import { AuthFlow } from './authFlow.js';
 import { parseRepoPagePath } from './repoRoutes.js';
 import type { ScopedApiAction } from './repoRoutes.js';
@@ -579,7 +579,14 @@ export async function startServer({
             }
           }
           if (!foundTicket) {
-            foundTicket = await fetchTicket(requestedRepo, ticketNumber, config.typePrefix);
+            const read = await fetchTicketWithParent(requestedRepo, ticketNumber, config.typePrefix);
+            foundTicket = read?.ticket ?? null;
+            // A ticket on a settled map: open that map so the answer names it.
+            const parent = read?.parent ?? null;
+            if (parent !== null && snapshot.maps.some((candidate) => candidate.number === parent && !candidate.ticketsLoaded)) {
+              foundMap = (await repositories.snapshot(requestedRepo, false, [parent])).maps.find((candidate) => candidate.number === parent) ?? null;
+              foundTicket = foundMap?.tickets.find((t) => t.number === ticketNumber) ?? foundTicket;
+            }
           }
           if (!foundTicket) {
             json(response, 404, { error: `Ticket #${String(ticketNumber)} not found in ${requestedRepo}.` });

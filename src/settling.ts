@@ -78,7 +78,16 @@ export class SettleStore {
     return choices;
   }
 
-  async set(login: string, repo: string, mapNumber: number, choice: SettleChoice): Promise<void> {
+  /** Saves one choice. Saves run one at a time, so two quick clicks can't overwrite each other. */
+  set(login: string, repo: string, mapNumber: number, choice: SettleChoice): Promise<void> {
+    const saved = this.writing.then(() => this.write(login, repo, mapNumber, choice));
+    this.writing = saved.catch(() => undefined);
+    return saved;
+  }
+
+  private writing: Promise<void> = Promise.resolve();
+
+  private async write(login: string, repo: string, mapNumber: number, choice: SettleChoice): Promise<void> {
     const all = await this.readAll();
     const user = this.objectAt(all, login.toLowerCase());
     const repository = { ...this.objectAt(user, repo.toLowerCase()), [String(mapNumber)]: choice };

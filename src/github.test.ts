@@ -22,6 +22,7 @@ import {
   fallbackWarning,
   fetchMapDetails,
   fetchMaps,
+  fetchTicketWithParent,
   gh304Output,
   ghProblem,
   isOpenState,
@@ -445,5 +446,18 @@ describe('fetchMaps settling', () => {
     } finally {
       mapIssues.splice(2, 0, ...saved);
     }
+  });
+});
+
+describe('fetchTicketWithParent', () => {
+  it('names the issue a ticket is a sub-issue of', async () => {
+    execFileMock.mockImplementation(async (_file, args) => {
+      const path = args.find((arg) => arg.startsWith('repos/')) ?? '';
+      const response = path.endsWith('/dependencies/blocked_by')
+        ? []
+        : { number: 30, title: 'Ticket', state: 'open', parent_issue_url: 'https://api.github.com/repos/o/r/issues/3' };
+      return { stdout: Buffer.from(JSON.stringify(response)), stderr: Buffer.alloc(0) };
+    });
+    expect(await fetchTicketWithParent('o/r', 30)).toMatchObject({ ticket: { number: 30 }, parent: 3 });
   });
 });

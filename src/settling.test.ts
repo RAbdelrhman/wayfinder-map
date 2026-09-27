@@ -69,6 +69,13 @@ describe('SettleStore', () => {
     expect(JSON.parse(await readFile(path, 'utf8'))).toHaveProperty(['octo', 'octo/repo', '12']);
   });
 
+  it('keeps both of two choices saved at once', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'wayfinder-settle-'));
+    const store = new SettleStore(join(dir, 'settled.json'));
+    await Promise.all([store.set('octo', 'octo/repo', 1, { settled: true, at: RECENT }), store.set('octo', 'octo/repo', 2, { settled: true, at: RECENT })]);
+    expect(Object.keys(await store.choices('octo', 'octo/repo'))).toEqual(['1', '2']);
+  });
+
   it('reads a missing or damaged file as no choices', async () => {
     dir = await mkdtemp(join(tmpdir(), 'wayfinder-settle-'));
     expect(await new SettleStore(join(dir, 'missing.json')).choices('octo', 'octo/repo')).toEqual({});
