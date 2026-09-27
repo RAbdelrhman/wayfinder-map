@@ -22,8 +22,8 @@ import type { NavigationController, NavigationPage } from './navigation.js';
 import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
 import { homeLoadingMarkup, readHomeShape, rememberHomeShape, renderHomeLanding } from './homeLanding.js';
 import { handOffCardHtml, handOffPresentation, homeHandOffHistoryHtml, mountHandOffs, recentHandOffs } from './handOffs.js';
-import { countRunningHandOffs, mapMatchesRepositoryFilter, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml } from './repositoryView.js';
-import type { RepositoryHandOffStatus, RepositoryMapFilter } from './repositoryView.js';
+import { countRunningHandOffs, mapMatchesRepositorySearch, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml } from './repositoryView.js';
+import type { RepositoryHandOffStatus } from './repositoryView.js';
 
 function need<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -436,7 +436,7 @@ function bindRepoPicker(
   });
 }
 
-function bindRepositoryFilters(maps: readonly WayfinderMap[]): void {
+function bindRepositoryMaps(repo: string, maps: readonly WayfinderMap[], settledOpen: boolean): void {
   const root = els.main.querySelector<HTMLElement>('[data-repository-page]');
   const search = root?.querySelector<HTMLInputElement>('#repo-map-search');
   const noMatch = root?.querySelector<HTMLElement>('[data-repo-map-no-match]');
@@ -444,37 +444,65 @@ function bindRepositoryFilters(maps: readonly WayfinderMap[]): void {
   if (root === null || root === undefined || search === null || search === undefined || noMatch === null || noMatch === undefined || resultCount === null || resultCount === undefined) return;
 
   const byNumber = new Map(maps.map((map) => [map.number, map]));
-  const cards = [...root.querySelectorAll<HTMLElement>('[data-map-card]')];
-  let filter: RepositoryMapFilter = 'all';
+  const cards = [...root.querySelectorAll<HTMLElement>('.wf-maps [data-map-card]')];
+  const rows = [...root.querySelectorAll<HTMLElement>('.wf-settled-list [data-map-card]')];
+  const toggle = root.querySelector<HTMLButtonElement>('[data-settled-toggle]');
+  const toggleLabel = root.querySelector<HTMLElement>('[data-settled-label]');
+  const list = root.querySelector<HTMLElement>('.wf-settled-list');
+  let open = settledOpen;
+  let settledVisible = rows.length;
+
+  const shows = (element: HTMLElement): boolean => {
+    const map = byNumber.get(Number(element.dataset['mapNumber']));
+    const show = map !== undefined && mapMatchesRepositorySearch(map, search.value);
+    element.hidden = !show;
+    return show;
+  };
+  const paintToggle = (): void => {
+    if (toggle === null || toggleLabel === null || list === null) return;
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.classList.toggle('is-open', open);
+    toggleLabel.textContent = open ? 'Hide settled' : `Show ${String(settledVisible)} settled`;
+    list.hidden = !open;
+    toggle.closest<HTMLElement>('[data-repo-settled]')?.toggleAttribute('hidden', settledVisible === 0);
+  };
   const update = (): void => {
-    let visible = 0;
-    for (const card of cards) {
-      const map = byNumber.get(Number(card.dataset['mapNumber']));
-      const show = map !== undefined && mapMatchesRepositoryFilter(map, filter, search.value);
-      card.hidden = !show;
-      if (show) visible += 1;
-    }
+    const visible = cards.filter(shows).length;
+    settledVisible = rows.filter(shows).length;
+    const query = search.value.trim();
     noMatch.hidden = visible > 0;
-    noMatch.textContent = search.value.trim() !== ''
-      ? `No maps match “${search.value.trim()}”.`
-      : filter === 'all'
-        ? 'No maps match this filter.'
-        : `No ${filter} maps.`;
-    resultCount.textContent = `Showing ${String(visible)} of ${String(cards.length)} maps.`;
+    noMatch.textContent = query !== '' ? `No active maps match “${query}”.` : 'Every map here has settled.';
+    resultCount.textContent = `Showing ${String(visible)} of ${String(cards.length)} active maps and ${String(settledVisible)} of ${String(rows.length)} settled.`;
+    paintToggle();
+  };
+
+  const settle = async (mapNumber: number, settled: boolean, button: HTMLButtonElement): Promise<void> => {
+    button.disabled = true;
+    try {
+      const snapshot = await postJson<MapSnapshot>(scopedApiPath(repo, 'settle'), { map: mapNumber, settled });
+      paintRepository(repo, snapshot, open);
+      // The list was redrawn, so put focus back where the map went.
+      els.main.querySelector<HTMLElement>(settled ? '[data-settled-toggle]' : `[data-settle-map="${String(mapNumber)}"]`)?.focus();
+      const title = byNumber.get(mapNumber)?.title ?? '';
+      toast(settled ? `Settled #${String(mapNumber)} ${title}. GitHub is unchanged.` : `#${String(mapNumber)} ${title} is active again.`);
+    } catch (error) {
+      button.disabled = false;
+      toast((error as Error).message || 'Could not change this map.', 8000);
+    }
   };
 
   root.addEventListener('click', (event) => {
-    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-map-filter]');
-    if (button === null) return;
-    const next = button.dataset['mapFilter'];
-    if (next !== 'all' && next !== 'active' && next !== 'completed') return;
-    filter = next;
-    for (const candidate of root.querySelectorAll<HTMLButtonElement>('[data-map-filter]')) {
-      const selected = candidate === button;
-      candidate.setAttribute('aria-pressed', String(selected));
-      candidate.classList.toggle('is-on', selected);
+    const target = event.target as HTMLElement;
+    if (toggle !== null && target.closest('[data-settled-toggle]') === toggle) {
+      open = !open;
+      paintToggle();
+      return;
     }
-    update();
+    const settleButton = target.closest<HTMLButtonElement>('[data-settle-map], [data-unsettle-map]');
+    if (settleButton === null) return;
+    const settled = settleButton.dataset['settleMap'] !== undefined;
+    const mapNumber = Number(settled ? settleButton.dataset['settleMap'] : settleButton.dataset['unsettleMap']);
+    if (Number.isSafeInteger(mapNumber)) void settle(mapNumber, settled, settleButton);
   });
   search.addEventListener('input', update);
   update();
@@ -503,11 +531,15 @@ async function renderRepository(repo: string, refresh: boolean): Promise<void> {
   remember(repo);
   void syncAccountMark();
   const snapshot = await getJson<MapSnapshot>(`${scopedApiPath(repo, 'snapshot')}${refresh ? '?refresh=1' : ''}`);
-  navigation?.setSnapshot(snapshot, null);
   const fetched = Date.parse(snapshot.fetchedAt);
   setSynced(Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
+  paintRepository(repo, snapshot, false);
+}
+
+function paintRepository(repo: string, snapshot: MapSnapshot, settledOpen: boolean): void {
+  navigation?.setSnapshot(snapshot, null);
   paint(repositoryPageHtml(repo, snapshot), 'repository-sheet');
-  bindRepositoryFilters(snapshot.maps);
+  bindRepositoryMaps(repo, snapshot.maps, settledOpen);
   const root = els.main.querySelector<HTMLElement>('[data-repository-page]');
   if (root !== null) void loadRepositoryHandOffCounts(repo, root);
 }

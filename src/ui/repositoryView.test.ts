@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MapSnapshot, Ticket, TicketState, WayfinderMap } from '../types.js';
-import { countRunningHandOffs, mapMatchesRepositoryFilter, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml, sortRepositoryMaps } from './repositoryView.js';
+import { countRunningHandOffs, mapMatchesRepositorySearch, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml, settledAgo, sortRepositoryMaps, sortSettledMaps } from './repositoryView.js';
 
 function ticket(number: number, title: string, state: TicketState, blockedBy: number[] = []): Ticket {
   return {
@@ -30,6 +30,8 @@ function map(number: number, title: string, open: boolean, tickets: Ticket[] = [
     tickets,
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
+    settled: null,
+    ticketsLoaded: true,
   };
 }
 
@@ -48,12 +50,27 @@ describe('repository map ordering and filtering', () => {
     expect(sortRepositoryMaps(maps).map(({ number }) => number)).toEqual([12, 4, 8]);
   });
 
-  it('filters active, completed, map number, and title without losing the repository context', () => {
-    expect(mapMatchesRepositoryFilter(maps[1]!, 'active', '')).toBe(true);
-    expect(mapMatchesRepositoryFilter(maps[0]!, 'active', '')).toBe(false);
-    expect(mapMatchesRepositoryFilter(maps[0]!, 'completed', 'ship')).toBe(true);
-    expect(mapMatchesRepositoryFilter(maps[2]!, 'all', '#4')).toBe(true);
-    expect(mapMatchesRepositoryFilter(maps[2]!, 'all', 'missing')).toBe(false);
+  it('searches map number and title', () => {
+    expect(mapMatchesRepositorySearch(maps[0]!, '')).toBe(true);
+    expect(mapMatchesRepositorySearch(maps[0]!, 'SHIP')).toBe(true);
+    expect(mapMatchesRepositorySearch(maps[2]!, '#4')).toBe(true);
+    expect(mapMatchesRepositorySearch(maps[2]!, 'missing')).toBe(false);
+  });
+
+  it('lists the most recently settled map first', () => {
+    const older = { ...map(3, 'Older', false), settled: { reason: 'closed' as const, since: '2026-06-01T00:00:00.000Z' } };
+    const newer = { ...map(9, 'Newer', true), settled: { reason: 'idle' as const, since: '2026-09-01T00:00:00.000Z' } };
+    expect(sortSettledMaps([older, newer]).map(({ number }) => number)).toEqual([9, 3]);
+  });
+
+  it('says how long ago a map settled', () => {
+    const now = Date.parse('2026-09-26T12:00:00.000Z');
+    expect(settledAgo('2026-09-26T08:00:00.000Z', now)).toBe('today');
+    expect(settledAgo('2026-09-25T08:00:00.000Z', now)).toBe('1 day ago');
+    expect(settledAgo('2026-09-10T12:00:00.000Z', now)).toBe('16 days ago');
+    expect(settledAgo('2026-06-26T12:00:00.000Z', now)).toBe('3 months ago');
+    expect(settledAgo('2024-09-01T12:00:00.000Z', now)).toBe('2 years ago');
+    expect(settledAgo('not a date', now)).toBe('');
   });
 
   it('counts only current running hand-offs for this repository and a map', () => {
@@ -80,11 +97,10 @@ describe('repositoryPageHtml', () => {
     const html = repositoryPageHtml('octo/wayfinder', snapshot([activeMap, map(8, 'Old map', false)]));
 
     expect(html).toContain('octo/wayfinder');
-    expect(html).toContain('data-map-filter="all"');
-    expect(html).toContain('data-map-filter="active"');
-    expect(html).toContain('data-map-filter="completed"');
-    expect(html).toContain('aria-pressed="true"');
+    expect(html).not.toContain('data-map-filter');
     expect(html).toContain('id="repo-map-search"');
+    expect(html).toContain('data-settle-map="35"');
+    expect(html).toContain('aria-label="Settle map #35: Make the map page feel clear"');
     expect(html).toContain('data-map-status="active"');
     expect(html).toContain('data-map-status="completed"');
     expect(html).toContain('Ticket dependency graph with 3 tickets');
@@ -93,8 +109,9 @@ describe('repositoryPageHtml', () => {
     expect(html).toContain('Open map #35: Make the map page feel clear');
     expect(html).toContain('1 next up');
     expect(html).toContain('1 blocked');
-    expect(html).toContain('Completed');
-    expect(html).toContain('1 active, 1 completed');
+    expect(html).toContain('· completed');
+    expect(html).toContain('2 active, 0 settled');
+    expect(html).not.toContain('data-repo-settled');
     expect(html).not.toContain('Start a new map');
     expect(html).not.toContain('Prototypes</a>');
   });
@@ -109,6 +126,39 @@ describe('repositoryPageHtml', () => {
     expect(html).toContain('data-repo-map-no-match role="status" aria-live="polite"');
     expect(html).toContain('2 running in T3 Code');
     expect(html).toContain('data-map-handoffs="35"');
+  });
+
+  it('collapses settled maps at the foot of the list with their number, title and age', () => {
+    const now = Date.parse('2026-09-26T12:00:00.000Z');
+    const html = repositoryPageHtml(
+      'octo/wayfinder',
+      snapshot([
+        map(35, 'Still going', true),
+        { ...map(8, 'Shipped <docs>', false), settled: { reason: 'closed', since: '2026-09-23T12:00:00.000Z' }, ticketsLoaded: false, tickets: [] },
+        { ...map(12, 'Parked', true), settled: { reason: 'manual', since: '2026-09-26T09:00:00.000Z' }, ticketsLoaded: false, tickets: [] },
+      ]),
+      new Map(),
+      now,
+    );
+
+    expect(html).toContain('1 active, 2 settled');
+    expect(html).toContain('aria-expanded="false" aria-controls="repo-settled-list"');
+    expect(html).toContain('Show 2 settled');
+    expect(html).toContain('id="repo-settled-list" hidden');
+    expect(html).toContain('<span class="num">#8</span> Shipped &lt;docs&gt;');
+    expect(html).toContain('Settled <time datetime="2026-09-23T12:00:00.000Z">3 days ago</time> · closed');
+    expect(html).toContain('today</time> · settled by you');
+    expect(html).toContain('data-unsettle-map="12"');
+    expect(html.indexOf('#12</span>')).toBeLessThan(html.indexOf('#8</span>'));
+    // Settled maps are rows, not cards, so none draws a graph it has no tickets for.
+    expect(html.match(/class="mini-graph"/g)).toHaveLength(1);
+    expect(html.indexOf('data-repo-settled')).toBeGreaterThan(html.indexOf('data-repo-map-list'));
+  });
+
+  it('says so when every map has settled', () => {
+    const html = repositoryPageHtml('octo/wayfinder', snapshot([{ ...map(8, 'Done', false), settled: { reason: 'closed', since: '2026-09-23T12:00:00.000Z' } }]));
+    expect(html).toContain('0 active, 1 settled');
+    expect(html).toContain('aria-live="polite">Every map here has settled.</p>');
   });
 
   it('renders the plain no-maps state with a contextual repository selection', () => {

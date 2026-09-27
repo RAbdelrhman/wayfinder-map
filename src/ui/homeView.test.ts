@@ -17,6 +17,8 @@ const map: WayfinderMap = {
   ],
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
+  settled: null,
+  ticketsLoaded: true,
 };
 
 const snapshot: MapSnapshot = { repo: 'octo/wayfinder', fetchedAt: '2026-09-20T11:00:00.000Z', maps: [map], warnings: [] };

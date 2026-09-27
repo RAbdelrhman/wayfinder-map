@@ -44,6 +44,8 @@ function map(tickets: Ticket[]): WayfinderMap {
     tickets,
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
+    settled: null,
+    ticketsLoaded: true,
   };
 }
 

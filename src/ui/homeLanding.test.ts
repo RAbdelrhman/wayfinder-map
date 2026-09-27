@@ -28,6 +28,8 @@ const MAP = {
   tickets: [ticket(1, 'done'), ticket(2, 'frontier', [1]), ticket(3, 'blocked', [2])],
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
+  settled: null,
+  ticketsLoaded: true,
   sections: { destination: 'A calm Home.' },
 } as unknown as WayfinderMap;
 

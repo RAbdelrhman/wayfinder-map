@@ -286,7 +286,12 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
   loadInFlight = (async () => {
     try {
       const endpoint = pageRoute === null ? '/api/snapshot' : scopedApiPath(pageRoute.repo, 'snapshot');
-      const response = await fetch(`${endpoint}${query}`);
+      // A settled map's tickets are read only once its page asks for them.
+      const routedMapNumber = parseRepoPagePath(window.location.pathname)?.mapNumber ?? null;
+      const params = new URLSearchParams(query.slice(1));
+      if (routedMapNumber !== null) params.set('map', String(routedMapNumber));
+      const search = params.toString();
+      const response = await fetch(`${endpoint}${search === '' ? '' : `?${search}`}`);
       const body: unknown = await response.json();
       if (!response.ok) {
         const message = (body as { error?: string }).error ?? 'Could not read the maps.';
@@ -1191,6 +1196,8 @@ window.addEventListener('popstate', () => {
   navigation?.setActiveView(view);
   render();
   if (planningHandOffId !== null) void loadPlanningHandoff();
+  // Back to a settled map whose tickets were never read: read them now.
+  if (map?.ticketsLoaded === false) void load('initial');
 });
 
 els.planningHandoff.addEventListener('click', async (event) => {
