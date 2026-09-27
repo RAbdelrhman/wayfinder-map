@@ -26,6 +26,39 @@ export interface HandOffSurface {
 
 const POLL_INTERVAL_MS = 15_000;
 
+export function handOffVisualSignature(handOffs: readonly HandOffStatusDto[]): string {
+  return handOffs
+    .map((handOff) => {
+      const pullRequests = handOff.pullRequests
+        .map((pullRequest) => [
+          pullRequest.source,
+          pullRequest.url,
+          pullRequest.state ?? '',
+          pullRequest.checksState ?? '',
+          pullRequest.reviewDecision ?? '',
+          String(pullRequest.isDraft),
+          pullRequest.mergedAt ?? '',
+        ].join(':'))
+        .join(',');
+      return [
+        handOff.id,
+        handOff.status,
+        String(handOff.pendingApproval),
+        String(handOff.pendingUserInput),
+        String(handOff.stale),
+        String(handOff.acknowledged),
+        handOff.repo,
+        handOff.mapNumber ?? '',
+        handOff.mapTitle ?? '',
+        handOff.ticketNumber ?? '',
+        handOff.title ?? '',
+        pullRequests,
+        handOff.branch ?? '',
+      ].join(':');
+    })
+    .join('|');
+}
+
 export function handOffPresentation(handOff: HandOffStatusDto): HandOffPresentation {
   let state: HandOffUiState;
   const reported = t3PullRequests(handOff);

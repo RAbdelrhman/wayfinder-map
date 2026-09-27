@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
 import type { HandOffStatusDto } from '../handOffTracking.js';
-import { cardShowsHandOff, handOffCardHtml, handOffMapLabel, handOffPresentation, handOffSourcePath, handOffTime, handOffTriggerLabel, homeHandOffHistoryHtml, listedHandOffs, recentHandOffs } from './handOffs.js';
+import {
+  cardShowsHandOff,
+  handOffCardHtml,
+  handOffMapLabel,
+  handOffPresentation,
+  handOffSourcePath,
+  handOffTime,
+  handOffTriggerLabel,
+  handOffVisualSignature,
+  homeHandOffHistoryHtml,
+  listedHandOffs,
+  recentHandOffs,
+} from './handOffs.js';
 
 function handOff(overrides: Partial<HandOffStatusDto> = {}): HandOffStatusDto {
   return {
@@ -105,6 +117,35 @@ describe('hand-off presentation', () => {
     expect(card).toContain('&lt;unsafe&gt;');
     expect(card).toContain('T3 Code status is stale');
     expect(card).not.toContain('worktreePath');
+  });
+});
+
+describe('hand-off visual signature', () => {
+  it('changes when PR state, CI, review, draft, or merge time changes', () => {
+    const pullRequest: HandOffStatusDto['pullRequests'][number] = {
+      number: 42,
+      url: 'https://github.com/octo/example/pull/42',
+      state: 'OPEN',
+      checksState: 'pending',
+      reviewDecision: 'REVIEW_REQUIRED',
+      isDraft: false,
+      hasSnapshot: true,
+      mergedAt: null,
+      syncedAt: '2026-09-24T12:00:00Z',
+      source: 't3',
+    };
+    const initial = handOffVisualSignature([handOff({ pullRequests: [pullRequest] })]);
+    const updates: HandOffStatusDto['pullRequests'][number][] = [
+      { ...pullRequest, state: 'MERGED' },
+      { ...pullRequest, checksState: 'passing' },
+      { ...pullRequest, reviewDecision: 'APPROVED' },
+      { ...pullRequest, isDraft: true },
+      { ...pullRequest, mergedAt: '2026-09-24T12:01:00Z' },
+    ];
+
+    for (const update of updates) {
+      expect(handOffVisualSignature([handOff({ pullRequests: [update] })])).not.toBe(initial);
+    }
   });
 });
 
