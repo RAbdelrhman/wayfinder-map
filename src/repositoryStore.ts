@@ -1,4 +1,4 @@
-import { fetchMaps, haveMapSubIssuesChanged } from './github.js';
+import { fetchMaps, haveMapTicketsChanged } from './github.js';
 import type { FetchOptions, FetchResult } from './github.js';
 import { normalizeRepo } from './repoRoutes.js';
 import type { MapSnapshot } from './types.js';
@@ -33,7 +33,7 @@ export class RepositoryStore {
     this.limit = options.limit ?? 10;
     if (!Number.isInteger(this.limit) || this.limit <= 0) throw new Error('Repository cache limit must be positive.');
     this.fetcher = options.fetcher ?? fetchMaps;
-    this.changeChecker = options.changeChecker ?? haveMapSubIssuesChanged;
+    this.changeChecker = options.changeChecker ?? haveMapTicketsChanged;
     this.now = options.now ?? (() => new Date());
   }
 

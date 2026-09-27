@@ -1,7 +1,72 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RATE_LIMIT_WARNING, SubIssueWatcher, branchFacts, fallbackWarning, gh304Output, ghProblem, isOpenState, mapPrototypeBranches, parseGhApiResponse, plainGhOutput, sortPrototypes, ticketStateOf, toOutsideTicket } from './github.js';
+type MockExecFile = (
+  file: string,
+  args: string[],
+  options: unknown,
+) => Promise<{ stdout: Buffer; stderr: Buffer }>;
+
+const { execFileMock } = vi.hoisted(() => ({ execFileMock: vi.fn<MockExecFile>() }));
+
+vi.mock('node:child_process', () => {
+  Object.defineProperty(execFileMock, Symbol.for('nodejs.util.promisify.custom'), {
+    value: (file: string, args: string[], options: unknown) => execFileMock(file, args, options),
+  });
+  return { execFile: execFileMock };
+});
+
+import {
+  RATE_LIMIT_WARNING,
+  SubIssueWatcher,
+  branchFacts,
+  fallbackWarning,
+  fetchMaps,
+  gh304Output,
+  ghProblem,
+  isOpenState,
+  mapPrototypeBranches,
+  parseGhApiResponse,
+  plainGhOutput,
+  sortPrototypes,
+  ticketStateOf,
+  toOutsideTicket,
+  unattachedTicketsWarning,
+} from './github.js';
 import type { Prototype } from './types.js';
+
+const mapBody = '- [ ] #12\n- [ ] #15';
+
+function issue(number: number) {
+  return { number, title: `Ticket ${String(number)}`, state: 'open' };
+}
+
+function mockGitHub(subIssues: ReturnType<typeof issue>[]): void {
+  execFileMock.mockImplementation(async (_file, args) => {
+    const route = args[args.length - 1] ?? '';
+    let response: unknown;
+
+    if (args[0] === 'issue') {
+      response = [{ number: 10, title: 'Map', body: mapBody, state: 'OPEN' }];
+    } else if (route.endsWith('/sub_issues')) {
+      response = subIssues;
+    } else if (route.endsWith('/dependencies/blocked_by')) {
+      response = [];
+    } else {
+      const match = /^repos\/owner\/repo\/issues\/(\d+)$/.exec(route);
+      if (match === null) throw new Error(`Unexpected gh route: ${route}`);
+      response = issue(Number(match[1]));
+    }
+
+    const output = args.includes('--include')
+      ? `HTTP/2.0 200 OK\r\nETag: "mock"\r\n\r\n${JSON.stringify(response)}`
+      : JSON.stringify(response);
+    return { stdout: Buffer.from(output), stderr: Buffer.alloc(0) };
+  });
+}
+
+beforeEach(() => {
+  execFileMock.mockReset();
+});
 
 describe('plainGhOutput', () => {
   it('removes terminal colors around JSON objects and arrays', () => {
@@ -91,6 +156,28 @@ describe('SubIssueWatcher', () => {
       'page=1',
       'page=2',
     ]);
+  });
+
+  it('checks body-listed tickets that are missing from the sub-issue list', async () => {
+    const calls: string[][] = [];
+    const responses = [
+      'HTTP/2.0 200 OK\r\nETag: "map"\r\n\r\n[]',
+      'HTTP/2.0 200 OK\r\nETag: "ticket"\r\n\r\n{"number":9,"title":"Body ticket","state":"open"}',
+      'HTTP/2.0 304 Not Modified\r\n\r\n',
+      'HTTP/2.0 200 OK\r\nETag: "ticket-updated"\r\n\r\n{"number":9,"title":"Body ticket","state":"closed"}',
+    ];
+    const watcher = new SubIssueWatcher(async (args) => {
+      calls.push(args);
+      const response = responses.shift();
+      if (response === undefined) throw new Error('Unexpected GitHub request.');
+      return response;
+    });
+
+    await watcher.fetch('owner/repo', 5);
+    watcher.resetBodyIssues('owner/repo', 5);
+    await expect(watcher.fetchBodyIssue('owner/repo', 5, 9)).resolves.toMatchObject({ number: 9, state: 'open' });
+    await expect(watcher.hasChanged('owner/repo', [5])).resolves.toBe(true);
+    expect(calls[3]).toEqual(['api', '--include', '-H', 'If-None-Match: "ticket"', 'repos/owner/repo/issues/9']);
   });
 
   it('treats an uncached or changed map as needing a full read', async () => {
@@ -243,5 +330,32 @@ describe('warnings', () => {
       "Wayfinder hit GitHub's rate limit, so maps #3, #14 and #35 are showing the tickets listed in their descriptions. Sub-issues not listed there won't show until the next sync.",
     );
     expect(fallbackWarning([35], false)).toMatch(/^GitHub didn't return sub-issues, so map #35 is showing the tickets listed in its description\./);
+  });
+
+  it('names body-listed tickets that are not attached as sub-issues', () => {
+    expect(unattachedTicketsWarning(10, [12, 15])).toBe(
+      "#12 and #15 are listed on map #10 but aren't attached as sub-issues.",
+    );
+    expect(unattachedTicketsWarning(10, [15])).toBe(
+      "#15 is listed on map #10 but isn't attached as a sub-issue.",
+    );
+  });
+});
+
+describe('fetchMaps child tickets', () => {
+  it('shows and warns about checklist tickets when GitHub returns no sub-issues', async () => {
+    mockGitHub([]);
+    const result = await fetchMaps({ repo: 'owner/repo', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' });
+
+    expect(result.maps[0]?.tickets.map(({ number }) => number)).toEqual([12, 15]);
+    expect(result.warnings).toEqual(["#12 and #15 are listed on map #10 but aren't attached as sub-issues."]);
+  });
+
+  it('adds only checklist tickets missing from a successful sub-issue response and warns about them', async () => {
+    mockGitHub([issue(12)]);
+    const result = await fetchMaps({ repo: 'owner/repo', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' });
+
+    expect(result.maps[0]?.tickets.map(({ number }) => number)).toEqual([12, 15]);
+    expect(result.warnings).toEqual(["#15 is listed on map #10 but isn't attached as a sub-issue."]);
   });
 });
