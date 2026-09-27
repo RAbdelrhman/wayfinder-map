@@ -12,6 +12,8 @@ import type { WorkspaceDependencies } from './workspaces.js';
 import { RepositoryCloneError } from './clone.js';
 import type { Ticket, WayfinderMap } from './types.js';
 import { HandOffStore } from './handOffTracking.js';
+import { MapWatcher } from './mapWatcher.js';
+import type { MapRead } from './mapWatcher.js';
 
 const config: Config = {
   repo: null,
@@ -105,6 +107,45 @@ describe('repository-scoped server', () => {
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }
+  });
+
+  it('streams a watched map’s events and stops watching when the server closes', async () => {
+    const reads: MapRead[] = [
+      { status: 'changed', etag: 'W/"1"', tickets: [{ number: 11, title: 'Retire API agents', state: 'blocked', pullRequests: [] }], rateLimit: null, pollIntervalSeconds: null },
+      { status: 'changed', etag: 'W/"2"', tickets: [{ number: 11, title: 'Retire API agents', state: 'frontier', pullRequests: [] }], rateLimit: null, pollIntervalSeconds: null },
+    ];
+    const readMap = vi.fn(async (): Promise<MapRead> => reads.shift() ?? { status: 'unchanged', rateLimit: null, pollIntervalSeconds: null });
+    const mapWatcher = new MapWatcher(
+      { readMap, readPullRequests: async () => ({ byTicket: new Map(), rateLimit: null }) },
+      { intervalMs: 10 },
+    );
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, mapWatcher });
+
+    try {
+      expect((await fetch(`${running.url}/api/repos/octo/one/events`)).status).toBe(400);
+      const response = await fetch(`${running.url}/api/repos/octo/one/events?map=5`);
+      expect(response.headers.get('content-type')).toContain('text/event-stream');
+      const reader = response.body!.getReader();
+      let text = '';
+      while (!text.includes('\n\n')) text += new TextDecoder().decode((await reader.read()).value);
+      expect(text.startsWith('id: 1\nevent: map\ndata: ')).toBe(true);
+      expect(JSON.parse(text.split('data: ')[1]!.trim())).toMatchObject({ type: 'ticket-next', repo: 'octo/one', mapNumber: 5, ticket: { number: 11 }, from: 'blocked' });
+      void reader.cancel().catch(() => undefined);
+
+      // A page that reconnects gets the history after the last id it saw.
+      const again = await fetch(`${running.url}/api/repos/octo/one/events?map=5`, { headers: { 'last-event-id': '0' } });
+      const replay = again.body!.getReader();
+      expect(new TextDecoder().decode((await replay.read()).value)).toContain('id: 1\n');
+      void replay.cancel().catch(() => undefined);
+    } finally {
+      await new Promise<void>((resolve) => {
+        running.server.close(() => resolve());
+        running.server.closeAllConnections();
+      });
+    }
+    const readsAtClose = readMap.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(readMap.mock.calls.length).toBe(readsAtClose);
   });
 
   it('isolates snapshots for repositories requested through scoped endpoints', async () => {
