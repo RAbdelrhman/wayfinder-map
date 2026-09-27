@@ -41,6 +41,14 @@ export function fallbackWarning(mapNumbers: readonly number[], rateLimited: bool
   return `${why}, so ${maps}. Sub-issues not listed there won't show until the next sync.`;
 }
 
+/** Names the body-listed tickets GitHub did not return as sub-issues. */
+export function unattachedTicketsWarning(mapNumber: number, ticketNumbers: readonly number[]): string {
+  const singular = ticketNumbers.length === 1;
+  const verb = singular ? "isn't" : "aren't";
+  const noun = singular ? 'a sub-issue' : 'sub-issues';
+  return `${numberList(ticketNumbers)} ${singular ? 'is' : 'are'} listed on map #${String(mapNumber)} but ${verb} attached as ${noun}.`;
+}
+
 export class GhError extends Error {
   constructor(
     message: string,
@@ -286,17 +294,19 @@ export async function fetchTicket(repo: string, number: number, typePrefix = 'wa
 interface Fallbacks {
   maps: number[];
   rateLimited: boolean;
+  unattachedTickets: Array<{ mapNumber: number; ticketNumbers: number[] }>;
 }
 
 async function fetchChildren(repo: string, map: RawIssue, fallbacks: Fallbacks): Promise<RawIssue[]> {
+  const numbers = parseChildNumbers(map.body ?? '', repo).filter((number) => number !== map.number);
+  let subIssues: RawIssue[];
   try {
-    return await ghJson<RawIssue[]>([
+    subIssues = await ghJson<RawIssue[]>([
       'api',
       '--paginate',
       `repos/${repo}/issues/${map.number}/sub_issues?per_page=100`,
     ]);
   } catch (error) {
-    const numbers = parseChildNumbers(map.body ?? '', repo).filter((number) => number !== map.number);
     if (numbers.length > 0) {
       fallbacks.maps.push(map.number);
       if (ghProblem(error) === RATE_LIMIT_WARNING) fallbacks.rateLimited = true;
@@ -304,6 +314,14 @@ async function fetchChildren(repo: string, map: RawIssue, fallbacks: Fallbacks):
     const fetched = await pool(numbers, 8, (number) => fetchIssue(repo, number));
     return fetched.filter((issue): issue is RawIssue => issue !== null);
   }
+
+  const attached = new Set(subIssues.map((issue) => issue.number));
+  const unattachedNumbers = numbers.filter((number) => !attached.has(number));
+  if (unattachedNumbers.length > 0) {
+    fallbacks.unattachedTickets.push({ mapNumber: map.number, ticketNumbers: unattachedNumbers });
+  }
+  const fetched = await pool(unattachedNumbers, 8, (number) => fetchIssue(repo, number));
+  return [...subIssues, ...fetched.filter((issue): issue is RawIssue => issue !== null)];
 }
 
 export interface FetchResult {
@@ -316,7 +334,7 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
   const { repo, mapLabel, typePrefix } = options;
   const concurrency = options.concurrency ?? 6;
   const warnings: string[] = [];
-  const fallbacks: Fallbacks = { maps: [], rateLimited: false };
+  const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [] };
 
   const mapIssuePages = await ghJson<RawIssue[][]>([
     'api',
@@ -431,6 +449,11 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
 
   maps.sort((a, b) => Number(b.open) - Number(a.open) || a.number - b.number);
   if (fallbacks.maps.length > 0) warnings.push(fallbackWarning(fallbacks.maps.sort((a, b) => a - b), fallbacks.rateLimited));
+  warnings.push(
+    ...fallbacks.unattachedTickets
+      .sort((a, b) => a.mapNumber - b.mapNumber)
+      .map(({ mapNumber, ticketNumbers }) => unattachedTicketsWarning(mapNumber, ticketNumbers)),
+  );
   return { maps, warnings };
 }
 
