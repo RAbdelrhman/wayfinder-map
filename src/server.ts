@@ -20,7 +20,7 @@ import { AuthFlow } from './authFlow.js';
 import { parseRepoPagePath } from './repoRoutes.js';
 import type { ScopedApiAction } from './repoRoutes.js';
 import { RepositoryStore } from './repositoryStore.js';
-import type { RepositoryFetcher } from './repositoryStore.js';
+import type { RepositoryChangeChecker, RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './workspaces.js';
 import type { WorkspaceState } from './workspaces.js';
 import { cloneRepository as cloneRepo, RepositoryCloneError } from './clone.js';
@@ -88,6 +88,7 @@ export interface ServeOptions {
   /** Replaces the clone lookup in tests, which must not touch T3 Code or the home directory. */
   workspaces?: WorkspaceResolver;
   fetcher?: RepositoryFetcher;
+  changeChecker?: RepositoryChangeChecker;
   homeLoader?: (labels: readonly string[]) => Promise<HomeState>;
   /** Every repository the account can open, for Home's picker. */
   repoLister?: () => Promise<string[]>;
@@ -190,6 +191,7 @@ export async function startServer({
   cloneRepository = cloneRepo,
   workspaces,
   fetcher,
+  changeChecker,
   homeLoader,
   repoLister = listRepositories,
   onShutdown,
@@ -237,6 +239,7 @@ export async function startServer({
     mapLabel: config.mapLabel,
     typePrefix: config.typePrefix,
     ...(fetcher === undefined ? {} : { fetcher }),
+    ...(changeChecker === undefined ? {} : { changeChecker }),
   });
   const loadHome = homeLoader ?? ((labels: readonly string[]) => loadHomeState(labels));
   let homeState: HomeState | null = null;
@@ -342,8 +345,9 @@ export async function startServer({
           return;
         }
         const force = requestUrl.searchParams.get('refresh') === '1';
+        const check = !force && requestUrl.searchParams.get('check') === '1';
         try {
-          json(response, 200, await repositories.snapshot(repo, force));
+          json(response, 200, check ? await repositories.refreshIfChanged(repo) : await repositories.snapshot(repo, force));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
@@ -593,8 +597,9 @@ export async function startServer({
 
       if (requestedRepo !== null && (scoped?.action === 'snapshot' || path === '/api/snapshot')) {
         const force = requestUrl.searchParams.get('refresh') === '1';
+        const check = !force && requestUrl.searchParams.get('check') === '1';
         try {
-          json(response, 200, await repositories.snapshot(requestedRepo, force));
+          json(response, 200, check ? await repositories.refreshIfChanged(requestedRepo) : await repositories.snapshot(requestedRepo, force));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }

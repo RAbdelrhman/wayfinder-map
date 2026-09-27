@@ -264,13 +264,13 @@ function toast(message: string, ms = 4200): void {
 
 async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean> {
   if (loadInFlight !== null) return loadInFlight;
-  const force = mode !== 'initial';
+  const query = mode === 'manual' ? '?refresh=1' : mode === 'background' ? '?check=1' : '';
   if (mode === 'manual') syncedButton().classList.add('is-busy');
 
   loadInFlight = (async () => {
     try {
       const endpoint = pageRoute === null ? '/api/snapshot' : scopedApiPath(pageRoute.repo, 'snapshot');
-      const response = await fetch(`${endpoint}${force ? '?refresh=1' : ''}`);
+      const response = await fetch(`${endpoint}${query}`);
       const body: unknown = await response.json();
       if (!response.ok) {
         const message = (body as { error?: string }).error ?? 'Could not read the maps.';

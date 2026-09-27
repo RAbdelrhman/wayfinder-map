@@ -41,6 +41,7 @@ vi.mock('./github.js', () => ({
   fetchAllPrototypes: (repo: string, maps: readonly WayfinderMap[]) => fetchAllPrototypes(repo, maps),
   fetchBranchFile: (repo: string, branch: string, file: string) => fetchBranchFile(repo, branch, file),
   fetchMaps: async () => ({ maps: [], warnings: [] }),
+  haveMapTicketsChanged: async () => false,
   gh: async () => '',
 }));
 

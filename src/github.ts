@@ -17,6 +17,10 @@ export function plainGhOutput(output: string): string {
   return output.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '');
 }
 
+function ghTextOutput(output: unknown): string {
+  return Buffer.isBuffer(output) ? output.toString('utf8') : typeof output === 'string' ? output : '';
+}
+
 /** Shown in place of GitHub's own rate-limit text, which is a wall of request IDs and terms-of-service links. */
 export const RATE_LIMIT_WARNING = "Wayfinder hit GitHub's rate limit. Try again in a few minutes.";
 
@@ -59,6 +63,16 @@ export class GhError extends Error {
   }
 }
 
+/** `gh api` reports HTTP 304 on stderr and exits 1, even though the request succeeded. */
+export function gh304Output(error: unknown): Buffer | null {
+  if (typeof error !== 'object' || error === null) return null;
+  const value = error as { message?: unknown; stdout?: unknown; stderr?: unknown };
+  const combined = [value.message, value.stdout, value.stderr].map(ghTextOutput).join('\n');
+  if (!/HTTP 304\b/i.test(combined)) return null;
+  if (Buffer.isBuffer(value.stdout)) return value.stdout;
+  return Buffer.from(ghTextOutput(value.stdout), 'utf8');
+}
+
 /** Run `gh` and return stdout. Throws GhError with gh's own stderr, which is usually the useful part. */
 export async function gh(args: string[]): Promise<string> {
   return plainGhOutput((await ghBytes(args)).toString('utf8'));
@@ -70,6 +84,8 @@ export async function ghBytes(args: string[]): Promise<Buffer> {
     const { stdout } = await run('gh', args, { maxBuffer: 64 * 1024 * 1024, windowsHide: true, encoding: 'buffer', env: ghEnv });
     return stdout;
   } catch (error) {
+    const notModified = gh304Output(error);
+    if (notModified !== null) return notModified;
     const stderr = (error as { stderr?: unknown }).stderr;
     const text = Buffer.isBuffer(stderr) ? stderr.toString('utf8') : typeof stderr === 'string' ? stderr : '';
     const reason = text.trim() || (error as Error).message;
@@ -84,10 +100,10 @@ export async function ghBytes(args: string[]): Promise<Buffer> {
 export async function ghIncludingHeaders(args: string[]): Promise<string> {
   try {
     const { stdout } = await run('gh', args, { maxBuffer: 64 * 1024 * 1024, windowsHide: true, env: ghEnv });
-    return plainGhOutput(stdout);
+    return plainGhOutput(ghTextOutput(stdout));
   } catch (error) {
-    const stdout = (error as { stdout?: unknown }).stdout;
-    if (typeof stdout === 'string' && stdout.startsWith('HTTP/')) return plainGhOutput(stdout);
+    const stdout = ghTextOutput((error as { stdout?: unknown }).stdout);
+    if (stdout.startsWith('HTTP/')) return plainGhOutput(stdout);
     const stderr = (error as { stderr?: unknown }).stderr;
     throw new GhError((typeof stderr === 'string' ? stderr.trim() : '') || (error as Error).message, args);
   }
@@ -216,6 +232,161 @@ async function pool<T, R>(items: readonly T[], limit: number, task: (item: T) =>
   return results;
 }
 
+export interface GhApiResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+}
+
+/** Parse the single HTTP response printed by `gh api --include`. */
+export function parseGhApiResponse(output: string): GhApiResponse {
+  const separator = /\r?\n\r?\n/.exec(output);
+  if (separator === null) throw new Error('GitHub CLI did not include HTTP response headers.');
+  const headerText = output.slice(0, separator.index);
+  const [statusLine = '', ...headerLines] = headerText.split(/\r?\n/);
+  const status = /^HTTP\/\S+\s+(\d{3})(?:\s|$)/i.exec(statusLine)?.[1];
+  if (status === undefined) throw new Error('GitHub CLI returned an unrecognized HTTP status line.');
+
+  const headers: Record<string, string> = {};
+  for (const line of headerLines) {
+    const colon = line.indexOf(':');
+    if (colon < 1) continue;
+    headers[line.slice(0, colon).trim().toLowerCase()] = line.slice(colon + 1).trim();
+  }
+  return {
+    status: Number(status),
+    headers,
+    body: output.slice(separator.index + separator[0].length),
+  };
+}
+
+type GhApiRunner = (args: string[]) => Promise<string>;
+
+function hasNextPage(link: string | undefined): boolean {
+  return link !== undefined && /;\s*rel="?next"?(?:,|\s|$)/i.test(link);
+}
+
+function subIssuesArgs(repo: string, mapNumber: number, page: number, etag?: string): string[] {
+  const args = ['api', '--include', '-X', 'GET'];
+  if (etag !== undefined) args.push('-H', `If-None-Match: ${etag}`);
+  args.push('-F', 'per_page=100', '-F', `page=${String(page)}`, `repos/${repo}/issues/${String(mapNumber)}/sub_issues`);
+  return args;
+}
+
+/** Keeps ETags for every sub-issue page so unchanged map polls receive free 304 responses. */
+export class SubIssueWatcher {
+  private readonly etags = new Map<string, Map<number, Map<number, string | null>>>();
+  private readonly bodyIssueEtags = new Map<string, Map<number, Map<number, string | null>>>();
+
+  constructor(private readonly runGh: GhApiRunner = ghIncludingHeaders) {}
+
+  async fetch(repo: string, mapNumber: number): Promise<RawIssue[]> {
+    const issues: RawIssue[] = [];
+    const pageEtags = new Map<number, string | null>();
+    let page = 1;
+
+    for (;;) {
+      const args = subIssuesArgs(repo, mapNumber, page);
+      const response = parseGhApiResponse(await this.runGh(args));
+      if (response.status !== 200) {
+        throw new GhError(response.body.trim() || `GitHub returned HTTP ${String(response.status)} for map #${String(mapNumber)} sub-issues.`, args);
+      }
+      const pageIssues = JSON.parse(response.body) as RawIssue[];
+      if (!Array.isArray(pageIssues)) throw new Error(`GitHub returned an invalid sub-issue list for map #${String(mapNumber)}.`);
+      issues.push(...pageIssues);
+      pageEtags.set(page, response.headers.etag ?? null);
+
+      if (hasNextPage(response.headers.link) || pageIssues.length === 100) {
+        page += 1;
+        continue;
+      }
+      break;
+    }
+
+    const repoEtags = this.etags.get(repo) ?? new Map<number, Map<number, string | null>>();
+    repoEtags.set(mapNumber, pageEtags);
+    this.etags.set(repo, repoEtags);
+    return issues;
+  }
+
+  resetBodyIssues(repo: string, mapNumber: number): void {
+    const maps = this.bodyIssueEtags.get(repo) ?? new Map<number, Map<number, string | null>>();
+    maps.set(mapNumber, new Map());
+    this.bodyIssueEtags.set(repo, maps);
+  }
+
+  async fetchBodyIssue(repo: string, mapNumber: number, issueNumber: number): Promise<RawIssue | null> {
+    const args = ['api', '--include', `repos/${repo}/issues/${String(issueNumber)}`];
+    try {
+      const response = parseGhApiResponse(await this.runGh(args));
+      this.recordBodyIssueEtag(repo, mapNumber, issueNumber, response.headers.etag ?? null);
+      if (response.status !== 200) return null;
+      return JSON.parse(response.body) as RawIssue;
+    } catch {
+      this.recordBodyIssueEtag(repo, mapNumber, issueNumber, null);
+      return null;
+    }
+  }
+
+  clear(repo: string, mapNumber: number): void {
+    this.etags.get(repo)?.delete(mapNumber);
+    this.bodyIssueEtags.get(repo)?.delete(mapNumber);
+  }
+
+  retainMaps(repo: string, mapNumbers: readonly number[]): void {
+    const included = new Set(mapNumbers);
+    for (const maps of [this.etags.get(repo), this.bodyIssueEtags.get(repo)]) {
+      if (maps === undefined) continue;
+      for (const mapNumber of maps.keys()) {
+        if (!included.has(mapNumber)) maps.delete(mapNumber);
+      }
+    }
+  }
+
+  async hasChanged(repo: string, mapNumbers: readonly number[]): Promise<boolean> {
+    const results = await pool(mapNumbers, 6, async (mapNumber) => {
+      const pageEtags = this.etags.get(repo)?.get(mapNumber);
+      if (pageEtags === undefined || pageEtags.size === 0) return true;
+
+      for (const [page, etag] of pageEtags) {
+        if (etag === null) return true;
+        const response = parseGhApiResponse(await this.runGh(subIssuesArgs(repo, mapNumber, page, etag)));
+        if (response.status !== 304) return true;
+        if (response.headers.etag !== undefined) pageEtags.set(page, response.headers.etag);
+      }
+      for (const [issueNumber, etag] of this.bodyIssueEtags.get(repo)?.get(mapNumber) ?? []) {
+        if (etag === null) continue;
+        const response = parseGhApiResponse(await this.runGh([
+          'api',
+          '--include',
+          '-H',
+          `If-None-Match: ${etag}`,
+          `repos/${repo}/issues/${String(issueNumber)}`,
+        ]));
+        if (response.status !== 304) return true;
+        if (response.headers.etag !== undefined) this.recordBodyIssueEtag(repo, mapNumber, issueNumber, response.headers.etag);
+      }
+      return false;
+    });
+    return results.some(Boolean);
+  }
+
+  private recordBodyIssueEtag(repo: string, mapNumber: number, issueNumber: number, etag: string | null): void {
+    const maps = this.bodyIssueEtags.get(repo) ?? new Map<number, Map<number, string | null>>();
+    const issues = maps.get(mapNumber) ?? new Map<number, string | null>();
+    issues.set(issueNumber, etag);
+    maps.set(mapNumber, issues);
+    this.bodyIssueEtags.set(repo, maps);
+  }
+}
+
+const subIssueWatcher = new SubIssueWatcher();
+
+/** Whether any cached map's sub-issue list changed since its last full read. */
+export function haveMapTicketsChanged(repo: string, mapNumbers: readonly number[]): Promise<boolean> {
+  return subIssueWatcher.hasChanged(repo, mapNumbers);
+}
+
 async function fetchIssue(repo: string, number: number): Promise<RawIssue | null> {
   try {
     return await ghJson<RawIssue>(['api', `repos/${repo}/issues/${number}`]);
@@ -295,18 +466,16 @@ interface Fallbacks {
 async function fetchChildren(repo: string, map: RawIssue, fallbacks: Fallbacks): Promise<RawIssue[]> {
   const numbers = parseChildNumbers(map.body ?? '', repo).filter((number) => number !== map.number);
   let subIssues: RawIssue[];
+  subIssueWatcher.resetBodyIssues(repo, map.number);
   try {
-    subIssues = await ghJson<RawIssue[]>([
-      'api',
-      '--paginate',
-      `repos/${repo}/issues/${map.number}/sub_issues?per_page=100`,
-    ]);
+    subIssues = await subIssueWatcher.fetch(repo, map.number);
   } catch (error) {
+    subIssueWatcher.clear(repo, map.number);
     if (numbers.length > 0) {
       fallbacks.maps.push(map.number);
       if (ghProblem(error) === RATE_LIMIT_WARNING) fallbacks.rateLimited = true;
     }
-    const fetched = await pool(numbers, 8, (number) => fetchIssue(repo, number));
+    const fetched = await pool(numbers, 8, (number) => subIssueWatcher.fetchBodyIssue(repo, map.number, number));
     return fetched.filter((issue): issue is RawIssue => issue !== null);
   }
 
@@ -315,7 +484,7 @@ async function fetchChildren(repo: string, map: RawIssue, fallbacks: Fallbacks):
   if (unattachedNumbers.length > 0) {
     fallbacks.unattachedTickets.push({ mapNumber: map.number, ticketNumbers: unattachedNumbers });
   }
-  const fetched = await pool(unattachedNumbers, 8, (number) => fetchIssue(repo, number));
+  const fetched = await pool(unattachedNumbers, 8, (number) => subIssueWatcher.fetchBodyIssue(repo, map.number, number));
   return [...subIssues, ...fetched.filter((issue): issue is RawIssue => issue !== null)];
 }
 
@@ -349,6 +518,7 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
   if (mapIssues.length === 0) {
     warnings.push(`No maps in ${repo} yet. Wayfinder looks for issues labeled ${mapLabel}.`);
   }
+  subIssueWatcher.retainMaps(repo, mapIssues.map((map) => map.number));
 
   const maps = await pool(mapIssues, concurrency, async (mapIssue): Promise<WayfinderMap> => {
     const children = await fetchChildren(repo, mapIssue, fallbacks);
