@@ -126,6 +126,11 @@ function labelNames(raw: RawIssue): string[] {
     .filter((name) => name.length > 0);
 }
 
+/** `gh api --paginate --slurp` returns one array for each response page. */
+export function flattenIssuePages<T extends { number: number; pull_request?: unknown }>(pages: readonly (readonly T[])[]): T[] {
+  return pages.flatMap((page) => page.filter((issue) => issue.pull_request === undefined || issue.pull_request === null));
+}
+
 function ticketType(labels: string[], prefix: string): TicketType | null {
   for (const label of labels) {
     if (!label.startsWith(prefix)) continue;
@@ -313,20 +318,13 @@ export async function fetchMaps(options: FetchOptions): Promise<FetchResult> {
   const warnings: string[] = [];
   const fallbacks: Fallbacks = { maps: [], rateLimited: false };
 
-  const mapIssues = await ghJson<RawIssue[]>([
-    'issue',
-    'list',
-    '--repo',
-    repo,
-    '--label',
-    mapLabel,
-    '--state',
-    'all',
-    '--limit',
-    '100',
-    '--json',
-    'number,title,url,body,state',
+  const mapIssuePages = await ghJson<RawIssue[][]>([
+    'api',
+    '--paginate',
+    '--slurp',
+    `repos/${repo}/issues?state=all&labels=${encodeURIComponent(mapLabel)}&per_page=100`,
   ]);
+  const mapIssues = flattenIssuePages(mapIssuePages);
 
   if (mapIssues.length === 0) {
     warnings.push(`No maps in ${repo} yet. Wayfinder looks for issues labeled ${mapLabel}.`);

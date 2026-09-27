@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { RATE_LIMIT_WARNING, branchFacts, fallbackWarning, ghProblem, isOpenState, mapPrototypeBranches, plainGhOutput, sortPrototypes, ticketStateOf, toOutsideTicket } from './github.js';
+import { RATE_LIMIT_WARNING, branchFacts, fallbackWarning, flattenIssuePages, ghProblem, isOpenState, mapPrototypeBranches, plainGhOutput, sortPrototypes, ticketStateOf, toOutsideTicket } from './github.js';
 import type { Prototype } from './types.js';
 
 describe('plainGhOutput', () => {
@@ -20,6 +20,15 @@ describe('isOpenState', () => {
     expect(isOpenState('open')).toBe(true);
     expect(isOpenState('CLOSED')).toBe(false);
     expect(isOpenState('closed')).toBe(false);
+  });
+});
+
+describe('flattenIssuePages', () => {
+  it('keeps maps beyond the first page and drops pull requests', () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({ number: index + 1 }));
+    const secondPage = [{ number: 101 }, { number: 102, pull_request: { url: 'https://github.com/o/r/pull/102' } }];
+
+    expect(flattenIssuePages([firstPage, secondPage])).toEqual([...firstPage, { number: 101 }]);
   });
 });
 
