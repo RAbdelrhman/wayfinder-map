@@ -26,7 +26,7 @@ export interface HandOffSurface {
 
 export interface MapTicketFocusTarget {
   readonly dataset: Readonly<Record<string, string | undefined>>;
-  focus(): void;
+  focus(options?: FocusOptions): void;
 }
 
 const POLL_INTERVAL_MS = 15_000;
@@ -41,7 +41,7 @@ export function restoreMapTicketFocus(
   ticketNumber: number | null,
   findNode: (number: number) => MapTicketFocusTarget | null,
 ): void {
-  if (ticketNumber !== null) findNode(ticketNumber)?.focus();
+  if (ticketNumber !== null) findNode(ticketNumber)?.focus({ preventScroll: true });
 }
 
 export function handOffVisualSignature(handOffs: readonly HandOffStatusDto[]): string {

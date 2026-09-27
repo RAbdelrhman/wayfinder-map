@@ -154,13 +154,21 @@ describe('hand-off visual signature', () => {
 describe('map ticket focus after redraw', () => {
   it('restores focus to the same ticket node', () => {
     let focused = false;
+    let preventScroll = false;
     const previousNode = { dataset: { number: '11' }, focus: () => undefined };
-    const replacementNode = { dataset: { number: '11' }, focus: () => { focused = true; } };
+    const replacementNode = {
+      dataset: { number: '11' },
+      focus: (options?: FocusOptions) => {
+        focused = true;
+        preventScroll = options?.preventScroll === true;
+      },
+    };
     const ticketNumber = focusedMapTicketNumber(previousNode, true);
 
     restoreMapTicketFocus(ticketNumber, (number) => number === 11 ? replacementNode : null);
 
     expect(focused).toBe(true);
+    expect(preventScroll).toBe(true);
   });
 
   it('does not restore a ticket when focus was outside the map or the node has no valid ticket number', () => {
