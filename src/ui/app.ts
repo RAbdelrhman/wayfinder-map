@@ -40,11 +40,13 @@ import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml 
 import { recordMapOpened } from './homeRecency.js';
 import {
   cardShowsHandOff,
+  focusedMapTicketNumber,
   handOffCardHtml,
   handOffPill,
   handOffPresentation,
   handOffVisualSignature,
   mountHandOffs,
+  restoreMapTicketFocus,
 } from './handOffs.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
@@ -185,7 +187,16 @@ handOffSurface.subscribe((records) => {
   if (filter === 'in-t3' && activeTicketHandOffs(currentMap()).length === 0) filter = null;
   if (snapshot !== null) {
     renderFilters();
-    if (view === 'map') renderGraph();
+    if (view === 'map') {
+      const focusedNode = document.activeElement instanceof HTMLElement
+        ? document.activeElement.closest<HTMLElement>('.node')
+        : null;
+      const focusedTicket = focusedMapTicketNumber(focusedNode, focusedNode !== null && els.nodes.contains(focusedNode));
+      renderGraph();
+      restoreMapTicketFocus(focusedTicket, (number) =>
+        els.nodes.querySelector<HTMLElement>(`.node[data-number="${String(number)}"]`),
+      );
+    }
     if (selected !== null) renderInspector();
     syncHighlights();
   }

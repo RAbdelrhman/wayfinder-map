@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import {
   cardShowsHandOff,
+  focusedMapTicketNumber,
   handOffCardHtml,
   handOffMapLabel,
   handOffPresentation,
@@ -13,6 +14,7 @@ import {
   homeHandOffHistoryHtml,
   listedHandOffs,
   recentHandOffs,
+  restoreMapTicketFocus,
 } from './handOffs.js';
 
 function handOff(overrides: Partial<HandOffStatusDto> = {}): HandOffStatusDto {
@@ -146,6 +148,32 @@ describe('hand-off visual signature', () => {
     for (const update of updates) {
       expect(handOffVisualSignature([handOff({ pullRequests: [update] })])).not.toBe(initial);
     }
+  });
+});
+
+describe('map ticket focus after redraw', () => {
+  it('restores focus to the same ticket node', () => {
+    let focused = false;
+    const previousNode = { dataset: { number: '11' }, focus: () => undefined };
+    const replacementNode = { dataset: { number: '11' }, focus: () => { focused = true; } };
+    const ticketNumber = focusedMapTicketNumber(previousNode, true);
+
+    restoreMapTicketFocus(ticketNumber, (number) => number === 11 ? replacementNode : null);
+
+    expect(focused).toBe(true);
+  });
+
+  it('does not restore a ticket when focus was outside the map or the node has no valid ticket number', () => {
+    const node = { dataset: { number: '0' }, focus: () => undefined };
+    expect(focusedMapTicketNumber(node, false)).toBeNull();
+    expect(focusedMapTicketNumber(node, true)).toBeNull();
+
+    let lookedUp = false;
+    restoreMapTicketFocus(null, () => {
+      lookedUp = true;
+      return node;
+    });
+    expect(lookedUp).toBe(false);
   });
 });
 

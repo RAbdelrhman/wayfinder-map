@@ -24,7 +24,25 @@ export interface HandOffSurface {
   subscribe(listener: (records: readonly HandOffStatusDto[]) => void): () => void;
 }
 
+export interface MapTicketFocusTarget {
+  readonly dataset: Readonly<Record<string, string | undefined>>;
+  focus(): void;
+}
+
 const POLL_INTERVAL_MS = 15_000;
+
+export function focusedMapTicketNumber(node: MapTicketFocusTarget | null, isInsideMap: boolean): number | null {
+  if (!isInsideMap || node === null) return null;
+  const number = Number(node.dataset['number']);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
+export function restoreMapTicketFocus(
+  ticketNumber: number | null,
+  findNode: (number: number) => MapTicketFocusTarget | null,
+): void {
+  if (ticketNumber !== null) findNode(ticketNumber)?.focus();
+}
 
 export function handOffVisualSignature(handOffs: readonly HandOffStatusDto[]): string {
   return handOffs
