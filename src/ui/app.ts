@@ -33,6 +33,7 @@ import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { FOG_KEY_ROW, PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
 import { mountSettings } from './settings.js';
+import { bindPan } from './pan.js';
 import { nextTabIndex, tabAttrs, tabPanelAttrs } from './tabs.js';
 import type { NavigationController, NavigationView } from './navigation.js';
 import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
@@ -720,7 +721,7 @@ function setHovered(node: HTMLElement | null): void {
   hideCard();
   const map = currentMap();
   const ticket = map === null ? undefined : ticketAt(map, number);
-  if (node === null || map === null || ticket === undefined || panFrom !== null) return;
+  if (node === null || map === null || ticket === undefined || els.canvasWrap.classList.contains('is-panning')) return;
   cardTimer = window.setTimeout(() => showCard(node, ticket, map), 220);
 }
 
@@ -1454,32 +1455,7 @@ els.canvasWrap.addEventListener(
 
 els.canvasWrap.addEventListener('scroll', hideCard, { passive: true });
 
-let panFrom: { x: number; y: number; left: number; top: number } | null = null;
-
-els.canvasWrap.addEventListener('pointerdown', (event) => {
-  if ((event.target as HTMLElement).closest('.node') !== null) return;
-  panFrom = {
-    x: event.clientX,
-    y: event.clientY,
-    left: els.canvasWrap.scrollLeft,
-    top: els.canvasWrap.scrollTop,
-  };
-  els.canvasWrap.classList.add('is-panning');
-  els.canvasWrap.setPointerCapture(event.pointerId);
-});
-
-els.canvasWrap.addEventListener('pointermove', (event) => {
-  if (panFrom === null) return;
-  els.canvasWrap.scrollLeft = panFrom.left - (event.clientX - panFrom.x);
-  els.canvasWrap.scrollTop = panFrom.top - (event.clientY - panFrom.y);
-});
-
-for (const type of ['pointerup', 'pointercancel'] as const) {
-  els.canvasWrap.addEventListener(type, () => {
-    panFrom = null;
-    els.canvasWrap.classList.remove('is-panning');
-  });
-}
+bindPan(els.canvasWrap, (target) => target instanceof Element && target.closest('.node') !== null);
 
 const autoRefresh = new AutoRefresh({
   refresh: () => load('background'),

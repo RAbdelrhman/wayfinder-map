@@ -1,0 +1,237 @@
+import { gh, ghIncludingHeaders, ghProblem, RATE_LIMIT_WARNING } from './github.js';
+import { diffMap, needsPullRequests, nextPollDelay, parseHttpResponse, pullRequestsByTicket, rateLimitOf, watchedTickets } from './mapWatch.js';
+import type { MapEvent, RateLimit, WatchedPullRequest, WatchedTicket } from './mapWatch.js';
+
+/** #122's interval: a `304` is free, and list responses are cached for 60 s anyway. */
+export const WATCH_INTERVAL_MS = 2 * 60 * 1000;
+const HISTORY_SIZE = 50;
+
+export type MapRead =
+  | { status: 'unchanged'; rateLimit: RateLimit | null; pollIntervalSeconds: number | null }
+  | { status: 'changed'; etag: string | null; tickets: WatchedTicket[]; rateLimit: RateLimit | null; pollIntervalSeconds: number | null };
+
+export interface PullRequestRead {
+  byTicket: Map<number, WatchedPullRequest[]>;
+  rateLimit: RateLimit | null;
+}
+
+/** Where the watcher's GitHub reads come from. Tests replace it. */
+export interface MapWatchReader {
+  /** The map's tickets, or `unchanged` when GitHub answers the ETag with a `304`. */
+  readMap: (repo: string, mapNumber: number, etag: string | null) => Promise<MapRead>;
+  /** Every recent pull request in the repository, keyed by the ticket its branch names. */
+  readPullRequests: (repo: string) => Promise<PullRequestRead>;
+}
+
+export type MapEventListener = (event: MapEvent) => void;
+
+interface WatchedMap {
+  repo: string;
+  mapNumber: number;
+  etag: string | null;
+  tickets: WatchedTicket[] | null;
+  history: MapEvent[];
+  listeners: Set<MapEventListener>;
+  timer: NodeJS.Timeout | null;
+  /** A read is in flight. It schedules the next one itself. */
+  polling: boolean;
+  failures: number;
+  pollIntervalSeconds: number | null;
+  /** Whether pull requests have been read for this map yet. The first read is a baseline, not news. */
+  pullRequestsRead: boolean;
+}
+
+/**
+ * Re-reads the maps someone is watching and tells them what changed. A map is polled only
+ * while it has a listener; its last read and a short history stay, so a page that comes
+ * back picks up where it left off.
+ */
+export class MapWatcher {
+  private readonly maps = new Map<string, WatchedMap>();
+  private readonly rateLimits = new Map<string, RateLimit>();
+  private readonly pullRequestReads = new Map<string, { at: number; read: Promise<PullRequestRead> }>();
+  private readonly intervalMs: number;
+  private readonly now: () => number;
+  private nextId = 1;
+  private closed = false;
+
+  constructor(
+    private readonly reader: MapWatchReader = githubMapWatchReader,
+    options: { intervalMs?: number; now?: () => number } = {},
+  ) {
+    this.intervalMs = options.intervalMs ?? WATCH_INTERVAL_MS;
+    this.now = options.now ?? Date.now;
+  }
+
+  /** Start watching a map for `listener`. Returns the call that stops it. */
+  watch(repo: string, mapNumber: number, listener: MapEventListener): () => void {
+    if (this.closed) return () => undefined;
+    const map = this.entry(repo, mapNumber);
+    map.listeners.add(listener);
+    if (map.timer === null && !map.polling) this.schedule(map, 0);
+    return () => {
+      map.listeners.delete(listener);
+      if (map.listeners.size === 0 && map.timer !== null) {
+        clearTimeout(map.timer);
+        map.timer = null;
+      }
+    };
+  }
+
+  /** The map's recent events, oldest first, after `afterId` when given. */
+  history(repo: string, mapNumber: number, afterId = 0): MapEvent[] {
+    return (this.maps.get(key(repo, mapNumber))?.history ?? []).filter((event) => event.id > afterId);
+  }
+
+  close(): void {
+    this.closed = true;
+    for (const map of this.maps.values()) {
+      if (map.timer !== null) clearTimeout(map.timer);
+      map.timer = null;
+      map.listeners.clear();
+    }
+  }
+
+  private entry(repo: string, mapNumber: number): WatchedMap {
+    const id = key(repo, mapNumber);
+    let map = this.maps.get(id);
+    if (map === undefined) {
+      map = { repo, mapNumber, etag: null, tickets: null, history: [], listeners: new Set(), timer: null, polling: false, failures: 0, pollIntervalSeconds: null, pullRequestsRead: false };
+      this.maps.set(id, map);
+    }
+    return map;
+  }
+
+  private schedule(map: WatchedMap, delayMs: number): void {
+    if (this.closed || map.listeners.size === 0) return;
+    map.timer = setTimeout(() => {
+      map.timer = null;
+      map.polling = true;
+      void this.poll(map).then((delay) => {
+        map.polling = false;
+        this.schedule(map, delay);
+      });
+    }, delayMs);
+    map.timer.unref();
+  }
+
+  /** Read the map if the budget allows, and say how long to wait before the next read. */
+  private async poll(map: WatchedMap): Promise<number> {
+    // The budget is per account, so a low one found by any map holds every map back.
+    const wait = nextPollDelay({ intervalMs: 0, now: this.now(), rateLimits: [...this.rateLimits.values()], failures: 0 });
+    if (wait > 0) return wait;
+    try {
+      await this.read(map);
+      map.failures = 0;
+    } catch (error) {
+      map.failures += 1;
+      // gh sometimes reports the limit only in words, without the headers to wait on.
+      if (ghProblem(error) === RATE_LIMIT_WARNING) map.failures = Math.max(map.failures, 3);
+    }
+    return nextPollDelay({
+      intervalMs: this.intervalMs,
+      now: this.now(),
+      rateLimits: [...this.rateLimits.values()],
+      failures: map.failures,
+      pollIntervalSeconds: map.pollIntervalSeconds,
+    });
+  }
+
+  private async read(map: WatchedMap): Promise<void> {
+    const read = await this.reader.readMap(map.repo, map.mapNumber, map.tickets === null ? null : map.etag);
+    this.noteRateLimit(read.rateLimit);
+    map.pollIntervalSeconds = read.pollIntervalSeconds;
+    let previous = map.tickets;
+    let tickets: WatchedTicket[];
+    if (read.status === 'changed') {
+      map.etag = read.etag;
+      const pullRequestsBefore = new Map((previous ?? []).map((ticket) => [ticket.number, ticket.pullRequests]));
+      tickets = read.tickets.map((ticket) => ({ ...ticket, pullRequests: pullRequestsBefore.get(ticket.number) ?? [] }));
+    } else {
+      tickets = previous ?? [];
+    }
+    // A pull request doesn't change the map's ETag, so this runs even after a `304`.
+    if (needsPullRequests(tickets)) {
+      const pullRequests = await this.pullRequests(map.repo).catch(() => null);
+      if (pullRequests !== null) {
+        const withPullRequests = (ticket: WatchedTicket): WatchedTicket => ({ ...ticket, pullRequests: pullRequests.byTicket.get(ticket.number) ?? ticket.pullRequests });
+        tickets = tickets.map(withPullRequests);
+        // Without this, every PR merged before watching began would arrive as just merged.
+        if (!map.pullRequestsRead) previous = previous?.map(withPullRequests) ?? null;
+        map.pullRequestsRead = true;
+      }
+    }
+    map.tickets = tickets;
+    if (previous === null || this.closed) return;
+    const at = new Date(this.now()).toISOString();
+    for (const change of diffMap(previous, tickets)) {
+      const event: MapEvent = { ...change, id: this.nextId++, repo: map.repo, mapNumber: map.mapNumber, at };
+      map.history = [...map.history, event].slice(-HISTORY_SIZE);
+      for (const listener of map.listeners) listener(event);
+    }
+  }
+
+  /** One read per repository per half interval, shared by every map in it. */
+  private pullRequests(repo: string): Promise<PullRequestRead> {
+    const cached = this.pullRequestReads.get(repo);
+    if (cached !== undefined && this.now() - cached.at < this.intervalMs / 2) return cached.read;
+    const read = this.reader.readPullRequests(repo).then((result) => {
+      this.noteRateLimit(result.rateLimit);
+      return result;
+    });
+    this.pullRequestReads.set(repo, { at: this.now(), read });
+    read.catch(() => this.pullRequestReads.delete(repo));
+    return read;
+  }
+
+  private noteRateLimit(rateLimit: RateLimit | null): void {
+    if (rateLimit !== null) this.rateLimits.set(rateLimit.resource, rateLimit);
+  }
+}
+
+function key(repo: string, mapNumber: number): string {
+  return `${repo.toLowerCase()}#${String(mapNumber)}`;
+}
+
+const PULL_REQUESTS_QUERY = `query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(first: 50, orderBy: { field: UPDATED_AT, direction: DESC }) {
+      nodes { number url state headRefName reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
+    }
+  }
+  rateLimit { limit remaining resetAt }
+}`;
+
+/** The reads #122 recommends: a conditional `sub_issues` request, and one GraphQL query per repository for pull requests. */
+export const githubMapWatchReader: MapWatchReader = {
+  async readMap(repo, mapNumber, etag) {
+    const args = ['api', '-i', `repos/${repo}/issues/${String(mapNumber)}/sub_issues?per_page=100`];
+    if (etag !== null) args.push('-H', `If-None-Match: ${etag}`);
+    const response = parseHttpResponse(await ghIncludingHeaders(args));
+    if (response === null) throw new Error(`GitHub gave no answer for map #${String(mapNumber)}.`);
+    const rateLimit = rateLimitOf(response.headers);
+    const pollInterval = Number(response.headers['x-poll-interval']);
+    const pollIntervalSeconds = Number.isFinite(pollInterval) && pollInterval > 0 ? pollInterval : null;
+    if (response.status === 304) return { status: 'unchanged', rateLimit, pollIntervalSeconds };
+    if (response.status !== 200) {
+      const remaining = rateLimit?.remaining;
+      throw new Error(remaining === 0 ? RATE_LIMIT_WARNING : `GitHub answered ${String(response.status)} for map #${String(mapNumber)}.`);
+    }
+    return { status: 'changed', etag: response.headers['etag'] ?? null, tickets: watchedTickets(JSON.parse(response.body)), rateLimit, pollIntervalSeconds };
+  },
+  async readPullRequests(repo) {
+    const [owner = '', name = ''] = repo.split('/', 2);
+    const result = JSON.parse(
+      await gh(['api', 'graphql', '-f', `query=${PULL_REQUESTS_QUERY}`, '-f', `owner=${owner}`, '-f', `name=${name}`]),
+    ) as { data?: { repository?: { pullRequests?: { nodes?: unknown } }; rateLimit?: { limit?: number; remaining?: number; resetAt?: string } } };
+    const budget = result.data?.rateLimit;
+    const resetAt = budget?.resetAt === undefined ? Number.NaN : Date.parse(budget.resetAt);
+    return {
+      byTicket: pullRequestsByTicket(result.data?.repository?.pullRequests?.nodes),
+      rateLimit:
+        typeof budget?.limit === 'number' && typeof budget.remaining === 'number' && Number.isFinite(resetAt)
+          ? { resource: 'graphql', limit: budget.limit, remaining: budget.remaining, resetAt }
+          : null,
+    };
+  },
+};

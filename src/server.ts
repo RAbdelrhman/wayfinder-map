@@ -12,6 +12,7 @@ import { detectT3, handOff } from './t3.js';
 import type { T3HandOff } from './t3.js';
 import type { Config } from './config.js';
 import type { MapSnapshot, Prototype, Ticket, WayfinderMap } from './types.js';
+import type { MapEvent } from './mapWatch.js';
 import { listRepositories, loadHomeState, readAccount } from './home.js';
 import type { HomeState } from './home.js';
 import { fetchAllPrototypes, fetchBranchFile, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, gh } from './github.js';
@@ -27,6 +28,7 @@ import { WAYFINDER_VERSION } from './version.js';
 import { resolveRepoIcon, type ResolvedRepoIcon } from './repoIcon.js';
 import { HandOffStore, HandOffTracker, handOffStorePath } from './handOffTracking.js';
 import type { HandOffTrackingClient } from './handOffTracking.js';
+import { MapWatcher } from './mapWatcher.js';
 import { ProgressError, ProgressService, ProgressSettingsStore, readCompletedTickets } from './progress.js';
 
 const MIME: Record<string, string> = {
@@ -101,6 +103,8 @@ export interface ServeOptions {
   handOffStore?: HandOffStore;
   /** Replaces Home's progress panel data in tests, which must not touch gh or the home directory. */
   progress?: Pick<ProgressService, 'state' | 'save'>;
+  /** Replaces the GitHub map watcher in tests. */
+  mapWatcher?: MapWatcher;
 }
 
 export interface UpdaterStatus {
@@ -195,6 +199,7 @@ export async function startServer({
   updater,
   handOffStore,
   progress,
+  mapWatcher = new MapWatcher(),
 }: ServeOptions): Promise<RunningServer> {
   const defaultUpdater: UpdaterService = {
     async check(): Promise<UpdaterStatus> {
@@ -319,7 +324,10 @@ export async function startServer({
       json(response, 500, { error: (error as Error).message });
     });
   });
-  server.on('close', () => handOffTracker.close());
+  server.on('close', () => {
+    handOffTracker.close();
+    mapWatcher.close();
+  });
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const requestUrl = new URL(request.url ?? '/', url);
@@ -574,6 +582,16 @@ export async function startServer({
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
+        return;
+      }
+
+      if (requestedRepo !== null && scoped?.action === 'events' && request.method === 'GET') {
+        const mapNumber = Number(requestUrl.searchParams.get('map'));
+        if (!Number.isSafeInteger(mapNumber) || mapNumber <= 0) {
+          json(response, 400, { error: 'Name a map with ?map=<number>.' });
+          return;
+        }
+        streamMapEvents(request, response, mapWatcher, requestedRepo, mapNumber);
         return;
       }
 
@@ -953,7 +971,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;
@@ -961,6 +979,26 @@ function parseScopedApiPath(path: string): { repo: string; action: ScopedApiActi
 }
 
 type MapTicket = WayfinderMap['tickets'][number];
+
+/**
+ * Server-sent events for one map: its recent history first, then each change as the
+ * watcher finds it. The browser resends the last `id` on reconnect, so nothing repeats.
+ */
+function streamMapEvents(request: IncomingMessage, response: ServerResponse, watcher: MapWatcher, repo: string, mapNumber: number): void {
+  response.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store',
+    connection: 'keep-alive',
+  });
+  response.flushHeaders();
+  const send = (event: MapEvent): void => {
+    response.write(`id: ${String(event.id)}\nevent: map\ndata: ${JSON.stringify(event)}\n\n`);
+  };
+  const lastId = Number(request.headers['last-event-id'] ?? 0);
+  for (const event of watcher.history(repo, mapNumber, Number.isFinite(lastId) ? lastId : 0)) send(event);
+  const stop = watcher.watch(repo, mapNumber, send);
+  response.once('close', stop);
+}
 
 async function copyOnly(prompt: string): Promise<{ copied: boolean; error: string | null }> {
   try {

@@ -83,6 +83,22 @@ export async function ghBytes(args: string[]): Promise<Buffer> {
   }
 }
 
+/**
+ * `gh api -i` stdout, even when gh exits non-zero. gh prints a `304 Not Modified` and
+ * then exits 1, so a conditional request's answer is only in stdout.
+ */
+export async function ghIncludingHeaders(args: string[]): Promise<string> {
+  try {
+    const { stdout } = await run('gh', args, { maxBuffer: 64 * 1024 * 1024, windowsHide: true, env: ghEnv });
+    return plainGhOutput(stdout);
+  } catch (error) {
+    const stdout = (error as { stdout?: unknown }).stdout;
+    if (typeof stdout === 'string' && stdout.startsWith('HTTP/')) return plainGhOutput(stdout);
+    const stderr = (error as { stderr?: unknown }).stderr;
+    throw new GhError((typeof stderr === 'string' ? stderr.trim() : '') || (error as Error).message, args);
+  }
+}
+
 async function ghJson<T>(args: string[]): Promise<T> {
   return JSON.parse(await gh(args)) as T;
 }
@@ -251,7 +267,7 @@ function subIssuesArgs(repo: string, mapNumber: number, page: number, etag?: str
 export class SubIssueWatcher {
   private readonly etags = new Map<string, Map<number, Map<number, string | null>>>();
 
-  constructor(private readonly runGh: GhApiRunner = gh) {}
+  constructor(private readonly runGh: GhApiRunner = ghIncludingHeaders) {}
 
   async fetch(repo: string, mapNumber: number): Promise<RawIssue[]> {
     const issues: RawIssue[] = [];
@@ -259,8 +275,11 @@ export class SubIssueWatcher {
     let page = 1;
 
     for (;;) {
-      const response = parseGhApiResponse(await this.runGh(subIssuesArgs(repo, mapNumber, page)));
-      if (response.status !== 200) throw new Error(`GitHub returned HTTP ${String(response.status)} for map #${String(mapNumber)} sub-issues.`);
+      const args = subIssuesArgs(repo, mapNumber, page);
+      const response = parseGhApiResponse(await this.runGh(args));
+      if (response.status !== 200) {
+        throw new GhError(response.body.trim() || `GitHub returned HTTP ${String(response.status)} for map #${String(mapNumber)} sub-issues.`, args);
+      }
       const pageIssues = JSON.parse(response.body) as RawIssue[];
       if (!Array.isArray(pageIssues)) throw new Error(`GitHub returned an invalid sub-issue list for map #${String(mapNumber)}.`);
       issues.push(...pageIssues);
