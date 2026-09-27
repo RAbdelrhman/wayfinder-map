@@ -176,6 +176,49 @@ describe('repository-scoped server', () => {
     }
   });
 
+  it('checks for map changes in the background and keeps manual sync forced', async () => {
+    let reads = 0;
+    const fetcher: RepositoryFetcher = vi.fn(async () => {
+      reads += 1;
+      const open = reads < 3;
+      const state = open ? 'frontier' as const : 'done' as const;
+      return {
+        maps: [{ ...sampleMap, tickets: [{ ...sampleTicket, open, state }] }],
+        warnings: [`read ${String(reads)}`],
+      };
+    });
+    const checks = [false, true];
+    const changeChecker = vi.fn(async () => checks.shift() ?? false);
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      fetcher,
+      changeChecker,
+      homeLoader: async () => home,
+    });
+
+    try {
+      const initial = await fetch(`${running.url}/api/repos/octo/one/snapshot`).then((response) => response.json());
+      const background = await fetch(`${running.url}/api/repos/octo/one/snapshot?check=1`).then((response) => response.json());
+      const manual = await fetch(`${running.url}/api/repos/octo/one/snapshot?refresh=1`).then((response) => response.json());
+      const changed = await fetch(`${running.url}/api/repos/octo/one/snapshot?check=1`).then((response) => response.json());
+
+      expect(initial).toMatchObject({ warnings: ['read 1'], maps: [{ tickets: [{ state: 'frontier', open: true }] }] });
+      expect(background).toEqual(initial);
+      expect(manual).toMatchObject({ warnings: ['read 2'] });
+      expect(changed).toMatchObject({ warnings: ['read 3'], maps: [{ tickets: [{ state: 'done', open: false }] }] });
+      expect(changeChecker).toHaveBeenCalledTimes(2);
+      expect(changeChecker).toHaveBeenNthCalledWith(1, 'octo/one', [5]);
+      expect(changeChecker).toHaveBeenNthCalledWith(2, 'octo/one', [5]);
+      expect(fetcher).toHaveBeenCalledTimes(3);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
   it('inspects a ticket and returns its ticket data and parent map info', async () => {
     const fetcher: RepositoryFetcher = vi.fn(async () => ({
       maps: [sampleMap],

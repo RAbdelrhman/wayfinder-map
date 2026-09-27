@@ -17,13 +17,16 @@ vi.mock('node:child_process', () => {
 
 import {
   RATE_LIMIT_WARNING,
+  SubIssueWatcher,
   branchFacts,
   fallbackWarning,
   flattenIssuePages,
   fetchMaps,
+  gh304Output,
   ghProblem,
   isOpenState,
   mapPrototypeBranches,
+  parseGhApiResponse,
   plainGhOutput,
   sortPrototypes,
   ticketStateOf,
@@ -45,7 +48,7 @@ function mockGitHub(subIssues: ReturnType<typeof issue>[]): void {
 
     if (args.includes('--slurp')) {
       response = [[{ number: 10, title: 'Map', body: mapBody, state: 'OPEN' }]];
-    } else if (route.includes('/sub_issues?')) {
+    } else if (route.endsWith('/sub_issues')) {
       response = subIssues;
     } else if (route.endsWith('/dependencies/blocked_by')) {
       response = [];
@@ -55,7 +58,10 @@ function mockGitHub(subIssues: ReturnType<typeof issue>[]): void {
       response = issue(Number(match[1]));
     }
 
-    return { stdout: Buffer.from(JSON.stringify(response)), stderr: Buffer.alloc(0) };
+    const output = args.includes('--include')
+      ? `HTTP/2.0 200 OK\r\nETag: "mock"\r\n\r\n${JSON.stringify(response)}`
+      : JSON.stringify(response);
+    return { stdout: Buffer.from(output), stderr: Buffer.alloc(0) };
   });
 }
 
@@ -71,6 +77,124 @@ describe('plainGhOutput', () => {
 
   it('keeps plain output unchanged', () => {
     expect(plainGhOutput('{"ok":true}\n')).toBe('{"ok":true}\n');
+  });
+});
+
+describe('gh304Output', () => {
+  it('keeps gh api response headers when the CLI reports HTTP 304 as a failed exit', () => {
+    const stdout = Buffer.from('HTTP/2.0 304 Not Modified\r\nETag: "unchanged"\r\n\r\n');
+    const error = Object.assign(new Error('Command failed'), {
+      stdout,
+      stderr: Buffer.from('gh: HTTP 304'),
+    });
+
+    expect(gh304Output(error)).toEqual(stdout);
+    expect(gh304Output(new Error('gh: HTTP 403'))).toBeNull();
+  });
+});
+
+describe('parseGhApiResponse', () => {
+  it('parses status, case-insensitive headers, and body from gh api --include', () => {
+    expect(parseGhApiResponse('HTTP/2.0 304 Not Modified\r\nETag: "same"\r\nX-RateLimit-Used: 22\r\n\r\n')).toEqual({
+      status: 304,
+      headers: { etag: '"same"', 'x-ratelimit-used': '22' },
+      body: '',
+    });
+  });
+});
+
+describe('SubIssueWatcher', () => {
+  it('uses the captured ETag for later conditional checks', async () => {
+    const calls: string[][] = [];
+    const responses = [
+      'HTTP/2.0 200 OK\r\nETag: "map-one"\r\n\r\n[{"number":7,"title":"Ticket","state":"open"}]',
+      'HTTP/2.0 304 Not Modified\r\nETag: "map-one"\r\n\r\n',
+    ];
+    const watcher = new SubIssueWatcher(async (args) => {
+      calls.push(args);
+      const response = responses.shift();
+      if (response === undefined) throw new Error('Unexpected GitHub request.');
+      return response;
+    });
+
+    await expect(watcher.fetch('owner/repo', 5)).resolves.toMatchObject([{ number: 7, state: 'open' }]);
+    await expect(watcher.hasChanged('owner/repo', [5])).resolves.toBe(false);
+    expect(calls[1]).toEqual([
+      'api',
+      '--include',
+      '-X',
+      'GET',
+      '-H',
+      'If-None-Match: "map-one"',
+      '-F',
+      'per_page=100',
+      '-F',
+      'page=1',
+      'repos/owner/repo/issues/5/sub_issues',
+    ]);
+  });
+
+  it('fetches every page and checks each page ETag', async () => {
+    const calls: string[][] = [];
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({ number: index + 1, title: `Ticket ${String(index + 1)}`, state: 'open' }));
+    const responses = [
+      `HTTP/2.0 200 OK\r\nETag: "page-one"\r\nLink: <https://api.github.com/repos/owner/repo/issues/5/sub_issues?per_page=100&page=2>; rel="next"\r\n\r\n${JSON.stringify(firstPage)}`,
+      'HTTP/2.0 200 OK\r\nETag: "page-two"\r\n\r\n[{"number":101,"title":"Ticket 101","state":"open"}]',
+      'HTTP/2.0 304 Not Modified\r\n\r\n',
+      'HTTP/2.0 304 Not Modified\r\n\r\n',
+    ];
+    const watcher = new SubIssueWatcher(async (args) => {
+      calls.push(args);
+      const response = responses.shift();
+      if (response === undefined) throw new Error('Unexpected GitHub request.');
+      return response;
+    });
+
+    await expect(watcher.fetch('owner/repo', 5)).resolves.toHaveLength(101);
+    await expect(watcher.hasChanged('owner/repo', [5])).resolves.toBe(false);
+    expect(calls).toHaveLength(4);
+    expect(calls.slice(2).map((args) => args[9])).toEqual([
+      'page=1',
+      'page=2',
+    ]);
+  });
+
+  it('checks body-listed tickets that are missing from the sub-issue list', async () => {
+    const calls: string[][] = [];
+    const responses = [
+      'HTTP/2.0 200 OK\r\nETag: "map"\r\n\r\n[]',
+      'HTTP/2.0 200 OK\r\nETag: "ticket"\r\n\r\n{"number":9,"title":"Body ticket","state":"open"}',
+      'HTTP/2.0 304 Not Modified\r\n\r\n',
+      'HTTP/2.0 200 OK\r\nETag: "ticket-updated"\r\n\r\n{"number":9,"title":"Body ticket","state":"closed"}',
+    ];
+    const watcher = new SubIssueWatcher(async (args) => {
+      calls.push(args);
+      const response = responses.shift();
+      if (response === undefined) throw new Error('Unexpected GitHub request.');
+      return response;
+    });
+
+    await watcher.fetch('owner/repo', 5);
+    watcher.resetBodyIssues('owner/repo', 5);
+    await expect(watcher.fetchBodyIssue('owner/repo', 5, 9)).resolves.toMatchObject({ number: 9, state: 'open' });
+    await expect(watcher.hasChanged('owner/repo', [5])).resolves.toBe(true);
+    expect(calls[3]).toEqual(['api', '--include', '-H', 'If-None-Match: "ticket"', 'repos/owner/repo/issues/9']);
+  });
+
+  it('treats an uncached or changed map as needing a full read', async () => {
+    const responses = [
+      'HTTP/2.0 200 OK\r\nETag: "before"\r\n\r\n[]',
+      'HTTP/2.0 200 OK\r\nETag: "after"\r\n\r\n[]',
+    ];
+    const watcher = new SubIssueWatcher(async () => {
+      const response = responses.shift();
+      if (response === undefined) throw new Error('Unexpected GitHub request.');
+      return response;
+    });
+
+    await expect(watcher.hasChanged('owner/repo', [5])).resolves.toBe(true);
+    await watcher.fetch('owner/repo', 5);
+    await expect(watcher.hasChanged('owner/repo', [5])).resolves.toBe(true);
   });
 });
 

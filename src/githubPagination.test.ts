@@ -30,7 +30,9 @@ describe('fetchMaps pagination', () => {
     runGh.mockImplementation(async (_file, args) => {
       calls.push(args);
       if (args.includes('--slurp')) return { stdout: Buffer.from(JSON.stringify(pages)), stderr: Buffer.from('') };
-      if (args.some((arg) => arg.includes('/sub_issues?'))) return { stdout: Buffer.from('[]'), stderr: Buffer.from('') };
+      if (args.some((arg) => arg.endsWith('/sub_issues'))) {
+        return { stdout: Buffer.from('HTTP/2.0 200 OK\r\nETag: "map"\r\n\r\n[]'), stderr: Buffer.from('') };
+      }
       throw new Error(`Unexpected gh command: ${args.join(' ')}`);
     });
 
