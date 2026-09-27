@@ -42,6 +42,32 @@ describe('mapT3Status', () => {
       pullRequests: [{ number: 23, url: 'https://github.com/octo/one/pull/23', state: 'open' }],
     });
   });
+
+  it('reads state, CI, review, draft, and timestamps from a PR snapshot', () => {
+    expect(mapT3Status({
+      id: 'thread-1',
+      pullRequests: [{
+        number: 42,
+        url: 'https://github.com/octo/one/pull/42',
+        snapshot: {
+          state: 'merged',
+          checksState: 'passing',
+          reviewDecision: 'approved',
+          isDraft: false,
+          mergedAt: '2026-09-24T12:00:00Z',
+          syncedAt: '2026-09-24T12:01:00Z',
+        },
+      }],
+    })?.pullRequests).toMatchObject([{
+      state: 'merged',
+      checksState: 'passing',
+      reviewDecision: 'approved',
+      isDraft: false,
+      hasSnapshot: true,
+      mergedAt: '2026-09-24T12:00:00Z',
+      syncedAt: '2026-09-24T12:01:00Z',
+    }]);
+  });
 });
 
 describe('representativeHandOffs', () => {
@@ -129,7 +155,7 @@ describe('HandOffStore', () => {
     }
   });
 
-  it('migrates v1 records and persists acknowledgement without losing the record', async () => {
+  it('migrates v1 records and older PR refs without losing the record', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
     const filePath = join(directory, 'hand-offs.json');
     try {
@@ -139,12 +165,24 @@ describe('HandOffStore', () => {
       const legacyRecords = parsed.records.map((record) => {
         const legacyRecord = { ...record };
         delete legacyRecord['acknowledged'];
+        legacyRecord['pullRequests'] = [{
+          number: 42,
+          url: 'https://github.com/octo/one/pull/42',
+          state: 'OPEN',
+          mergedAt: null,
+          syncedAt: null,
+          source: 't3',
+        }];
         return legacyRecord;
       });
       await writeFile(filePath, JSON.stringify({ version: 1, records: legacyRecords }), 'utf8');
 
       const migrated = new HandOffStore({ filePath });
-      await expect(migrated.list()).resolves.toMatchObject([{ id: saved.id, acknowledged: false }]);
+      await expect(migrated.list()).resolves.toMatchObject([{
+        id: saved.id,
+        acknowledged: false,
+        pullRequests: [{ checksState: null, reviewDecision: null, isDraft: null, hasSnapshot: false }],
+      }]);
       await expect(migrated.acknowledge(saved.id)).resolves.toBe(true);
       await expect(new HandOffStore({ filePath }).list()).resolves.toMatchObject([{ id: saved.id, acknowledged: true }]);
       await expect(readFile(filePath, 'utf8')).resolves.toContain('"version": 2');
@@ -330,6 +368,10 @@ describe('HandOffTracker', () => {
         number: 42,
         url: 'https://github.com/octo/one/pull/42',
         state: 'OPEN',
+        checksState: null,
+        reviewDecision: null,
+        isDraft: null,
+        hasSnapshot: false,
         mergedAt: null,
         syncedAt: null,
         source: 'github' as const,
@@ -363,7 +405,7 @@ describe('HandOffTracker', () => {
     }
   });
 
-  it('asks GitHub whether a T3-reported pull request merged, and keeps the answer across T3 updates', async () => {
+  it('falls back to GitHub when T3 reports a pull request without a snapshot', async () => {
     const store = new HandOffStore({ filePath: null });
     await store.record(input);
     const url = 'https://github.com/octo/one/pull/42';
@@ -391,6 +433,95 @@ describe('HandOffTracker', () => {
       // Merged pull requests are not looked up again.
       await tracker.snapshot();
       expect(lookupPullRequestState).toHaveBeenCalledTimes(1);
+    } finally {
+      tracker.close();
+    }
+  });
+
+  it.each([
+    {
+      state: 'merged',
+      checksState: 'passing',
+      reviewDecision: 'approved',
+      isDraft: false,
+      mergedAt: '2026-09-24T12:00:00Z',
+      syncedAt: '2026-09-24T12:01:00Z',
+    },
+    {
+      state: 'open',
+      checksState: 'pending',
+      reviewDecision: 'review_required',
+      isDraft: true,
+      mergedAt: null,
+      syncedAt: '2026-09-24T12:01:00Z',
+    },
+  ])('uses the T3 $state PR snapshot without querying GitHub', async (prSnapshot) => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    const url = 'https://github.com/octo/one/pull/42';
+    const lookupPullRequestState = vi.fn(async () => ({ state: 'OPEN', mergedAt: null }));
+    const tracker = new HandOffTracker(
+      store,
+      {
+        readHandOffSnapshot: async () => ({
+          environmentId: 'env-1',
+          origin: input.t3Origin ?? '',
+          snapshot: {
+            snapshotSequence: 3,
+            threads: [{
+              id: 'thread-1',
+              projectId: 'project-1',
+              pullRequests: [{ number: 42, url, snapshot: prSnapshot }],
+            }],
+          },
+        }),
+      },
+      { lookupPullRequestState, lookupPullRequests: async () => [] },
+    );
+
+    try {
+      const snapshot = await tracker.snapshot();
+      expect(snapshot.handOffs).toMatchObject([{
+        pullRequests: [{ ...prSnapshot, url, hasSnapshot: true }],
+      }]);
+      expect(lookupPullRequestState).not.toHaveBeenCalled();
+    } finally {
+      tracker.close();
+    }
+  });
+
+  it('falls back to GitHub when T3 is offline, even with a saved PR snapshot', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    const url = 'https://github.com/octo/one/pull/42';
+    await store.applySnapshot('env-1', input.t3Origin ?? '', {
+      snapshotSequence: 3,
+      threads: [{
+        id: 'thread-1',
+        projectId: 'project-1',
+        pullRequests: [{
+          number: 42,
+          url,
+          snapshot: {
+            state: 'open',
+            checksState: 'passing',
+            reviewDecision: 'approved',
+            isDraft: false,
+            mergedAt: null,
+            syncedAt: '2026-09-24T12:01:00Z',
+          },
+        }],
+      }],
+    });
+    const lookupPullRequestState = vi.fn(async () => ({ state: 'MERGED', mergedAt: '2026-09-24T12:02:00Z' }));
+    const tracker = new HandOffTracker(store, null, { lookupPullRequestState, lookupPullRequests: async () => [] });
+
+    try {
+      await tracker.snapshot();
+      await vi.waitFor(async () => {
+        await expect(store.list()).resolves.toMatchObject([{ pullRequests: [{ url, state: 'MERGED' }] }]);
+      });
+      expect(lookupPullRequestState).toHaveBeenCalledWith(url);
     } finally {
       tracker.close();
     }

@@ -24,7 +24,58 @@ export interface HandOffSurface {
   subscribe(listener: (records: readonly HandOffStatusDto[]) => void): () => void;
 }
 
+export interface MapTicketFocusTarget {
+  readonly dataset: Readonly<Record<string, string | undefined>>;
+  focus(options?: FocusOptions): void;
+}
+
 const POLL_INTERVAL_MS = 15_000;
+
+export function focusedMapTicketNumber(node: MapTicketFocusTarget | null, isInsideMap: boolean): number | null {
+  if (!isInsideMap || node === null) return null;
+  const number = Number(node.dataset['number']);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
+export function restoreMapTicketFocus(
+  ticketNumber: number | null,
+  findNode: (number: number) => MapTicketFocusTarget | null,
+): void {
+  if (ticketNumber !== null) findNode(ticketNumber)?.focus({ preventScroll: true });
+}
+
+export function handOffVisualSignature(handOffs: readonly HandOffStatusDto[]): string {
+  return handOffs
+    .map((handOff) => {
+      const pullRequests = handOff.pullRequests
+        .map((pullRequest) => [
+          pullRequest.source,
+          pullRequest.url,
+          pullRequest.state ?? '',
+          pullRequest.checksState ?? '',
+          pullRequest.reviewDecision ?? '',
+          String(pullRequest.isDraft),
+          pullRequest.mergedAt ?? '',
+        ].join(':'))
+        .join(',');
+      return [
+        handOff.id,
+        handOff.status,
+        String(handOff.pendingApproval),
+        String(handOff.pendingUserInput),
+        String(handOff.stale),
+        String(handOff.acknowledged),
+        handOff.repo,
+        handOff.mapNumber ?? '',
+        handOff.mapTitle ?? '',
+        handOff.ticketNumber ?? '',
+        handOff.title ?? '',
+        pullRequests,
+        handOff.branch ?? '',
+      ].join(':');
+    })
+    .join('|');
+}
 
 export function handOffPresentation(handOff: HandOffStatusDto): HandOffPresentation {
   let state: HandOffUiState;

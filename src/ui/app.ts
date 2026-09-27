@@ -38,7 +38,16 @@ import { nextTabIndex, tabAttrs, tabPanelAttrs } from './tabs.js';
 import type { NavigationController, NavigationView } from './navigation.js';
 import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
 import { recordMapOpened } from './homeRecency.js';
-import { cardShowsHandOff, handOffCardHtml, handOffPill, handOffPresentation, mountHandOffs } from './handOffs.js';
+import {
+  cardShowsHandOff,
+  focusedMapTicketNumber,
+  handOffCardHtml,
+  handOffPill,
+  handOffPresentation,
+  handOffVisualSignature,
+  mountHandOffs,
+  restoreMapTicketFocus,
+} from './handOffs.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -172,15 +181,22 @@ function inT3TicketNumbers(map: WayfinderMap | null): ReadonlySet<number> {
 
 handOffSurface.subscribe((records) => {
   handOffRecords = records;
-  const key = records
-    .map((handOff) => `${handOff.id}:${handOff.status}:${String(handOff.pendingApproval)}:${String(handOff.pendingUserInput)}:${String(handOff.stale)}:${String(handOff.acknowledged)}:${handOff.repo}:${handOff.mapNumber ?? ''}:${handOff.mapTitle ?? ''}:${handOff.ticketNumber ?? ''}:${handOff.title ?? ''}:${handOff.pullRequests.map((pullRequest) => `${pullRequest.source}:${pullRequest.url}`).join(',')}:${handOff.branch ?? ''}`)
-    .join('|');
+  const key = handOffVisualSignature(records);
   if (key === handOffVisualKey) return;
   handOffVisualKey = key;
   if (filter === 'in-t3' && activeTicketHandOffs(currentMap()).length === 0) filter = null;
   if (snapshot !== null) {
     renderFilters();
-    if (view === 'map') renderGraph();
+    if (view === 'map') {
+      const focusedNode = document.activeElement instanceof HTMLElement
+        ? document.activeElement.closest<HTMLElement>('.node')
+        : null;
+      const focusedTicket = focusedMapTicketNumber(focusedNode, focusedNode !== null && els.nodes.contains(focusedNode));
+      renderGraph();
+      restoreMapTicketFocus(focusedTicket, (number) =>
+        els.nodes.querySelector<HTMLElement>(`.node[data-number="${String(number)}"]`),
+      );
+    }
     if (selected !== null) renderInspector();
     syncHighlights();
   }
