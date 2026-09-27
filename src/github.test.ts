@@ -20,6 +20,7 @@ import {
   SubIssueWatcher,
   branchFacts,
   fallbackWarning,
+  flattenIssuePages,
   fetchMapDetails,
   fetchMaps,
   fetchTicketWithParent,
@@ -47,8 +48,8 @@ function mockGitHub(subIssues: ReturnType<typeof issue>[]): void {
     const route = args[args.length - 1] ?? '';
     let response: unknown;
 
-    if (args[0] === 'issue') {
-      response = [{ number: 10, title: 'Map', body: mapBody, state: 'OPEN' }];
+    if (args.includes('--slurp')) {
+      response = [[{ number: 10, title: 'Map', body: mapBody, state: 'OPEN', updated_at: '2026-09-27T00:00:00Z', closed_at: null }]];
     } else if (route.endsWith('/sub_issues')) {
       response = subIssues;
     } else if (route.endsWith('/dependencies/blocked_by')) {
@@ -205,6 +206,15 @@ describe('isOpenState', () => {
     expect(isOpenState('open')).toBe(true);
     expect(isOpenState('CLOSED')).toBe(false);
     expect(isOpenState('closed')).toBe(false);
+  });
+});
+
+describe('flattenIssuePages', () => {
+  it('keeps maps beyond the first page and drops pull requests', () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({ number: index + 1 }));
+    const secondPage = [{ number: 101 }, { number: 102, pull_request: { url: 'https://github.com/o/r/pull/102' } }];
+
+    expect(flattenIssuePages([firstPage, secondPage])).toEqual([...firstPage, { number: 101 }]);
   });
 });
 
@@ -376,7 +386,14 @@ describe('fetchMaps settling', () => {
   const child = (number: number) => ({ number, title: `Ticket ${String(number)}`, state: 'open', body: '', labels: [] });
 
   function answer(args: string[]): unknown {
-    if (args[0] === 'issue' && args.includes('--label')) return mapIssues;
+    if (args.includes('--slurp')) {
+      return [mapIssues.map(({ url, updatedAt, closedAt, ...map }) => ({
+        ...map,
+        html_url: url,
+        updated_at: updatedAt,
+        closed_at: closedAt,
+      }))];
+    }
     // Ticket 40 changed last week; it is a sub-issue of map 4.
     if (args[1] === 'graphql') return ['count 2', '40 4', '77 0', ''].join('\n');
     const path = args.find((arg) => arg.startsWith('repos/')) ?? '';
@@ -418,7 +435,7 @@ describe('fetchMaps settling', () => {
     expect(byNumber.get(1)).toMatchObject({ ticketsLoaded: true, tickets: [{ number: 10 }] });
 
     // One map list, one recent-activity search, then tickets for the two active maps only.
-    expect(ghCalls.filter((args) => args[0] === 'issue' || args[1] === 'graphql')).toHaveLength(2);
+    expect(ghCalls.filter((args) => args.includes('--slurp') || args[1] === 'graphql')).toHaveLength(2);
     expect(ticketCalls().sort()).toEqual([
       'repos/o/r/issues/1/sub_issues',
       'repos/o/r/issues/10/dependencies/blocked_by',

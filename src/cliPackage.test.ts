@@ -43,6 +43,10 @@ if (/^gh(\\.exe)?$/i.test(basename(process.execPath))) {
     write('https://avatars.githubusercontent.com/u/1\\n');
     process.exit(0);
   }
+  if (command === 'api --paginate' && args.includes('--slurp') && args.some((arg) => arg.includes('/issues?state=all&labels='))) {
+    write('[[]]');
+    process.exit(0);
+  }
   if (command === 'api --paginate' && args.includes('user/orgs')) {
     write('');
     process.exit(0);
