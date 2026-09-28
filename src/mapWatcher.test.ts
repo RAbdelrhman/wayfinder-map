@@ -183,6 +183,21 @@ describe('MapWatcher', () => {
     watcher.close();
   });
 
+  it('reads T3 Code for a frontier ticket that was just handed off', async () => {
+    const fake = fakeReader();
+    fake.changed([ticket(1, 'frontier')]);
+    let tracked = new Map<number, WatchedPullRequest[]>([[1, [pr(10)]]]);
+    const watcher = new MapWatcher(fake.reader, { intervalMs: INTERVAL, now: () => Date.now(), trackedPullRequests: () => Promise.resolve(tracked) });
+    const events: MapEvent[] = [];
+    watcher.watch('o/r', 121, (event) => events.push(event));
+    await vi.advanceTimersByTimeAsync(0);
+    tracked = new Map([[1, [pr(10, { checks: 'failing' })]]]);
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    expect(events.map((event) => event.type)).toEqual(['ci-changed']);
+    expect(fake.reader.pullRequestReads).toBe(0);
+    watcher.close();
+  });
+
   it('reads a map straight away when nudged, at most once per gap', async () => {
     const fake = fakeReader();
     fake.changed([ticket(1, 'claimed')]);

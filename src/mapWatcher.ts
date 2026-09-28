@@ -190,9 +190,10 @@ export class MapWatcher {
     } else {
       tickets = previous ?? [];
     }
-    // A pull request doesn't change the map's ETag, so this runs even after a `304`.
-    if (needsPullRequests(tickets)) {
-      const tracked = (await this.tracked?.(map.repo).catch(() => null)) ?? new Map<number, WatchedPullRequest[]>();
+    // A pull request doesn't change the map's ETag, so this runs even after a `304`. T3 Code costs
+    // nothing, so it is read even for a frontier ticket just handed off; GitHub only when needed.
+    const tracked = (await this.tracked?.(map.repo).catch(() => null)) ?? new Map<number, WatchedPullRequest[]>();
+    if (tracked.size > 0 || needsPullRequests(tickets)) {
       const untracked = tickets.filter((ticket) => !tracked.has(ticket.number));
       const github = needsPullRequests(untracked) ? await this.pullRequests(map.repo).catch(() => null) : null;
       const read = new Map<number, WatchedPullRequest[]>();

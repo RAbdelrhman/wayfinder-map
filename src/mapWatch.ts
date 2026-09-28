@@ -166,6 +166,7 @@ export interface TrackedPullRequestRef {
   checksState: string | null;
   reviewDecision: string | null;
   hasSnapshot: boolean;
+  syncedAt: string | null;
 }
 
 /**
@@ -176,13 +177,19 @@ export function trackedPullRequestsByTicket(
   handOffs: ReadonlyArray<{ ticketNumber: number | null; pullRequests: readonly TrackedPullRequestRef[] }>,
 ): Map<number, WatchedPullRequest[]> {
   const byTicket = new Map<number, WatchedPullRequest[]>();
+  const syncedAt = new Map<string, number>();
   for (const handOff of handOffs) {
     if (handOff.ticketNumber === null) continue;
     for (const ref of handOff.pullRequests) {
       const number = ref.number ?? Number(/\/pull\/(\d+)/.exec(ref.url)?.[1]);
       if (!ref.hasSnapshot || !Number.isSafeInteger(number)) continue;
-      const known = byTicket.get(handOff.ticketNumber) ?? [];
-      if (known.some((pullRequest) => pullRequest.number === number)) continue;
+      // The same PR on two hand-offs: the snapshot T3 Code synced last wins.
+      const id = `${String(handOff.ticketNumber)}#${String(number)}`;
+      const synced = ref.syncedAt === null ? Number.NEGATIVE_INFINITY : Date.parse(ref.syncedAt) || Number.NEGATIVE_INFINITY;
+      const seen = syncedAt.get(id);
+      if (seen !== undefined && seen >= synced) continue;
+      syncedAt.set(id, synced);
+      const known = (byTicket.get(handOff.ticketNumber) ?? []).filter((pullRequest) => pullRequest.number !== number);
       const state = ref.state?.toUpperCase();
       known.push({
         number,

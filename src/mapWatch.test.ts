@@ -218,6 +218,7 @@ describe('trackedPullRequestsByTicket', () => {
     checksState: 'passing',
     reviewDecision: 'approved',
     hasSnapshot: true,
+    syncedAt: null,
     ...overrides,
   });
 
@@ -247,5 +248,14 @@ describe('trackedPullRequestsByTicket', () => {
     ]);
     expect([...tracked.keys()]).toEqual([9]);
     expect(tracked.get(9)).toHaveLength(1);
+  });
+
+  it('takes the most recently synced snapshot when two hand-offs carry the same PR', () => {
+    const tracked = trackedPullRequestsByTicket([
+      { ticketNumber: 9, pullRequests: [ref({ checksState: 'pending', syncedAt: '2026-09-27T10:00:00Z' })] },
+      { ticketNumber: 9, pullRequests: [ref({ checksState: 'failing', syncedAt: '2026-09-27T12:00:00Z' })] },
+      { ticketNumber: 9, pullRequests: [ref({ checksState: 'passing', syncedAt: '2026-09-27T11:00:00Z' })] },
+    ]);
+    expect(tracked.get(9)?.map((pullRequest) => pullRequest.checks)).toEqual(['failing']);
   });
 });
