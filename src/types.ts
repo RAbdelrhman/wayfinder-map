@@ -73,6 +73,19 @@ export interface WayfinderMap {
 /** Private maps show only to their author in Wayfinder; public ones also show to people who follow them. */
 export type MapVisibility = 'public' | 'private';
 
+/** Someone else's public map, as the Public maps list shows it: read from the map list alone, with no ticket calls. */
+export interface PublicMap {
+  number: number;
+  title: string;
+  url: string;
+  author: string;
+  open: boolean;
+  /** Whether the signed-in login follows it, so it joins their map list. */
+  followed: boolean;
+  /** Closed and total sub-issues, from GitHub's summary on the map issue. */
+  progress: { completed: number; total: number };
+}
+
 /** Why a map settled: its issue closed, nothing on it changed for 30 days, or someone settled it by hand. */
 export type SettleReason = 'closed' | 'idle' | 'manual';
 
@@ -128,6 +141,8 @@ export interface MapSnapshot {
   maps: WayfinderMap[];
   /** Maps from other people left out because they are private or not followed. */
   hiddenMaps: number;
+  /** Other people's public maps, followed or not. Empty when no one is signed in. */
+  publicMaps: PublicMap[];
   /** Non-fatal problems worth showing in the UI rather than swallowing. */
   warnings: string[];
 }

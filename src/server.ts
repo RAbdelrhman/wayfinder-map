@@ -113,11 +113,21 @@ export interface ServeOptions {
    * `~/.wayfinder-map/settled.json`, except when tests inject a `fetcher`, where it is off unless given.
    */
   settling?: Settling;
+  /**
+   * Whose follows apply and where they are kept. Defaults to the signed-in GitHub login and
+   * `~/.wayfinder-map/follows.json`, except when tests inject a `fetcher`, where it is off unless given.
+   */
+  following?: Following;
 }
 
 export interface Settling {
   login: () => Promise<string | null>;
   store: Pick<SettleStore, 'choices' | 'set'>;
+}
+
+export interface Following {
+  login: () => Promise<string | null>;
+  store: Pick<FollowStore, 'follows' | 'set'>;
 }
 
 export interface UpdaterStatus {
@@ -214,6 +224,7 @@ export async function startServer({
   progress,
   mapWatcher: givenMapWatcher,
   settling,
+  following,
 }: ServeOptions): Promise<RunningServer> {
   const defaultUpdater: UpdaterService = {
     async check(): Promise<UpdaterStatus> {
@@ -255,10 +266,10 @@ export async function startServer({
     const account = homeState?.account ?? (await readAccount());
     return account.status === 'ready' ? account.login : null;
   };
-  const follows = new FollowStore();
+  const follow: Following | null = following ?? (fetcher === undefined ? { login: signedInLogin, store: new FollowStore() } : null);
   const viewerOf = async (forRepo: string): Promise<Viewer | null> => {
-    const login = await signedInLogin();
-    return login === null ? null : { login, follows: await follows.follows(login, forRepo) };
+    const login = follow === null ? null : await follow.login();
+    return follow === null || login === null ? null : { login, follows: await follow.store.follows(login, forRepo) };
   };
   const settle: Settling | null = settling ?? (fetcher === undefined ? { login: signedInLogin, store: new SettleStore() } : null);
   const repositories = new RepositoryStore({
@@ -275,7 +286,7 @@ export async function startServer({
           },
         }),
     // Your own maps and the public maps you follow. Tests that inject a fetcher list every map.
-    ...(fetcher === undefined ? { viewer: viewerOf } : {}),
+    ...(follow === null ? {} : { viewer: viewerOf }),
   });
   const repoIcons = new Map<string, Promise<ResolvedRepoIcon | null>>();
   let repoList: Promise<string[]> | null = null;
@@ -667,6 +678,33 @@ export async function startServer({
         return;
       }
 
+      if (requestedRepo !== null && scoped?.action === 'follow' && request.method === 'POST') {
+        const body = (await readBody(request)) as { map?: unknown; followed?: unknown };
+        const mapNumber = Number(body.map);
+        if (!Number.isSafeInteger(mapNumber) || mapNumber <= 0 || typeof body.followed !== 'boolean') {
+          json(response, 400, { error: 'Name a map and whether you follow it.' });
+          return;
+        }
+        const login = follow === null ? null : await follow.login();
+        if (follow === null || login === null) {
+          json(response, 409, { error: 'Sign in with GitHub to follow maps.' });
+          return;
+        }
+        try {
+          // Only a public map can be followed; unfollowing always works, even once a map went private.
+          const listed = repositories.cached(requestedRepo) ?? (await repositories.snapshot(requestedRepo, false));
+          if (body.followed && !listed.publicMaps.some((map) => map.number === mapNumber)) {
+            json(response, 404, { error: `Map #${String(mapNumber)} is not a public map by someone else.` });
+            return;
+          }
+          await follow.store.set(login, requestedRepo, mapNumber, body.followed);
+          json(response, 200, await repositories.snapshot(requestedRepo, true));
+        } catch (error) {
+          json(response, 502, { error: (error as Error).message });
+        }
+        return;
+      }
+
       if (requestedRepo !== null && (scoped?.action === 'snapshot' || path === '/api/snapshot')) {
         const force = requestUrl.searchParams.get('refresh') === '1';
         const check = !force && requestUrl.searchParams.get('check') === '1';
@@ -1043,7 +1081,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;

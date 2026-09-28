@@ -9,7 +9,7 @@ import { isMapShown, mapVisibility } from './visibility.js';
 import type { Viewer } from './visibility.js';
 import type { MapIssueFacts, SettleChoices } from './settling.js';
 import { TICKET_TYPES } from './types.js';
-import type { MapSettlement, OutsideTicket, Prototype, PrototypeVariant, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
+import type { MapSettlement, OutsideTicket, Prototype, PublicMap, PrototypeVariant, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
 
 const run = promisify(execFile);
 
@@ -146,6 +146,7 @@ interface RawIssue {
   labels?: Array<string | { name?: string }> | null;
   user?: { login?: string } | null;
   issue_dependencies_summary?: { blocked_by?: number; total_blocking?: number } | null;
+  sub_issues_summary?: { total?: number; completed?: number } | null;
   /** Present when the issue is really a pull request. */
   pull_request?: unknown;
   /** Set when the issue is a sub-issue, e.g. of a map. */
@@ -516,6 +517,8 @@ export interface FetchResult {
   maps: WayfinderMap[];
   /** Maps from other people left out for the viewer. */
   hiddenMaps?: number;
+  /** Other people's public maps, for the Public maps list. */
+  publicMaps?: PublicMap[];
   warnings: string[];
 }
 
@@ -529,6 +532,7 @@ interface MapIssue {
   updatedAt?: string | null;
   closedAt?: string | null;
   author?: string | null;
+  progress?: PublicMap['progress'];
 }
 
 export interface MapListOptions extends FetchOptions {
@@ -609,6 +613,7 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     updatedAt: issue.updated_at ?? null,
     closedAt: issue.closed_at ?? null,
     author: issue.user?.login ?? null,
+    progress: { completed: issue.sub_issues_summary?.completed ?? 0, total: issue.sub_issues_summary?.total ?? 0 },
   }));
 
   if (labeled.length === 0) {
@@ -652,7 +657,31 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
   });
 
   maps.sort((a, b) => Number(b.open) - Number(a.open) || a.number - b.number);
-  return { maps, hiddenMaps: labeled.length - mapIssues.length, warnings: [...warnings, ...fallbackWarnings(fallbacks)] };
+  return {
+    maps,
+    hiddenMaps: labeled.length - mapIssues.length,
+    publicMaps: viewer === null ? [] : publicMapsOf(repo, labeled, viewer),
+    warnings: [...warnings, ...fallbackWarnings(fallbacks)],
+  };
+}
+
+/** Other people's public maps, newest first. Private maps never make the list, and neither do the viewer's own. */
+function publicMapsOf(repo: string, labeled: readonly MapIssue[], viewer: Viewer): PublicMap[] {
+  const publicMaps: PublicMap[] = [];
+  for (const issue of labeled) {
+    const author = issue.author ?? null;
+    if (author === null || author.toLowerCase() === viewer.login.toLowerCase() || mapVisibility(issue.body ?? '') !== 'public') continue;
+    publicMaps.push({
+      number: issue.number,
+      title: issue.title,
+      url: issueUrl(issue, repo),
+      author,
+      open: isOpenState(issue.state),
+      followed: viewer.follows.includes(issue.number),
+      progress: issue.progress ?? { completed: 0, total: 0 },
+    });
+  }
+  return publicMaps.sort((a, b) => b.number - a.number);
 }
 
 /** What the maps' ticket reads had to fall back on, in words. */

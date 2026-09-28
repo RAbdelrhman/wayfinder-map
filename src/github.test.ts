@@ -490,7 +490,8 @@ describe('fetchMaps visibility', () => {
               mapIssue(2, 'teammate', 'Visibility: public'),
               mapIssue(3, 'drive-by', 'Visibility: public'),
               mapIssue(4, 'teammate'),
-              mapIssue(5, 'spammer', 'Visibility: public'),
+              { ...mapIssue(5, 'spammer', 'Visibility: public'), sub_issues_summary: { total: 6, completed: 2, percent_completed: 33 } },
+              mapIssue(6, 'ramon', 'Visibility: public'),
             ]]
           : [],
       );
@@ -505,16 +506,42 @@ describe('fetchMaps visibility', () => {
     expect(result.maps.map((map) => [map.number, map.author, map.visibility])).toEqual([
       [1, 'ramon', 'private'],
       [3, 'drive-by', 'public'],
+      [6, 'ramon', 'public'],
     ]);
     expect(result.hiddenMaps).toBe(3);
     const read = ghCalls.map((args) => args.find((arg) => arg.startsWith('repos/')) ?? '').filter((path) => path.endsWith('/sub_issues'));
-    expect(read.sort()).toEqual(['repos/o/r/issues/1/sub_issues', 'repos/o/r/issues/3/sub_issues']);
+    expect(read.sort()).toEqual(['repos/o/r/issues/1/sub_issues', 'repos/o/r/issues/3/sub_issues', 'repos/o/r/issues/6/sub_issues']);
+  });
+
+  it("lists other people's public maps with author, progress and follow state, and never a private one", async () => {
+    const result = await fetchMaps({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', viewer: { login: 'Ramon', follows: [3, 4] } });
+
+    // Private #1 and #4 never appear, nor the viewer's own public #6.
+    expect(result.publicMaps?.map((map) => [map.number, map.author, map.followed, map.progress])).toEqual([
+      [5, 'spammer', false, { completed: 2, total: 6 }],
+      [3, 'drive-by', true, { completed: 0, total: 0 }],
+      [2, 'teammate', false, { completed: 0, total: 0 }],
+    ]);
+    // The list comes from the one label read: unfollowed public maps cost no ticket calls.
+    expect(ghCalls.some((args) => args.some((arg) => /issues\/(2|5)\//.test(arg)))).toBe(false);
+  });
+
+  it('drops a followed map once its author makes it private again', async () => {
+    execFileMock.mockImplementation(async (_file, args) => {
+      const text = JSON.stringify(args.includes('--slurp') ? [[mapIssue(3, 'drive-by', 'Visibility: private')]] : []);
+      return { stdout: Buffer.from(args.includes('--include') ? `HTTP/2.0 200 OK\r\nETag: "mock"\r\n\r\n${text}` : text), stderr: Buffer.alloc(0) };
+    });
+    const result = await fetchMaps({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', viewer: { login: 'Ramon', follows: [3] } });
+    expect(result.maps).toEqual([]);
+    expect(result.publicMaps).toEqual([]);
+    expect(result.hiddenMaps).toBe(1);
   });
 
   it('lists every map, with its author, when no viewer is given', async () => {
     const result = await fetchMaps({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' });
-    expect(result.maps).toHaveLength(5);
+    expect(result.maps).toHaveLength(6);
     expect(result.hiddenMaps).toBe(0);
+    expect(result.publicMaps).toEqual([]);
     expect(result.maps[1]).toMatchObject({ number: 2, author: 'teammate', visibility: 'public' });
   });
 });
