@@ -49,6 +49,9 @@ window.CANVAS = {
                   'A snackbar is gone once dismissed, so there is no record of what moved',
                   'Nothing adds up what is in the way: you scan the canvas for dashed frames and red icons',
                 ],
+                disposition: 'keep',
+                feedback:
+                  'User (27 Sep 2026): "I only like A." B and C are not taken forward. Agreed details: the PR line replaces @assignee on cards with a PR. Stalled is two settings, untouched claim and dead hand-off, 7 days each by default. The snackbar stays until dismissed or started, merges events, and lists but never starts grilling/prototype tickets. Start next hands off every startable (unblocked, unclaimed, task or research) ticket up to the #123 cap, shows "Start next 4 of 6" when capped, falls back to "Next: #N" when only HITL tickets are ready, and does not ask to confirm.',
               },
             },
             {
@@ -60,6 +63,8 @@ window.CANVAS = {
                   'Path focus is on, so everything off the chain dims. The panel shows #213 with a neutral "Stalled" banner in place of the state banner, above the failed hand-off card.',
                 pros: ['Path focus reuses the canvas\'s existing dim treatment'],
                 cons: ['Two ways to dim the canvas (selection and path focus) can fight'],
+                disposition: 'keep',
+                feedback: 'Part of direction A, which the user chose ("I only like A").',
               },
             },
           ],
