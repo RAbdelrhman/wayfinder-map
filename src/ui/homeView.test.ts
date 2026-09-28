@@ -10,6 +10,8 @@ const map: WayfinderMap = {
   url: 'https://github.com/octo/wayfinder/issues/35',
   body: '',
   open: true,
+  author: 'octocat',
+  visibility: 'private',
   sections: { destination: 'Find and continue maps.', notes: '', decisions: '', fog: '', outOfScope: '' },
   tickets: [
     { number: 1, title: 'Done work', url: 'https://github.com/octo/wayfinder/issues/1', body: '', type: 'task', labels: [], open: false, assignee: null, blockedBy: [], openBlockers: [], state: 'done' },
@@ -21,7 +23,7 @@ const map: WayfinderMap = {
   ticketsLoaded: true,
 };
 
-const snapshot: MapSnapshot = { repo: 'octo/wayfinder', fetchedAt: '2026-09-20T11:00:00.000Z', maps: [map], warnings: [] };
+const snapshot: MapSnapshot = { repo: 'octo/wayfinder', fetchedAt: '2026-09-20T11:00:00.000Z', maps: [map], hiddenMaps: 0, warnings: [] };
 
 function handOff(overrides: Partial<HandOffStatusDto> = {}): HandOffStatusDto {
   return {

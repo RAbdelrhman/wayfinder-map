@@ -74,6 +74,8 @@ function map(number: number): WayfinderMap {
     url: `https://github.com/octo/one/issues/${String(number)}`,
     body: '',
     open: true,
+    author: 'octocat',
+    visibility: 'private',
     sections: { destination: '', fog: '', decisions: '', notes: '', outOfScope: '' },
     tickets: [],
     outside: [],

@@ -26,6 +26,8 @@ function map(number: number, title: string, tickets: Ticket[] = []): WayfinderMa
     url: `https://github.com/octo/wayfinder/issues/${String(number)}`,
     body: '',
     open: true,
+    author: 'octocat',
+    visibility: 'private',
     sections: { destination: '', notes: '', decisions: '', fog: '', outOfScope: '' },
     tickets,
     outside: [],
@@ -39,6 +41,7 @@ const SNAPSHOT: MapSnapshot = {
   repo: 'octo/wayfinder',
   fetchedAt: '2026-09-22T00:00:00.000Z',
   maps: [map(35, 'Build the navigation shell', [ticket(51, 'Search tickets and maps')])],
+  hiddenMaps: 0,
   warnings: [],
 };
 
