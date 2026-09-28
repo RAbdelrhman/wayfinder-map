@@ -214,6 +214,27 @@ export class T3HandOff {
   private api: { key: string; api: T3Api; command: ServerCommand } | null = null;
   private readonly connections = new Map<string, Promise<{ api: T3Api; command: ServerCommand }>>();
   private config: { key: string; at: number; value: Promise<T3Config> } | null = null;
+  private readonly prepareQueues = new Map<string, Promise<void>>();
+
+  private async serializePrepare<T>(workspaceRoot: string, prepare: () => Promise<T>): Promise<T> {
+    const resolvedRoot = resolve(workspaceRoot);
+    const key = process.platform === 'win32' || process.platform === 'darwin' ? resolvedRoot.toLowerCase() : resolvedRoot;
+    const previous = this.prepareQueues.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolveGate) => {
+      release = resolveGate;
+    });
+    const current = previous.then(() => gate);
+    this.prepareQueues.set(key, current);
+
+    await previous;
+    try {
+      return await prepare();
+    } finally {
+      release();
+      if (this.prepareQueues.get(key) === current) this.prepareQueues.delete(key);
+    }
+  }
 
   private async connect(runtime: T3Runtime): Promise<{ api: T3Api; command: ServerCommand; origin: string }> {
     if (runtime.origin === null || runtime.pid === null) throw new Error('T3 Code is not running');
@@ -320,40 +341,44 @@ export class T3HandOff {
     return {
       startThread: async (input) => {
         const { api, command, origin } = await this.connect(runtime);
-        const snapshot = await api.snapshot();
-        const project = snapshot.projects.find(
-          (candidate) => candidate.deletedAt === null && samePath(candidate.workspaceRoot, input.workspaceRoot),
-        );
-        let projectId = project?.id ?? null;
-        const globalDefault = await this.t3Config(runtime)
-          .then((config) => config.defaultModelSelection)
-          .catch(() => null);
-        const defaults = threadDefaults(snapshot, projectId, {
-          chosen: input.model === null ? null : toModelSelection(input.model),
-          globalDefault,
-        });
-        if (defaults === null) throw new Error('no model to use yet; start one thread in T3 Code first');
-
-        if (projectId === null) {
-          projectId = randomUUID();
-          await api.dispatch({
-            type: 'project.create',
-            commandId: randomUUID(),
-            projectId,
-            title: basename(input.workspaceRoot),
-            workspaceRoot: input.workspaceRoot,
-            createdAt: new Date().toISOString(),
+        const prepared = await this.serializePrepare(input.workspaceRoot, async () => {
+          const snapshot = await api.snapshot();
+          const project = snapshot.projects.find(
+            (candidate) => candidate.deletedAt === null && samePath(candidate.workspaceRoot, input.workspaceRoot),
+          );
+          let projectId = project?.id ?? null;
+          const globalDefault = await this.t3Config(runtime)
+            .then((config) => config.defaultModelSelection)
+            .catch(() => null);
+          const defaults = threadDefaults(snapshot, projectId, {
+            chosen: input.model === null ? null : toModelSelection(input.model),
+            globalDefault,
           });
-        }
+          if (defaults === null) throw new Error('no model to use yet; start one thread in T3 Code first');
 
-        let worktree: (PreparedWorktree & { path: string }) | null = null;
-        const baseBranch = await git(input.workspaceRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => 'HEAD');
-        if (baseBranch !== 'HEAD') {
-          const branch = await freeBranch(input.workspaceRoot, input.branch);
-          const path = worktreePathFor(dirname(runtime.stateDir), input.workspaceRoot, branch);
-          await git(input.workspaceRoot, ['worktree', 'add', '-b', branch, path, baseBranch]);
-          worktree = { branch, baseBranch, path };
-        }
+          if (projectId === null) {
+            projectId = randomUUID();
+            await api.dispatch({
+              type: 'project.create',
+              commandId: randomUUID(),
+              projectId,
+              title: basename(input.workspaceRoot),
+              workspaceRoot: input.workspaceRoot,
+              createdAt: new Date().toISOString(),
+            });
+          }
+
+          let worktree: (PreparedWorktree & { path: string }) | null = null;
+          const baseBranch = await git(input.workspaceRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => 'HEAD');
+          if (baseBranch !== 'HEAD') {
+            const branch = await freeBranch(input.workspaceRoot, input.branch);
+            const path = worktreePathFor(dirname(runtime.stateDir), input.workspaceRoot, branch);
+            await git(input.workspaceRoot, ['worktree', 'add', '-b', branch, path, baseBranch]);
+            worktree = { branch, baseBranch, path };
+          }
+          return { projectId, defaults, worktree };
+        });
+        const { projectId, defaults, worktree } = prepared;
 
         const prompt = input.prompt(worktree);
         const { threadId, create, start } = threadCommands({ projectId, title: input.title, prompt, defaults, worktree });
