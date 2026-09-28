@@ -5,6 +5,8 @@ import { dirname, join } from 'node:path';
 
 import { gh } from './github.js';
 import { isLiveHandOff } from './handOffLiveness.js';
+import { trackedPullRequestsByTicket } from './mapWatch.js';
+import type { WatchedPullRequest } from './mapWatch.js';
 import type { Tier } from './models.js';
 
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -126,6 +128,22 @@ export interface HandOffTrackingClient {
     onValue: (value: unknown) => void,
     onClose: () => void,
   ) => Promise<() => void>;
+}
+
+/** A hand-off whose T3 thread just changed, as the map watcher needs it. */
+export interface ThreadChange {
+  repo: string;
+  mapNumber: number;
+  ticketNumber: number | null;
+}
+
+/** The thread a shell `thread-upserted` event is about, or null for any other event. */
+export function upsertedThreadId(value: unknown): string | null {
+  const event = record(value);
+  if (event === null) return null;
+  const eventValue = record(event['value']);
+  if (firstText(event['kind'], event['type'], event['event'], event['_tag']) !== 'thread-upserted') return null;
+  return text(record(event['thread'] ?? eventValue?.['thread'] ?? event['data'] ?? event['value'])?.['id']);
 }
 
 export interface MappedT3Thread {
@@ -845,6 +863,7 @@ export class HandOffTracker {
   private readonly lookupPullRequestState: (url: string) => Promise<PullRequestState | null>;
   private readonly pendingLookups = new Set<string>();
   private readonly pullRequestLookupAt = new Map<string, number>();
+  private readonly threadListeners = new Set<(change: ThreadChange) => void>();
 
   constructor(
     private readonly store: HandOffStore,
@@ -901,8 +920,28 @@ export class HandOffTracker {
     return live === undefined ? undefined : this.toDto(live);
   }
 
+  /**
+   * The PRs T3 Code has a snapshot for, keyed by ticket, in `repo`. Empty while T3 Code is
+   * offline: a snapshot from another environment, or from before it went down, may be stale.
+   */
+  async trackedPullRequests(repo: string): Promise<Map<number, WatchedPullRequest[]>> {
+    this.start();
+    if (!this.online) return new Map();
+    const records = await this.store.list();
+    return trackedPullRequestsByTicket(
+      records.filter((item) => item.repo.toLowerCase() === repo.toLowerCase() && item.threadId !== null && item.environmentId !== null && item.environmentId === this.environmentId),
+    );
+  }
+
+  /** Call `listener` whenever the shell stream updates the thread of a hand-off on a map. Returns the call that stops it. */
+  onThreadChange(listener: (change: ThreadChange) => void): () => void {
+    this.threadListeners.add(listener);
+    return () => this.threadListeners.delete(listener);
+  }
+
   close(): void {
     this.closed = true;
+    this.threadListeners.clear();
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
     this.streamStop?.();
@@ -957,6 +996,7 @@ export class HandOffTracker {
       (value) => {
         void this.store
           .applyEvent(environmentId, origin, value)
+          .then(() => this.announceThreadChange(upsertedThreadId(value)))
           .then(() => this.discoverMissingPullRequests(environmentId, origin))
           .catch(() => undefined);
       },
@@ -980,6 +1020,15 @@ export class HandOffTracker {
         this.streamOpening = null;
       });
     await this.streamOpening;
+  }
+
+  private async announceThreadChange(threadId: string | null): Promise<void> {
+    if (threadId === null || this.threadListeners.size === 0) return;
+    for (const item of await this.store.list()) {
+      if (item.threadId !== threadId || item.mapNumber === null) continue;
+      const change = { repo: item.repo, mapNumber: item.mapNumber, ticketNumber: item.ticketNumber };
+      for (const listener of this.threadListeners) listener(change);
+    }
   }
 
   private async discoverMissingPullRequests(environmentId: string | null, origin: string): Promise<void> {

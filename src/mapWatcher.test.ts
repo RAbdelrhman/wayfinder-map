@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { MapWatcher } from './mapWatcher.js';
+import { MapWatcher, NUDGE_GAP_MS } from './mapWatcher.js';
 import type { MapRead, MapWatchReader, PullRequestRead } from './mapWatcher.js';
 import type { MapEvent, RateLimit, WatchedPullRequest, WatchedTicket } from './mapWatch.js';
 import type { TicketState } from './types.js';
@@ -122,6 +122,132 @@ describe('MapWatcher', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(fake.reader.mapReads).toBe(2);
     expect(fake.reader.pullRequestReads).toBe(1);
+    watcher.close();
+  });
+
+  it('takes T3-tracked pull requests without a GraphQL read', async () => {
+    const fake = fakeReader();
+    fake.changed([ticket(1, 'claimed'), ticket(2, 'done')]);
+    let tracked = new Map<number, WatchedPullRequest[]>([[1, [pr(10)]], [2, [pr(9, { state: 'merged' })]]]);
+    const watcher = new MapWatcher(fake.reader, { intervalMs: INTERVAL, now: () => Date.now(), trackedPullRequests: () => Promise.resolve(tracked) });
+    const events: MapEvent[] = [];
+    watcher.watch('o/r', 121, (event) => events.push(event));
+    await vi.advanceTimersByTimeAsync(0);
+
+    tracked = new Map([[1, [pr(10, { checks: 'passing', review: 'approved' })]], [2, [pr(9, { state: 'merged' })]]]);
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+
+    expect(events.map((event) => [event.type, event.ticket.number])).toEqual([
+      ['ci-changed', 1],
+      ['review-changed', 1],
+    ]);
+    expect(fake.reader.pullRequestReads).toBe(0);
+    watcher.close();
+  });
+
+  it('reads GitHub for the tickets T3 Code does not track, and takes T3 first for the rest', async () => {
+    const fake = fakeReader();
+    fake.changed([ticket(1, 'claimed'), ticket(2, 'claimed')]);
+    fake.setPullRequests([[1, [pr(10, { checks: 'failing' })]], [2, [pr(20)]]]);
+    const watcher = new MapWatcher(fake.reader, {
+      intervalMs: INTERVAL,
+      now: () => Date.now(),
+      trackedPullRequests: () => Promise.resolve(new Map([[1, [pr(10, { checks: 'passing' })]]])),
+    });
+    const events: MapEvent[] = [];
+    watcher.watch('o/r', 121, (event) => events.push(event));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fake.reader.pullRequestReads).toBe(1);
+
+    fake.setPullRequests([[1, [pr(10, { checks: 'failing' })]], [2, [pr(20, { state: 'merged' })]]]);
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    // Ticket 1 stays on T3 Code's passing CI; only ticket 2's merge comes from GitHub.
+    expect(events.map((event) => [event.type, event.ticket.number])).toEqual([['pr-merged', 2]]);
+    watcher.close();
+  });
+
+  it('does not report a PR that merged before T3 Code first showed it', async () => {
+    const fake = fakeReader();
+    fake.changed([ticket(1, 'claimed'), ticket(2, 'done')]);
+    fake.setPullRequests([[1, [pr(10)]]]);
+    let tracked = new Map<number, WatchedPullRequest[]>([[1, [pr(10)]]]);
+    const watcher = new MapWatcher(fake.reader, { intervalMs: INTERVAL, now: () => Date.now(), trackedPullRequests: () => Promise.resolve(tracked) });
+    const events: MapEvent[] = [];
+    watcher.watch('o/r', 121, (event) => events.push(event));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // T3 Code comes online with an old hand-off whose PR merged long ago.
+    tracked = new Map([[1, [pr(10)]], [2, [pr(9, { state: 'merged' })]]]);
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    expect(events).toEqual([]);
+    watcher.close();
+  });
+
+  it('reads T3 Code for a frontier ticket that was just handed off', async () => {
+    const fake = fakeReader();
+    fake.changed([ticket(1, 'frontier')]);
+    let tracked = new Map<number, WatchedPullRequest[]>([[1, [pr(10)]]]);
+    const watcher = new MapWatcher(fake.reader, { intervalMs: INTERVAL, now: () => Date.now(), trackedPullRequests: () => Promise.resolve(tracked) });
+    const events: MapEvent[] = [];
+    watcher.watch('o/r', 121, (event) => events.push(event));
+    await vi.advanceTimersByTimeAsync(0);
+    tracked = new Map([[1, [pr(10, { checks: 'failing' })]]]);
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    expect(events.map((event) => event.type)).toEqual(['ci-changed']);
+    expect(fake.reader.pullRequestReads).toBe(0);
+    watcher.close();
+  });
+
+  it('reads a map straight away when nudged, at most once per gap', async () => {
+    const fake = fakeReader();
+    fake.changed([ticket(1, 'claimed')]);
+    const watcher = make(fake.reader);
+    watcher.watch('o/r', 121, () => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fake.reader.mapReads).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(NUDGE_GAP_MS);
+    watcher.nudge('O/R', 121);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fake.reader.mapReads).toBe(2);
+
+    // A burst of thread changes costs one more read, NUDGE_GAP_MS after the last.
+    watcher.nudge('o/r', 121);
+    watcher.nudge('o/r', 121);
+    await vi.advanceTimersByTimeAsync(NUDGE_GAP_MS - 1);
+    expect(fake.reader.mapReads).toBe(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fake.reader.mapReads).toBe(3);
+
+    // Then back to the interval.
+    await vi.advanceTimersByTimeAsync(INTERVAL - 1);
+    expect(fake.reader.mapReads).toBe(3);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fake.reader.mapReads).toBe(4);
+
+    // Maps nobody watches are not read.
+    watcher.nudge('o/r', 35);
+    await vi.advanceTimersByTimeAsync(NUDGE_GAP_MS);
+    expect(fake.reader.mapReads).toBe(4);
+    watcher.close();
+  });
+
+  it('reads again soon when nudged during a read', async () => {
+    let finish: (read: MapRead) => void = () => undefined;
+    let reads = 0;
+    const watcher = make({
+      readMap: () => {
+        reads += 1;
+        return reads === 1 ? new Promise<MapRead>((resolve) => (finish = resolve)) : Promise.resolve({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null });
+      },
+      readPullRequests: () => Promise.resolve({ byTicket: new Map(), rateLimit: null }),
+    });
+    watcher.watch('o/r', 121, () => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    watcher.nudge('o/r', 121);
+    finish({ status: 'changed', etag: null, tickets: [ticket(1, 'claimed')], rateLimit: null, pollIntervalSeconds: null });
+    await vi.advanceTimersByTimeAsync(NUDGE_GAP_MS);
+    expect(reads).toBe(2);
     watcher.close();
   });
 
