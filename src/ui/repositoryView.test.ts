@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { MapSnapshot, Ticket, TicketState, WayfinderMap } from '../types.js';
-import { countRunningHandOffs, mapMatchesRepositorySearch, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml, settledAgo, sortRepositoryMaps, sortSettledMaps } from './repositoryView.js';
+import type { MapSnapshot, PublicMap, Ticket, TicketState, WayfinderMap } from '../types.js';
+import { countRunningHandOffs, mapMatchesRepositorySearch, publicMapProgress, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml, settledAgo, sortRepositoryMaps, sortSettledMaps } from './repositoryView.js';
 
 function ticket(number: number, title: string, state: TicketState, blockedBy: number[] = []): Ticket {
   return {
@@ -38,7 +38,7 @@ function map(number: number, title: string, open: boolean, tickets: Ticket[] = [
 }
 
 function snapshot(maps: WayfinderMap[]): MapSnapshot {
-  return { repo: 'octo/wayfinder', fetchedAt: '2026-09-23T12:00:00.000Z', maps, hiddenMaps: 0, warnings: [] };
+  return { repo: 'octo/wayfinder', fetchedAt: '2026-09-23T12:00:00.000Z', maps, hiddenMaps: 0, publicMaps: [], warnings: [] };
 }
 
 describe('repository map ordering and filtering', () => {
@@ -199,6 +199,37 @@ describe('repositoryPageHtml', () => {
     const none = repositoryPageHtml('octo/recipe-box', { ...snapshot([]), hiddenMaps: 1 });
     expect(none).toContain('1 map from other people is hidden.');
     expect(none).toContain('No maps of yours in recipe-box yet');
+  });
+
+  it('lists public maps with author, progress, and Follow or Unfollow', () => {
+    const publicMap = (number: number, followed: boolean, progress = { completed: 0, total: 0 }): PublicMap => ({
+      number,
+      title: `Map <${String(number)}>`,
+      url: `https://github.com/octo/wayfinder/issues/${String(number)}`,
+      author: 'drive-by',
+      open: true,
+      followed,
+      progress,
+    });
+    const html = repositoryPageHtml('octo/wayfinder', { ...snapshot([]), publicMaps: [publicMap(9, false, { completed: 2, total: 6 }), publicMap(3, true)] });
+
+    expect(html).toContain('id="repo-public-title">Public maps <span class="count">2 · 1 followed</span>');
+    expect(html).toContain('<span class="wf-author">by drive-by</span>');
+    expect(html).toContain('2 of 6 tickets done');
+    expect(html).toContain('No tickets yet');
+    expect(html).toContain('<button type="button" class="primary" data-follow-map="9" aria-label="Follow map #9: Map &lt;9&gt;">Follow</button>');
+    expect(html).toContain('<button type="button" class="ghost" data-unfollow-map="3" aria-label="Unfollow map #3: Map &lt;3&gt;">Unfollow</button>');
+    // A followed map opens here; one you don't follow opens on GitHub.
+    expect(html).toContain('href="/repos/octo/wayfinder/maps/3"');
+    expect(html).toContain('href="https://github.com/octo/wayfinder/issues/9" target="_blank" rel="noreferrer"');
+    expect(html).not.toContain('<9>');
+
+    expect(repositoryPageHtml('octo/wayfinder', snapshot([]))).not.toContain('data-repo-public');
+  });
+
+  it('counts tickets in words', () => {
+    expect(publicMapProgress({ completed: 1, total: 1 })).toBe('1 of 1 ticket done');
+    expect(publicMapProgress({ completed: 0, total: 0 })).toBe('No tickets yet');
   });
 
   it('renders a retryable repository error and escapes its message', () => {

@@ -1,4 +1,4 @@
-import type { MapSettlement, MapSnapshot, Ticket, WayfinderMap } from '../types.js';
+import type { MapSettlement, MapSnapshot, PublicMap, Ticket, WayfinderMap } from '../types.js';
 import { mapPath } from '../repoRoutes.js';
 import { newMapPath } from './newMap.js';
 import { STATE_ORDER, STATE_STYLE, countStates, repoIconHtml } from './chrome.js';
@@ -109,6 +109,42 @@ function settledSection(repo: string, maps: readonly WayfinderMap[], now: number
     </section>`;
 }
 
+/** "3 of 6 tickets done", from the map's sub-issues. */
+export function publicMapProgress(progress: PublicMap['progress']): string {
+  if (progress.total === 0) return 'No tickets yet';
+  return `${String(progress.completed)} of ${String(progress.total)} ticket${progress.total === 1 ? '' : 's'} done`;
+}
+
+function publicMapRow(repo: string, map: PublicMap): string {
+  const name = `#${String(map.number)}: ${map.title}`;
+  // A followed map opens here; one you don't follow isn't on your list, so it opens on GitHub.
+  const link = map.followed
+    ? `<a class="grow" href="${escapeHtml(mapPath(repo, map.number))}">`
+    : `<a class="grow" href="${escapeHtml(map.url)}" target="_blank" rel="noreferrer">`;
+  const percent = map.progress.total === 0 ? 0 : Math.round((map.progress.completed / map.progress.total) * 100);
+  const action = map.followed
+    ? `<button type="button" class="ghost" data-unfollow-map="${String(map.number)}" aria-label="${escapeHtml(`Unfollow map ${name}`)}">Unfollow</button>`
+    : `<button type="button" class="primary" data-follow-map="${String(map.number)}" aria-label="${escapeHtml(`Follow map ${name}`)}">Follow</button>`;
+  return `<li class="wf-public-row" data-public-map="${String(map.number)}" data-followed="${String(map.followed)}">
+      ${link}<span class="num">#${String(map.number)}</span> ${escapeHtml(map.title)}${map.open ? '' : ' <span class="num">· closed</span>'}${map.followed ? '' : '<span data-icon="external" aria-hidden="true"></span><span class="sr-only"> (opens on GitHub)</span>'}</a>
+      <span class="wf-author">by ${escapeHtml(map.author)}</span>
+      <span class="wf-public-progress"><span class="bar" aria-hidden="true"><i style="width: ${String(percent)}%"></i></span>${escapeHtml(publicMapProgress(map.progress))}</span>
+      ${map.followed ? '<span class="wf-following"><span data-icon="check" aria-hidden="true"></span>Following</span>' : ''}
+      ${action}
+    </li>`;
+}
+
+/** Other people's public maps, to follow into your list or unfollow out of it. Absent when there are none. */
+export function publicMapsSection(repo: string, maps: readonly PublicMap[]): string {
+  if (maps.length === 0) return '';
+  const following = maps.filter((map) => map.followed).length;
+  return `<section class="wf-public" aria-labelledby="repo-public-title" data-repo-public>
+      <h2 id="repo-public-title">Public maps <span class="count">${String(maps.length)}${following === 0 ? '' : ` · ${String(following)} followed`}</span></h2>
+      <p class="wf-public-lede">Maps other people made public in this repository. Follow one to add it to your maps.</p>
+      <ul class="wf-public-list">${maps.map((map) => publicMapRow(repo, map)).join('')}</ul>
+    </section>`;
+}
+
 function mapCard(repo: string, map: WayfinderMap, runningHandOffCount?: number): string {
   const href = mapPath(repo, map.number);
   const next = nextTicket(map);
@@ -177,6 +213,7 @@ export function repositoryPageHtml(
     ${warnings}
     ${hiddenNote}
     ${mapContent}
+    ${publicMapsSection(repo, snapshot.publicMaps)}
   </div>`;
 }
 

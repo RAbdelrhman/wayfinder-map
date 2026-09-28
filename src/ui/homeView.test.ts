@@ -23,7 +23,7 @@ const map: WayfinderMap = {
   ticketsLoaded: true,
 };
 
-const snapshot: MapSnapshot = { repo: 'octo/wayfinder', fetchedAt: '2026-09-20T11:00:00.000Z', maps: [map], hiddenMaps: 0, warnings: [] };
+const snapshot: MapSnapshot = { repo: 'octo/wayfinder', fetchedAt: '2026-09-20T11:00:00.000Z', maps: [map], hiddenMaps: 0, publicMaps: [], warnings: [] };
 
 function handOff(overrides: Partial<HandOffStatusDto> = {}): HandOffStatusDto {
   return {

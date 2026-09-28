@@ -42,6 +42,7 @@ const SNAPSHOT: MapSnapshot = {
   fetchedAt: '2026-09-22T00:00:00.000Z',
   maps: [map(35, 'Build the navigation shell', [ticket(51, 'Search tickets and maps')])],
   hiddenMaps: 0,
+  publicMaps: [],
   warnings: [],
 };
 

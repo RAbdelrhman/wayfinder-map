@@ -10,7 +10,7 @@ import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver } from './workspaces.js';
 import type { WorkspaceDependencies } from './workspaces.js';
 import { RepositoryCloneError } from './clone.js';
-import type { Ticket, WayfinderMap } from './types.js';
+import type { MapSnapshot, Ticket, WayfinderMap } from './types.js';
 import { HandOffStore } from './handOffTracking.js';
 import { MapWatcher } from './mapWatcher.js';
 import type { MapRead } from './mapWatcher.js';
@@ -988,6 +988,83 @@ describe('progress panel endpoints', () => {
       await expect(rejected.json()).resolves.toEqual({ error: 'Choose a goal of 3, 5, 8.' });
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+});
+
+describe('following public maps', () => {
+  function followingServer(login: string | null) {
+    const saved = new Set<number>();
+    const store = {
+      follows: vi.fn(async () => [...saved]),
+      set: vi.fn(async (_login: string, _repo: string, mapNumber: number, followed: boolean) => {
+        if (followed) saved.add(mapNumber);
+        else saved.delete(mapNumber);
+        return [...saved];
+      }),
+    };
+    // #7 is someone else's public map; it joins the list once followed.
+    const fetcher = vi.fn<RepositoryFetcher>(async ({ viewer }) => {
+      const followed = viewer?.follows.includes(7) === true;
+      return {
+        maps: followed ? [{ ...sampleMap, number: 7, author: 'drive-by', visibility: 'public' as const }] : [],
+        hiddenMaps: followed ? 0 : 1,
+        publicMaps: [{ number: 7, title: 'Theirs', url: 'https://github.com/octo/one/issues/7', author: 'drive-by', open: true, followed, progress: { completed: 1, total: 3 } }],
+        warnings: [],
+      };
+    });
+    const running = startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      fetcher,
+      homeLoader: async () => home,
+      handOffStore: new HandOffStore({ filePath: null }),
+      following: { login: async () => login, store },
+    });
+    return { running, store };
+  }
+
+  const post = (url: string, body: unknown) =>
+    fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+  it('follows and unfollows a public map for the signed-in login', async () => {
+    const { running: started, store } = followingServer('octo');
+    const running = await started;
+    try {
+      const followed = (await (await post(`${running.url}/api/repos/octo/one/follow`, { map: 7, followed: true })).json()) as MapSnapshot;
+      expect(store.set).toHaveBeenCalledWith('octo', 'octo/one', 7, true);
+      expect(followed.maps.map((map) => map.number)).toEqual([7]);
+      expect(followed.publicMaps[0]?.followed).toBe(true);
+
+      const unfollowed = (await (await post(`${running.url}/api/repos/octo/one/follow`, { map: 7, followed: false })).json()) as MapSnapshot;
+      expect(unfollowed.maps).toEqual([]);
+      expect(unfollowed.publicMaps[0]?.followed).toBe(false);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('refuses to follow a map that is not public, or with no one signed in', async () => {
+    const { running: started, store } = followingServer('octo');
+    const running = await started;
+    try {
+      expect((await post(`${running.url}/api/repos/octo/one/follow`, { map: 8, followed: true })).status).toBe(404);
+      expect((await post(`${running.url}/api/repos/octo/one/follow`, { map: 'x', followed: true })).status).toBe(400);
+      // Unfollowing works even when the map is no longer public.
+      expect((await post(`${running.url}/api/repos/octo/one/follow`, { map: 8, followed: false })).status).toBe(200);
+      expect(store.set).toHaveBeenCalledTimes(1);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+    const { running: anonymous } = followingServer(null);
+    const signedOut = await anonymous;
+    try {
+      expect((await post(`${signedOut.url}/api/repos/octo/one/follow`, { map: 7, followed: true })).status).toBe(409);
+    } finally {
+      await new Promise<void>((resolve) => signedOut.server.close(() => resolve()));
     }
   });
 });
