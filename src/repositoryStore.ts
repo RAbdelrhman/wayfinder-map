@@ -2,6 +2,7 @@ import { fetchMapDetails, fetchMaps, haveMapTicketsChanged } from './github.js';
 import type { FetchOptions, FetchResult, MapListOptions } from './github.js';
 import { normalizeRepo } from './repoRoutes.js';
 import type { SettleChoices } from './settling.js';
+import type { Viewer } from './visibility.js';
 import type { MapSettlement, MapSnapshot, WayfinderMap } from './types.js';
 
 export type RepositoryFetcher = (options: MapListOptions) => Promise<FetchResult>;
@@ -25,6 +26,8 @@ export interface RepositoryStoreOptions {
   detailer?: MapDetailFetcher;
   /** The signed-in user's hand-made settle choices for a repository. */
   choices?: (repo: string) => Promise<SettleChoices>;
+  /** The signed-in login and the public maps it follows here. Null or absent lists every map. */
+  viewer?: (repo: string) => Promise<Viewer | null>;
   now?: () => Date;
 }
 
@@ -117,11 +120,16 @@ export class RepositoryStore {
     const knownTickets = new Map(
       (entry.snapshot?.maps ?? []).filter((map) => map.ticketsLoaded).map((map) => [map.number, map.tickets.map((ticket) => ticket.number)]),
     );
-    const list = (choices: SettleChoices): Promise<FetchResult> =>
-      this.fetcher({ repo, mapLabel: this.options.mapLabel, typePrefix: this.options.typePrefix, choices, knownTickets, now: this.now() });
-    entry.inFlight = (this.options.choices === undefined ? list({}) : this.options.choices(repo).then(list))
-      .then(({ maps, warnings }) => {
-        const snapshot = { repo, fetchedAt: this.now().toISOString(), maps, warnings };
+    const list = (choices: SettleChoices, viewer: Viewer | null): Promise<FetchResult> =>
+      this.fetcher({ repo, mapLabel: this.options.mapLabel, typePrefix: this.options.typePrefix, choices, knownTickets, now: this.now(), viewer });
+    const { choices, viewer } = this.options;
+    entry.inFlight = (
+      choices === undefined && viewer === undefined
+        ? list({}, null)
+        : Promise.all([choices?.(repo) ?? {}, viewer?.(repo) ?? null]).then(([forRepo, who]) => list(forRepo, who))
+    )
+      .then(({ maps, hiddenMaps, warnings }) => {
+        const snapshot = { repo, fetchedAt: this.now().toISOString(), maps, hiddenMaps: hiddenMaps ?? 0, warnings };
         entry.snapshot = snapshot;
         return snapshot;
       })

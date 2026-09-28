@@ -5,6 +5,8 @@ import { criticalPath } from './criticalPath.js';
 import { parseBlockedByLine, parseChildNumbers, parseMapBody } from './mapBody.js';
 import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SHOTS_DIR, PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, pickPreview, prototypeTicketNumber, prototypeVariantInfo, unlistedCanvasBoards, verdictComment } from './prototypes.js';
 import { idleCutoff, isIdleCandidate, settlementOf } from './settling.js';
+import { isMapShown, mapVisibility } from './visibility.js';
+import type { Viewer } from './visibility.js';
 import type { MapIssueFacts, SettleChoices } from './settling.js';
 import { TICKET_TYPES } from './types.js';
 import type { MapSettlement, OutsideTicket, Prototype, PrototypeVariant, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
@@ -512,6 +514,8 @@ async function fetchChildren(repo: string, map: { number: number; body?: string 
 
 export interface FetchResult {
   maps: WayfinderMap[];
+  /** Maps from other people left out for the viewer. */
+  hiddenMaps?: number;
   warnings: string[];
 }
 
@@ -524,6 +528,7 @@ interface MapIssue {
   state: string;
   updatedAt?: string | null;
   closedAt?: string | null;
+  author?: string | null;
 }
 
 export interface MapListOptions extends FetchOptions {
@@ -534,6 +539,8 @@ export interface MapListOptions extends FetchOptions {
   /** Tickets each map had when last read, so the idle rule can see them without reading the map again. */
   knownTickets?: ReadonlyMap<number, readonly number[]>;
   now?: Date;
+  /** Who is looking. Their own maps and the public maps they follow are listed; the rest are counted, not read. Omit to list every map. */
+  viewer?: Viewer | null;
 }
 
 /** GitHub search stops at 1000 results. Past that Wayfinder can't tell what went quiet, so nothing settles as idle. */
@@ -593,7 +600,7 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     '--slurp',
     `repos/${repo}/issues?state=all&labels=${encodeURIComponent(mapLabel)}&per_page=100`,
   ]);
-  const mapIssues = flattenIssuePages(mapIssuePages).map((issue): MapIssue => ({
+  const labeled = flattenIssuePages(mapIssuePages).map((issue): MapIssue => ({
     number: issue.number,
     title: issue.title,
     url: issueUrl(issue, repo),
@@ -601,11 +608,18 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     state: issue.state,
     updatedAt: issue.updated_at ?? null,
     closedAt: issue.closed_at ?? null,
+    author: issue.user?.login ?? null,
   }));
 
-  if (mapIssues.length === 0) {
+  if (labeled.length === 0) {
     warnings.push(`No maps in ${repo} yet. Wayfinder looks for issues labeled ${mapLabel}.`);
   }
+  // Hidden maps are dropped before anything else is read, so other people's maps cost no calls.
+  const viewer = options.viewer ?? null;
+  const mapIssues =
+    viewer === null
+      ? labeled
+      : labeled.filter((issue) => isMapShown({ number: issue.number, author: issue.author ?? null, visibility: mapVisibility(issue.body ?? '') }, viewer));
   subIssueWatcher.retainMaps(repo, mapIssues.map((map) => map.number));
 
   const facts = (issue: MapIssue): MapIssueFacts => ({
@@ -638,7 +652,7 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
   });
 
   maps.sort((a, b) => Number(b.open) - Number(a.open) || a.number - b.number);
-  return { maps, warnings: [...warnings, ...fallbackWarnings(fallbacks)] };
+  return { maps, hiddenMaps: labeled.length - mapIssues.length, warnings: [...warnings, ...fallbackWarnings(fallbacks)] };
 }
 
 /** What the maps' ticket reads had to fall back on, in words. */
@@ -656,7 +670,7 @@ function fallbackWarnings(fallbacks: Fallbacks): string[] {
 export async function fetchMapDetails(options: FetchOptions, maps: readonly WayfinderMap[]): Promise<FetchResult> {
   const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [] };
   const loaded = await pool(maps, options.concurrency ?? 6, async (map) => ({
-    ...(await loadMap(options, { number: map.number, title: map.title, url: map.url, body: map.body, state: map.open ? 'open' : 'closed' }, fallbacks)),
+    ...(await loadMap(options, { number: map.number, title: map.title, url: map.url, body: map.body, state: map.open ? 'open' : 'closed', author: map.author }, fallbacks)),
     settled: map.settled,
   }));
   return { maps: loaded, warnings: fallbackWarnings(fallbacks) };
@@ -670,6 +684,8 @@ function settledMap(repo: string, mapIssue: MapIssue, settled: MapSettlement): W
     url: issueUrl(mapIssue, repo),
     body: mapIssue.body ?? '',
     open: isOpenState(mapIssue.state),
+    author: mapIssue.author ?? null,
+    visibility: mapVisibility(mapIssue.body ?? ''),
     sections: parseMapBody(mapIssue.body ?? ''),
     tickets: [],
     outside: [],
@@ -774,6 +790,8 @@ async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fal
     url: issueUrl(mapIssue, repo),
     body: mapIssue.body ?? '',
     open: isOpenState(mapIssue.state),
+    author: mapIssue.author ?? null,
+    visibility: mapVisibility(mapIssue.body ?? ''),
     sections: parseMapBody(mapIssue.body ?? ''),
     tickets,
     outside,

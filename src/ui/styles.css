@@ -5864,8 +5864,9 @@ textarea.input {
 
 .wf-settled-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 4px 12px;
   padding: 8px 12px 8px 16px;
   font-size: 13px;
 }
@@ -5906,6 +5907,50 @@ textarea.input {
 .wf-settled-row .ghost {
   flex: none;
   height: 28px;
+  font-size: 12.5px;
+}
+
+/* Map visibility (#147): who opened the map, and whether others can see it in Wayfinder */
+.wf-visibility {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.wf-settled-row .wf-visibility {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.wf-author {
+  font-weight: 550;
+}
+
+.wf-vis-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wf-vis-label .i,
+.wf-hidden-maps .i {
+  width: 12px;
+  height: 12px;
+}
+
+.wf-hidden-maps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+  color: var(--text-secondary);
   font-size: 12.5px;
 }
 
