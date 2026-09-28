@@ -9,6 +9,8 @@ const map: WayfinderMap = {
   url: 'https://github.com/owner/repo/issues/4',
   body: '',
   open: true,
+  author: 'octocat',
+  visibility: 'private',
   sections: {
     destination: 'One namespace for teammates.',
     notes: 'Read CONTEXT.md.',

@@ -1,9 +1,44 @@
 import { join } from 'node:path';
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { handOff, worktreePathFor } from './t3.js';
-import type { HandOffInput, HandOffSteps } from './t3.js';
+import { T3HandOff, handOff, worktreePathFor } from './t3.js';
+import type { HandOffInput, HandOffSteps, T3Runtime } from './t3.js';
+
+const t3Mocks = vi.hoisted(() => ({
+  serverCommand: vi.fn<(pid: number) => Promise<{ exe: string; script: string } | null>>(),
+  apiCreated: vi.fn<() => void>(),
+  issueSession: vi.fn<() => void>(),
+}));
+
+vi.mock('./t3Api.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./t3Api.js')>();
+
+  class MockT3Api {
+    private session: Promise<void> | null = null;
+
+    constructor(_origin: string, _command: { exe: string; script: string }) {
+      t3Mocks.apiCreated();
+    }
+
+    revoke(): void {}
+
+    snapshot(): Promise<{ projects: never[] }> {
+      this.session ??= Promise.resolve().then(t3Mocks.issueSession);
+      return this.session.then(() => ({ projects: [] }));
+    }
+  }
+
+  return { ...actual, serverCommand: t3Mocks.serverCommand, T3Api: MockT3Api };
+});
+
+const runtime: T3Runtime = { origin: 'http://127.0.0.1:3773', pid: 42, stateDir: '/t3/userdata' };
+
+beforeEach(() => {
+  t3Mocks.serverCommand.mockReset();
+  t3Mocks.apiCreated.mockReset();
+  t3Mocks.issueSession.mockReset();
+});
 
 const input = (workspaceRoot: string | null): HandOffInput => ({
   title: '#1 Thing',
@@ -77,5 +112,36 @@ describe('worktreePathFor', () => {
     expect(worktreePathFor(join('home', '.t3'), join('src', 'wayfinder-map'), 'wayfinder/12-do-it')).toBe(
       join('home', '.t3', 'worktrees', 'wayfinder-map', 'wayfinder-12-do-it'),
     );
+  });
+});
+
+describe('T3HandOff connection', () => {
+  it('shares one cold connection and session across concurrent callers', async () => {
+    let resolveCommand!: (command: { exe: string; script: string } | null) => void;
+    const command = new Promise<{ exe: string; script: string } | null>((resolve) => {
+      resolveCommand = resolve;
+    });
+    t3Mocks.serverCommand.mockReturnValue(command);
+
+    const handOff = new T3HandOff();
+    const starts = Array.from({ length: 8 }, () => handOff.projects(runtime));
+
+    expect(t3Mocks.serverCommand).toHaveBeenCalledTimes(1);
+    resolveCommand({ exe: 't3', script: 'server.mjs' });
+    await expect(Promise.all(starts)).resolves.toEqual(Array.from({ length: 8 }, () => []));
+    expect(t3Mocks.apiCreated).toHaveBeenCalledTimes(1);
+    expect(t3Mocks.issueSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears a rejected connection so a later call can retry', async () => {
+    t3Mocks.serverCommand.mockResolvedValueOnce(null).mockResolvedValue({ exe: 't3', script: 'server.mjs' });
+    const handOff = new T3HandOff();
+
+    await expect(handOff.projects(runtime)).rejects.toThrow('could not find the T3 Code binary');
+    await expect(handOff.projects(runtime)).resolves.toEqual([]);
+
+    expect(t3Mocks.serverCommand).toHaveBeenCalledTimes(2);
+    expect(t3Mocks.apiCreated).toHaveBeenCalledTimes(1);
+    expect(t3Mocks.issueSession).toHaveBeenCalledTimes(1);
   });
 });

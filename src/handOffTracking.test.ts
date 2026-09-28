@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -132,6 +132,44 @@ describe('representativeHandOffs', () => {
 });
 
 describe('HandOffStore', () => {
+  it('keeps records written concurrently by separate store instances', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    try {
+      const stores = [new HandOffStore({ filePath }), new HandOffStore({ filePath })];
+      const saved = await Promise.all(stores.flatMap((store, storeIndex) =>
+        Array.from({ length: 4 }, (_, index) => store.record({
+          ...input,
+          title: `Hand-off ${storeIndex * 4 + index}`,
+          threadId: `thread-${storeIndex * 4 + index}`,
+        })),
+      ));
+
+      const records = await new HandOffStore({ filePath }).list();
+      expect(records.map((item) => item.id).sort()).toEqual(saved.map((item) => item.id).sort());
+      await expect(readFile(`${filePath}.lock`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('reclaims a stale store lock before writing', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    const lockPath = `${filePath}.lock`;
+    try {
+      await writeFile(lockPath, 'abandoned lock', 'utf8');
+      await utimes(lockPath, new Date(0), new Date(0));
+
+      const saved = await new HandOffStore({ filePath }).record(input);
+
+      await expect(new HandOffStore({ filePath }).list()).resolves.toMatchObject([{ id: saved.id }]);
+      await expect(readFile(lockPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('persists thread identity and status fields without storing prompts', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
     const filePath = join(directory, 'hand-offs.json');

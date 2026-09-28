@@ -115,6 +115,29 @@ The left panel carries the map's own prose: destination, fog, notes, decisions,
 out of scope. A table view sits behind the Map/Table toggle for anyone who would
 rather read rows than a graph, and for screen readers.
 
+## Whose maps you see
+
+A repository's map list shows the maps you opened, as the signed-in GitHub user, plus
+the public maps you follow. Maps by anyone else stay out of the list. Being assigned to
+a map or one of its tickets doesn't make it yours. A followed public map shows whatever
+the author's role in the repository, so an outside contributor's map works too.
+Following is per map and per login, stored in `~/.wayfinder-map/follows.json`. When
+maps are left out, the page says how many, for example "12 maps from other people are
+hidden."
+
+Maps are **private** by default, and that includes every map made before this rule.
+To make a map public, add this line on its own to the map issue's body on GitHub:
+
+```
+Visibility: public
+```
+
+Remove the line to make the map private again. Wayfinder never edits the issue for you.
+
+Private only hides a map inside Wayfinder. It is not access control. Every private map
+carries the note "Private in Wayfinder only. If the repository is public, this issue
+can still be read on GitHub." GitHub still decides who can read the issue.
+
 ## Prototypes
 
 Prototype tickets keep their prototype on a throwaway branch named

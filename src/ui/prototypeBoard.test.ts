@@ -40,6 +40,8 @@ function map(tickets: Ticket[]): WayfinderMap {
     url: 'https://github.com/octo/wayfinder/issues/35',
     body: '',
     open: true,
+    author: 'octocat',
+    visibility: 'private',
     sections: { destination: '', notes: '', decisions: '', fog: '', outOfScope: '' },
     tickets,
     outside: [],
