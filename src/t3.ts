@@ -212,6 +212,7 @@ async function readClientModelHides(stateDir: string): Promise<{ hidden: HiddenM
 /** The real ladder steps, bound to whatever T3 Code is running right now. */
 export class T3HandOff {
   private api: { key: string; api: T3Api; command: ServerCommand } | null = null;
+  private readonly connections = new Map<string, Promise<{ api: T3Api; command: ServerCommand }>>();
   private config: { key: string; at: number; value: Promise<T3Config> } | null = null;
   private readonly prepareQueues = new Map<string, Promise<void>>();
 
@@ -237,14 +238,37 @@ export class T3HandOff {
 
   private async connect(runtime: T3Runtime): Promise<{ api: T3Api; command: ServerCommand; origin: string }> {
     if (runtime.origin === null || runtime.pid === null) throw new Error('T3 Code is not running');
-    const key = `${runtime.origin}#${String(runtime.pid)}`;
+    const origin = runtime.origin;
+    const pid = runtime.pid;
+    const key = `${origin}#${String(pid)}`;
     if (this.api?.key !== key) {
       this.api?.api.revoke();
-      const command = await serverCommand(runtime.pid);
-      if (command === null) throw new Error('could not find the T3 Code binary');
-      this.api = { key, api: new T3Api(runtime.origin, command), command };
+      this.api = null;
     }
-    return { api: this.api.api, command: this.api.command, origin: runtime.origin };
+
+    let connection = this.connections.get(key);
+    if (connection === undefined) {
+      connection = (async () => {
+        const command = await serverCommand(pid);
+        if (command === null) throw new Error('could not find the T3 Code binary');
+        const api = new T3Api(origin, command);
+        if (this.api?.key !== key) this.api?.api.revoke();
+        this.api = { key, api, command };
+        return { api, command };
+      })();
+      this.connections.set(key, connection);
+      void connection.then(
+        () => {
+          if (this.connections.get(key) === connection) this.connections.delete(key);
+        },
+        () => {
+          if (this.connections.get(key) === connection) this.connections.delete(key);
+        },
+      );
+    }
+
+    const { api, command } = await connection;
+    return { api, command, origin };
   }
 
   /** Bring the running T3 Code window forward for a tracked thread. */

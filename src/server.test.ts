@@ -72,6 +72,8 @@ const sampleMap: WayfinderMap = {
   url: 'https://github.com/octo/one/issues/5',
   body: '## Destination\nLaunch product',
   open: true,
+  author: 'octocat',
+  visibility: 'private',
   sections: {
     destination: 'Launch product',
     notes: '',

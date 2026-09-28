@@ -31,6 +31,8 @@ import type { HandOffTrackingClient } from './handOffTracking.js';
 import { MapWatcher } from './mapWatcher.js';
 import { ProgressError, ProgressService, ProgressSettingsStore, readCompletedTickets } from './progress.js';
 import { SettleStore } from './settling.js';
+import { FollowStore } from './follows.js';
+import type { Viewer } from './visibility.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -253,6 +255,11 @@ export async function startServer({
     const account = homeState?.account ?? (await readAccount());
     return account.status === 'ready' ? account.login : null;
   };
+  const follows = new FollowStore();
+  const viewerOf = async (forRepo: string): Promise<Viewer | null> => {
+    const login = await signedInLogin();
+    return login === null ? null : { login, follows: await follows.follows(login, forRepo) };
+  };
   const settle: Settling | null = settling ?? (fetcher === undefined ? { login: signedInLogin, store: new SettleStore() } : null);
   const repositories = new RepositoryStore({
     mapLabel: config.mapLabel,
@@ -267,6 +274,8 @@ export async function startServer({
             return login === null ? {} : settle.store.choices(login, forRepo);
           },
         }),
+    // Your own maps and the public maps you follow. Tests that inject a fetcher list every map.
+    ...(fetcher === undefined ? { viewer: viewerOf } : {}),
   });
   const repoIcons = new Map<string, Promise<ResolvedRepoIcon | null>>();
   let repoList: Promise<string[]> | null = null;

@@ -54,6 +54,10 @@ export interface WayfinderMap {
   url: string;
   body: string;
   open: boolean;
+  /** The GitHub login that opened the map issue, or null when GitHub did not say. */
+  author: string | null;
+  /** Public only when the body has a `Visibility: public` line. See `mapVisibility`. */
+  visibility: MapVisibility;
   sections: MapSections;
   tickets: Ticket[];
   /** Blockers named by this map's tickets that live outside the map, so the UI can still link them. */
@@ -65,6 +69,9 @@ export interface WayfinderMap {
   /** False for a settled map whose tickets were not read, to save GitHub calls until it is opened. */
   ticketsLoaded: boolean;
 }
+
+/** Private maps show only to their author in Wayfinder; public ones also show to people who follow them. */
+export type MapVisibility = 'public' | 'private';
 
 /** Why a map settled: its issue closed, nothing on it changed for 30 days, or someone settled it by hand. */
 export type SettleReason = 'closed' | 'idle' | 'manual';
@@ -119,6 +126,8 @@ export interface MapSnapshot {
   repo: string;
   fetchedAt: string;
   maps: WayfinderMap[];
+  /** Maps from other people left out because they are private or not followed. */
+  hiddenMaps: number;
   /** Non-fatal problems worth showing in the UI rather than swallowing. */
   warnings: string[];
 }

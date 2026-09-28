@@ -26,6 +26,8 @@ function map(number: number, title: string, open: boolean, tickets: Ticket[] = [
     url: `https://github.com/octo/wayfinder/issues/${String(number)}`,
     body: '',
     open,
+    author: 'octocat',
+    visibility: 'private',
     sections: { destination: `Reach ${title}`, notes: '', decisions: '', fog: '', outOfScope: '' },
     tickets,
     outside: [],
@@ -36,7 +38,7 @@ function map(number: number, title: string, open: boolean, tickets: Ticket[] = [
 }
 
 function snapshot(maps: WayfinderMap[]): MapSnapshot {
-  return { repo: 'octo/wayfinder', fetchedAt: '2026-09-23T12:00:00.000Z', maps, warnings: [] };
+  return { repo: 'octo/wayfinder', fetchedAt: '2026-09-23T12:00:00.000Z', maps, hiddenMaps: 0, warnings: [] };
 }
 
 describe('repository map ordering and filtering', () => {
@@ -170,6 +172,33 @@ describe('repositoryPageHtml', () => {
     expect(html).toContain('href="/new-map?repo=octo%2Frecipe-box"');
     expect(html.match(/Start a new map/g)).toHaveLength(1);
     expect(html).not.toContain('repo-map-search');
+  });
+
+  it('names each map author and always explains private maps', () => {
+    const html = repositoryPageHtml(
+      'octo/wayfinder',
+      snapshot([
+        { ...map(3, 'Mine', true), author: 'ramon' },
+        { ...map(5, 'Followed', true), author: 'drive-by', visibility: 'public' },
+        { ...map(9, 'Parked', true), author: 'ramon', settled: { reason: 'manual', since: '2026-09-20T00:00:00.000Z' } },
+      ]),
+    );
+
+    expect(html).toContain('<span class="wf-author">by ramon</span>');
+    expect(html).toContain('<span class="wf-author">by drive-by</span>');
+    expect(html).toContain('data-map-visibility="public"><span class="wf-author">by drive-by</span><span class="wf-vis-label">Public</span></p>');
+    // The open private card and the settled private row both carry the note.
+    expect(html.match(/Private in Wayfinder only\. If the repository is public, this issue can still be read on GitHub\./g)).toHaveLength(2);
+    expect(html).not.toContain('data-repo-hidden-maps');
+  });
+
+  it('counts the maps from other people that are hidden', () => {
+    const html = repositoryPageHtml('octo/wayfinder', { ...snapshot([map(3, 'Mine', true)]), hiddenMaps: 12 });
+    expect(html).toContain('12 maps from other people are hidden.');
+
+    const none = repositoryPageHtml('octo/recipe-box', { ...snapshot([]), hiddenMaps: 1 });
+    expect(none).toContain('1 map from other people is hidden.');
+    expect(none).toContain('No maps of yours in recipe-box yet');
   });
 
   it('renders a retryable repository error and escapes its message', () => {

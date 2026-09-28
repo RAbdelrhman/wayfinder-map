@@ -5,6 +5,7 @@ import { STATE_ORDER, STATE_STYLE, countStates, repoIconHtml } from './chrome.js
 import { miniGraphSvg } from './miniGraph.js';
 import { escapeHtml } from './markdown.js';
 import { bone, boneButton } from './skeleton.js';
+import { PRIVATE_NOTE, hiddenMapsMessage } from '../visibility.js';
 
 export interface RepositoryHandOffStatus {
   repo: string;
@@ -54,6 +55,16 @@ function runningHandOffChip(mapNumber: number, count: number | undefined): strin
   return `<span class="chip" data-map-handoffs="${String(mapNumber)}" style="--accent: var(--state-frontier)"${visible ? '' : ' hidden'}><span data-icon="bolt" aria-hidden="true"></span>${visible ? `${String(count)} running in T3 Code` : ''}</span>`;
 }
 
+/** Who opened the map, and whether it is private or public in Wayfinder. A private map always carries the note. */
+export function visibilityStatus(map: WayfinderMap): string {
+  const author = map.author === null ? '' : `<span class="wf-author">by ${escapeHtml(map.author)}</span>`;
+  const status =
+    map.visibility === 'public'
+      ? '<span class="wf-vis-label">Public</span>'
+      : `<span class="wf-vis-label"><span data-icon="lock" aria-hidden="true"></span>Private</span> <span class="wf-vis-note">${escapeHtml(PRIVATE_NOTE)}</span>`;
+  return `<p class="wf-visibility" data-map-visibility="${map.visibility}">${author}${status}</p>`;
+}
+
 function settleButton(map: WayfinderMap): string {
   return `<button type="button" class="ghost" data-settle-map="${String(map.number)}" aria-label="${escapeHtml(`Settle map #${String(map.number)}: ${map.title}`)}" title="Move to Settled. The issue on GitHub is not changed.">Settle</button>`;
 }
@@ -85,6 +96,7 @@ function settledRow(repo: string, map: WayfinderMap, now: number): string {
       <a class="grow" href="${escapeHtml(href)}"><span class="num">#${String(map.number)}</span> ${escapeHtml(map.title)}</a>
       <span class="when">${ago === '' ? '' : `Settled <time datetime="${escapeHtml(since)}">${escapeHtml(ago)}</time>`}${why === '' ? '' : ` · ${escapeHtml(why)}`}</span>
       <button type="button" class="ghost" data-unsettle-map="${String(map.number)}" aria-label="${escapeHtml(`Unsettle map #${String(map.number)}: ${map.title}`)}">Unsettle</button>
+      ${visibilityStatus(map)}
     </li>`;
 }
 
@@ -114,18 +126,19 @@ function mapCard(repo: string, map: WayfinderMap, runningHandOffCount?: number):
       <p class="eyebrow">Map · #${String(map.number)}${map.open ? '' : ' · completed'}</p>
       <h2><a href="${escapeHtml(href)}">${escapeHtml(map.title)}</a></h2>
       <p class="dest" title="${escapeHtml(destination)}">${escapeHtml(destination)}</p>
+      ${visibilityStatus(map)}
       <div class="wf-counts" aria-label="Ticket counts">${stateCounts(map)}</div>
       <div class="row2">${footer}</div>
     </div>
   </article>`;
 }
 
-function repositoryEmpty(repo: string): string {
+function repositoryEmpty(repo: string, hiddenMaps: number): string {
   const name = repo.split('/')[1] ?? repo;
   return `<section class="wf-node wf-empty" aria-labelledby="repo-empty-title" style="--accent: var(--state-frontier)">
     <div class="graph" aria-hidden="true"><span class="ghostnode">Destination</span></div>
     <div class="txt">
-      <h2 id="repo-empty-title">No maps in ${escapeHtml(name)} yet</h2>
+      <h2 id="repo-empty-title">${hiddenMaps > 0 ? 'No maps of yours' : 'No maps'} in ${escapeHtml(name)} yet</h2>
       <p>A map is a graph of tickets toward one destination. Start one and T3 Code drafts it with you, right here.</p>
       <a class="primary" href="${escapeHtml(newMapPath(repo))}"><span data-icon="plus" aria-hidden="true"></span>Start a new map</a>
     </div>
@@ -142,8 +155,10 @@ export function repositoryPageHtml(
   const settled = sortSettledMaps(snapshot.maps.filter((map) => map.settled !== null));
   const name = repo.split('/')[1] ?? repo;
   const counts = snapshot.maps.length === 0 ? 'no maps yet' : `${String(maps.length)} active, ${String(settled.length)} settled`;
+  const hidden = hiddenMapsMessage(snapshot.hiddenMaps);
+  const hiddenNote = hidden === '' ? '' : `<p class="wf-hidden-maps" data-repo-hidden-maps><span data-icon="lock" aria-hidden="true"></span>${escapeHtml(hidden)}</p>`;
   const mapContent = snapshot.maps.length === 0
-    ? repositoryEmpty(repo)
+    ? repositoryEmpty(repo, snapshot.hiddenMaps)
     : `<section class="repo-map-section" aria-label="Repository maps">
         <div class="wf-filters">
           <label class="search"><span data-icon="lens" aria-hidden="true"></span><span class="sr-only">Filter maps</span><input id="repo-map-search" type="search" placeholder="Filter maps" autocomplete="off" /></label>
@@ -160,6 +175,7 @@ export function repositoryPageHtml(
   return `<div class="repository-page wf-repo-page" data-repository-page>
     <header class="wf-head">${repoIconHtml(repo, 'lg')}<div class="grow"><h1>${escapeHtml(name)}</h1><p>${escapeHtml(repo)} · ${counts}</p></div></header>
     ${warnings}
+    ${hiddenNote}
     ${mapContent}
   </div>`;
 }

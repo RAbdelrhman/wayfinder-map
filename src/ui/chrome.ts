@@ -42,6 +42,7 @@ const STATIC_ICONS: Record<string, string> = {
   moon: icons.MOON,
   lens: icons.LENS,
   info: icons.INFO,
+  lock: icons.LOCK,
   minus: icons.MINUS,
   plus: icons.PLUS,
   play: icons.PLAY,

@@ -466,6 +466,59 @@ describe('fetchMaps settling', () => {
   });
 });
 
+describe('fetchMaps visibility', () => {
+  const mapIssue = (number: number, author: string, body = '') => ({
+    number,
+    title: `Map ${String(number)}`,
+    body,
+    state: 'OPEN',
+    updated_at: '2026-09-27T00:00:00Z',
+    closed_at: null,
+    user: { login: author },
+  });
+
+  beforeEach(() => {
+    ghCalls.length = 0;
+    execFileMock.mockImplementation(async (_file, args) => {
+      ghCalls.push(args);
+      const route = args.find((arg) => arg.startsWith('repos/')) ?? '';
+      if (!args.includes('--slurp') && !route.endsWith('/sub_issues')) throw new Error(`Unexpected gh call: ${args.join(' ')}`);
+      const text = JSON.stringify(
+        args.includes('--slurp')
+          ? [[
+              mapIssue(1, 'ramon'),
+              mapIssue(2, 'teammate', 'Visibility: public'),
+              mapIssue(3, 'drive-by', 'Visibility: public'),
+              mapIssue(4, 'teammate'),
+              mapIssue(5, 'spammer', 'Visibility: public'),
+            ]]
+          : [],
+      );
+      return { stdout: Buffer.from(args.includes('--include') ? `HTTP/2.0 200 OK\r\nETag: "mock"\r\n\r\n${text}` : text), stderr: Buffer.alloc(0) };
+    });
+  });
+
+  it('lists your maps and the public maps you follow, and counts the rest without reading them', async () => {
+    // Map 3's author is outside OWNER, MEMBER and COLLABORATOR; following it is enough. Map 4 is followed but private.
+    const result = await fetchMaps({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', viewer: { login: 'Ramon', follows: [3, 4] } });
+
+    expect(result.maps.map((map) => [map.number, map.author, map.visibility])).toEqual([
+      [1, 'ramon', 'private'],
+      [3, 'drive-by', 'public'],
+    ]);
+    expect(result.hiddenMaps).toBe(3);
+    const read = ghCalls.map((args) => args.find((arg) => arg.startsWith('repos/')) ?? '').filter((path) => path.endsWith('/sub_issues'));
+    expect(read.sort()).toEqual(['repos/o/r/issues/1/sub_issues', 'repos/o/r/issues/3/sub_issues']);
+  });
+
+  it('lists every map, with its author, when no viewer is given', async () => {
+    const result = await fetchMaps({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' });
+    expect(result.maps).toHaveLength(5);
+    expect(result.hiddenMaps).toBe(0);
+    expect(result.maps[1]).toMatchObject({ number: 2, author: 'teammate', visibility: 'public' });
+  });
+});
+
 describe('fetchTicketWithParent', () => {
   it('names the issue a ticket is a sub-issue of', async () => {
     execFileMock.mockImplementation(async (_file, args) => {

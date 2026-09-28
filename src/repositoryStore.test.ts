@@ -91,6 +91,8 @@ function map(number: number, settled: MapSettlement | null, ticketsLoaded: boole
     url: `https://github.com/owner/repo/issues/${String(number)}`,
     body: '',
     open: settled?.reason !== 'closed',
+    author: 'octocat',
+    visibility: 'private',
     sections: { destination: '', notes: '', decisions: '', fog: '', outOfScope: '' },
     tickets: ticketsLoaded ? [{ number: number * 10, title: 'Ticket', url: '', body: '', type: 'task', labels: [], open: true, assignee: null, blockedBy: [], openBlockers: [], state: 'frontier' }] : [],
     outside: [],
@@ -119,6 +121,15 @@ describe('RepositoryStore settling', () => {
     });
     return { cache, fetcher, detailer };
   }
+
+  it('passes the viewer to the map list and keeps the hidden count on the snapshot', async () => {
+    const fetcher = vi.fn<RepositoryFetcher>(async () => ({ maps: [map(1, null, true)], hiddenMaps: 4, warnings: [] }));
+    const viewer = { login: 'ramon', follows: [9] };
+    const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher, viewer: async () => viewer });
+    const snapshot = await cache.snapshot('owner/repo');
+    expect(fetcher).toHaveBeenCalledWith(expect.objectContaining({ viewer }));
+    expect(snapshot.hiddenMaps).toBe(4);
+  });
 
   it('passes the hand-made choices to the map list', async () => {
     const choices = { 3: { settled: true, at: '2026-09-25T00:00:00.000Z' } };
