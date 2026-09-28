@@ -26,10 +26,6 @@ const state = vi.hoisted(() => ({
   threadCreateTarget: 1,
   threadCreateBarrier: Promise.resolve(),
   releaseThreadCreateBarrier: (): void => undefined,
-  connectCalls: 0,
-  connectTarget: 1,
-  connectBarrier: Promise.resolve(),
-  releaseConnectBarrier: (): void => undefined,
   reset(threadCreateTarget: number): void {
     this.projects = [];
     this.threads = [];
@@ -41,11 +37,6 @@ const state = vi.hoisted(() => ({
     this.threadCreateTarget = threadCreateTarget;
     this.threadCreateBarrier = new Promise<void>((resolveBarrier) => {
       this.releaseThreadCreateBarrier = resolveBarrier;
-    });
-    this.connectCalls = 0;
-    this.connectTarget = threadCreateTarget;
-    this.connectBarrier = new Promise<void>((resolveBarrier) => {
-      this.releaseConnectBarrier = resolveBarrier;
     });
   },
 }));
@@ -107,12 +98,7 @@ vi.mock('./t3Api.js', async (importOriginal) => {
     revoke(): void {}
   }
 
-  const serverCommand = vi.fn(async () => {
-    state.connectCalls += 1;
-    if (state.connectCalls === state.connectTarget) state.releaseConnectBarrier();
-    await state.connectBarrier;
-    return { exe: process.execPath, script: 'C:\\t3\\server.asar\\bin.mjs' };
-  });
+  const serverCommand = vi.fn(async () => ({ exe: process.execPath, script: 'C:\\t3\\server.asar\\bin.mjs' }));
 
   return { ...original, T3Api: MockT3Api, serverCommand };
 });
@@ -149,7 +135,6 @@ describe('T3HandOff concurrent prepare', () => {
   let runtime: T3Runtime;
 
   beforeEach(async () => {
-    state.reset(8);
     tempRoot = await mkdtemp(join(tmpdir(), 'wayfinder-t3-prepare-'));
     workspaceRoot = join(tempRoot, 'repo');
     await mkdir(workspaceRoot);
