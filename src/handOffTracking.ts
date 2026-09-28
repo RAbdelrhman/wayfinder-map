@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -15,6 +15,11 @@ const MAX_CONCURRENT_PULL_REQUEST_LOOKUPS = 2;
 const PULL_REQUEST_STATE_INTERVAL_MS = 60 * 1000;
 // A thread just created may not be in a snapshot read moments earlier, so an unseen hand-off gets this long to show up.
 const NEW_THREAD_GRACE_MS = 2 * 60 * 1000;
+const STORE_LOCK_RETRY_MS = 25;
+const STORE_LOCK_TIMEOUT_MS = 5_000;
+const STORE_LOCK_STALE_MS = 30_000;
+const RENAME_RETRY_LIMIT = 4;
+const RENAME_RETRY_MS = 20;
 
 export type HandOffStatus = 'starting' | 'running' | 'waiting' | 'ready' | 'finished' | 'interrupted' | 'failed' | 'untracked';
 export type HandOffRung = 'thread' | 'app' | 'clipboard' | null;
@@ -313,6 +318,98 @@ export function handOffStorePath(home = homedir()): string {
   return join(home, '.wayfinder-map', 'hand-offs.json');
 }
 
+function normalizeStoredHandOffs(value: unknown): StoredHandOff[] {
+  const root = record(value);
+  if ((root?.['version'] !== 1 && root?.['version'] !== 2) || !Array.isArray(root['records'])) {
+    throw new Error('Unsupported hand-off store format.');
+  }
+  return root['records'].filter(isStoredHandOff).map((item) => ({
+    ...item,
+    mapTitle: item.mapTitle ?? null,
+    acknowledged: item.acknowledged === true,
+    pullRequests: item.pullRequests.map((ref) => ({
+      ...ref,
+      checksState: ref.checksState ?? null,
+      reviewDecision: ref.reviewDecision ?? null,
+      isDraft: ref.isDraft ?? null,
+      hasSnapshot: ref.hasSnapshot === true,
+    })),
+  }));
+}
+
+async function readStoredHandOffs(filePath: string): Promise<StoredHandOff[]> {
+  try {
+    return normalizeStoredHandOffs(JSON.parse(await readFile(filePath, 'utf8')) as unknown);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function acquireStoreLock(lockPath: string): Promise<() => Promise<void>> {
+  const startedAt = Date.now();
+  const token = randomUUID();
+  while (true) {
+    try {
+      const handle = await open(lockPath, 'wx', 0o600);
+      try {
+        await handle.writeFile(token, 'utf8');
+      } catch (error) {
+        await unlink(lockPath).catch(() => undefined);
+        throw error;
+      } finally {
+        await handle.close();
+      }
+      return async () => {
+        let owner: string;
+        try {
+          owner = await readFile(lockPath, 'utf8');
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+          throw error;
+        }
+        if (owner === token) await unlink(lockPath).catch((error: unknown) => {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        });
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      try {
+        const details = await stat(lockPath);
+        if (Date.now() - details.mtimeMs > STORE_LOCK_STALE_MS) {
+          await unlink(lockPath).catch((unlinkError: unknown) => {
+            if ((unlinkError as NodeJS.ErrnoException).code !== 'ENOENT') throw unlinkError;
+          });
+          continue;
+        }
+      } catch (statError) {
+        if ((statError as NodeJS.ErrnoException).code !== 'ENOENT') throw statError;
+        continue;
+      }
+      if (Date.now() - startedAt >= STORE_LOCK_TIMEOUT_MS) {
+        throw new Error(`Timed out waiting for hand-off store lock: ${lockPath}`);
+      }
+      await wait(STORE_LOCK_RETRY_MS);
+    }
+  }
+}
+
+async function renameWithRetry(source: string, destination: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(source, destination);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EPERM' || attempt >= RENAME_RETRY_LIMIT) throw error;
+      await wait(RENAME_RETRY_MS * (attempt + 1));
+    }
+  }
+}
+
 async function lookupGitHubPullRequests(repo: string, branch: string): Promise<PullRequestRef[]> {
   if (!/^[^/\s]+\/[^/\s]+$/.test(repo) || branch.length === 0 || branch.length > 255 || /[\r\n]/.test(branch)) return [];
   try {
@@ -375,6 +472,7 @@ export class HandOffStore {
   private records: StoredHandOff[] | null = null;
   private loading: Promise<void> | null = null;
   private writes: Promise<void> = Promise.resolve();
+  private readonly deletedIds = new Set<string>();
   private readonly now: () => Date;
 
   constructor(
@@ -582,19 +680,25 @@ export class HandOffStore {
 
   private drop(handOffs: ReadonlySet<StoredHandOff>): boolean {
     if (handOffs.size === 0) return false;
+    for (const handOff of handOffs) this.deletedIds.add(handOff.id);
     this.records = this.current().filter((item) => !handOffs.has(item));
     return true;
   }
 
   private prune(): boolean {
-    const before = this.current().length;
     const cutoff = this.now().getTime() - RETENTION_MS;
-    this.records = this.current().filter((item) => {
+    const retained = this.current().filter((item) => {
       if (item.terminalAt === null) return true;
       const terminalTime = Date.parse(item.terminalAt);
       return !Number.isFinite(terminalTime) || terminalTime > cutoff;
     });
-    return this.records.length !== before;
+    if (retained.length === this.current().length) return false;
+    const retainedIds = new Set(retained.map((item) => item.id));
+    for (const handOff of this.current()) {
+      if (!retainedIds.has(handOff.id)) this.deletedIds.add(handOff.id);
+    }
+    this.records = retained;
+    return true;
   }
 
   private current(): StoredHandOff[] {
@@ -609,31 +713,7 @@ export class HandOffStore {
         this.records = [];
         return;
       }
-      try {
-        const parsed: unknown = JSON.parse(await readFile(filePath, 'utf8'));
-        const root = record(parsed);
-        if ((root?.['version'] !== 1 && root?.['version'] !== 2) || !Array.isArray(root['records'])) throw new Error('Unsupported hand-off store format.');
-        this.records = root['records']
-          .filter(isStoredHandOff)
-          .map((item) => ({
-            ...item,
-            mapTitle: item.mapTitle ?? null,
-            acknowledged: item.acknowledged === true,
-            pullRequests: item.pullRequests.map((ref) => ({
-              ...ref,
-              checksState: ref.checksState ?? null,
-              reviewDecision: ref.reviewDecision ?? null,
-              isDraft: ref.isDraft ?? null,
-              hasSnapshot: ref.hasSnapshot === true,
-            })),
-          }));
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-          this.records = [];
-          return;
-        }
-        throw error;
-      }
+      this.records = await readStoredHandOffs(filePath);
       if (this.prune()) await this.persist();
     })().catch((error: unknown) => {
       this.loading = null;
@@ -645,16 +725,33 @@ export class HandOffStore {
   private async persist(): Promise<void> {
     const filePath = this.options.filePath;
     if (filePath === null || filePath === undefined) return;
-    const payload = JSON.stringify({ version: 2, records: this.current() }, null, 2);
+    const records = this.current().map((item) => ({
+      ...item,
+      pullRequests: item.pullRequests.map((ref) => ({ ...ref })),
+    }));
+    const deletedIds = new Set(this.deletedIds);
     this.writes = this.writes.catch(() => undefined).then(async () => {
       await mkdir(dirname(filePath), { recursive: true, mode: 0o700 });
-      const temporary = `${filePath}.${String(process.pid)}.${randomUUID()}.tmp`;
+      const release = await acquireStoreLock(`${filePath}.lock`);
       try {
-        await writeFile(temporary, payload, { encoding: 'utf8', mode: 0o600 });
-        await rename(temporary, filePath);
-      } catch (error) {
-        await unlink(temporary).catch(() => undefined);
-        throw error;
+        const merged = new Map((await readStoredHandOffs(filePath)).map((item) => [item.id, item]));
+        for (const id of deletedIds) merged.delete(id);
+        for (const handOff of records) merged.set(handOff.id, handOff);
+
+        const temporary = `${filePath}.${String(process.pid)}.${randomUUID()}.tmp`;
+        try {
+          await writeFile(temporary, JSON.stringify({ version: 2, records: [...merged.values()] }, null, 2), {
+            encoding: 'utf8',
+            mode: 0o600,
+          });
+          await renameWithRetry(temporary, filePath);
+        } catch (error) {
+          await unlink(temporary).catch(() => undefined);
+          throw error;
+        }
+        for (const id of deletedIds) this.deletedIds.delete(id);
+      } finally {
+        await release();
       }
     });
     await this.writes;
