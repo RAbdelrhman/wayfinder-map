@@ -16,6 +16,7 @@ function ticket(number: number, blockedBy: number[] = [], extra: Partial<Ticket>
     blockedBy,
     openBlockers: blockedBy,
     state: blockedBy.length > 0 ? 'blocked' : 'frontier',
+    updatedAt: null,
     ...extra,
   };
 }

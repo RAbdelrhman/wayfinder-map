@@ -16,6 +16,7 @@ function ticket(number: number, title: string, state: TicketState, blockedBy: nu
     blockedBy,
     openBlockers: [],
     state,
+    updatedAt: null,
   };
 }
 
@@ -32,6 +33,7 @@ function map(number: number, title: string, open: boolean, tickets: Ticket[] = [
     tickets,
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
+    stalled: [],
     settled: null,
     ticketsLoaded: true,
   };

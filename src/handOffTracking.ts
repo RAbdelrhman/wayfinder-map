@@ -933,6 +933,12 @@ export class HandOffTracker {
     );
   }
 
+  /** Every stored hand-off in `repo`, retries and failures included, as last polled. For stall detection (#160). */
+  async repoHandOffs(repo: string): Promise<StoredHandOff[]> {
+    this.start();
+    return (await this.store.list()).filter((item) => item.repo.toLowerCase() === repo.toLowerCase());
+  }
+
   /** Call `listener` whenever the shell stream updates the thread of a hand-off on a map. Returns the call that stops it. */
   onThreadChange(listener: (change: ThreadChange) => void): () => void {
     this.threadListeners.add(listener);

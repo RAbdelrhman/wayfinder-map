@@ -94,9 +94,10 @@ function map(number: number, settled: MapSettlement | null, ticketsLoaded: boole
     author: 'octocat',
     visibility: 'private',
     sections: { destination: '', notes: '', decisions: '', fog: '', outOfScope: '' },
-    tickets: ticketsLoaded ? [{ number: number * 10, title: 'Ticket', url: '', body: '', type: 'task', labels: [], open: true, assignee: null, blockedBy: [], openBlockers: [], state: 'frontier' }] : [],
+    tickets: ticketsLoaded ? [{ number: number * 10, title: 'Ticket', url: '', body: '', type: 'task', labels: [], open: true, assignee: null, blockedBy: [], openBlockers: [], state: 'frontier', updatedAt: null }] : [],
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
+    stalled: [],
     settled,
     ticketsLoaded,
   };

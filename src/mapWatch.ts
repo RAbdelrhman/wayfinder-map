@@ -158,6 +158,24 @@ export function pullRequestsByTicket(nodes: unknown): Map<number, WatchedPullReq
   return byTicket;
 }
 
+/**
+ * The newest commit on each ticket's branch, from GraphQL `refs` under `refs/heads/wayfinder/`,
+ * whose names come without that prefix. Two branches for one ticket: the later commit wins.
+ */
+export function branchCommitsByTicket(nodes: unknown): Map<number, string> {
+  const byTicket = new Map<number, string>();
+  if (!Array.isArray(nodes)) return byTicket;
+  for (const node of nodes as Array<{ name?: unknown; target?: { committedDate?: unknown } | null } | null>) {
+    const date = node?.target?.committedDate;
+    if (typeof node?.name !== 'string' || typeof date !== 'string' || Number.isNaN(Date.parse(date))) continue;
+    const ticket = branchTicket(`wayfinder/${node.name}`);
+    if (ticket === null) continue;
+    const seen = byTicket.get(ticket);
+    if (seen === undefined || Date.parse(date) > Date.parse(seen)) byTicket.set(ticket, date);
+  }
+  return byTicket;
+}
+
 /** A PR as T3 Code's shell reports it on a hand-off, after `parsePullRequest` in `handOffTracking.ts`. */
 export interface TrackedPullRequestRef {
   number: number | null;

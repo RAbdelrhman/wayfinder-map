@@ -30,6 +30,7 @@ function ticket(
     blockedBy,
     openBlockers: state === 'blocked' ? blockedBy : [],
     state,
+    updatedAt: null,
   };
 }
 
@@ -46,6 +47,7 @@ function map(tickets: Ticket[]): WayfinderMap {
     tickets,
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
+    stalled: [],
     settled: null,
     ticketsLoaded: true,
   };

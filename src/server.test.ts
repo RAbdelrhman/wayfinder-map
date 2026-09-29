@@ -64,6 +64,7 @@ const sampleTicket: Ticket = {
   blockedBy: [],
   openBlockers: [],
   state: 'frontier',
+  updatedAt: null,
 };
 
 const sampleMap: WayfinderMap = {
@@ -84,6 +85,7 @@ const sampleMap: WayfinderMap = {
   tickets: [sampleTicket],
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
+  stalled: [],
   settled: null,
   ticketsLoaded: true,
 };
@@ -120,7 +122,7 @@ describe('repository-scoped server', () => {
     ];
     const readMap = vi.fn(async (): Promise<MapRead> => reads.shift() ?? { status: 'unchanged', rateLimit: null, pollIntervalSeconds: null });
     const mapWatcher = new MapWatcher(
-      { readMap, readPullRequests: async () => ({ byTicket: new Map(), rateLimit: null }) },
+      { readMap, readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) },
       { intervalMs: 10 },
     );
     const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, mapWatcher });
@@ -150,6 +152,44 @@ describe('repository-scoped server', () => {
     const readsAtClose = readMap.mock.calls.length;
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(readMap.mock.calls.length).toBe(readsAtClose);
+  });
+
+  it('marks stalled tickets on the snapshot and follows the stall settings', async () => {
+    const claimed = { ...sampleTicket, assignee: 'octo', state: 'claimed' as const, updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() };
+    const fetcher: RepositoryFetcher = vi.fn(async () => ({ maps: [{ ...sampleMap, tickets: [claimed] }], warnings: [] }));
+    const readPullRequests = vi.fn(async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }));
+    const mapWatcher = new MapWatcher({ readMap: async () => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }), readPullRequests });
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      fetcher,
+      homeLoader: async () => home,
+      handOffStore: new HandOffStore({ filePath: null }),
+      mapWatcher,
+    });
+    const stalled = async (): Promise<unknown> =>
+      ((await fetch(`${running.url}/api/repos/octo/one/snapshot`).then((response) => response.json())) as { maps: WayfinderMap[] }).maps[0]?.stalled;
+    const save = (body: unknown): Promise<Response> =>
+      fetch(`${running.url}/api/stall-settings`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+    try {
+      expect(await fetch(`${running.url}/api/stall-settings`).then((response) => response.json())).toEqual({ untouchedClaimDays: 7, deadHandOffDays: 7 });
+      expect(await stalled()).toEqual([]);
+      expect(readPullRequests).not.toHaveBeenCalled();
+
+      expect((await save({ untouchedClaimDays: 4 })).status).toBe(400);
+      const saved = await save({ untouchedClaimDays: 3 });
+      expect(await saved.json()).toEqual({ untouchedClaimDays: 3, deadHandOffDays: 7 });
+      expect(await stalled()).toEqual([{ ticket: 11, kind: 'untouched-claim', since: claimed.updatedAt }]);
+      expect(readPullRequests).toHaveBeenCalledTimes(1);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally {
+      mapWatcher.close();
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
   });
 
   it('isolates snapshots for repositories requested through scoped endpoints', async () => {
@@ -1057,7 +1097,7 @@ describe('settling maps', () => {
 
   it('never watches a settled map', async () => {
     const readMap = vi.fn(async (): Promise<MapRead> => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }));
-    const mapWatcher = new MapWatcher({ readMap, readPullRequests: async () => ({ byTicket: new Map(), rateLimit: null }) }, { intervalMs: 10 });
+    const mapWatcher = new MapWatcher({ readMap, readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) }, { intervalMs: 10 });
     const { running: started } = settlingServer('octo', mapWatcher);
     const running = await started;
     try {

@@ -206,6 +206,7 @@ export function toOutsideTicket(raw: RawIssue, repo: string, links: OutsideLinks
     blockedBy: blockers.map((blocker) => blocker.number),
     openBlockers,
     state: ticketStateOf(open, openBlockers, assignee),
+    updatedAt: raw.updated_at ?? null,
     pullRequest,
     blocks: links.blocks ?? [],
     waitsOn: links.waitsOn ?? [],
@@ -477,6 +478,7 @@ export async function fetchTicketWithParent(
     blockedBy,
     openBlockers,
     state: ticketStateOf(open, openBlockers, assignee),
+    updatedAt: raw.updated_at ?? null,
   };
   return { ticket, parent: Number.isSafeInteger(parent) && parent > 0 ? parent : null };
 }
@@ -690,6 +692,7 @@ function settledMap(repo: string, mapIssue: MapIssue, settled: MapSettlement): W
     tickets: [],
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
+    stalled: [],
     settled,
     ticketsLoaded: false,
   };
@@ -781,6 +784,7 @@ async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fal
       blockedBy,
       openBlockers,
       state: ticketStateOf(open, openBlockers, assignee),
+      updatedAt: child.updated_at ?? null,
     };
   });
 
@@ -796,6 +800,7 @@ async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fal
     tickets,
     outside,
     criticalPath: criticalPath(tickets),
+    stalled: [],
     settled: null,
     ticketsLoaded: true,
   };
