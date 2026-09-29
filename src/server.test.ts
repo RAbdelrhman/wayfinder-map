@@ -142,7 +142,9 @@ describe('repository-scoped server', () => {
       // A page that reconnects gets the history after the last id it saw.
       const again = await fetch(`${running.url}/api/repos/octo/one/events?map=5`, { headers: { 'last-event-id': '0' } });
       const replay = again.body!.getReader();
-      expect(new TextDecoder().decode((await replay.read()).value)).toContain('id: 1\n');
+      const replayText = new TextDecoder().decode((await replay.read()).value);
+      expect(replayText).toContain('id: 1\n');
+      expect(JSON.parse(replayText.split('data: ')[1]!.trim())).not.toHaveProperty('whileYouWereAway');
       void replay.cancel().catch(() => undefined);
     } finally {
       await new Promise<void>((resolve) => {
@@ -153,6 +155,40 @@ describe('repository-scoped server', () => {
     const readsAtClose = readMap.mock.calls.length;
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(readMap.mock.calls.length).toBe(readsAtClose);
+  });
+
+  it('multiplexes every opened map into one event stream', async () => {
+    const mapWatcher = new MapWatcher({
+      readMap: async (_repo, mapNumber, etag) => ({
+        status: 'changed',
+        etag: `W/"${String(mapNumber)}-${etag === null ? 'old' : 'new'}"`,
+        tickets: [{ number: mapNumber, title: `Ticket ${String(mapNumber)}`, state: etag === null ? 'blocked' : 'frontier', pullRequests: [] }],
+        rateLimit: null,
+        pollIntervalSeconds: null,
+      }),
+      readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }),
+    }, { intervalMs: 10 });
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, mapWatcher });
+
+    try {
+      expect((await fetch(`${running.url}/api/events`)).status).toBe(400);
+      const response = await fetch(`${running.url}/api/events?watch=octo%2Fone%3A5&watch=octo%2Fone%3A6&after=0`);
+      expect(response.headers.get('content-type')).toContain('text/event-stream');
+      const reader = response.body!.getReader();
+      let text = '';
+      while (text.match(/event: map/g)?.length !== 2) text += new TextDecoder().decode((await reader.read()).value);
+      const events = text.split('\n\n').flatMap((block) => {
+        const data = block.split('\n').find((line) => line.startsWith('data: '))?.slice(6);
+        return data === undefined ? [] : [JSON.parse(data) as { mapNumber: number; type: string }];
+      });
+      expect(events.map((event) => [event.mapNumber, event.type])).toEqual([[5, 'ticket-next'], [6, 'ticket-next']]);
+      await reader.cancel();
+    } finally {
+      await new Promise<void>((resolve) => {
+        running.server.close(() => resolve());
+        running.server.closeAllConnections();
+      });
+    }
   });
 
   it('marks stalled tickets on the snapshot and follows the stall settings', async () => {
@@ -1210,7 +1246,7 @@ describe('settling maps', () => {
       await post(`${running.url}/api/repos/octo/one/settle`, { map: 5, settled: true });
       await fetch(`${running.url}/api/repos/octo/one/snapshot?refresh=1`);
       const response = await fetch(`${running.url}/api/repos/octo/one/events?map=5`);
-      expect(response.status).toBe(409);
+      expect(response.status).toBe(204);
       await new Promise((resolve) => setTimeout(resolve, 30));
       expect(readMap).not.toHaveBeenCalled();
     } finally {

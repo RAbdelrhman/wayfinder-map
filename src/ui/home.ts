@@ -22,6 +22,7 @@ import type { NavigationController, NavigationPage } from './navigation.js';
 import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
 import { homeLoadingMarkup, readHomeShape, rememberHomeShape, renderHomeLanding } from './homeLanding.js';
 import { handOffCardHtml, handOffPresentation, homeHandOffHistoryHtml, mountHandOffs, recentHandOffs } from './handOffs.js';
+import { mountMapEventInbox } from './mapEventInbox.js';
 import { countRunningHandOffs, mapMatchesRepositorySearch, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml } from './repositoryView.js';
 import type { RepositoryHandOffStatus } from './repositoryView.js';
 
@@ -37,6 +38,7 @@ const els = {
 };
 
 const handOffSurface = mountHandOffs();
+mountMapEventInbox();
 let homeHandOffHistoryKey = '';
 
 function renderHomeHandOffHistory(records: readonly HandOffStatusDto[]): void {

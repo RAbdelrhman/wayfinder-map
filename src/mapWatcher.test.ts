@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MapWatcher, NUDGE_GAP_MS } from './mapWatcher.js';
 import type { MapRead, MapWatchReader, PullRequestRead } from './mapWatcher.js';
 import type { MapEvent, RateLimit, WatchedPullRequest, WatchedTicket } from './mapWatch.js';
+import type { MapWatchState } from './mapWatchStore.js';
 import type { TicketState } from './types.js';
 
 const INTERVAL = 120_000;
@@ -282,6 +283,63 @@ describe('MapWatcher', () => {
     expect(watcher.history('O/R', 121).map((event) => event.id)).toEqual([1, 2]);
     expect(watcher.history('o/r', 121, 1).map((event) => event.type)).toEqual(['ticket-next']);
     expect(watcher.history('o/r', 35)).toEqual([]);
+    watcher.close();
+  });
+
+  it('keeps every open map watched and stops only the map removed from the watch set', async () => {
+    const fake = fakeReader();
+    fake.changed([ticket(1, 'claimed')]);
+    fake.changed([ticket(2, 'frontier')]);
+    const watcher = make(fake.reader);
+    const stopped = vi.fn();
+    watcher.watch('o/r', 121, () => undefined);
+    watcher.watch('o/r', 35, () => undefined, stopped);
+    await vi.advanceTimersByTimeAsync(0);
+
+    watcher.reconcile('o/r', new Set([121]));
+    expect(stopped).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+
+    expect(fake.reader.mapReads).toBe(3);
+    watcher.close();
+  });
+
+  it('restores each saved snapshot and catches up with away events before resuming the interval', async () => {
+    const fake = fakeReader();
+    fake.changed([ticket(1, 'done'), ticket(2, 'frontier')], 'W/"new"');
+    const saved: { state: MapWatchState | null } = { state: null };
+    const stateStore = {
+      load: async (): Promise<MapWatchState> => ({
+        nextEventId: 4,
+        maps: [{
+          repo: 'o/r',
+          mapNumber: 121,
+          etag: 'W/"old"',
+          tickets: [ticket(1, 'claimed'), ticket(2, 'blocked')],
+          history: [],
+          pullRequestsRead: [],
+          lastPolledAt: Date.now() - INTERVAL * 2,
+        }],
+      }),
+      save: async (state: MapWatchState): Promise<void> => { saved.state = state; },
+    };
+    const watcher = new MapWatcher(fake.reader, { intervalMs: INTERVAL, now: () => Date.now(), stateStore });
+    await watcher.restore();
+    const events: MapEvent[] = [];
+    watcher.watch('o/r', 121, (event) => events.push(event));
+    await watcher.catchUp('o/r');
+
+    expect(fake.etags).toEqual(['W/"old"']);
+    expect(events.map((event) => [event.id, event.type, event.whileYouWereAway])).toEqual([
+      [4, 'ticket-closed', true],
+      [5, 'ticket-next', true],
+    ]);
+    expect(saved.state?.maps[0]).toMatchObject({
+      repo: 'o/r',
+      mapNumber: 121,
+      etag: 'W/"new"',
+      tickets: [{ number: 1, state: 'done' }, { number: 2, state: 'frontier' }],
+    });
     watcher.close();
   });
 

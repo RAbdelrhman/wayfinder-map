@@ -33,6 +33,7 @@ import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { FOG_KEY_ROW, PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
 import { mountSettings } from './settings.js';
+import { mountMapEventInbox } from './mapEventInbox.js';
 import { bindPan } from './pan.js';
 import { nextTabIndex, tabAttrs, tabPanelAttrs } from './tabs.js';
 import type { NavigationController, NavigationView } from './navigation.js';
@@ -163,6 +164,7 @@ let briefSection: keyof MapSections = 'destination';
 let query = '';
 let navigation: NavigationController | null = null;
 const handOffSurface = mountHandOffs();
+const mapEventInbox = mountMapEventInbox();
 let handOffRecords: readonly HandOffStatusDto[] = [];
 let handOffVisualKey = '';
 
@@ -219,6 +221,8 @@ handOffSurface.subscribe((records) => {
 function rememberMapOpen(repo: string, mapNumber: number): void {
   try {
     recordMapOpened(repo, mapNumber, Date.now(), localStorage);
+    const map = snapshot?.maps.find((candidate) => candidate.number === mapNumber);
+    if (map !== undefined && map.open && map.settled === null) mapEventInbox.openMap(repo, mapNumber);
   } catch {
     // Recency is optional and must not block opening a map.
   }
@@ -315,6 +319,7 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
         return false;
       }
       snapshot = body as MapSnapshot;
+      mapEventInbox.reconcileSnapshot(snapshot);
       const currentRoute = parseRepoPagePath(window.location.pathname);
       const routedMap = currentRoute?.mapNumber === null
         ? -1

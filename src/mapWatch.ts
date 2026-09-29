@@ -31,7 +31,7 @@ export type MapChange = { ticket: { number: number; title: string } } & (
 export type MapEventType = MapChange['type'];
 
 /** A change on a watched map, as the server sends it to the page. */
-export type MapEvent = MapChange & { id: number; repo: string; mapNumber: number; at: string };
+export type MapEvent = MapChange & { id: number; repo: string; mapNumber: number; at: string; whileYouWereAway?: true };
 
 /** Everything that changed on a map between two reads, ticket changes before pull request changes. */
 export function diffMap(previous: readonly WatchedTicket[], next: readonly WatchedTicket[]): MapChange[] {
