@@ -15,12 +15,20 @@
       <div class="main">
         <header class="topbar map-topbar" id="topbar">
           <div class="nav-topbar" id="nav-topbar"></div>
+          <button type="button" class="critical-count" id="critical-path" aria-pressed="false" hidden></button>
           <span class="topbar-spacer"></span>
           <div class="notification-anchor">
             <button type="button" class="notification-trigger" id="notification-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="notification-panel" aria-label="Notifications" title="Notifications"><span data-icon="bell" aria-hidden="true"></span><span class="notification-count" id="notification-count" hidden></span></button>
             <section class="notification-panel" id="notification-panel" role="dialog" aria-labelledby="notification-title" hidden>
               <header class="notification-panel-head"><h2 id="notification-title">Notifications</h2><button type="button" class="handoff-close" data-notification-close aria-label="Close notifications">×</button></header>
               <div class="notification-body" id="notification-body"></div>
+            </section>
+          </div>
+          <div class="map-inbox-anchor" id="map-inbox-anchor">
+            <button type="button" class="map-inbox-trigger" id="map-inbox-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="map-inbox-list" aria-label="Map activity inbox"><span data-icon="inbox" aria-hidden="true"></span><span class="map-inbox-label">Inbox</span><span class="map-inbox-count" id="map-inbox-count" hidden></span></button>
+            <section class="map-inbox-list" id="map-inbox-list" role="dialog" aria-labelledby="map-inbox-title" hidden>
+              <header class="map-inbox-head"><div><h2 id="map-inbox-title">Map activity</h2><p id="map-inbox-summary">Changes on maps you have opened</p></div><button type="button" class="map-inbox-clear" id="map-inbox-clear">Clear</button><button type="button" class="handoff-close" id="map-inbox-close" aria-label="Close inbox">×</button></header>
+              <div class="map-inbox-body" id="map-inbox-body"></div>
             </section>
           </div>
           <div class="handoff-anchor" id="handoff-anchor" hidden>
@@ -38,6 +46,7 @@
           <button type="button" class="primary map-start" id="map-start" hidden><span data-icon="play"></span><span class="topbar-action-label"></span></button>
         </header>
         <span class="sr-only" id="handoff-announcement" role="status" aria-live="polite"></span>
+        <span class="sr-only" id="map-inbox-announcement" role="status" aria-live="polite"></span>
 
         <aside class="unblocked-notice" id="unblocked-notice" aria-label="Tickets ready to start" aria-live="polite" hidden></aside>
 
@@ -83,7 +92,7 @@
       </div>
     </div>
 
-    <div class="hovercard" id="hovercard" aria-hidden="true"></div>
+    <div class="hovercard" id="hovercard" aria-hidden="true" inert></div>
 
     <dialog class="dialog" id="models-dialog" aria-labelledby="models-title">
       <form method="dialog">

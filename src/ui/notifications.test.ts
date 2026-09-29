@@ -13,7 +13,7 @@ function ciEvent(pullRequestChanges: Partial<WatchedPullRequest> = {}): Extract<
     at: '2026-09-29T12:00:00.000Z',
     ticket: { number: 11, title: 'Retire API agents' },
     type: 'ci-changed',
-    pullRequest: { number: 12, url: 'https://github.com/octo/repo/pull/12', state: 'open', isDraft: false, checks: 'failing', review: 'review_required', ...pullRequestChanges },
+    pullRequest: { number: 12, url: 'https://github.com/octo/repo/pull/12', state: 'open', draft: false, checks: 'failing', review: 'review_required', ...pullRequestChanges },
     from: 'pending',
     to: 'failing',
   };
@@ -32,10 +32,12 @@ describe('map notification events', () => {
       from: null,
       to: 'review_required',
     };
-    const draft: Extract<MapEvent, { type: 'review-changed' }> = { ...ready, pullRequest: { ...ready.pullRequest, isDraft: true } };
+    const draft: Extract<MapEvent, { type: 'review-changed' }> = { ...ready, pullRequest: { ...ready.pullRequest, draft: true } };
+    const draftRemoved: Extract<MapEvent, { type: 'pr-draft-changed' }> = { ...ready, type: 'pr-draft-changed', from: true, to: false };
 
     expect(mapEventNotification(ready, 'Roadmap')).toMatchObject({ kind: 'reviewReady' });
     expect(mapEventNotification(draft, 'Roadmap')).toBeNull();
+    expect(mapEventNotification(draftRemoved, 'Roadmap')).toMatchObject({ kind: 'reviewReady' });
   });
 });
 
@@ -82,6 +84,7 @@ describe('prototype review notifications', () => {
       outside: [],
       criticalPath: { tickets: [], remaining: 0 },
       stalled: [],
+      pullRequests: [],
       settled: null,
       ticketsLoaded: true,
     };

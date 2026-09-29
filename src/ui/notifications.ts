@@ -44,7 +44,7 @@ export function kindForMapEvent(event: MapEvent): NotificationKind | null {
   if (event.type === 'ticket-next') return 'unblocked';
   if (event.type === 'ci-changed' && event.pullRequest.checks === 'failing') return 'failingCi';
   if (
-    (event.type === 'pr-opened' || event.type === 'ci-changed' || event.type === 'review-changed') &&
+    (event.type === 'pr-opened' || event.type === 'pr-draft-changed' || event.type === 'ci-changed' || event.type === 'review-changed') &&
     reviewIsReady(event.pullRequest)
   ) {
     return 'reviewReady';
@@ -53,7 +53,7 @@ export function kindForMapEvent(event: MapEvent): NotificationKind | null {
 }
 
 function reviewIsReady(pullRequest: Extract<MapEvent, { pullRequest: unknown }>['pullRequest']): boolean {
-  return pullRequest.state === 'open' && pullRequest.isDraft === false && pullRequest.checks === 'passing' && pullRequest.review === 'review_required';
+  return pullRequest.state === 'open' && pullRequest.draft === false && pullRequest.checks === 'passing' && pullRequest.review === 'review_required';
 }
 
 export function mapEventNotification(event: MapEvent, mapTitle: string): NewInboxNotification | null {

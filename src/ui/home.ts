@@ -22,12 +22,14 @@ import type { NavigationController, NavigationPage } from './navigation.js';
 import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
 import { homeLoadingMarkup, readHomeShape, rememberHomeShape, renderHomeLanding } from './homeLanding.js';
 import { handOffCardHtml, handOffPresentation, homeHandOffHistoryHtml, mountHandOffs, recentHandOffs } from './handOffs.js';
+import { mountMapEventInbox } from './mapEventInbox.js';
 import { countRunningHandOffs, mapMatchesRepositorySearch, needsYouTicketNumbers, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml } from './repositoryView.js';
 import type { RepositoryHandOffStatus } from './repositoryView.js';
-import { desktopNotificationFor, handOffTransitionNotifications, mountNotificationInbox } from './notifications.js';
+import { desktopNotificationFor, handOffTransitionNotifications, mapEventNotification, mountNotificationInbox } from './notifications.js';
 import type { NewInboxNotification } from './notifications.js';
 import { DEFAULT_NOTIFICATION_SETTINGS, readNotificationSettings } from '../notificationTypes.js';
 import type { NotificationSettings } from '../notificationTypes.js';
+import type { MapEvent } from '../mapWatch.js';
 
 function need<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -42,6 +44,13 @@ const els = {
 
 const handOffSurface = mountHandOffs();
 const notificationInbox = mountNotificationInbox();
+mountMapEventInbox((event: MapEvent) => {
+  const openMap = repositoryPageCards?.repo.toLowerCase() === event.repo.toLowerCase()
+    ? repositoryPageCards.maps.find((map) => map.number === event.mapNumber)
+    : undefined;
+  const notification = mapEventNotification(event, openMap?.title ?? 'Map #' + String(event.mapNumber));
+  if (notification !== null) void publishNotification(notification);
+});
 let homeHandOffHistoryKey = '';
 let repositoryPageCards: { repo: string; root: HTMLElement; maps: readonly WayfinderMap[] } | null = null;
 let previousHomeHandOffRecords: readonly HandOffStatusDto[] | null = null;
