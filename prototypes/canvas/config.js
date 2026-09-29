@@ -25,6 +25,46 @@ window.CANVAS = {
 
   pages: [
     {
+      title: 'A + C: the pick',
+      round: 2,
+      sections: [
+        {
+          title: 'A with the auto map in the map menu',
+          note: 'What you picked: A (topbar Start next, confirm dialog, progress in the button), with the auto map moved to C’s place. How Auto rates tickets is a Setting.',
+          items: [
+            {
+              id: 'AC',
+              name: 'Confirm list, Auto and auto map on',
+              src: 'variants/start-ac.html?phase=confirm&auto=1&automap=1',
+              note: {
+                idea:
+                  'A’s dialog, unchanged, except that the auto-map switch is gone from its foot. The foot says whether the auto map is on and points to the map menu. Under Auto, a line says how tickets are rated (logic only, or a model you choose) and that it is set in Settings.',
+                pros: ['One place to start a batch, one place to set the map up', 'No extra topbar button'],
+                cons: ['The auto map is one menu away from Start next'],
+                basedOn: ['A', 'C-automap'],
+                disposition: 'keep',
+                feedback: 'Combines A (kept) and C-automap (combine), as the user agreed on 29 Sep 2026.',
+              },
+            },
+            {
+              id: 'AC-menu',
+              name: 'Running, auto map in the map menu',
+              src: 'variants/start-ac.html?phase=running&automap=1&menu=1',
+              note: {
+                idea:
+                  'The map-name menu holds the auto-map switch and what it does. While it is on, the map name carries a blue “auto” mark and next task/research cards say “auto map will start this”. Start next shows batch progress in the button, as in A.',
+                pros: ['The mark travels with the map name to every view of the map'],
+                cons: ['On narrow windows the map name truncates further while progress shows'],
+                basedOn: ['A-running', 'C-automap'],
+                disposition: 'keep',
+                feedback: 'Combines A (kept) and C-automap (combine), as the user agreed on 29 Sep 2026.',
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
       title: 'Directions',
       round: 'Baseline',
       sections: [
@@ -48,6 +88,9 @@ window.CANVAS = {
                   'Covers the map, so you can’t see where a ticket sits while you pick',
                   'The auto map hides in a dialog you only see when you press Start next',
                 ],
+                disposition: 'keep',
+                feedback:
+                  'User (29 Sep 2026, reviewed from screenshots on a phone): "I still like A." Added: how Auto rates a ticket is a Setting, either logic only (no model: ticket type, body length, files mentioned, blockers) or a model the user chooses. Each row’s reason says which one made the pick.',
               },
             },
             {
@@ -95,6 +138,8 @@ window.CANVAS = {
                   'Clicking a card switches to the Ticket tab, so you lose your place',
                   'A third tab competes with Brief and Ticket',
                 ],
+                feedback:
+                  'Not chosen (user, 29 Sep 2026): it fits the page better, but the panel area feels cramped, and tickets that become next could be missed while the panel shows another tab.',
               },
             },
             {
@@ -140,6 +185,7 @@ window.CANVAS = {
                   'Auto’s reasons and per-ticket tier overrides need the dock’s list',
                   'A new mode on the canvas to learn',
                 ],
+                feedback: 'Not chosen as a whole (user, 29 Sep 2026). Only its auto-map placement (C-automap) is taken, combined into A.',
               },
             },
             {
@@ -161,6 +207,8 @@ window.CANVAS = {
                   'The auto map is a switch in the map’s own menu (the map name in the breadcrumb), next to its other map-wide actions. While on, the map name carries a blue "auto" mark and next task/research cards say "auto map will start this".',
                 pros: ['It reads as a property of the map, which is what it is', 'Visible from every view of the map, through the name'],
                 cons: ['The map menu is not somewhere you look for this today'],
+                disposition: 'combine',
+                feedback: 'User agreed (29 Sep 2026): put the auto-map switch in the map-name menu with the “auto” mark on the map name, combined into A. No topbar tag, since the topbar is already crowded. Everything else stays as A.',
               },
             },
             {

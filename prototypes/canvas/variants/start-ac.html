@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A + C · Dialog, auto map in the map menu</title>
+    <!-- PROTOTYPE (#163), round 2, A + C: A as kept (topbar Start next, confirm dialog, progress in the button), with the auto map moved to C's place: a switch in the map-name menu and an "auto" mark on the map name. No topbar tag, and no switch in the dialog. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="start.css" />
+    <style>
+      .a-count {
+        margin-left: 2px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface-1) 22%, transparent);
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* The confirm dialog: the app's .dialog, wider, with a scrolling list and a fixed foot. */
+      .a-dialog {
+        width: min(640px, calc(100vw - 32px));
+        max-height: min(760px, calc(100dvh - 48px));
+        padding: 0;
+        overflow: hidden;
+      }
+      .a-dialog[open] {
+        display: flex;
+        flex-direction: column;
+      }
+      .a-dialog .dialog-head {
+        margin: 0;
+        padding: 14px 16px 10px;
+      }
+      .a-dialog .dialog-head p {
+        margin: 2px 0 0;
+        color: var(--text-secondary);
+        font-size: 12.5px;
+      }
+      .a-top {
+        padding: 0 16px 12px;
+        border-bottom: 1px solid var(--hairline);
+      }
+      .a-body {
+        min-height: 0;
+        overflow: auto;
+        padding: 0 16px 8px;
+      }
+      .a-foot {
+        display: grid;
+        gap: 10px;
+        padding: 12px 16px 14px;
+        border-top: 1px solid var(--hairline);
+        background: var(--surface-1);
+      }
+      .a-automap {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--gridline);
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .a-go {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+      }
+      .a-go .grow {
+        flex: 1;
+      }
+
+      /* While Auto map is on: a tag in the topbar, next to Start next. */
+      .a-autotag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 30px;
+        padding: 0 10px;
+        border: 1px solid color-mix(in srgb, var(--state-claimed) 40%, var(--hairline));
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--state-claimed) 8%, var(--surface-1));
+        color: var(--accent-text);
+        font-size: 12.5px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .a-autotag .i {
+        width: 13px;
+        height: 13px;
+      }
+
+      /* Batch progress replaces the button's label. */
+      .a-progress {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 32px;
+        padding: 0 12px;
+        border: 1px solid var(--hairline);
+        border-radius: 8px;
+        background: var(--surface-1);
+        color: var(--text-primary);
+        font-size: 12.5px;
+        white-space: nowrap;
+      }
+      .a-progress .st-bar {
+        width: 64px;
+      }
+      .a-progress.is-stopped {
+        border-color: color-mix(in srgb, var(--state-failed) 50%, var(--hairline));
+        color: var(--state-failed);
+        font-weight: 600;
+      }
+      .a-progress .i {
+        width: 13px;
+        height: 13px;
+      }
+      .a-anchor {
+        position: relative;
+      }
+      .a-pop {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        z-index: 40;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 10px;
+        width: 380px;
+        padding: 12px 14px;
+        border: 1px solid var(--hairline);
+        border-radius: 14px;
+        background: var(--surface-1);
+        box-shadow: var(--shadow);
+      }
+      .a-pop h2 {
+        margin: 0;
+        font-size: 14px;
+      }
+      .a-pop ol {
+        display: grid;
+        gap: 6px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        font-size: 12.5px;
+      }
+      .a-pop li {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .a-pop li .t {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        color: var(--text-secondary);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .a-pop .row {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      /* Auto map: a setting in the map menu; the map's name carries a mark while it is on. */
+      .c-anchor {
+        display: contents;
+      }
+      .nav-scope-control {
+        position: relative;
+      }
+      .c-automark {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin-left: 2px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--state-claimed) 14%, transparent);
+        color: var(--accent-text);
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .c-automark .i {
+        width: 11px;
+        height: 11px;
+      }
+      .c-menu {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        z-index: 40;
+        display: grid;
+        gap: 6px;
+        width: 340px;
+        padding: 10px 12px;
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        background: var(--surface-1);
+        box-shadow: var(--shadow);
+      }
+      .c-menu p {
+        margin: 0 0 4px 42px;
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+      .c-menu .menu-sep {
+        height: 1px;
+        margin: 2px 0;
+        background: var(--gridline);
+      }
+      .c-menu .c-fake {
+        padding: 6px 4px;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      .c-automark-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--accent-text);
+      }
+      .c-automark-meta .i {
+        width: 11px;
+        height: 11px;
+      }
+      .a-autonote {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="start.js"></script>
+    <script>
+      const { state, icon, esc, plan, counts, batch, batchCounts, rowHtml, autoControl, capLine, autoMapSwitch, AUTOMAP_HINT, pill, MAP } = START;
+      state.ui.pop = new URLSearchParams(location.search).get('pop') === '1';
+      state.ui.menu = new URLSearchParams(location.search).get('menu') === '1';
+
+      function scope() {
+        const mark = state.autoMap ? `<span class="c-automark" title="${esc(AUTOMAP_HINT)}">${icon('bolt')}auto</span>` : '';
+        return `<div class="c-anchor"><button type="button" class="scope" data-action="menu" aria-expanded="${state.ui.menu}" aria-haspopup="true">${START.ring()}<span class="t">#${MAP.number} ${esc(MAP.title)}</span>${mark}${icon('chevron')}</button>
+          ${state.ui.menu ? `<div class="c-menu" role="group" aria-label="Map options">
+            <div class="c-fake">Switch map…</div><div class="menu-sep"></div>
+            ${autoMapSwitch('Auto map')}<p>${AUTOMAP_HINT}</p>
+            <div class="menu-sep"></div><div class="c-fake">Open on GitHub ↗</div></div>` : ''}</div>`;
+      }
+
+      function bar(b) {
+        const w = (k) => (100 * k) / b.total;
+        return `<span class="st-bar" aria-hidden="true"><i class="is-run" style="width:${w(b.running)}%"></i><i class="is-failed" style="width:${w(b.failed)}%"></i><i class="is-queue" style="width:${w(b.queued)}%"></i></span>`;
+      }
+
+      function startButton() {
+        const c = counts();
+        const tag = '';
+        if (state.phase === 'running' || state.phase === 'stopped') {
+          const b = batchCounts();
+          const label = state.phase === 'stopped'
+            ? `${icon('alert')}Stopped: usage limit`
+            : `${bar(b)}<span><b>${b.running}</b> running · <b>${b.queued}</b> queued</span>`;
+          return `${tag}<div class="a-anchor"><button type="button" class="a-progress${state.phase === 'stopped' ? ' is-stopped' : ''}" data-action="pop" aria-expanded="${state.ui.pop}">${label}${icon('chevron')}</button>${state.ui.pop ? popover() : ''}</div>`;
+        }
+        return `${tag}<button type="button" class="primary map-start" data-action="open" aria-haspopup="dialog">${icon('play')}<span class="topbar-action-label">Start next</span><span class="a-count">${c.startable}</span></button>`;
+      }
+
+      function popover() {
+        const rows = batch();
+        const stopped = state.phase === 'stopped';
+        return `<div class="a-pop" role="dialog" aria-label="Start next batch">
+          <h2>${stopped ? 'Start next stopped' : 'Start next'} · #${MAP.number}</h2>
+          ${stopped ? `<div class="st-stop">${icon('alert')}<p><b>Claude hit its usage limit on #216.</b> The batch stopped. #214 is still running; #218, #220 and #221 went back to next.<span class="st-muted">Resets at 4:00 PM. Start again, or switch their tier in the list.</span></p></div>` : ''}
+          <ol>${rows.map((r) => `<li>${pill({ state: r.run.k === 'back' ? 'merged' : r.run.k, label: r.run.w })}<span class="t">#${r.t.n} ${esc(r.t.title)}</span></li>`).join('')}</ol>
+          <div class="row">${stopped ? `<button type="button" class="ghost" data-action="clear">Dismiss</button><button type="button" class="primary" data-action="retry">${icon('refresh')}Start again…</button>` : `<button type="button" class="ghost" data-action="clear">Stop the queue</button>`}</div>
+        </div>`;
+      }
+
+      function dialog() {
+        if (state.phase !== 'confirm') return '';
+        const p = plan();
+        const c = counts();
+        const group = (title, rows) => (rows.length ? `<h3 class="st-group">${title}</h3><ul class="st-list">${rows.map((r) => rowHtml(r)).join('')}</ul>` : '');
+        return `<dialog class="dialog a-dialog" aria-labelledby="a-title">
+          <div class="dialog-head"><div><h2 id="a-title">Start next on #${MAP.number}</h2><p>${c.startable} tickets are ready to hand off to T3 Code.</p></div><button type="button" class="detail-close" data-action="cancel" aria-label="Close">×</button></div>
+          <div class="a-top">${autoControl()}${state.auto ? `<p class="a-autonote" style="margin:6px 0 0">Auto rates tickets with <b>logic only</b> (no model). Change it in Settings, to logic only or a model you choose.</p>` : ''}</div>
+          <div class="a-body" data-keep-scroll>
+            ${group('Ready', p.filter((r) => !r.hitl && r.status.kind !== 'skip'))}
+            ${group('Needs you', p.filter((r) => r.hitl))}
+            ${group('Skipped', p.filter((r) => r.status.kind === 'skip'))}
+          </div>
+          <div class="a-foot">
+            <p class="a-autonote">${state.autoMap ? 'Auto map is on for this map: task and research tickets start as they become next.' : 'Auto map is off.'} Change it in the map menu.</p>
+            <div class="a-go"><span class="grow">${capLine()}</span><button type="button" class="ghost" data-action="cancel">Cancel</button><button type="button" class="primary" data-action="go"${c.picked ? '' : ' disabled'} data-autofocus>${icon('play')}Start ${c.picked}</button></div>
+          </div>
+        </dialog>`;
+      }
+
+      START.start({
+        scope,
+        startButton,
+        node: (t) =>
+          state.autoMap && t.state === 'frontier' && !START.HITL(t) && !t.handOff && state.phase !== 'running' && state.phase !== 'stopped'
+            ? { meta: `<span class="c-automark-meta">${icon('bolt')}auto map will start this</span>`, aria: ['auto map will start this'] }
+            : {},
+        overlay: dialog,
+        afterPaint: () => {
+          const d = document.querySelector('.a-dialog');
+          if (d && !d.open) {
+            d.showModal();
+            d.addEventListener('cancel', (e) => {
+              e.preventDefault();
+              state.phase = 'idle';
+              START.paint();
+            });
+          }
+        },
+        action: (name) => {
+          if (name === 'pop') state.ui.pop = !state.ui.pop;
+          if (name === 'menu') state.ui.menu = !state.ui.menu;
+          if (name === 'go') state.ui.pop = false;
+          if (name === 'clear' || name === 'retry') state.ui.pop = false;
+        },
+      });
+    </script>
+  </body>
+</html>
