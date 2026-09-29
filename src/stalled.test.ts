@@ -185,7 +185,7 @@ function mapTicket(number: number, state: 'claimed' | 'frontier', updatedAt: str
 }
 
 describe('markStalls', () => {
-  const snapshot = (maps: WayfinderMap[]): MapSnapshot => ({ repo: 'o/r', fetchedAt: NOW.toISOString(), maps, hiddenMaps: 0, warnings: [] });
+  const snapshot = (maps: WayfinderMap[]): MapSnapshot => ({ repo: 'o/r', fetchedAt: NOW.toISOString(), maps, hiddenMaps: 0, publicMaps: [], warnings: [] });
 
   it('marks each loaded map, asking GitHub for branches and PRs only when something looks stalled', async () => {
     const activity = vi.fn(() => Promise.resolve(new Map([[2, { pullRequest: true, lastCommitAt: null }]])));

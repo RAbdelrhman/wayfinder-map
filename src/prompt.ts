@@ -55,21 +55,30 @@ export const DEFAULT_NEW_MAP_TEMPLATE = `Start a new wayfinder map in {{repo}}.
 What the user wants to accomplish:
 {{goal}}
 
-Run the wayfinder workflow to turn this into a map:
+Turn this into a map. A map is plain GitHub issues, so no particular skill is
+needed. If a wayfinder skill is installed you may use it, as long as the issues
+come out in the format below.
 1. Interview the user as needed, one question at a time with your recommended
    answer, until the destination, scope, decisions so far, and fog are clear.
+   Also ask whether the map should stay private (the default: only its author
+   sees it in Wayfinder) or be public, so others in the repository can follow it.
    The user is in this thread; never invent their answers.
 2. Draft the map and its tickets and show them to the user before creating
    anything. Tickets are research, prototype, grilling, or task, each one small
    enough to close on its own, with the tickets that block it named.
-3. Once the user agrees, create the GitHub issues with \`gh\`:
-   - one map issue labeled \`{{mapLabel}}\` with Destination, Notes,
-     Decisions so far, Fog, and Out of scope sections;
-   - one issue per ticket labeled \`{{typePrefix}}<type>\`, added as a sub-issue
-     of the map, with its blockers recorded as blocked-by relationships.
+3. Once the user agrees, create the GitHub issues with \`gh\`, creating any
+   missing labels first:
+   - one map issue labeled \`{{mapLabel}}\` whose body has \`## Destination\`,
+     \`## Notes\`, \`## Decisions so far\`, \`## Fog\` and \`## Out of scope\`
+     sections. If the user chose public, add a line reading exactly
+     \`Visibility: public\` to the body; leave it out for a private map;
+   - one issue per ticket labeled \`{{typePrefix}}<type>\` with \`## Question\`
+     and \`## Done when\` sections, added as a sub-issue of the map, with its
+     blockers recorded as GitHub blocked-by relationships.
    Use the user's goal as the map issue title, normalizing whitespace only.
    Wayfinder uses that title to move the planning page to the new map route.
-4. Reply with the map's link and the ticket numbers.
+4. Reply with the map's link, whether it is private or public, and the ticket
+   numbers.
 
 Do not start work on any ticket. Planning the map is the whole job here.
 `;

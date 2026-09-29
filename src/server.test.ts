@@ -967,7 +967,7 @@ describe('local clone for a hand-off', () => {
           }),
         );
         const [input] = startThread.mock.calls[0] ?? [];
-        expect(input?.prompt(null)).toContain('Run the wayfinder workflow');
+        expect(input?.prompt(null)).toContain('Turn this into a map.');
       } finally {
         await new Promise<void>((resolve) => running.server.close(() => resolve()));
       }
