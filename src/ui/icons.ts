@@ -52,6 +52,7 @@ export const ALERT = '<path d="m12 3 9 16H3z"/><path d="M12 9v4M12 17h.01"/>';
 export const PLAY = '<path d="M7 4v16l13-8z" fill="currentColor"/>';
 export const COPY = '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>';
 export const INFO = '<circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/>';
+export const INBOX = '<path d="M4 4h16v16H4z"/><path d="M4 13h4l2 3h4l2-3h4"/>';
 export const MINUS = '<path d="M5 12h14"/>';
 export const PLUS = '<path d="M12 5v14M5 12h14"/>';
 /** A tray with a downward arrow: check for or download updates. */

@@ -1,6 +1,7 @@
 import { gh, ghIncludingHeaders, ghProblem, RATE_LIMIT_WARNING } from './github.js';
 import { diffMap, needsPullRequests, nextPollDelay, parseHttpResponse, pullRequestsByTicket, rateLimitOf, watchedTickets } from './mapWatch.js';
 import type { MapEvent, RateLimit, WatchedPullRequest, WatchedTicket } from './mapWatch.js';
+import type { MapWatchStateStore, StoredMapWatch } from './mapWatchStore.js';
 
 /** #122's interval: a `304` is free, and list responses are cached for 60 s anyway. */
 export const WATCH_INTERVAL_MS = 2 * 60 * 1000;
@@ -32,6 +33,7 @@ export interface MapWatchReader {
 export type TrackedPullRequests = (repo: string) => Promise<Map<number, WatchedPullRequest[]>>;
 
 export type MapEventListener = (event: MapEvent) => void;
+export type MapWatchStopListener = () => void;
 
 interface WatchedMap {
   repo: string;
@@ -39,7 +41,7 @@ interface WatchedMap {
   etag: string | null;
   tickets: WatchedTicket[] | null;
   history: MapEvent[];
-  listeners: Set<MapEventListener>;
+  listeners: Map<MapEventListener, MapWatchStopListener | null>;
   timer: NodeJS.Timeout | null;
   /** When `timer` fires, in `now()` milliseconds. */
   dueAt: number;
@@ -53,12 +55,13 @@ interface WatchedMap {
   pollIntervalSeconds: number | null;
   /** Tickets whose pull requests have been read. Each ticket's first read is a baseline, not news. */
   pullRequestsRead: Set<number>;
+  /** A restored map gets one startup read against its saved ticket snapshot. */
+  needsCatchUp: boolean;
 }
 
 /**
- * Re-reads the maps someone is watching and tells them what changed. A map is polled only
- * while it has a listener; its last read and a short history stay, so a page that comes
- * back picks up where it left off.
+ * Re-reads maps the user has opened and tells the page what changed. A map is polled only
+ * while a page is connected; its last read and short history survive a full app restart.
  */
 export class MapWatcher {
   private readonly maps = new Map<string, WatchedMap>();
@@ -67,24 +70,58 @@ export class MapWatcher {
   private readonly intervalMs: number;
   private readonly now: () => number;
   private readonly tracked: TrackedPullRequests | null;
+  private readonly stateStore: MapWatchStateStore | null;
+  private persistTail: Promise<void> = Promise.resolve();
   private nextId = 1;
   private closed = false;
+  private restored = false;
 
   constructor(
     private readonly reader: MapWatchReader = githubMapWatchReader,
-    options: { intervalMs?: number; now?: () => number; trackedPullRequests?: TrackedPullRequests } = {},
+    options: { intervalMs?: number; now?: () => number; trackedPullRequests?: TrackedPullRequests; stateStore?: MapWatchStateStore } = {},
   ) {
     this.intervalMs = options.intervalMs ?? WATCH_INTERVAL_MS;
     this.now = options.now ?? Date.now;
     this.tracked = options.trackedPullRequests ?? null;
+    this.stateStore = options.stateStore ?? null;
   }
 
-  /** Start watching a map for `listener`. Returns the call that stops it. */
-  watch(repo: string, mapNumber: number, listener: MapEventListener): () => void {
+  /** Restore the last saved watch set before the server begins accepting event streams. */
+  async restore(): Promise<void> {
+    if (this.restored) return;
+    this.restored = true;
+    const state = await this.stateStore?.load().catch(() => null);
+    if (state === null || state === undefined) return;
+    this.nextId = Math.max(state.nextEventId, ...state.maps.flatMap((map) => map.history.map((event) => event.id + 1)));
+    for (const stored of state.maps) {
+      const map = this.fromStored(stored);
+      this.maps.set(key(map.repo, map.mapNumber), map);
+    }
+  }
+
+  /** One conditional read per restored map; subsequent reads need a connected page. */
+  async catchUp(repo?: string): Promise<void> {
+    const normalizedRepo = repo?.toLowerCase();
+    for (const map of this.maps.values()) {
+      if (!map.needsCatchUp || map.polling || (normalizedRepo !== undefined && map.repo.toLowerCase() !== normalizedRepo)) continue;
+      if (map.timer !== null) clearTimeout(map.timer);
+      map.timer = null;
+      map.polling = true;
+      map.polledAt = this.now();
+      const delay = await this.poll(map, true);
+      map.polling = false;
+      if (map.listeners.size > 0) this.schedule(map, delay);
+    }
+  }
+
+  /** Start watching a map for `listener`. Returns the call that stops this listener. */
+  watch(repo: string, mapNumber: number, listener: MapEventListener, onStop?: MapWatchStopListener): () => void {
     if (this.closed) return () => undefined;
     const map = this.entry(repo, mapNumber);
-    map.listeners.add(listener);
-    if (map.timer === null && !map.polling) this.schedule(map, 0);
+    map.listeners.set(listener, onStop ?? null);
+    if (map.timer === null && !map.polling && !map.needsCatchUp) {
+      this.schedule(map, map.tickets === null ? 0 : Math.max(0, map.polledAt + this.intervalMs - this.now()));
+    }
     return () => {
       map.listeners.delete(listener);
       if (map.listeners.size === 0 && map.timer !== null) {
@@ -92,6 +129,26 @@ export class MapWatcher {
         map.timer = null;
       }
     };
+  }
+
+  /** Stop a settled or closed map, including its persisted baseline and any open event streams. */
+  stop(repo: string, mapNumber: number): void {
+    const id = key(repo, mapNumber);
+    const map = this.maps.get(id);
+    if (map === undefined) return;
+    if (map.timer !== null) clearTimeout(map.timer);
+    map.timer = null;
+    this.maps.delete(id);
+    for (const onStop of map.listeners.values()) onStop?.();
+    map.listeners.clear();
+    void this.persist();
+  }
+
+  /** Drop watches not present in the repository's latest open, unsettled snapshot. */
+  reconcile(repo: string, activeMaps: ReadonlySet<number>): void {
+    for (const map of this.maps.values()) {
+      if (map.repo.toLowerCase() === repo.toLowerCase() && !activeMaps.has(map.mapNumber)) this.stop(repo, map.mapNumber);
+    }
   }
 
   /**
@@ -131,7 +188,7 @@ export class MapWatcher {
     const id = key(repo, mapNumber);
     let map = this.maps.get(id);
     if (map === undefined) {
-      map = { repo, mapNumber, etag: null, tickets: null, history: [], listeners: new Set(), timer: null, dueAt: 0, polledAt: Number.NEGATIVE_INFINITY, nudged: false, polling: false, failures: 0, pollIntervalSeconds: null, pullRequestsRead: new Set() };
+      map = { repo, mapNumber, etag: null, tickets: null, history: [], listeners: new Map(), timer: null, dueAt: 0, polledAt: Number.NEGATIVE_INFINITY, nudged: false, polling: false, failures: 0, pollIntervalSeconds: null, pullRequestsRead: new Set(), needsCatchUp: false };
       this.maps.set(id, map);
     }
     return map;
@@ -145,7 +202,7 @@ export class MapWatcher {
       map.polling = true;
       map.nudged = false;
       map.polledAt = this.now();
-      void this.poll(map).then((delay) => {
+      void this.poll(map, map.needsCatchUp).then((delay) => {
         map.polling = false;
         const nudged = map.nudged && map.failures === 0;
         map.nudged = false;
@@ -156,12 +213,12 @@ export class MapWatcher {
   }
 
   /** Read the map if the budget allows, and say how long to wait before the next read. */
-  private async poll(map: WatchedMap): Promise<number> {
+  private async poll(map: WatchedMap, whileYouWereAway = false): Promise<number> {
     // The budget is per account, so a low one found by any map holds every map back.
     const wait = nextPollDelay({ intervalMs: 0, now: this.now(), rateLimits: [...this.rateLimits.values()], failures: 0 });
     if (wait > 0) return wait;
     try {
-      await this.read(map);
+      await this.read(map, whileYouWereAway);
       map.failures = 0;
     } catch (error) {
       map.failures += 1;
@@ -177,7 +234,7 @@ export class MapWatcher {
     });
   }
 
-  private async read(map: WatchedMap): Promise<void> {
+  private async read(map: WatchedMap, whileYouWereAway = false): Promise<void> {
     const read = await this.reader.readMap(map.repo, map.mapNumber, map.tickets === null ? null : map.etag);
     this.noteRateLimit(read.rateLimit);
     map.pollIntervalSeconds = read.pollIntervalSeconds;
@@ -208,13 +265,16 @@ export class MapWatcher {
       for (const number of read.keys()) map.pullRequestsRead.add(number);
     }
     map.tickets = tickets;
-    if (previous === null || this.closed) return;
-    const at = new Date(this.now()).toISOString();
-    for (const change of diffMap(previous, tickets)) {
-      const event: MapEvent = { ...change, id: this.nextId++, repo: map.repo, mapNumber: map.mapNumber, at };
-      map.history = [...map.history, event].slice(-HISTORY_SIZE);
-      for (const listener of map.listeners) listener(event);
+    map.needsCatchUp = false;
+    if (previous !== null && !this.closed) {
+      const at = new Date(this.now()).toISOString();
+      for (const change of diffMap(previous, tickets)) {
+        const event: MapEvent = { ...change, id: this.nextId++, repo: map.repo, mapNumber: map.mapNumber, at, ...(whileYouWereAway ? { whileYouWereAway: true } : {}) };
+        map.history = [...map.history, event].slice(-HISTORY_SIZE);
+        for (const listener of map.listeners.keys()) listener(event);
+      }
     }
+    await this.persist();
   }
 
   /** One read per repository per half interval, shared by every map in it. */
@@ -232,6 +292,45 @@ export class MapWatcher {
 
   private noteRateLimit(rateLimit: RateLimit | null): void {
     if (rateLimit !== null) this.rateLimits.set(rateLimit.resource, rateLimit);
+  }
+
+  private fromStored(stored: StoredMapWatch): WatchedMap {
+    return {
+      repo: stored.repo,
+      mapNumber: stored.mapNumber,
+      etag: stored.etag,
+      tickets: stored.tickets,
+      history: stored.history,
+      listeners: new Map(),
+      timer: null,
+      dueAt: 0,
+      polledAt: stored.lastPolledAt,
+      nudged: false,
+      polling: false,
+      failures: 0,
+      pollIntervalSeconds: null,
+      pullRequestsRead: new Set(stored.pullRequestsRead),
+      needsCatchUp: true,
+    };
+  }
+
+  private persist(): Promise<void> {
+    if (this.stateStore === null) return Promise.resolve();
+    const state = {
+      nextEventId: this.nextId,
+      maps: [...this.maps.values()].flatMap((map) => map.tickets === null ? [] : [{
+        repo: map.repo,
+        mapNumber: map.mapNumber,
+        etag: map.etag,
+        tickets: map.tickets,
+        history: map.history,
+        pullRequestsRead: [...map.pullRequestsRead],
+        lastPolledAt: map.polledAt,
+      }]),
+    };
+    const save = this.persistTail.then(() => this.stateStore?.save(state));
+    this.persistTail = save.then(() => undefined, () => undefined);
+    return this.persistTail;
   }
 }
 
