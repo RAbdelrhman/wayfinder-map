@@ -68,6 +68,8 @@ export interface WayfinderMap {
   criticalPath: CriticalPath;
   /** Tickets that have stalled, in map order. The server fills it from hand-offs and the stall settings; see `stalledTickets`. */
   stalled: Stall[];
+  /** Each open ticket's pull request, in map order. The server fills it like `stalled`; see `markPullRequests`. */
+  pullRequests: TicketPullRequest[];
   /** Why and since when the map sits in the Settled section, or null while it is active. */
   settled: MapSettlement | null;
   /** False for a settled map whose tickets were not read, to save GitHub calls until it is opened. */
@@ -125,6 +127,35 @@ export interface Stall {
   kind: StallKind;
   /** When the ticket went quiet, as an ISO timestamp. */
   since: string;
+}
+
+export type ChecksState = 'passing' | 'failing' | 'pending';
+export type ReviewState = 'approved' | 'changes_requested' | 'review_required';
+
+/** How many of a pull request's checks passed, failed, or are still running. */
+export interface CheckCounts {
+  passed: number;
+  failed: number;
+  pending: number;
+}
+
+/** A pull request's state, CI and review, from T3 Code's PR snapshot or GitHub (#135, #142). */
+export interface PullRequestState {
+  number: number;
+  url: string;
+  state: 'open' | 'closed' | 'merged';
+  checks: ChecksState | null;
+  review: ReviewState | null;
+  draft?: boolean;
+  /** Only GitHub reports these; T3 Code's snapshot does not. */
+  checkCounts?: CheckCounts | null;
+  /** Who approved or asked for changes, or whose review is requested. GitHub only. */
+  reviewer?: string | null;
+}
+
+/** The pull request a ticket's card and panel show (#130). */
+export interface TicketPullRequest extends PullRequestState {
+  ticket: number;
 }
 
 /** A prototype branch belonging to one of a map's tickets. */

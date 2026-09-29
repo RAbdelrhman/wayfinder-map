@@ -386,3 +386,26 @@ describe('MapWatcher', () => {
     watcher.close();
   });
 });
+
+describe('MapWatcher.ticketPullRequests (#130)', () => {
+  it('takes T3 Code first and reads GitHub only for a claimed ticket T3 Code has no snapshot for', async () => {
+    const fake = fakeReader();
+    fake.setPullRequests([[1, [pr(10, { checks: 'failing' })]], [2, [pr(20)]]]);
+    const tracked = new Map([[1, [pr(10, { checks: 'passing' })]]]);
+    const watcher = new MapWatcher(fake.reader, { trackedPullRequests: async () => tracked });
+
+    const trackedOnly = await watcher.ticketPullRequests('o/r', [{ number: 1, state: 'claimed' }, { number: 2, state: 'frontier' }]);
+    expect(fake.reader.pullRequestReads).toBe(0);
+    expect(trackedOnly.get(1)?.[0]?.checks).toBe('passing');
+
+    const both = await watcher.ticketPullRequests('o/r', [{ number: 1, state: 'claimed' }, { number: 2, state: 'claimed' }]);
+    expect(fake.reader.pullRequestReads).toBe(1);
+    expect(both.get(1)?.[0]?.checks).toBe('passing');
+    expect(both.get(2)?.[0]?.number).toBe(20);
+
+    // The repository read is shared, so asking again soon costs nothing.
+    await watcher.ticketPullRequests('o/r', [{ number: 2, state: 'claimed' }]);
+    expect(fake.reader.pullRequestReads).toBe(1);
+    watcher.close();
+  });
+});

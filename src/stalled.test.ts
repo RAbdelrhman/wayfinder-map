@@ -175,6 +175,7 @@ function map(number: number, tickets: WayfinderMap['tickets'], ticketsLoaded = t
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
     stalled: [],
+    pullRequests: [],
     settled: null,
     ticketsLoaded,
   };
