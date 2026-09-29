@@ -25,6 +25,8 @@ export interface Ticket {
   /** Of `blockedBy`, the ones still open. */
   openBlockers: number[];
   state: TicketState;
+  /** When the issue last changed (a comment, claim or edit), or null when GitHub did not say. */
+  updatedAt: string | null;
 }
 
 /** The prose sections a map body carries, by the headings the wayfinder flow writes. */
@@ -64,6 +66,8 @@ export interface WayfinderMap {
   outside: OutsideTicket[];
   /** The chain of tickets most of what is left waits on. See `criticalPath`. */
   criticalPath: CriticalPath;
+  /** Tickets that have stalled, in map order. The server fills it from hand-offs and the stall settings; see `stalledTickets`. */
+  stalled: Stall[];
   /** Why and since when the map sits in the Settled section, or null while it is active. */
   settled: MapSettlement | null;
   /** False for a settled map whose tickets were not read, to save GitHub calls until it is opened. */
@@ -101,6 +105,26 @@ export interface CriticalPath {
   tickets: number[];
   /** Of `tickets`, how many are still open. */
   remaining: number;
+}
+
+/** A claim nobody touched, or a hand-off that died and was never retried (#125). */
+export type StallKind = 'untouched-claim' | 'dead-hand-off';
+
+/** How many days before each kind counts as stalled. Set in Settings, 7 days each by default. */
+export interface StallSettings {
+  untouchedClaimDays: number;
+  deadHandOffDays: number;
+}
+
+/** The day counts Settings offers for each kind. */
+export const STALL_DAY_CHOICES = [3, 7, 14, 30] as const;
+export const DEFAULT_STALL_SETTINGS: StallSettings = { untouchedClaimDays: 7, deadHandOffDays: 7 };
+
+export interface Stall {
+  ticket: number;
+  kind: StallKind;
+  /** When the ticket went quiet, as an ISO timestamp. */
+  since: string;
 }
 
 /** A prototype branch belonging to one of a map's tickets. */

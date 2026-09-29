@@ -80,6 +80,7 @@ function map(number: number): WayfinderMap {
     tickets: [],
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
+    stalled: [],
     settled: null,
     ticketsLoaded: true,
   };

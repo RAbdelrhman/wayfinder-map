@@ -22,7 +22,7 @@ function arcs(svg: string): number[] {
 }
 
 function ticket(number: number, state: Ticket['state']): Ticket {
-  return { number, title: `#${String(number)}`, url: '', body: '', type: 'task', labels: [], open: state !== 'done', assignee: null, blockedBy: [], openBlockers: [], state };
+  return { number, title: `#${String(number)}`, url: '', body: '', type: 'task', labels: [], open: state !== 'done', assignee: null, blockedBy: [], openBlockers: [], state, updatedAt: null };
 }
 
 function fog(number: number, state: Ticket['state']): OutsideTicket {

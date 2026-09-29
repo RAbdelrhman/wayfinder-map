@@ -21,6 +21,7 @@ const map: WayfinderMap = {
   tickets: [],
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
+  stalled: [],
   settled: null,
   ticketsLoaded: true,
 };
@@ -37,6 +38,7 @@ const ticket: Ticket = {
   blockedBy: [27],
   openBlockers: [27],
   state: 'blocked',
+  updatedAt: null,
 };
 
 describe('renderTemplate', () => {
@@ -178,7 +180,7 @@ describe('buildPrompt', () => {
   });
 
   it('leaves the blocker line out when nothing blocks the ticket', () => {
-    const free: Ticket = { ...ticket, blockedBy: [], openBlockers: [], state: 'frontier' };
+    const free: Ticket = { ...ticket, blockedBy: [], openBlockers: [], state: 'frontier', updatedAt: null };
     const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: free });
     expect(prompt).not.toContain('Blocked by');
   });

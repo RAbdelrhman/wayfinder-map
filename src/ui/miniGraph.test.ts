@@ -4,7 +4,7 @@ import type { Ticket, WayfinderMap } from '../types.js';
 import { miniGraphSvg } from './miniGraph.js';
 
 function ticket(number: number, state: Ticket['state'], blockedBy: number[] = []): Ticket {
-  return { number, title: `#${String(number)}`, url: '', body: '', type: 'task', labels: [], open: state !== 'done', assignee: null, blockedBy, openBlockers: [], state };
+  return { number, title: `#${String(number)}`, url: '', body: '', type: 'task', labels: [], open: state !== 'done', assignee: null, blockedBy, openBlockers: [], state, updatedAt: null };
 }
 
 function map(tickets: Ticket[]): WayfinderMap {

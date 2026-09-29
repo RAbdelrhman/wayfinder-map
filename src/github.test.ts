@@ -263,6 +263,7 @@ describe('toOutsideTicket', () => {
       blockedBy: [12],
       openBlockers: [],
       state: 'frontier',
+      updatedAt: null,
       pullRequest: false,
       blocks: [52],
       waitsOn: [],

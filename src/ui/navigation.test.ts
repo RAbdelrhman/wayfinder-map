@@ -16,6 +16,7 @@ function ticket(number: number, title: string): Ticket {
     blockedBy: [],
     openBlockers: [],
     state: 'frontier',
+    updatedAt: null,
   };
 }
 
@@ -32,6 +33,7 @@ function map(number: number, title: string, tickets: Ticket[] = []): WayfinderMa
     tickets,
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
+    stalled: [],
     settled: null,
     ticketsLoaded: true,
   };

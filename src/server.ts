@@ -29,6 +29,8 @@ import { resolveRepoIcon, type ResolvedRepoIcon } from './repoIcon.js';
 import { HandOffStore, HandOffTracker, handOffStorePath } from './handOffTracking.js';
 import type { HandOffTrackingClient } from './handOffTracking.js';
 import { githubMapWatchReader, MapWatcher } from './mapWatcher.js';
+import { markStalls, memoryStallSettings, StallSettingsStore } from './stalled.js';
+import type { StallSettingsSource } from './stalled.js';
 import { ProgressError, ProgressService, ProgressSettingsStore, readCompletedTickets } from './progress.js';
 import { SettleStore } from './settling.js';
 import { FollowStore } from './follows.js';
@@ -108,6 +110,11 @@ export interface ServeOptions {
   progress?: Pick<ProgressService, 'state' | 'save'>;
   /** Replaces the GitHub map watcher in tests. */
   mapWatcher?: MapWatcher;
+  /**
+   * Where the two stall settings live (#160). Defaults to `~/.wayfinder-map/stalls.json`, except
+   * when tests inject a `fetcher`, where they stay in memory unless given.
+   */
+  stallSettings?: StallSettingsSource;
   /**
    * Whose settle choices apply and where they are kept. Defaults to the signed-in GitHub login and
    * `~/.wayfinder-map/settled.json`, except when tests inject a `fetcher`, where it is off unless given.
@@ -223,6 +230,7 @@ export async function startServer({
   handOffStore,
   progress,
   mapWatcher: givenMapWatcher,
+  stallSettings: givenStallSettings,
   settling,
   following,
 }: ServeOptions): Promise<RunningServer> {
@@ -311,6 +319,15 @@ export async function startServer({
     givenMapWatcher ?? new MapWatcher(githubMapWatchReader, { trackedPullRequests: (forRepo) => handOffTracker.trackedPullRequests(forRepo) });
   // A thread change is often a PR, CI or review change, so its map is read now rather than in two minutes.
   handOffTracker.onThreadChange((change) => mapWatcher.nudge(change.repo, change.mapNumber));
+  const stallSettings = givenStallSettings ?? (fetcher === undefined ? new StallSettingsStore() : memoryStallSettings());
+  /** Stalls depend on the clock, hand-offs and settings, not just GitHub, so they are marked on each snapshot served. */
+  const withStalls = async (snapshot: MapSnapshot): Promise<MapSnapshot> =>
+    markStalls(snapshot, {
+      handOffs: (forRepo) => handOffTracker.repoHandOffs(forRepo),
+      activity: (forRepo) => mapWatcher.activity(forRepo),
+      settings: await stallSettings.get(),
+      now: new Date(),
+    });
   /** Tickets whose hand-off request is still in flight, keyed `owner/name#number`, so a double click can't start two. */
   const startingTickets = new Set<string>();
   const progressPanel =
@@ -393,7 +410,7 @@ export async function startServer({
         const force = requestUrl.searchParams.get('refresh') === '1';
         const check = !force && requestUrl.searchParams.get('check') === '1';
         try {
-          json(response, 200, check ? await repositories.refreshIfChanged(repo, openedMaps(requestUrl)) : await repositories.snapshot(repo, force, openedMaps(requestUrl)));
+          json(response, 200, await withStalls(check ? await repositories.refreshIfChanged(repo, openedMaps(requestUrl)) : await repositories.snapshot(repo, force, openedMaps(requestUrl))));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
@@ -459,6 +476,17 @@ export async function startServer({
         } catch (error) {
           json(response, error instanceof ProgressError ? error.status : 400, { error: (error as Error).message });
         }
+        return;
+      }
+
+      if (path === '/api/stall-settings') {
+        if (request.method === 'POST') {
+          const saved = await stallSettings.update(await readBody(request));
+          if (saved === null) json(response, 400, { error: 'Stall settings take 3, 7, 14 or 30 days.' });
+          else json(response, 200, saved);
+          return;
+        }
+        json(response, 200, await stallSettings.get());
         return;
       }
 
@@ -671,7 +699,7 @@ export async function startServer({
           const snapshot =
             (await repositories.settle(requestedRepo, mapNumber, body.settled ? { reason: 'manual', since: at } : null)) ??
             (await repositories.snapshot(requestedRepo, false));
-          json(response, 200, snapshot);
+          json(response, 200, await withStalls(snapshot));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
@@ -709,7 +737,7 @@ export async function startServer({
         const force = requestUrl.searchParams.get('refresh') === '1';
         const check = !force && requestUrl.searchParams.get('check') === '1';
         try {
-          json(response, 200, check ? await repositories.refreshIfChanged(requestedRepo, openedMaps(requestUrl)) : await repositories.snapshot(requestedRepo, force, openedMaps(requestUrl)));
+          json(response, 200, await withStalls(check ? await repositories.refreshIfChanged(requestedRepo, openedMaps(requestUrl)) : await repositories.snapshot(requestedRepo, force, openedMaps(requestUrl))));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }

@@ -14,11 +14,12 @@ const map: WayfinderMap = {
   visibility: 'private',
   sections: { destination: 'Find and continue maps.', notes: '', decisions: '', fog: '', outOfScope: '' },
   tickets: [
-    { number: 1, title: 'Done work', url: 'https://github.com/octo/wayfinder/issues/1', body: '', type: 'task', labels: [], open: false, assignee: null, blockedBy: [], openBlockers: [], state: 'done' },
-    { number: 2, title: 'Choose a direction', url: 'https://github.com/octo/wayfinder/issues/2', body: '', type: 'grilling', labels: [], open: true, assignee: null, blockedBy: [], openBlockers: [], state: 'frontier' },
+    { number: 1, title: 'Done work', url: 'https://github.com/octo/wayfinder/issues/1', body: '', type: 'task', labels: [], open: false, assignee: null, blockedBy: [], openBlockers: [], state: 'done', updatedAt: null },
+    { number: 2, title: 'Choose a direction', url: 'https://github.com/octo/wayfinder/issues/2', body: '', type: 'grilling', labels: [], open: true, assignee: null, blockedBy: [], openBlockers: [], state: 'frontier', updatedAt: null },
   ],
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
+  stalled: [],
   settled: null,
   ticketsLoaded: true,
 };
@@ -74,6 +75,7 @@ describe('Home repository summaries', () => {
       blockedBy: [2],
       openBlockers: [2],
       state: 'frontier',
+      updatedAt: null,
       pullRequest: false,
       blocks: [2],
       waitsOn: [],
