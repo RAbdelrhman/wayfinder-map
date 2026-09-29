@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>B · A Next tab in the panel</title>
+    <!-- PROTOTYPE (#163), B: the confirm list is a Next tab in the side panel, open next to the map instead of over it. The auto map is a card at the top of that tab. Batch progress replaces each row's status in place. The topbar button only opens the tab. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="start.css" />
+    <style>
+      .b-count {
+        margin-left: 2px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface-1) 22%, transparent);
+        font-variant-numeric: tabular-nums;
+      }
+      .insp-panel.b-next {
+        display: flex;
+        flex-direction: column;
+        padding: 0;
+      }
+      .b-scroll {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding: 14px 16px 12px;
+      }
+      .b-scroll h2 {
+        margin: 0 0 2px;
+        font-size: 15px;
+      }
+      .b-scroll > p {
+        margin: 0 0 12px;
+        color: var(--text-secondary);
+        font-size: 12.5px;
+      }
+      .b-automap {
+        display: grid;
+        gap: 4px;
+        margin-bottom: 14px;
+        padding: 10px 12px;
+        border: 1px solid var(--hairline);
+        border-radius: 10px;
+      }
+      .b-automap.is-on {
+        border-color: color-mix(in srgb, var(--state-claimed) 40%, var(--hairline));
+        background: color-mix(in srgb, var(--state-claimed) 6%, var(--surface-1));
+      }
+      .b-automap p {
+        margin: 0;
+        padding-left: 42px;
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+      .b-automap .st-switch {
+        justify-self: start;
+        font-weight: 600;
+      }
+      .b-foot {
+        display: grid;
+        gap: 8px;
+        padding: 12px 16px 70px;
+        border-top: 1px solid var(--hairline);
+        background: var(--surface-1);
+        font-size: 12.5px;
+      }
+      .b-foot .primary {
+        width: 100%;
+      }
+      .b-progress {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 12px;
+        font-size: 12.5px;
+      }
+      .b-runrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 0;
+        border-top: 1px solid var(--gridline);
+        font-size: 13px;
+      }
+      .b-runrow .t {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .b-runrow .num {
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+      /* Tab label marks. */
+      .b-tabmark {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .b-tabmark .i {
+        width: 12px;
+        height: 12px;
+        color: var(--accent-text);
+      }
+      /* While Auto map is on, next task and research cards say they will start by themselves. */
+      .b-auto-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--accent-text);
+      }
+      .b-auto-meta .i {
+        width: 11px;
+        height: 11px;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="start.js"></script>
+    <script>
+      const { state, icon, esc, plan, counts, batch, batchCounts, rowHtml, autoControl, capLine, autoMapSwitch, AUTOMAP_HINT, pill, HITL, MAP } = START;
+      if (state.phase !== 'idle') state.tab = 'next';
+
+      const inBatch = () => state.phase === 'running' || state.phase === 'stopped';
+
+      function tabLabel() {
+        const b = batchCounts();
+        const mark = state.autoMap ? icon('bolt') : '';
+        if (state.phase === 'stopped') return `<span class="b-tabmark">${icon('alert')}Next · stopped</span>`;
+        if (inBatch()) return `<span class="b-tabmark">${mark}Next · ${b.running} running</span>`;
+        return `<span class="b-tabmark">${mark}Next · ${counts().startable}</span>`;
+      }
+
+      function nextTab() {
+        const c = counts();
+        const automap = `<div class="b-automap${state.autoMap ? ' is-on' : ''}">${autoMapSwitch('Auto map')}<p>${state.autoMap ? 'On. Watching #' + MAP.number + ': task and research tickets start as they become next, on the tiers below. Grilling and prototype tickets only notify you.' : AUTOMAP_HINT}</p></div>`;
+        if (inBatch()) {
+          const b = batchCounts();
+          const rows = batch();
+          const stopped = state.phase === 'stopped';
+          const w = (k) => (100 * k) / b.total;
+          return `<div class="b-scroll" data-keep-scroll>
+            <h2>${stopped ? 'Start next stopped' : 'Starting next tickets'}</h2>
+            <p>${stopped ? '' : `${b.running} running · ${b.queued} queued. Queued tickets start as slots free, while the app is open.`}</p>
+            ${stopped ? `<div class="st-stop">${icon('alert')}<p><b>Stopped: usage limit.</b> Claude hit its limit on #216. #214 is still running; the rest went back to next.<span class="st-muted">Resets at 4:00 PM.</span></p></div>` : ''}
+            <div class="b-progress"><span class="st-bar" aria-hidden="true"><i class="is-run" style="width:${w(b.running)}%"></i><i class="is-failed" style="width:${w(b.failed)}%"></i><i class="is-queue" style="width:${w(b.queued)}%"></i></span></div>
+            ${rows.map((r) => `<div class="b-runrow">${pill({ state: r.run.k === 'back' ? 'merged' : r.run.k, label: r.run.w })}<span class="num">#${r.t.n}</span><span class="t">${esc(r.t.title)}</span></div>`).join('')}
+            <div style="margin-top:14px">${automap}</div>
+          </div>
+          <div class="b-foot">${stopped ? `<button type="button" class="primary" data-action="retry">${icon('refresh')}Review and start again</button><button type="button" class="ghost" data-action="clear">Dismiss</button>` : `<button type="button" class="ghost" data-action="clear">Stop the queue</button>`}</div>`;
+        }
+        const p = plan();
+        return `<div class="b-scroll" data-keep-scroll>
+          <h2>${c.startable} ready to start</h2>
+          <p>Tick what to hand off to T3 Code. Grilling and prototype tickets need you in the thread.</p>
+          ${automap}
+          ${autoControl()}
+          <ul class="st-list" style="margin-top:6px">${p.map((r) => rowHtml(r)).join('')}</ul>
+        </div>
+        <div class="b-foot"><span>${capLine()}</span><button type="button" class="primary" data-action="go"${c.picked ? '' : ' disabled'}>${icon('play')}Start ${c.picked}</button></div>`;
+      }
+
+      START.start({
+        startButton: () =>
+          `<button type="button" class="primary map-start" data-action="open"${state.tab === 'next' ? ' aria-pressed="true"' : ''}>${icon('play')}<span class="topbar-action-label">Start next</span><span class="b-count">${counts().startable}</span></button>`,
+        tabs: () => [{ id: 'next', label: tabLabel(), render: nextTab }],
+        panelClass: () => (state.tab === 'next' ? ' b-next' : ''),
+        node: (t) =>
+          state.autoMap && t.state === 'frontier' && !HITL(t) && !t.handOff && !inBatch()
+            ? { meta: `<span class="b-auto-meta">${icon('bolt')}auto map starts this</span>`, aria: ['auto map will start this'] }
+            : {},
+        action: (name) => {
+          if (name === 'open' || name === 'retry') state.tab = 'next';
+          if (name === 'cancel') state.tab = 'ticket';
+        },
+      });
+
+      // Opening the tab is the confirm step; closing it is cancel.
+      document.addEventListener('click', (e) => {
+        const tab = e.target.closest('[data-tab]');
+        if (tab && tab.dataset.tab !== 'next' && state.phase === 'confirm') state.phase = 'idle';
+        if (tab && tab.dataset.tab === 'next' && state.phase === 'idle') {
+          state.phase = 'confirm';
+          START.paint();
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,497 @@
+/* PROTOTYPE (#163): shared additions for the start-*.html variants. The map page itself is src/ui/styles.css. */
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* The canvas opens at the top left at 85% so the next tickets show. */
+.st-stage {
+  padding: 8px 24px 120px 8px;
+  zoom: 0.85;
+}
+
+.st-node-wrap {
+  position: absolute;
+}
+
+.repo-mono {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: rgba(156, 163, 175, 0.14);
+  color: #9ca3af;
+  font: 700 8px ui-monospace, Consolas, monospace;
+}
+
+/* ---------- #125's decided signals, kept quiet ---------- */
+
+.edges path.st-path {
+  stroke: var(--text-primary);
+  stroke-width: 3;
+  opacity: 0.7;
+}
+
+.st-pathcount {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin-left: 10px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.st-pathcount b {
+  color: var(--text-primary);
+}
+
+.st-pathcount .i {
+  width: 14px;
+  height: 14px;
+}
+
+.st-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+}
+
+.st-meta .i {
+  width: 12px;
+  height: 12px;
+}
+
+.st-dot {
+  color: var(--baseline);
+}
+
+.st-tone {
+  display: inline-flex;
+  color: var(--tone);
+}
+
+.node.st-stalled {
+  border-style: dashed;
+  border-left-style: solid;
+  border-color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+}
+
+/* A queued ticket in a batch: a muted pill, dashed, so it reads as "not yet". */
+.handoff-pill.is-queued,
+.node-handoff-pill.is-queued {
+  border-style: dashed;
+  color: var(--text-secondary);
+}
+
+/* ---------- the confirm list ---------- */
+
+.st-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 4px 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--gridline);
+}
+
+.st-row:first-child {
+  border-top: 0;
+}
+
+.st-cb {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--accent-fill);
+}
+
+.st-cb:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+
+.st-box.is-none {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border: 1px dashed var(--baseline);
+  border-radius: 4px;
+}
+
+.st-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.st-row.is-skip .st-main {
+  cursor: default;
+}
+
+.st-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.st-head .num {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.st-title {
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-row.is-skip .st-title,
+.st-row.is-off .st-title {
+  color: var(--text-secondary);
+}
+
+.st-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.st-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.st-status .i {
+  width: 11px;
+  height: 11px;
+}
+
+.st-status.is-start {
+  color: var(--handoff-working);
+}
+
+.st-status.is-queue {
+  color: var(--text-secondary);
+}
+
+.st-row.is-hitl .st-status {
+  color: var(--handoff-needs-you);
+}
+
+.st-status.is-skip {
+  color: var(--text-muted);
+}
+
+.st-reason {
+  color: var(--text-muted);
+}
+
+.st-tiers {
+  grid-column: 2;
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  margin-top: 4px;
+}
+
+.st-tier .seg {
+  padding: 3px 9px;
+  font-size: 12px;
+}
+
+.st-tier .seg .i {
+  width: 12px;
+  height: 12px;
+}
+
+.st-model {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.st-model b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.st-why {
+  color: var(--text-muted);
+}
+
+.st-auto-tag,
+.st-over {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.st-auto-tag {
+  margin-right: 4px;
+  padding: 0;
+  color: var(--accent-text);
+}
+
+.st-over {
+  background: var(--wash);
+  color: var(--text-secondary);
+}
+
+.st-auto-tag .i {
+  width: 10px;
+  height: 10px;
+}
+
+.st-autoctl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.st-autoctl .seg .i {
+  width: 12px;
+  height: 12px;
+}
+
+.st-lbl {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.st-hint {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.st-muted {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.st-group {
+  margin: 12px 0 2px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---------- switch ---------- */
+
+.st-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.st-switch:hover {
+  background: var(--wash);
+}
+
+.st-switch:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+
+.st-knob {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 18px;
+  border: 1px solid var(--baseline);
+  border-radius: 999px;
+  background: var(--wash);
+  transition: background 140ms;
+}
+
+.st-knob::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 140ms;
+}
+
+.st-switch[aria-checked='true'] .st-knob {
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+}
+
+.st-switch[aria-checked='true'] .st-knob::after {
+  background: #fff;
+  transform: translateX(12px);
+}
+
+/* ---------- batch progress ---------- */
+
+.st-bar {
+  display: flex;
+  overflow: hidden;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--wash);
+}
+
+.st-bar i {
+  display: block;
+  height: 100%;
+}
+
+.st-bar .is-run {
+  background: var(--state-claimed);
+}
+
+.st-bar .is-queue {
+  background: repeating-linear-gradient(135deg, var(--baseline) 0 3px, transparent 3px 6px);
+}
+
+.st-bar .is-failed {
+  background: var(--state-failed);
+}
+
+.st-stop {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--state-failed) 44%, var(--hairline));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--state-failed) 7%, var(--surface-1));
+  color: var(--text-primary);
+  font-size: 12.5px;
+}
+
+.st-stop > .i {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  color: var(--state-failed);
+}
+
+.st-stop p {
+  margin: 0;
+}
+
+.st-stop .st-muted {
+  display: block;
+  margin-top: 2px;
+}
+
+/* ---------- prototype bar ---------- */
+
+.st-proto {
+  position: fixed;
+  z-index: 90;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border: 1.5px dashed #b07cff;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-1) 94%, #b07cff);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.st-proto-tag {
+  padding: 3px 7px;
+  border-radius: 7px;
+  background: #7c4dcc;
+  color: #fff;
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.st-proto button {
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-secondary);
+}
+
+.st-proto button:hover {
+  background: var(--wash);
+}
+
+.st-proto button.is-on {
+  background: var(--text-primary);
+  color: var(--surface-1);
+}
+
+.st-proto button:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+
+.st-proto-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--hairline);
+}
+
+.insp-panel {
+  padding-bottom: 110px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-knob,
+  .st-knob::after {
+    transition: none;
+  }
+}

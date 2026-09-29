@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>C · Pick on the map, a dock to start</title>
+    <!-- PROTOTYPE (#163), C: Start next turns the canvas into a picker. Each next card gets a checkbox, a status tag and its tier. A dock at the bottom of the canvas holds Auto, the counts and Start, and expands into the full list. The auto map is a setting in the map's own menu and marks the map's name while on. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="start.css" />
+    <style>
+      .c-count {
+        margin-left: 2px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface-1) 22%, transparent);
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* Pick mode: everything that is not next steps back. */
+      .c-picking .node:not(.c-pickable) {
+        opacity: 0.28;
+      }
+      .c-picking .edges {
+        opacity: 0.35;
+      }
+      .node.c-pickable.c-on {
+        box-shadow: 0 0 0 2px var(--accent-fill);
+      }
+
+      /* The checkbox and status tag sit on the card's top edge, outside the card button. */
+      .c-tag {
+        position: absolute;
+        z-index: 3;
+        top: -11px;
+        right: 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 20px;
+        padding: 0 7px;
+        border: 1px solid var(--hairline);
+        border-radius: 999px;
+        background: var(--surface-1);
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+      }
+      .c-tag .i {
+        width: 11px;
+        height: 11px;
+      }
+      .c-tag.is-start {
+        color: var(--handoff-working);
+      }
+      .c-tag.is-queue,
+      .c-tag.is-skip,
+      .c-tag.is-off {
+        color: var(--text-secondary);
+      }
+      .c-tag.is-hitl {
+        color: var(--handoff-needs-you);
+      }
+      .c-check {
+        position: absolute;
+        z-index: 3;
+        top: -9px;
+        left: -9px;
+        display: grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        border: 1px solid var(--baseline);
+        border-radius: 7px;
+        background: var(--surface-1);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+      }
+      .c-check input {
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        accent-color: var(--accent-fill);
+      }
+      .c-check input:focus-visible {
+        outline: 2px solid var(--state-claimed);
+        outline-offset: 3px;
+      }
+      .c-tiermeta {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--text-secondary);
+      }
+      .c-tiermeta b {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      .c-tiermeta .i {
+        width: 11px;
+        height: 11px;
+        color: var(--accent-text);
+      }
+
+      /* The dock: bottom centre of the canvas, like #125's snackbar, and it grows upward. */
+      .c-dock {
+        position: absolute;
+        left: 50%;
+        bottom: 16px;
+        z-index: 20;
+        display: grid;
+        width: min(760px, calc(100% - 32px));
+        max-height: calc(100% - 32px);
+        transform: translateX(-50%);
+        border: 1px solid var(--hairline);
+        border-radius: 14px;
+        background: var(--surface-1);
+        box-shadow: var(--shadow);
+        grid-template-rows: minmax(0, 1fr) auto;
+      }
+      .c-dock-list {
+        min-height: 0;
+        max-height: 420px;
+        overflow: auto;
+        padding: 4px 16px;
+        border-bottom: 1px solid var(--hairline);
+      }
+      .c-dock-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 12px;
+        padding: 10px 10px 10px 14px;
+        font-size: 13px;
+      }
+      .c-dock-bar .grow {
+        flex: 1;
+        min-width: 180px;
+      }
+      .c-dock-bar .st-autoctl .st-hint {
+        display: none;
+      }
+      .c-dock-bar .st-bar {
+        width: 120px;
+      }
+      .c-dock.is-stopped {
+        border-color: color-mix(in srgb, var(--state-failed) 50%, var(--hairline));
+      }
+      .c-dock .st-stop {
+        margin: 10px 10px 0;
+      }
+
+      /* Auto map: a setting in the map menu; the map's name carries a mark while it is on. */
+      .c-anchor {
+        display: contents;
+      }
+      .nav-scope-control {
+        position: relative;
+      }
+      .c-automark {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin-left: 2px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--state-claimed) 14%, transparent);
+        color: var(--accent-text);
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .c-automark .i {
+        width: 11px;
+        height: 11px;
+      }
+      .c-menu {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        z-index: 40;
+        display: grid;
+        gap: 6px;
+        width: 340px;
+        padding: 10px 12px;
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        background: var(--surface-1);
+        box-shadow: var(--shadow);
+      }
+      .c-menu p {
+        margin: 0 0 4px 42px;
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+      .c-menu .menu-sep {
+        height: 1px;
+        margin: 2px 0;
+        background: var(--gridline);
+      }
+      .c-menu .c-fake {
+        padding: 6px 4px;
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="start.js"></script>
+    <script>
+      const { state, icon, esc, plan, counts, batch, batchCounts, rowHtml, autoControl, capLine, autoMapSwitch, AUTOMAP_HINT, pill, TIER_LABEL, MAP } = START;
+      const q = new URLSearchParams(location.search);
+      state.ui.list = q.get('list') === '1';
+      state.ui.menu = q.get('menu') === '1';
+
+      const picking = () => state.phase === 'confirm';
+      const inBatch = () => state.phase === 'running' || state.phase === 'stopped';
+
+      function scope() {
+        const mark = state.autoMap ? `<span class="c-automark" title="${esc(AUTOMAP_HINT)}">${icon('bolt')}auto</span>` : '';
+        return `<div class="c-anchor"><button type="button" class="scope" data-action="menu" aria-expanded="${state.ui.menu}" aria-haspopup="true">${START.ring()}<span class="t">#${MAP.number} ${esc(MAP.title)}</span>${mark}${icon('chevron')}</button>
+          ${state.ui.menu ? `<div class="c-menu" role="group" aria-label="Map options">
+            <div class="c-fake">Switch map…</div><div class="menu-sep"></div>
+            ${autoMapSwitch('Auto map')}<p>${AUTOMAP_HINT}</p>
+            <div class="menu-sep"></div><div class="c-fake">Open on GitHub ↗</div></div>` : ''}</div>`;
+      }
+
+      function nodeHook(t) {
+        if (!picking()) {
+          if (state.autoMap && t.state === 'frontier' && !START.HITL(t) && !t.handOff && !inBatch())
+            return { meta: `<span class="c-tiermeta">${icon('bolt')}auto map will start this</span>` };
+          return {};
+        }
+        const r = plan().find((x) => x.t.n === t.n);
+        if (!r) return {};
+        const tagCls = r.hitl && r.status.kind === 'off' ? 'is-hitl' : `is-${r.status.kind}`;
+        const tag = `<span class="c-tag ${tagCls}" aria-hidden="true">${r.status.kind === 'skip' ? `${icon('play')}In T3 Code` : `${r.status.kind === 'queue' ? icon('queue') : r.status.kind === 'start' ? icon('play') : icon('person')}${esc(r.status.word)}`}</span>`;
+        const check = r.status.kind === 'skip' ? '' : `<label class="c-check" title="Start #${t.n}"><input type="checkbox" data-action="toggle" data-n="${t.n}"${r.row.on ? ' checked' : ''} aria-label="Start #${t.n} ${esc(t.title)}, ${esc(r.status.word)}"></label>`;
+        const meta = r.status.kind === 'skip'
+          ? `<span class="c-tiermeta">Skipped · ${esc(r.status.why.replace('Already in T3 Code · ', 'already '))}</span>`
+          : `<span class="c-tiermeta">${r.auto && !r.overridden ? icon('spark') : ''}<b>${TIER_LABEL[r.tier]}</b> · ${esc(r.model)}</span>`;
+        return { classes: ['c-pickable', r.row.on ? 'c-on' : ''], before: check, after: tag, meta };
+      }
+
+      function dock() {
+        if (!picking() && !inBatch()) return '';
+        if (inBatch()) {
+          const b = batchCounts();
+          const stopped = state.phase === 'stopped';
+          const w = (k) => (100 * k) / b.total;
+          return `<div class="c-dock${stopped ? ' is-stopped' : ''}" role="region" aria-label="Start next">
+            ${stopped ? `<div class="st-stop">${icon('alert')}<p><b>Stopped: usage limit.</b> Claude hit its limit on #216. #214 is still running; #218, #220 and #221 went back to next.<span class="st-muted">Resets at 4:00 PM.</span></p></div>` : '<div></div>'}
+            <div class="c-dock-bar"><span class="st-bar" aria-hidden="true"><i class="is-run" style="width:${w(b.running)}%"></i><i class="is-failed" style="width:${w(b.failed)}%"></i><i class="is-queue" style="width:${w(b.queued)}%"></i></span>
+              <span class="grow">${stopped ? `<b>1 running</b> · 1 failed · 3 back to next` : `<b>${b.running} running</b> · ${b.queued} queued <span class="st-muted">· ${START.running() + b.running} of ${START.CAP} on this machine</span>`}</span>
+              ${stopped ? `<button type="button" class="ghost" data-action="clear">Dismiss</button><button type="button" class="primary" data-action="retry">${icon('refresh')}Pick again</button>` : `<button type="button" class="ghost" data-action="clear">Stop the queue</button>`}</div></div>`;
+        }
+        const c = counts();
+        return `<div class="c-dock" role="region" aria-label="Start next">
+          ${state.ui.list ? `<div class="c-dock-list" data-keep-scroll><ul class="st-list">${plan().map((r) => rowHtml(r)).join('')}</ul></div>` : '<div></div>'}
+          <div class="c-dock-bar">${autoControl()}<span class="grow">${capLine()}</span>
+            <button type="button" class="ghost" data-action="list" aria-expanded="${state.ui.list}">${icon('list')}${state.ui.list ? 'Hide list' : 'Tiers and list'}</button>
+            <button type="button" class="ghost" data-action="cancel">Cancel</button>
+            <button type="button" class="primary" data-action="go"${c.picked ? '' : ' disabled'}>${icon('play')}Start ${c.picked}</button></div></div>`;
+      }
+
+      START.start({
+        scope,
+        startButton: () =>
+          picking()
+            ? `<button type="button" class="primary map-start" data-action="cancel" aria-pressed="true">${icon('x')}<span class="topbar-action-label">Done picking</span></button>`
+            : `<button type="button" class="primary map-start" data-action="open">${icon('play')}<span class="topbar-action-label">Start next</span><span class="c-count">${counts().startable}</span></button>`,
+        node: nodeHook,
+        stageOverlay: dock,
+        afterPaint: () => document.querySelector('.stage')?.classList.toggle('c-picking', picking()),
+        escCloses: () => true,
+        action: (name) => {
+          if (name === 'list') state.ui.list = !state.ui.list;
+          if (name === 'menu') state.ui.menu = !state.ui.menu;
+        },
+      });
+    </script>
+  </body>
+</html>
