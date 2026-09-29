@@ -25,6 +25,42 @@ window.CANVAS = {
 
   pages: [
     {
+      title: 'Start next and the auto map, apart',
+      round: 3,
+      sections: [
+        {
+          title: 'Two separate controls',
+          note: 'Start next is A: a topbar button that opens the confirm dialog, with Auto tiers inside. The auto map is a toggle in the map-name menu. The first time you turn it on, a setup dialog opens; after that the toggle just flips it.',
+          items: [
+            {
+              id: 'AM-setup',
+              name: 'Turning the auto map on for the first time',
+              src: 'variants/start-am.html?menu=1&setup=1',
+              note: {
+                idea:
+                  'The first flip of the toggle opens "Turn on auto map · #300" instead of switching it on. It says what will happen (task and research tickets start by themselves; grilling and prototype tickets only notify; they count toward the 4 running and queue over it; it pauses on a usage limit and only runs while the app is open), and sets the auto map’s own tiers: Mid for all or Auto. Turn on auto map switches it on; Cancel or Esc leaves it off.',
+                pros: ['Nothing starts on its own before you have read what it does', 'Start next and the auto map no longer share a dialog'],
+                cons: ['One more dialog to build'],
+                basedOn: ['AC', 'C-automap'],
+              },
+            },
+            {
+              id: 'AM-on',
+              name: 'After setup: a plain toggle',
+              src: 'variants/start-am.html?menu=1&automap=1',
+              note: {
+                idea:
+                  'Once set up, the toggle flips the auto map on and off directly. The menu shows what it does and its tiers, with "Auto map settings…" to reopen the setup dialog. While it is on, the map name carries the "auto" mark and next task/research cards say "auto map will start this". Start next stays A’s button and dialog.',
+                pros: ['A one-click toggle after the first time'],
+                cons: ['Settings sit one link deeper'],
+                basedOn: ['AC-menu', 'C-automap'],
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
       title: 'A + C: the pick',
       round: 2,
       sections: [
