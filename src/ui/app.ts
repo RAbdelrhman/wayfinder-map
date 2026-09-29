@@ -5,6 +5,9 @@ import { isLiveHandOff } from '../handOffLiveness.js';
 import { prototypeBranch } from '../prompt.js';
 import { TICKET_TYPES } from '../types.js';
 import type { MapSections, MapSnapshot, OutsideTicket, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
+import type { MapEvent } from '../mapWatch.js';
+import { DEFAULT_NOTIFICATION_SETTINGS, readNotificationSettings } from '../notificationTypes.js';
+import type { NotificationSettings } from '../notificationTypes.js';
 import {
   TIERS,
   TIER_HINT,
@@ -33,6 +36,7 @@ import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { FOG_KEY_ROW, PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
 import { mountSettings } from './settings.js';
+import { NOTIFICATION_SETTINGS_EVENT } from './settings.js';
 import { bindPan } from './pan.js';
 import { nextTabIndex, tabAttrs, tabPanelAttrs } from './tabs.js';
 import type { NavigationController, NavigationView } from './navigation.js';
@@ -48,6 +52,16 @@ import {
   mountHandOffs,
   restoreMapTicketFocus,
 } from './handOffs.js';
+import {
+  desktopNotificationFor,
+  changedPrototypeNotifications,
+  handOffTransitionNotifications,
+  mapEventNotification,
+  mountNotificationInbox,
+  mountUnblockedNotice,
+  statusNotification,
+} from './notifications.js';
+import type { NewInboxNotification, NotificationInboxController, UnblockedTicket } from './notifications.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -149,8 +163,131 @@ let briefSection: keyof MapSections = 'destination';
 let query = '';
 let navigation: NavigationController | null = null;
 const handOffSurface = mountHandOffs();
+const notificationInbox = mountNotificationInbox();
+const unblockedNotice = mountUnblockedNotice(need('unblocked-notice'), (ticketNumber) => select(ticketNumber), startUnblockedBatch);
+let notificationSettings: NotificationSettings = { ...DEFAULT_NOTIFICATION_SETTINGS };
+let mapEventSource: EventSource | null = null;
+let previousHandOffRecords: readonly HandOffStatusDto[] | null = null;
+let unblockedStartQueue: number[] = [];
+let unblockedStartQueueMap = '';
+let drainingUnblockedStartQueue = false;
 let handOffRecords: readonly HandOffStatusDto[] = [];
 let handOffVisualKey = '';
+let notificationSettingsChanged = false;
+
+const notificationSettingsReady = fetch('/api/notification-settings')
+  .then((response) => response.json())
+  .then((value: unknown) => {
+    if (!notificationSettingsChanged) notificationSettings = readNotificationSettings(value);
+  })
+  .catch(() => undefined);
+
+document.addEventListener(NOTIFICATION_SETTINGS_EVENT, (event) => {
+  notificationSettingsChanged = true;
+  notificationSettings = (event as CustomEvent<NotificationSettings>).detail;
+});
+
+async function publishNotification(notification: NewInboxNotification): Promise<boolean> {
+  await notificationSettingsReady;
+  if (!notificationSettings[notification.kind]) return false;
+  const added = notificationInbox.push(notification);
+  if (!added) return false;
+  const saved = notificationInbox.list().find((item) => item.id === notification.id);
+  if (saved !== undefined) {
+    void fetch('/api/desktop/notification', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(desktopNotificationFor(saved)),
+    }).catch(() => undefined);
+  }
+  return true;
+}
+
+function modelForTicket(ticketNumber: number): ModelChoice | null {
+  const state = currentCatalog();
+  if (state.status !== 'ready') return null;
+  const tier = ticketTier(repoName(), ticketNumber);
+  return liveChoice(state.catalog, tierDefaults()[tier]);
+}
+
+async function startUnblockedBatch(ticketNumbers: readonly number[]): Promise<readonly number[]> {
+  const map = currentMap();
+  if (map === null || snapshot === null) return [];
+  const key = snapshot.repo.toLocaleLowerCase() + '#' + String(map.number);
+  if (unblockedStartQueueMap !== '' && unblockedStartQueueMap !== key) unblockedStartQueue = [];
+  unblockedStartQueueMap = key;
+  const startable = Array.from(new Set(ticketNumbers)).filter((number) => {
+    const ticket = map.tickets.find((candidate) => candidate.number === number);
+    return ticket !== undefined && ticket.state === 'frontier' && (ticket.type === 'task' || ticket.type === 'research');
+  });
+  for (const number of startable) {
+    if (!unblockedStartQueue.includes(number)) unblockedStartQueue.push(number);
+  }
+  if (startable.length === 0) return [];
+  const active = handOffRecords.filter((item) => isLiveHandOff(item)).length;
+  const available = Math.max(0, 4 - active);
+  toast(available === 0
+    ? 'Queued ' + String(startable.length) + ' ticket' + (startable.length === 1 ? '' : 's') + '. They will start as hand-off slots open.'
+    : 'Starting ' + String(Math.min(startable.length, available)) + ' ticket' + (Math.min(startable.length, available) === 1 ? '' : 's') + '.');
+  void drainUnblockedStartQueue();
+  return startable;
+}
+
+async function drainUnblockedStartQueue(): Promise<void> {
+  if (drainingUnblockedStartQueue || unblockedStartQueue.length === 0) return;
+  const map = currentMap();
+  if (map === null || snapshot === null) return;
+  const key = snapshot.repo.toLocaleLowerCase() + '#' + String(map.number);
+  if (key !== unblockedStartQueueMap) return;
+  drainingUnblockedStartQueue = true;
+  try {
+    let startedThisDrain = 0;
+    while (unblockedStartQueue.length > 0 && handOffRecords.filter((item) => isLiveHandOff(item)).length + startedThisDrain < 4) {
+      const number = unblockedStartQueue[0];
+      if (number === undefined) break;
+      const ticket = map.tickets.find((candidate) => candidate.number === number);
+      if (ticket === undefined || ticket.state !== 'frontier' || (ticket.type !== 'task' && ticket.type !== 'research')) {
+        unblockedStartQueue.shift();
+        continue;
+      }
+      const live = ticketHandOff(map, number);
+      if (live !== undefined && isLiveHandOff(live)) {
+        unblockedStartQueue.shift();
+        continue;
+      }
+      const response = await fetch(scopedApiPath(snapshot.repo, 'hand-off'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ map: map.number, ticket: number, copyOnly: false, model: modelForTicket(number) }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) {
+        unblockedStartQueue = [];
+        const at = new Date().toISOString();
+        await publishNotification(statusNotification(
+          'handOffError',
+          'handoff-start:' + snapshot.repo.toLocaleLowerCase() + '#' + String(map.number) + '#' + String(number) + ':' + at,
+          snapshot.repo,
+          map.number,
+          map.title,
+          number,
+          ticket.title,
+          at,
+        ));
+        toast(result.error ?? 'The hand-off failed.', 9000);
+        break;
+      }
+      unblockedStartQueue.shift();
+      startedThisDrain += 1;
+      await handOffSurface.refresh();
+    }
+  } catch (error) {
+    unblockedStartQueue = [];
+    toast(error instanceof Error ? error.message : String(error), 9000);
+  } finally {
+    drainingUnblockedStartQueue = false;
+  }
+}
 
 function currentMap(): WayfinderMap | null {
   return snapshot?.maps[activeMap] ?? null;
@@ -160,6 +297,23 @@ function ticketHandOff(map: WayfinderMap | null, ticketNumber: number): HandOffS
   if (map === null || snapshot === null) return undefined;
   // /api/hand-offs already keeps one record per ticket, the one that is actually running.
   return handOffRecords.find((handOff) => handOff.repo.toLowerCase() === snapshot?.repo.toLowerCase() && handOff.mapNumber === map.number && handOff.ticketNumber === ticketNumber);
+}
+
+function notifyHandOffTransitions(previous: readonly HandOffStatusDto[], next: readonly HandOffStatusDto[]): void {
+  const map = currentMap();
+  if (map === null || snapshot === null) return;
+  const ticketNumbers = new Set([...map.tickets, ...map.outside].map((ticket) => ticket.number));
+  const scoped = (items: readonly HandOffStatusDto[]): HandOffStatusDto[] => items
+    .filter((handOff) =>
+      handOff.repo.toLocaleLowerCase() === snapshot?.repo.toLocaleLowerCase() &&
+      handOff.mapNumber === map.number &&
+      handOff.ticketNumber !== null &&
+      ticketNumbers.has(handOff.ticketNumber),
+    )
+    .map((handOff) => ({ ...handOff, mapTitle: map.title }));
+  for (const notification of handOffTransitionNotifications(scoped(previous), scoped(next))) {
+    void publishNotification(notification);
+  }
 }
 
 function activeTicketHandOffs(map: WayfinderMap | null): HandOffStatusDto[] {
@@ -180,7 +334,11 @@ function inT3TicketNumbers(map: WayfinderMap | null): ReadonlySet<number> {
 }
 
 handOffSurface.subscribe((records) => {
+  const previous = previousHandOffRecords;
+  previousHandOffRecords = records;
+  notifyHandOffTransitions(previous ?? [], records);
   handOffRecords = records;
+  void drainUnblockedStartQueue();
   const key = handOffVisualSignature(records);
   if (key === handOffVisualKey) return;
   handOffVisualKey = key;
@@ -207,6 +365,98 @@ function rememberMapOpen(repo: string, mapNumber: number): void {
     recordMapOpened(repo, mapNumber, Date.now(), localStorage);
   } catch {
     // Recency is optional and must not block opening a map.
+  }
+}
+
+function isMapEvent(value: unknown): value is MapEvent {
+  if (typeof value !== 'object' || value === null) return false;
+  const raw = value as Record<string, unknown>;
+  const ticket = raw['ticket'];
+  return Number.isSafeInteger(raw['id']) &&
+    typeof raw['repo'] === 'string' &&
+    Number.isSafeInteger(raw['mapNumber']) &&
+    typeof raw['at'] === 'string' &&
+    typeof raw['type'] === 'string' &&
+    typeof ticket === 'object' &&
+    ticket !== null &&
+    Number.isSafeInteger((ticket as Record<string, unknown>)['number']) &&
+    typeof (ticket as Record<string, unknown>)['title'] === 'string';
+}
+
+function watchMapEvents(): void {
+  mapEventSource?.close();
+  mapEventSource = null;
+  const route = parseRepoPagePath(window.location.pathname);
+  if (route === null || route.mapNumber === null) return;
+  const url = new URL(scopedApiPath(route.repo, 'events'), window.location.origin);
+  url.searchParams.set('map', String(route.mapNumber));
+  const source = new EventSource(url.toString());
+  source.addEventListener('map', (message) => {
+    if (!(message instanceof MessageEvent)) return;
+    try {
+      const parsed: unknown = JSON.parse(String(message.data));
+      if (!isMapEvent(parsed) || parsed.repo.toLocaleLowerCase() !== route.repo.toLocaleLowerCase() || parsed.mapNumber !== route.mapNumber) return;
+      void receiveMapEvent(parsed);
+    } catch {
+      // An invalid event is skipped; EventSource will continue with later IDs.
+    }
+  });
+  mapEventSource = source;
+}
+
+const closedTicketsByEventTime = new Map<string, number[]>();
+
+async function receiveMapEvent(event: MapEvent): Promise<void> {
+  const map = currentMap();
+  if (map === null || snapshot === null) return;
+  if (event.type === 'ticket-closed') {
+    const closed = closedTicketsByEventTime.get(event.at) ?? [];
+    closed.push(event.ticket.number);
+    closedTicketsByEventTime.set(event.at, closed);
+    if (closed.length === 1) {
+      window.setTimeout(() => {
+        if (closedTicketsByEventTime.get(event.at) === closed) closedTicketsByEventTime.delete(event.at);
+      }, 10_000);
+    }
+    return;
+  }
+  const notification = mapEventNotification(event, map.title);
+  if (notification === null || !(await publishNotification(notification))) return;
+  if (notification.kind !== 'unblocked') return;
+  const ticket = ticketAt(map, event.ticket.number);
+  if (ticket === undefined) return;
+  const closed = closedTicketsByEventTime.get(event.at);
+  const closedTicket = closed?.shift() ?? null;
+  if (closed !== undefined && closed.length === 0) closedTicketsByEventTime.delete(event.at);
+  const noticeTicket: UnblockedTicket = { number: ticket.number, title: ticket.title, type: ticket.type };
+  unblockedNotice.add(noticeTicket, closedTicket);
+  const node = els.nodes.querySelector<HTMLElement>('.node[data-number="' + String(ticket.number) + '"]');
+  if (node !== null && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    node.classList.add('is-newly-unblocked');
+    window.setTimeout(() => node.classList.remove('is-newly-unblocked'), 750);
+  }
+}
+
+function notifyNewStalls(previous: MapSnapshot, next: MapSnapshot): void {
+  for (const map of next.maps) {
+    const oldMap = previous.maps.find((candidate) => candidate.number === map.number);
+    if (oldMap === undefined) continue;
+    const before = new Set(oldMap.stalled.map((stall) => String(stall.ticket) + ':' + stall.kind + ':' + stall.since));
+    for (const stall of map.stalled) {
+      if (before.has(String(stall.ticket) + ':' + stall.kind + ':' + stall.since)) continue;
+      const ticket = allTickets(map).find((candidate) => candidate.number === stall.ticket);
+      if (ticket === undefined) continue;
+      void publishNotification(statusNotification(
+        'stalled',
+        'stall:' + next.repo.toLocaleLowerCase() + '#' + String(map.number) + '#' + String(stall.ticket) + ':' + stall.kind + ':' + stall.since,
+        next.repo,
+        map.number,
+        map.title,
+        ticket.number,
+        ticket.title,
+        stall.since,
+      ));
+    }
   }
 }
 function syncedButton(): HTMLButtonElement {
@@ -300,7 +550,9 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
         }
         return false;
       }
-      snapshot = body as MapSnapshot;
+      const nextSnapshot = body as MapSnapshot;
+      if (snapshot !== null) notifyNewStalls(snapshot, nextSnapshot);
+      snapshot = nextSnapshot;
       const currentRoute = parseRepoPagePath(window.location.pathname);
       const routedMap = currentRoute?.mapNumber === null
         ? -1
@@ -577,6 +829,7 @@ const prototypeLoads = new Map<number, PrototypeLoad>();
 function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
   const existing = prototypeLoads.get(map.number);
   if (existing !== undefined && !force) return existing;
+  const previous = existing?.status === 'ready' ? existing.list : null;
   const loading: PrototypeLoad = { status: 'loading' };
   prototypeLoads.set(map.number, loading);
   void (async () => {
@@ -598,6 +851,9 @@ function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
       next = { status: 'failed', error: (error as Error).message };
     }
     if (prototypeLoads.get(map.number) !== loading) return;
+    if (force && previous !== null && next.status === 'ready') {
+      for (const notification of changedPrototypeNotifications(repoName(), map, previous, next.list)) void publishNotification(notification);
+    }
     prototypeLoads.set(map.number, next);
     if (currentMap()?.number !== map.number) return;
     navigation?.setPrototypeCount(next.status === 'ready' ? next.list.length : null);
@@ -1182,6 +1438,7 @@ window.addEventListener('popstate', () => {
   planningHandOffId = new URLSearchParams(window.location.search).get('planning');
   planningHandOff = null;
   const route = parseRepoPagePath(window.location.pathname);
+  watchMapEvents();
   const index = snapshot?.maps.findIndex((map) => map.number === route?.mapNumber) ?? -1;
   if (index < 0) return;
   activeMap = index;
@@ -1391,13 +1648,14 @@ void loadCatalog().then(refreshTicketPicker);
 syncedButton().addEventListener('click', () => {
   void load('manual').then(() => {
     const map = currentMap();
-    prototypeLoads.clear();
-    if (map === null) return;
-    if (view === 'prototypes' || ticketAt(map, selected)?.type === 'prototype') {
-      prototypesFor(map, true);
-      if (view === 'prototypes') renderPrototypes();
-      renderTicketPrototype();
+    const refreshCurrent = map !== null && (view === 'prototypes' || ticketAt(map, selected)?.type === 'prototype');
+    for (const mapNumber of prototypeLoads.keys()) {
+      if (!refreshCurrent || mapNumber !== map?.number) prototypeLoads.delete(mapNumber);
     }
+    if (map === null || !refreshCurrent) return;
+    prototypesFor(map, true);
+    if (view === 'prototypes') renderPrototypes();
+    renderTicketPrototype();
   });
 });
 
@@ -1486,11 +1744,19 @@ const autoRefresh = new AutoRefresh({
 });
 
 document.addEventListener('visibilitychange', () => autoRefresh.visibilityChanged());
-window.addEventListener('pagehide', () => autoRefresh.stop());
+window.addEventListener('pagehide', () => {
+  autoRefresh.stop();
+  mapEventSource?.close();
+  mapEventSource = null;
+  closedTicketsByEventTime.clear();
+});
 window.setInterval(renderSynced, 15_000);
 
 renderInspector();
 void load('initial').then((successful) => {
-  if (successful) autoRefresh.markSuccessfulSnapshot();
+  if (successful) {
+    watchMapEvents();
+    autoRefresh.markSuccessfulSnapshot();
+  }
   autoRefresh.start();
 });

@@ -258,7 +258,7 @@ function key(repo: string, mapNumber: number): string {
 const PULL_REQUESTS_QUERY = `query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     pullRequests(first: 50, orderBy: { field: UPDATED_AT, direction: DESC }) {
-      nodes { number url state headRefName reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
+      nodes { number url state isDraft headRefName reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
     }
     refs(refPrefix: "refs/heads/wayfinder/", first: 100) { nodes { name target { ... on Commit { committedDate } } } }
   }

@@ -14,6 +14,7 @@ export interface WatchedPullRequest {
   number: number;
   url: string;
   state: 'open' | 'closed' | 'merged';
+  isDraft?: boolean | null;
   checks: ChecksState | null;
   review: ReviewState | null;
 }
@@ -117,6 +118,7 @@ interface RawPullRequestNode {
   number?: unknown;
   url?: unknown;
   state?: unknown;
+  isDraft?: unknown;
   headRefName?: unknown;
   reviewDecision?: unknown;
   commits?: { nodes?: Array<{ commit?: { statusCheckRollup?: { state?: unknown } | null } | null } | null> | null } | null;
@@ -152,6 +154,7 @@ export function pullRequestsByTicket(nodes: unknown): Map<number, WatchedPullReq
       state,
       checks: typeof rollup === 'string' ? (CHECKS[rollup] ?? null) : null,
       review: typeof node.reviewDecision === 'string' ? (REVIEWS[node.reviewDecision] ?? null) : null,
+      ...(typeof node.isDraft === 'boolean' ? { isDraft: node.isDraft } : {}),
     };
     byTicket.set(ticket, [...(byTicket.get(ticket) ?? []), pullRequest]);
   }
@@ -183,6 +186,7 @@ export interface TrackedPullRequestRef {
   state: string | null;
   checksState: string | null;
   reviewDecision: string | null;
+  isDraft?: boolean | null;
   hasSnapshot: boolean;
   syncedAt: string | null;
 }
@@ -215,6 +219,7 @@ export function trackedPullRequestsByTicket(
         state: state === 'MERGED' ? 'merged' : state === 'CLOSED' ? 'closed' : 'open',
         checks: T3_CHECKS[ref.checksState?.toLowerCase() ?? ''] ?? CHECKS[ref.checksState?.toUpperCase() ?? ''] ?? null,
         review: REVIEWS[ref.reviewDecision?.toUpperCase() ?? ''] ?? null,
+        ...(typeof ref.isDraft === 'boolean' ? { isDraft: ref.isDraft } : {}),
       });
       byTicket.set(handOff.ticketNumber, known);
     }

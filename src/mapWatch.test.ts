@@ -154,7 +154,7 @@ describe('pullRequestsByTicket', () => {
         reviewDecision: 'APPROVED',
         commits: { nodes: [{ commit: { statusCheckRollup: { state: 'SUCCESS' } } }] },
       },
-      { number: 120, url: 'https://github.com/o/r/pull/120', state: 'OPEN', headRefName: 'wayfinder/99-x', reviewDecision: 'REVIEW_REQUIRED', commits: { nodes: [] } },
+      { number: 120, url: 'https://github.com/o/r/pull/120', state: 'OPEN', headRefName: 'wayfinder/99-x', reviewDecision: 'REVIEW_REQUIRED', isDraft: false, commits: { nodes: [] } },
       { number: 121, url: 'https://github.com/o/r/pull/121', state: 'OPEN', headRefName: 'feature/unrelated' },
       null,
     ]);
@@ -162,7 +162,7 @@ describe('pullRequestsByTicket', () => {
       { number: 111, url: 'https://github.com/o/r/pull/111', state: 'closed', checks: 'failing', review: null },
       { number: 113, url: 'https://github.com/o/r/pull/113', state: 'merged', checks: 'passing', review: 'approved' },
     ]);
-    expect(byTicket.get(99)).toEqual([{ number: 120, url: 'https://github.com/o/r/pull/120', state: 'open', checks: null, review: 'review_required' }]);
+    expect(byTicket.get(99)).toEqual([{ number: 120, url: 'https://github.com/o/r/pull/120', state: 'open', checks: null, review: 'review_required', isDraft: false }]);
     expect(byTicket.size).toBe(2);
   });
 

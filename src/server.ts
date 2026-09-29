@@ -35,6 +35,8 @@ import { ProgressError, ProgressService, ProgressSettingsStore, readCompletedTic
 import { SettleStore } from './settling.js';
 import { FollowStore } from './follows.js';
 import type { Viewer } from './visibility.js';
+import { memoryNotificationSettings, NotificationSettingsStore, parseDesktopNotification } from './notifications.js';
+import type { DesktopNotification, NotificationSettingsSource } from './notifications.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -115,6 +117,12 @@ export interface ServeOptions {
    * when tests inject a `fetcher`, where they stay in memory unless given.
    */
   stallSettings?: StallSettingsSource;
+  /** Per-event notification choices. */
+  notificationSettings?: NotificationSettingsSource;
+  /** Desktop-only bridge for OS notifications and the tray badge. */
+  onDesktopNotification?: (notification: DesktopNotification) => void;
+  /** Clears the desktop tray badge after the inbox is opened. */
+  onNotificationsRead?: () => void;
   /**
    * Whose settle choices apply and where they are kept. Defaults to the signed-in GitHub login and
    * `~/.wayfinder-map/settled.json`, except when tests inject a `fetcher`, where it is off unless given.
@@ -231,6 +239,9 @@ export async function startServer({
   progress,
   mapWatcher: givenMapWatcher,
   stallSettings: givenStallSettings,
+  notificationSettings: givenNotificationSettings,
+  onDesktopNotification,
+  onNotificationsRead,
   settling,
   following,
 }: ServeOptions): Promise<RunningServer> {
@@ -320,6 +331,8 @@ export async function startServer({
   // A thread change is often a PR, CI or review change, so its map is read now rather than in two minutes.
   handOffTracker.onThreadChange((change) => mapWatcher.nudge(change.repo, change.mapNumber));
   const stallSettings = givenStallSettings ?? (fetcher === undefined ? new StallSettingsStore() : memoryStallSettings());
+  const notificationSettings =
+    givenNotificationSettings ?? (fetcher === undefined ? new NotificationSettingsStore() : memoryNotificationSettings());
   /** Stalls depend on the clock, hand-offs and settings, not just GitHub, so they are marked on each snapshot served. */
   const withStalls = async (snapshot: MapSnapshot): Promise<MapSnapshot> =>
     markStalls(snapshot, {
@@ -487,6 +500,36 @@ export async function startServer({
           return;
         }
         json(response, 200, await stallSettings.get());
+        return;
+      }
+
+      if (path === '/api/notification-settings') {
+        if (request.method === 'GET') {
+          json(response, 200, await notificationSettings.get());
+        } else if (request.method === 'POST') {
+          const saved = await notificationSettings.update(await readBody(request));
+          if (saved === null) json(response, 400, { error: 'Choose on or off for at least one notification type.' });
+          else json(response, 200, saved);
+        } else {
+          json(response, 405, { error: 'Use GET or POST for notification settings.' });
+        }
+        return;
+      }
+
+      if (path === '/api/desktop/notification' && request.method === 'POST') {
+        const notification = parseDesktopNotification(await readBody(request));
+        if (notification === null) {
+          json(response, 400, { error: 'The desktop notification is invalid.' });
+          return;
+        }
+        onDesktopNotification?.(notification);
+        json(response, 200, { shown: onDesktopNotification !== undefined });
+        return;
+      }
+
+      if (path === '/api/desktop/notifications/read' && request.method === 'POST') {
+        onNotificationsRead?.();
+        json(response, 200, { cleared: true });
         return;
       }
 
