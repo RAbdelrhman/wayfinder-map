@@ -16,7 +16,10 @@ labelled `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling` or
 `wayfinder:task`. Tickets wait on each other through GitHub's native issue
 dependencies.
 
-This tool reads that structure and draws it.
+This tool reads that structure and draws it. Nothing has to come from Wayfinder or a
+particular skill: create the issues by hand, with `gh`, or with any agent, and they show
+up. [docs/map-format.md](docs/map-format.md) lists everything Wayfinder reads, with a
+copy-paste map body and the `gh` commands.
 
 ## Run it
 
