@@ -10,8 +10,18 @@ import { PRIVATE_NOTE, hiddenMapsMessage } from '../visibility.js';
 export interface RepositoryHandOffStatus {
   repo: string;
   mapNumber: number | null;
+  ticketNumber?: number | null;
   status: string;
   stale: boolean;
+  pendingApproval?: boolean;
+  pendingUserInput?: boolean;
+  branch?: string | null;
+  pullRequests?: readonly {
+    state?: string | null;
+    checksState?: string | null;
+    reviewDecision?: string | null;
+    isDraft?: boolean | null;
+  }[];
 }
 
 export function countRunningHandOffs(repo: string, handOffs: readonly RepositoryHandOffStatus[]): Map<number, number> {
@@ -21,6 +31,34 @@ export function countRunningHandOffs(repo: string, handOffs: readonly Repository
     counts.set(handOff.mapNumber, (counts.get(handOff.mapNumber) ?? 0) + 1);
   }
   return counts;
+}
+
+/** Distinct map tickets that currently need a person to step in. */
+export function needsYouTicketNumbers(repo: string, map: WayfinderMap, handOffs: readonly RepositoryHandOffStatus[]): number[] {
+  const ticketsByNumber = new Map(map.tickets.map((ticket) => [ticket.number, ticket]));
+  const needsYou = new Set(map.stalled.map((stall) => stall.ticket).filter((number) => ticketsByNumber.has(number)));
+  for (const handOff of handOffs) {
+    if (handOff.repo.toLocaleLowerCase() !== repo.toLocaleLowerCase() || handOff.mapNumber !== map.number) continue;
+    const number = handOff.ticketNumber;
+    if (number === null || number === undefined) continue;
+    const ticket = ticketsByNumber.get(number);
+    if (ticket === undefined) continue;
+    const pullRequests = handOff.pullRequests ?? [];
+    const needsThread = handOff.pendingApproval === true || handOff.pendingUserInput === true || handOff.status === 'waiting' || handOff.status === 'failed';
+    const prototypeReady = ticket.type === 'prototype' && handOff.branch !== null && handOff.branch !== undefined && new RegExp('^prototype/' + String(number) + '(?:-|$)').test(handOff.branch);
+    const needsCi = pullRequests.some((pullRequest) =>
+      pullRequest.state?.toLocaleLowerCase() === 'open' && ['failing', 'failure', 'error'].includes(pullRequest.checksState?.toLocaleLowerCase() ?? ''),
+    );
+    const reviewReady = pullRequests.some((pullRequest) =>
+      pullRequest.state?.toLocaleLowerCase() === 'open' &&
+      pullRequest.isDraft === false &&
+      ['passing', 'success'].includes(pullRequest.checksState?.toLocaleLowerCase() ?? '') &&
+      ['review_required', 'review required'].includes(pullRequest.reviewDecision?.toLocaleLowerCase() ?? ''),
+    );
+    if (needsThread || prototypeReady || needsCi || reviewReady) needsYou.add(number);
+  }
+  const order = new Map(map.tickets.map((ticket, index) => [ticket.number, index]));
+  return Array.from(needsYou).sort((a, b) => (order.get(a) ?? Number.MAX_SAFE_INTEGER) - (order.get(b) ?? Number.MAX_SAFE_INTEGER));
 }
 
 /** Active maps, open first and newest first within each state. */
@@ -53,6 +91,14 @@ function nextTicket(map: WayfinderMap): Ticket | undefined {
 function runningHandOffChip(mapNumber: number, count: number | undefined): string {
   const visible = count !== undefined && count > 0;
   return `<span class="chip" data-map-handoffs="${String(mapNumber)}" style="--accent: var(--state-frontier)"${visible ? '' : ' hidden'}><span data-icon="bolt" aria-hidden="true"></span>${visible ? `${String(count)} running in T3 Code` : ''}</span>`;
+}
+
+function needsYouChip(repo: string, map: WayfinderMap): string {
+  const tickets = needsYouTicketNumbers(repo, map, []);
+  const firstTicket = tickets[0];
+  const visible = firstTicket !== undefined;
+  const href = visible ? `${mapPath(repo, map.number)}?view=map&ticket=${String(firstTicket)}` : mapPath(repo, map.number);
+  return `<a class="chip needs-you-chip" data-map-needs-you="${String(map.number)}" href="${escapeHtml(href)}"${visible ? '' : ' hidden'}><span data-icon="bell" aria-hidden="true"></span>${visible ? `${String(tickets.length)} needs you` : ''}</a>`;
 }
 
 /** Who opened the map, and whether it is private or public in Wayfinder. A private map always carries the note. */
@@ -155,7 +201,7 @@ function mapCard(repo: string, map: WayfinderMap, runningHandOffCount?: number):
   const ticketCount = STATE_ORDER.reduce((sum, state) => sum + total[state], 0);
   const footer = !map.open
     ? `<span class="grow">All ${String(ticketCount)} tickets done</span>${settleButton(map)}<a class="ghost" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">Open</a>`
-    : `<span class="grow">${next === undefined ? 'Nothing next up' : `<span class="chip" style="--accent: var(--state-frontier)"><span data-icon="arrow" aria-hidden="true"></span>next</span> <a href="${escapeHtml(`${href}?view=map&ticket=${String(next.number)}`)}">#${String(next.number)} ${escapeHtml(next.title)}</a>`}</span>${runningHandOffChip(map.number, runningHandOffCount)}${settleButton(map)}<a class="primary" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">Open<span data-icon="arrow" aria-hidden="true"></span></a>`;
+    : `<span class="grow">${next === undefined ? 'Nothing next up' : `<span class="chip" style="--accent: var(--state-frontier)"><span data-icon="arrow" aria-hidden="true"></span>next</span> <a href="${escapeHtml(`${href}?view=map&ticket=${String(next.number)}`)}">#${String(next.number)} ${escapeHtml(next.title)}</a>`}</span>${needsYouChip(repo, map)}${runningHandOffChip(map.number, runningHandOffCount)}${settleButton(map)}<a class="primary" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">Open<span data-icon="arrow" aria-hidden="true"></span></a>`;
   return `<article class="wf-node wf-map${map.open ? '' : ' is-closed'}" data-map-card data-map-number="${String(map.number)}" data-map-status="${status}" data-map-search="${escapeHtml(`#${String(map.number)} ${map.title}`)}" style="--accent: var(${map.open ? '--state-claimed' : '--state-done'})">
     <a class="graph" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}" tabindex="-1" title="Ticket dependency graph with ${String(map.tickets.length)} tickets">${miniGraphSvg(map)}</a>
     <div class="txt">

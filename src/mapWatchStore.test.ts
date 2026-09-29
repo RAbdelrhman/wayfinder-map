@@ -36,15 +36,26 @@ describe('MapWatchStore', () => {
       from: 'blocked',
       whileYouWereAway: true,
     };
+    const draftChanged: MapEvent = {
+      id: 8,
+      repo: 'octo/repo',
+      mapNumber: 121,
+      at: '2026-09-29T12:01:00.000Z',
+      type: 'pr-draft-changed',
+      ticket: { number: 10, title: 'Ready' },
+      pullRequest: { number: 12, url: 'https://github.com/octo/repo/pull/12', state: 'open', draft: false, checks: 'passing', review: 'review_required' },
+      from: true,
+      to: false,
+    };
 
     await store.save({
-      nextEventId: 8,
+      nextEventId: 9,
       maps: [{
         repo: 'octo/repo',
         mapNumber: 121,
         etag: 'W/"abc"',
         tickets: [ticket(10, 'frontier')],
-        history: [event],
+        history: [event, draftChanged],
         pullRequestsRead: [10],
         lastPolledAt: 1790683200000,
       }],
@@ -52,13 +63,13 @@ describe('MapWatchStore', () => {
     expect(await readFile(path, 'utf8')).toContain('"version": 1');
 
     await expect(store.load()).resolves.toEqual({
-      nextEventId: 8,
+      nextEventId: 9,
       maps: [{
         repo: 'octo/repo',
         mapNumber: 121,
         etag: 'W/"abc"',
         tickets: [ticket(10, 'frontier')],
-        history: [event],
+        history: [event, draftChanged],
         pullRequestsRead: [10],
         lastPolledAt: 1790683200000,
       }],

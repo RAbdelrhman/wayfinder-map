@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MapSnapshot, PublicMap, Ticket, TicketState, WayfinderMap } from '../types.js';
-import { countRunningHandOffs, mapMatchesRepositorySearch, publicMapProgress, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml, settledAgo, sortRepositoryMaps, sortSettledMaps } from './repositoryView.js';
+import { countRunningHandOffs, mapMatchesRepositorySearch, needsYouTicketNumbers, publicMapProgress, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml, settledAgo, sortRepositoryMaps, sortSettledMaps } from './repositoryView.js';
 
 function ticket(number: number, title: string, state: TicketState, blockedBy: number[] = []): Ticket {
   return {
@@ -90,6 +90,29 @@ describe('repository map ordering and filtering', () => {
 
     expect([...counts]).toEqual([[35, 2]]);
   });
+
+  it('counts distinct tickets that need a person because of a stall, thread, CI, or review', () => {
+    const roadmap = {
+      ...map(35, 'Make the map page feel clear', true, [
+        ticket(101, 'Define the destination', 'claimed'),
+        ticket(102, 'Build the navigation shell', 'claimed'),
+        ticket(103, 'Update the prototype board', 'claimed'),
+        { ...ticket(104, 'Try the new board', 'claimed'), type: 'prototype' },
+        ticket(105, 'Recover the exporter', 'claimed'),
+      ]),
+      stalled: [{ ticket: 101, kind: 'untouched-claim' as const, since: '2026-09-20T12:00:00.000Z' }],
+    };
+    const tickets = needsYouTicketNumbers('octo/wayfinder', roadmap, [
+      { repo: 'OCTO/WAYFINDER', mapNumber: 35, ticketNumber: 101, status: 'waiting', stale: false, pendingUserInput: true },
+      { repo: 'octo/wayfinder', mapNumber: 35, ticketNumber: 102, status: 'running', stale: false, pullRequests: [{ state: 'open', checksState: 'failing' }] },
+      { repo: 'octo/wayfinder', mapNumber: 35, ticketNumber: 103, status: 'running', stale: false, pullRequests: [{ state: 'open', checksState: 'passing', reviewDecision: 'REVIEW_REQUIRED', isDraft: false }] },
+      { repo: 'octo/wayfinder', mapNumber: 35, ticketNumber: 104, status: 'running', stale: false, branch: 'prototype/104-new-board' },
+      { repo: 'octo/wayfinder', mapNumber: 35, ticketNumber: 105, status: 'failed', stale: false },
+      { repo: 'other/repo', mapNumber: 35, ticketNumber: 106, status: 'failed', stale: false },
+    ]);
+
+    expect(tickets).toEqual([101, 102, 103, 104, 105]);
+  });
 });
 
 describe('repositoryPageHtml', () => {
@@ -131,6 +154,17 @@ describe('repositoryPageHtml', () => {
     expect(html).toContain('data-repo-map-no-match role="status" aria-live="polite"');
     expect(html).toContain('2 running in T3 Code');
     expect(html).toContain('data-map-handoffs="35"');
+  });
+
+  it('shows a stalled ticket count on its map card and links to that ticket', () => {
+    const stalledMap = {
+      ...map(35, 'Make the map page feel clear', true, [ticket(103, 'Update the prototype board', 'claimed')]),
+      stalled: [{ ticket: 103, kind: 'dead-hand-off' as const, since: '2026-09-20T12:00:00.000Z' }],
+    };
+    const html = repositoryPageHtml('octo/wayfinder', snapshot([stalledMap]));
+
+    expect(html).toContain('data-map-needs-you="35" href="/repos/octo/wayfinder/maps/35?view=map&amp;ticket=103"');
+    expect(html).toContain('1 needs you');
   });
 
   it('collapses settled maps at the foot of the list with their number, title and age', () => {

@@ -25,7 +25,7 @@ export interface MapWatchStateStore {
   save(state: MapWatchState): Promise<void>;
 }
 
-const EVENT_TYPES = new Set(['ticket-closed', 'ticket-next', 'pr-opened', 'pr-merged', 'ci-changed', 'review-changed']);
+const EVENT_TYPES = new Set(['ticket-closed', 'ticket-next', 'pr-opened', 'pr-merged', 'pr-draft-changed', 'ci-changed', 'review-changed']);
 const TICKET_STATES = new Set(['done', 'blocked', 'claimed', 'frontier']);
 
 export function mapWatchStorePath(home = homedir()): string {

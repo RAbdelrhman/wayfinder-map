@@ -72,7 +72,7 @@ function isMapEvent(value: unknown): value is MapEvent {
     Number.isSafeInteger(event['mapNumber']) &&
     typeof event['repo'] === 'string' && normalizeRepo(event['repo']) !== null &&
     typeof event['at'] === 'string' && !Number.isNaN(Date.parse(event['at'])) &&
-    ['ticket-closed', 'ticket-next', 'pr-opened', 'pr-merged', 'ci-changed', 'review-changed'].includes(String(event['type'])) &&
+    ['ticket-closed', 'ticket-next', 'pr-opened', 'pr-merged', 'pr-draft-changed', 'ci-changed', 'review-changed'].includes(String(event['type'])) &&
     typeof ticket === 'object' && ticket !== null && !Array.isArray(ticket) &&
     Number.isSafeInteger((ticket as Record<string, unknown>)['number']) &&
     typeof (ticket as Record<string, unknown>)['title'] === 'string';
@@ -115,6 +115,7 @@ function eventSummary(event: MapEvent): string {
     case 'ticket-next': return `${ticket} is ready to start`;
     case 'pr-opened': return `PR #${String(event.pullRequest.number)} opened for ${ticket}`;
     case 'pr-merged': return `PR #${String(event.pullRequest.number)} merged for ${ticket}`;
+    case 'pr-draft-changed': return `PR #${String(event.pullRequest.number)} ${event.to === false ? 'is no longer a draft for' : 'is now a draft for'} ${ticket}`;
     case 'ci-changed': return `CI for ${ticket} changed to ${event.to ?? 'unknown'}`;
     case 'review-changed': return `Review for ${ticket} changed to ${event.to ?? 'unknown'}`;
   }
@@ -134,6 +135,7 @@ export function mapInboxItemHtml(event: MapEvent): string {
 
 export class MapEventInbox {
   private watches: OpenMapWatch[];
+  private eventListeners = new Set<(event: MapEvent) => void>();
   private source: MapEventStream | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private started = false;
@@ -159,6 +161,11 @@ export class MapEventInbox {
     const existed = this.watches.some((item) => item.repo.toLowerCase() === repo.toLowerCase() && item.mapNumber === mapNumber);
     this.watches = rememberMapWatch(this.storage, repo, mapNumber);
     if (!existed || this.source === null) this.connect();
+  }
+
+  subscribe(listener: (event: MapEvent) => void): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
   }
 
   reconcileSnapshot(snapshot: Pick<MapSnapshot, 'repo' | 'maps'>): void {
@@ -220,6 +227,13 @@ export class MapEventInbox {
       if (!isMapEvent(parsed) || !saveMapInboxEvent(this.storage, parsed)) return;
       this.watches = readMapWatchSet(this.storage);
       this.onChange();
+      for (const listener of this.eventListeners) {
+        try {
+          listener(parsed);
+        } catch {
+          // A notification consumer must not interrupt the map activity inbox.
+        }
+      }
     });
     source.addEventListener('watch-ended', (rawEvent) => {
       const data = (rawEvent as MessageEvent<string>).data;
@@ -288,7 +302,7 @@ function renderInbox(root: HTMLElement, inbox: MapEventInbox, trigger: HTMLButto
   trigger.setAttribute('aria-expanded', String(!panel.hidden));
 }
 
-export function mountMapEventInbox(): MapEventInbox {
+export function mountMapEventInbox(onEvent?: (event: MapEvent) => void): MapEventInbox {
   const root = document.getElementById('map-inbox-anchor');
   const trigger = document.getElementById('map-inbox-trigger');
   const panel = document.getElementById('map-inbox-list');
@@ -300,6 +314,7 @@ export function mountMapEventInbox(): MapEventInbox {
     return empty;
   }
   const inbox = new MapEventInbox(localStorage, undefined, undefined, () => renderInbox(root, inbox, trigger, panel));
+  if (onEvent !== undefined) inbox.subscribe(onEvent);
   const setOpen = (open: boolean, returnFocus = false): void => {
     panel.hidden = !open;
     trigger.setAttribute('aria-expanded', String(open));

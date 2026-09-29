@@ -58,6 +58,20 @@ function nextEvent(mapNumber = 121): MapEvent {
   };
 }
 
+function draftChangedEvent(): MapEvent {
+  return {
+    id: 4,
+    repo: 'octo/repo',
+    mapNumber: 121,
+    at: '2026-09-29T12:01:00.000Z',
+    type: 'pr-draft-changed',
+    ticket: { number: 9, title: 'Ready to start' },
+    pullRequest: { number: 12, url: 'https://github.com/octo/repo/pull/12', state: 'open', draft: false, checks: 'passing', review: 'review_required' },
+    from: true,
+    to: false,
+  };
+}
+
 describe('map event inbox watch set', () => {
   it('keeps distinct opened maps, deduplicates repeats, and ignores corrupt storage records', () => {
     const storage = new MemoryStorage();
@@ -110,17 +124,22 @@ describe('map event inbox watch set', () => {
     const storage = new MemoryStorage();
     rememberMapWatch(storage, 'octo/repo', 121);
     const streams: FakeStream[] = [];
+    const received: MapEvent[] = [];
     const inbox = new MapEventInbox(storage, () => {
       const stream = new FakeStream();
       streams.push(stream);
       return stream;
     }, async () => { throw new Error('offline'); });
+    inbox.subscribe((event) => received.push(event));
     inbox.start();
 
     streams[0]?.emit('map', JSON.stringify(nextEvent()));
     streams[0]?.emit('map', JSON.stringify(nextEvent()));
+    streams[0]?.emit('map', JSON.stringify(draftChangedEvent()));
 
-    expect(readMapInboxEvents(storage)).toHaveLength(1);
+    expect(readMapInboxEvents(storage)).toEqual([draftChangedEvent(), nextEvent()]);
+    expect(received).toEqual([nextEvent(), draftChangedEvent()]);
+    expect(mapInboxItemHtml(draftChangedEvent())).toContain('is no longer a draft');
     inbox.close();
   });
 

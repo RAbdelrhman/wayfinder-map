@@ -24,6 +24,7 @@ export type MapChange = { ticket: { number: number; title: string } } & (
   | { type: 'ticket-next'; from: TicketState }
   | { type: 'pr-opened'; pullRequest: WatchedPullRequest }
   | { type: 'pr-merged'; pullRequest: WatchedPullRequest }
+  | { type: 'pr-draft-changed'; pullRequest: WatchedPullRequest; from: boolean | undefined; to: boolean | undefined }
   | { type: 'ci-changed'; pullRequest: WatchedPullRequest; from: ChecksState | null; to: ChecksState | null }
   | { type: 'review-changed'; pullRequest: WatchedPullRequest; from: ReviewState | null; to: ReviewState | null }
 );
@@ -56,6 +57,9 @@ export function diffMap(previous: readonly WatchedTicket[], next: readonly Watch
         continue;
       }
       if (was.state !== 'merged' && pullRequest.state === 'merged') pullRequestChanges.push({ type: 'pr-merged', ticket: ref, pullRequest });
+      if (was.draft !== pullRequest.draft) {
+        pullRequestChanges.push({ type: 'pr-draft-changed', ticket: ref, pullRequest, from: was.draft, to: pullRequest.draft });
+      }
       if (was.checks !== pullRequest.checks) {
         pullRequestChanges.push({ type: 'ci-changed', ticket: ref, pullRequest, from: was.checks, to: pullRequest.checks });
       }
@@ -110,8 +114,8 @@ interface RawPullRequestNode {
   number?: unknown;
   url?: unknown;
   state?: unknown;
-  headRefName?: unknown;
   isDraft?: unknown;
+  headRefName?: unknown;
   reviewDecision?: unknown;
   latestReviews?: { nodes?: Array<{ state?: unknown; author?: { login?: unknown } | null } | null> | null } | null;
   reviewRequests?: { nodes?: Array<{ requestedReviewer?: { login?: unknown; slug?: unknown } | null } | null> | null } | null;
@@ -249,7 +253,7 @@ export function trackedPullRequestsByTicket(
         state: state === 'MERGED' ? 'merged' : state === 'CLOSED' ? 'closed' : 'open',
         checks: T3_CHECKS[ref.checksState?.toLowerCase() ?? ''] ?? CHECKS[ref.checksState?.toUpperCase() ?? ''] ?? null,
         review: REVIEWS[ref.reviewDecision?.toUpperCase() ?? ''] ?? null,
-        ...(ref.isDraft === true ? { draft: true } : {}),
+        ...(typeof ref.isDraft === 'boolean' ? { draft: ref.isDraft } : {}),
       });
       byTicket.set(handOff.ticketNumber, known);
     }

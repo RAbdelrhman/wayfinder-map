@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { HomeAccount } from '../home.js';
-import { settingsBodyHtml } from './settings.js';
+import { notificationSettingsHtml, settingsBodyHtml } from './settings.js';
 import type { SettingsView } from './settings.js';
 
 const ACCOUNT: HomeAccount = {
@@ -16,7 +16,7 @@ const ACCOUNT: HomeAccount = {
 };
 
 function view(patch: Partial<SettingsView> = {}): SettingsView {
-  return { account: ACCOUNT, theme: 'dark', tier: 'mid', progress: { style: 'trail', goal: 5 }, stalls: { untouchedClaimDays: 7, deadHandOffDays: 7 }, busy: null, ...patch };
+  return { account: ACCOUNT, theme: 'dark', tier: 'mid', progress: { style: 'trail', goal: 5 }, stalls: { untouchedClaimDays: 7, deadHandOffDays: 7 }, notifications: null, busy: null, ...patch };
 }
 
 describe('Settings dialog', () => {

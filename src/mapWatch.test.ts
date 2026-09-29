@@ -69,6 +69,14 @@ describe('diffMap', () => {
     ]);
   });
 
+  it('reports when a pull request stops being a draft', () => {
+    const before = pr(10, { draft: true, checks: 'passing', review: 'review_required' });
+    const after = pr(10, { draft: false, checks: 'passing', review: 'review_required' });
+    expect(diffMap([ticket(1, 'claimed', [before])], [ticket(1, 'claimed', [after])])).toEqual([
+      { type: 'pr-draft-changed', ticket: { number: 1, title: 'Ticket 1' }, pullRequest: after, from: true, to: false },
+    ]);
+  });
+
   it('puts ticket changes before pull request changes', () => {
     const merged = pr(10, { state: 'merged', checks: 'passing' });
     expect(diffMap([ticket(1, 'claimed', [pr(10)]), ticket(2, 'blocked')], [ticket(1, 'done', [merged]), ticket(2, 'frontier')]).map((change) => change.type)).toEqual([
@@ -157,7 +165,7 @@ describe('pullRequestsByTicket', () => {
         reviewDecision: 'APPROVED',
         commits: { nodes: [{ commit: { statusCheckRollup: { state: 'SUCCESS' } } }] },
       },
-      { number: 120, url: 'https://github.com/o/r/pull/120', state: 'OPEN', headRefName: 'wayfinder/99-x', reviewDecision: 'REVIEW_REQUIRED', commits: { nodes: [] } },
+      { number: 120, url: 'https://github.com/o/r/pull/120', state: 'OPEN', headRefName: 'wayfinder/99-x', reviewDecision: 'REVIEW_REQUIRED', isDraft: false, commits: { nodes: [] } },
       { number: 121, url: 'https://github.com/o/r/pull/121', state: 'OPEN', headRefName: 'feature/unrelated' },
       null,
     ]);

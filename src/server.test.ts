@@ -14,6 +14,7 @@ import type { MapSnapshot, Ticket, WayfinderMap } from './types.js';
 import { HandOffStore } from './handOffTracking.js';
 import { MapWatcher } from './mapWatcher.js';
 import type { MapRead } from './mapWatcher.js';
+import { memoryNotificationSettings } from './notifications.js';
 
 const config: Config = {
   repo: null,
@@ -92,6 +93,84 @@ const sampleMap: WayfinderMap = {
 };
 
 describe('repository-scoped server', () => {
+  it('serves notification choices and bridges notifications to the desktop shell when present', async () => {
+    const desktopNotification = vi.fn();
+    const notificationsRead = vi.fn();
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      homeLoader: async () => home,
+      notificationSettings: memoryNotificationSettings(),
+      onDesktopNotification: desktopNotification,
+      onNotificationsRead: notificationsRead,
+    });
+
+    try {
+      const defaults = await fetch(running.url + '/api/notification-settings').then((response) => response.json());
+      expect(defaults).toMatchObject({ unblocked: true, stalled: true });
+      const saved = await fetch(running.url + '/api/notification-settings', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ unblocked: false }),
+      });
+      expect(saved.status).toBe(200);
+      expect(await saved.json()).toMatchObject({ unblocked: false });
+
+      const notice = {
+        kind: 'unblocked',
+        title: 'octo/one · Map #5',
+        body: '#11 Retire API agents',
+        repo: 'octo/one',
+        mapNumber: 5,
+        ticketNumber: 11,
+      };
+      expect((await fetch(running.url + '/api/desktop/notification', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(notice),
+      })).status).toBe(200);
+      expect(desktopNotification).toHaveBeenCalledWith(notice);
+      await fetch(running.url + '/api/desktop/notifications/read', { method: 'POST' });
+      expect(notificationsRead).toHaveBeenCalledOnce();
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('keeps browser-only CLI notifications local when there is no desktop shell', async () => {
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      homeLoader: async () => home,
+      notificationSettings: memoryNotificationSettings(),
+    });
+
+    try {
+      const response = await fetch(running.url + '/api/desktop/notification', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'unblocked',
+          title: 'octo/one · Map #5',
+          body: '#11 Retire API agents',
+          repo: 'octo/one',
+          mapNumber: 5,
+          ticketNumber: 11,
+        }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ shown: false });
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
   it('serves Home, repository, and map page routes', async () => {
     const running = await startServer({
       config,
