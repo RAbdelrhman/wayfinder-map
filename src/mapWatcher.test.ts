@@ -19,7 +19,7 @@ function pr(number: number, overrides: Partial<WatchedPullRequest> = {}): Watche
 /** A reader that answers from queues, falling back to `unchanged` and the last pull requests. */
 function fakeReader() {
   const maps: Array<MapRead | Error> = [];
-  let pullRequests: PullRequestRead = { byTicket: new Map(), rateLimit: null };
+  let pullRequests: PullRequestRead = { byTicket: new Map(), lastCommits: new Map(), rateLimit: null };
   const etags: Array<string | null> = [];
   const reader: MapWatchReader & { mapReads: number; pullRequestReads: number } = {
     mapReads: 0,
@@ -44,8 +44,8 @@ function fakeReader() {
     fail(error: Error): void {
       maps.push(error);
     },
-    setPullRequests(entries: Array<[number, WatchedPullRequest[]]>): void {
-      pullRequests = { byTicket: new Map(entries), rateLimit: null };
+    setPullRequests(entries: Array<[number, WatchedPullRequest[]]>, lastCommits: Array<[number, string]> = []): void {
+      pullRequests = { byTicket: new Map(entries), lastCommits: new Map(lastCommits), rateLimit: null };
     },
   };
 }
@@ -58,6 +58,24 @@ describe('MapWatcher', () => {
   afterEach(() => vi.useRealTimers());
 
   const make = (reader: MapWatchReader): MapWatcher => new MapWatcher(reader, { intervalMs: INTERVAL, now: () => Date.now() });
+
+  it('answers stall detection with PRs and the newest branch commit per ticket, from the shared read', async () => {
+    const fake = fakeReader();
+    fake.setPullRequests([[1, [pr(10)]]], [[1, '2026-09-25T00:00:00Z'], [2, '2026-09-20T00:00:00Z']]);
+    const watcher = make(fake.reader);
+    expect(await watcher.activity('o/r')).toEqual(
+      new Map([
+        [1, { pullRequest: true, lastCommitAt: '2026-09-25T00:00:00Z' }],
+        [2, { pullRequest: false, lastCommitAt: '2026-09-20T00:00:00Z' }],
+      ]),
+    );
+    await watcher.activity('o/r');
+    expect(fake.reader.pullRequestReads).toBe(1);
+    await vi.advanceTimersByTimeAsync(INTERVAL / 2);
+    await watcher.activity('o/r');
+    expect(fake.reader.pullRequestReads).toBe(2);
+    watcher.close();
+  });
 
   it('takes the first read as a baseline, then reports what changed', async () => {
     const fake = fakeReader();
@@ -241,7 +259,7 @@ describe('MapWatcher', () => {
         reads += 1;
         return reads === 1 ? new Promise<MapRead>((resolve) => (finish = resolve)) : Promise.resolve({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null });
       },
-      readPullRequests: () => Promise.resolve({ byTicket: new Map(), rateLimit: null }),
+      readPullRequests: () => Promise.resolve({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }),
     });
     watcher.watch('o/r', 121, () => undefined);
     await vi.advanceTimersByTimeAsync(0);
@@ -345,7 +363,7 @@ describe('MapWatcher', () => {
         reads += 1;
         return reads === 1 ? new Promise<MapRead>((resolve) => (finish = resolve)) : Promise.resolve({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null });
       },
-      readPullRequests: () => Promise.resolve({ byTicket: new Map(), rateLimit: null }),
+      readPullRequests: () => Promise.resolve({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }),
     });
     const stop = watcher.watch('o/r', 121, () => undefined);
     await vi.advanceTimersByTimeAsync(0);
@@ -423,6 +441,29 @@ describe('MapWatcher', () => {
     expect(fake.reader.mapReads).toBe(1);
     await vi.advanceTimersByTimeAsync(1);
     expect(fake.reader.mapReads).toBe(2);
+    watcher.close();
+  });
+});
+
+describe('MapWatcher.ticketPullRequests (#130)', () => {
+  it('takes T3 Code first and reads GitHub only for a claimed ticket T3 Code has no snapshot for', async () => {
+    const fake = fakeReader();
+    fake.setPullRequests([[1, [pr(10, { checks: 'failing' })]], [2, [pr(20)]]]);
+    const tracked = new Map([[1, [pr(10, { checks: 'passing' })]]]);
+    const watcher = new MapWatcher(fake.reader, { trackedPullRequests: async () => tracked });
+
+    const trackedOnly = await watcher.ticketPullRequests('o/r', [{ number: 1, state: 'claimed' }, { number: 2, state: 'frontier' }]);
+    expect(fake.reader.pullRequestReads).toBe(0);
+    expect(trackedOnly.get(1)?.[0]?.checks).toBe('passing');
+
+    const both = await watcher.ticketPullRequests('o/r', [{ number: 1, state: 'claimed' }, { number: 2, state: 'claimed' }]);
+    expect(fake.reader.pullRequestReads).toBe(1);
+    expect(both.get(1)?.[0]?.checks).toBe('passing');
+    expect(both.get(2)?.[0]?.number).toBe(20);
+
+    // The repository read is shared, so asking again soon costs nothing.
+    await watcher.ticketPullRequests('o/r', [{ number: 2, state: 'claimed' }]);
+    expect(fake.reader.pullRequestReads).toBe(1);
     watcher.close();
   });
 });

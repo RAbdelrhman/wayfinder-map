@@ -62,3 +62,14 @@ export const FOLDER = '<path d="M4 20a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5l2 2.5h8a1 
 /** A flame: the progress panel's streak. */
 export const FLAME =
   '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4.1 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3.2.2 1.4 1.2 2.7 2.5 2.7z"/>';
+
+/* ---------- map signals (#130): the critical path, pull requests, CI, review, stalls ---------- */
+export const ROUTE = '<circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H16a3.5 3.5 0 0 0 0-7H8a3.5 3.5 0 0 1 0-7h7.5"/>';
+export const PULL_REQUEST =
+  '<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M6 8.4v7.2"/><path d="M18 15.6V9a3 3 0 0 0-3-3h-4"/><path d="m13 3.5-2.5 2.5L13 8.5"/>';
+export const CI_PASS = '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>';
+export const CI_FAIL = '<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/>';
+export const CI_PENDING = '<circle cx="12" cy="12" r="9" stroke-dasharray="3.5 3"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/>';
+export const EYE = '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>';
+export const CHANGES = '<path d="M21 12a8.5 8.5 0 0 1-12.4 7.5L3 21l1.5-5.6A8.5 8.5 0 1 1 21 12z"/><path d="M9 11h6M9 14h4"/>';
+export const CLOCK = '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>';

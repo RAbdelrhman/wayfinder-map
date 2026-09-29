@@ -15,6 +15,7 @@
       <div class="main">
         <header class="topbar map-topbar" id="topbar">
           <div class="nav-topbar" id="nav-topbar"></div>
+          <button type="button" class="critical-count" id="critical-path" aria-pressed="false" hidden></button>
           <span class="topbar-spacer"></span>
           <div class="map-inbox-anchor" id="map-inbox-anchor">
             <button type="button" class="map-inbox-trigger" id="map-inbox-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="map-inbox-list" aria-label="Map activity inbox"><span data-icon="inbox" aria-hidden="true"></span><span class="map-inbox-label">Inbox</span><span class="map-inbox-count" id="map-inbox-count" hidden></span></button>
@@ -83,7 +84,7 @@
       </div>
     </div>
 
-    <div class="hovercard" id="hovercard" aria-hidden="true"></div>
+    <div class="hovercard" id="hovercard" aria-hidden="true" inert></div>
 
     <dialog class="dialog" id="models-dialog" aria-labelledby="models-title">
       <form method="dialog">

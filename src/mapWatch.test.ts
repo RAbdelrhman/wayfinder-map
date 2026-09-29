@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   LOW_BUDGET_SHARE,
@@ -8,13 +8,17 @@ import {
   needsPullRequests,
   nextPollDelay,
   parseHttpResponse,
+  branchCommitsByTicket,
+  checkCounts,
+  markPullRequests,
   pullRequestsByTicket,
   rateLimitOf,
+  ticketPullRequests,
   trackedPullRequestsByTicket,
   watchedTickets,
 } from './mapWatch.js';
 import type { TrackedPullRequestRef, WatchedPullRequest, WatchedTicket } from './mapWatch.js';
-import type { TicketState } from './types.js';
+import type { MapSnapshot, TicketState } from './types.js';
 
 function ticket(number: number, state: TicketState, pullRequests: WatchedPullRequest[] = []): WatchedTicket {
   return { number, title: `Ticket ${String(number)}`, state, pullRequests };
@@ -113,6 +117,27 @@ describe('needsPullRequests', () => {
   });
 });
 
+describe('branchCommitsByTicket', () => {
+  it('keys the newest commit on each wayfinder branch by its ticket', () => {
+    expect(
+      branchCommitsByTicket([
+        { name: '160-detect-stalled-tickets', target: { committedDate: '2026-09-20T00:00:00Z' } },
+        { name: '160-detect-stalled-tickets-retry', target: { committedDate: '2026-09-25T00:00:00Z' } },
+        { name: '42-older', target: { committedDate: '2026-09-01T00:00:00Z' } },
+        { name: 'no-ticket', target: { committedDate: '2026-09-25T00:00:00Z' } },
+        { name: '43-not-a-commit', target: {} },
+        null,
+      ]),
+    ).toEqual(
+      new Map([
+        [160, '2026-09-25T00:00:00Z'],
+        [42, '2026-09-01T00:00:00Z'],
+      ]),
+    );
+    expect(branchCommitsByTicket(undefined)).toEqual(new Map());
+  });
+});
+
 describe('pullRequestsByTicket', () => {
   it('groups pull requests by the ticket their wayfinder branch names', () => {
     const byTicket = pullRequestsByTicket([
@@ -137,10 +162,12 @@ describe('pullRequestsByTicket', () => {
       null,
     ]);
     expect(byTicket.get(98)).toEqual([
-      { number: 111, url: 'https://github.com/o/r/pull/111', state: 'closed', checks: 'failing', review: null },
-      { number: 113, url: 'https://github.com/o/r/pull/113', state: 'merged', checks: 'passing', review: 'approved' },
+      { number: 111, url: 'https://github.com/o/r/pull/111', state: 'closed', checks: 'failing', review: null, draft: false, checkCounts: null, reviewer: null },
+      { number: 113, url: 'https://github.com/o/r/pull/113', state: 'merged', checks: 'passing', review: 'approved', draft: false, checkCounts: null, reviewer: null },
     ]);
-    expect(byTicket.get(99)).toEqual([{ number: 120, url: 'https://github.com/o/r/pull/120', state: 'open', checks: null, review: 'review_required' }]);
+    expect(byTicket.get(99)).toEqual([
+      { number: 120, url: 'https://github.com/o/r/pull/120', state: 'open', checks: null, review: 'review_required', draft: false, checkCounts: null, reviewer: null },
+    ]);
     expect(byTicket.size).toBe(2);
   });
 
@@ -259,3 +286,86 @@ describe('trackedPullRequestsByTicket', () => {
     expect(tracked.get(9)?.map((pullRequest) => pullRequest.checks)).toEqual(['failing']);
   });
 });
+
+describe('pull request details for the page (#130)', () => {
+  it('counts check runs and commit statuses by outcome, and names the reviewer behind the decision', () => {
+    const [changes] = pullRequestsByTicket([
+      {
+        number: 232,
+        url: 'https://github.com/o/r/pull/232',
+        state: 'OPEN',
+        isDraft: true,
+        headRefName: 'wayfinder/130-x',
+        reviewDecision: 'CHANGES_REQUESTED',
+        latestReviews: { nodes: [{ state: 'APPROVED', author: { login: 'ann' } }, { state: 'CHANGES_REQUESTED', author: { login: 'sam-k' } }] },
+        reviewRequests: { nodes: [{ requestedReviewer: { login: 'lee' } }] },
+        commits: {
+          nodes: [
+            {
+              commit: {
+                statusCheckRollup: {
+                  state: 'FAILURE',
+                  contexts: {
+                    checkRunCountsByState: [{ state: 'SUCCESS', count: 2 }, { state: 'FAILURE', count: 1 }, { state: 'CANCELLED', count: 1 }, { state: 'QUEUED', count: 0 }],
+                    statusContextCountsByState: [{ state: 'SUCCESS', count: 1 }],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      },
+    ]).get(130) ?? [];
+    expect(changes).toMatchObject({ draft: true, checks: 'failing', checkCounts: { passed: 3, failed: 2, pending: 0 }, review: 'changes_requested', reviewer: 'sam-k' });
+
+    const requested = pullRequestsByTicket([
+      { number: 5, url: 'u', state: 'OPEN', headRefName: 'wayfinder/7-y', reviewDecision: 'REVIEW_REQUIRED', reviewRequests: { nodes: [{ requestedReviewer: { slug: 'core' } }] } },
+    ]).get(7)?.[0];
+    expect(requested).toMatchObject({ reviewer: 'core', checkCounts: null });
+  });
+
+  it('reports no counts when GitHub has none', () => {
+    expect(checkCounts({ state: 'SUCCESS', contexts: { checkRunCountsByState: [{ state: 'SUCCESS', count: 0 }] } })).toBeNull();
+    expect(checkCounts(null)).toBeNull();
+    expect(checkCounts({ contexts: { checkRunCountsByState: [{ state: 'IN_PROGRESS', count: 2 }, { state: 'NEUTRAL', count: 1 }] } })).toEqual({ passed: 1, failed: 0, pending: 2 });
+  });
+
+  it('shows one PR per open ticket: open first, then the newest merged, then the newest closed', () => {
+    const byTicket = new Map<number, WatchedPullRequest[]>([
+      [1, [pullRequest(10, 'closed'), pullRequest(11, 'open'), pullRequest(12, 'merged')]],
+      [2, [pullRequest(20, 'closed'), pullRequest(22, 'merged'), pullRequest(21, 'merged')]],
+      [3, [pullRequest(30, 'closed'), pullRequest(31, 'closed')]],
+      [4, [pullRequest(40, 'open')]],
+    ]);
+    const tickets = [
+      { number: 1, state: 'claimed' as const },
+      { number: 2, state: 'claimed' as const },
+      { number: 3, state: 'frontier' as const },
+      { number: 4, state: 'done' as const },
+      { number: 5, state: 'claimed' as const },
+    ];
+    expect(ticketPullRequests(tickets, byTicket).map((shown) => [shown.ticket, shown.number])).toEqual([[1, 11], [2, 22], [3, 31]]);
+  });
+
+  it('marks each loaded map on a snapshot, and asks for nothing when every ticket is done', async () => {
+    const map = (number: number, tickets: Array<{ number: number; state: TicketState }>, ticketsLoaded = true) =>
+      ({ number, tickets, ticketsLoaded, pullRequests: [] }) as unknown as MapSnapshot['maps'][number];
+    const source = vi.fn(async () => new Map([[1, [pullRequest(9, 'open')]], [2, [pullRequest(8, 'open')]]]));
+    const snapshot = { repo: 'o/r', maps: [map(100, [{ number: 1, state: 'claimed' }]), map(200, [{ number: 2, state: 'claimed' }], false)] } as unknown as MapSnapshot;
+
+    const marked = await markPullRequests(snapshot, source);
+    expect(marked.maps.map((each) => each.pullRequests.map((shown) => shown.number))).toEqual([[9], []]);
+    expect(source).toHaveBeenCalledWith('o/r', [{ number: 1, state: 'claimed' }]);
+
+    const quiet = vi.fn(async () => new Map());
+    await markPullRequests({ repo: 'o/r', maps: [map(100, [{ number: 1, state: 'done' }])] } as unknown as MapSnapshot, quiet);
+    expect(quiet).not.toHaveBeenCalled();
+
+    const failing = await markPullRequests(snapshot, () => Promise.reject(new Error('offline')));
+    expect(failing.maps[0]?.pullRequests).toEqual([]);
+  });
+});
+
+function pullRequest(number: number, state: WatchedPullRequest['state']): WatchedPullRequest {
+  return { number, url: `https://github.com/o/r/pull/${String(number)}`, state, checks: null, review: null };
+}

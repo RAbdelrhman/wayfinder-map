@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A · On the card</title>
+    <!-- PROTOTYPE (#125), A: every signal sits on the card it belongs to. The critical path is a darker line, PR and CI take the card's meta line, a stalled card goes dashed, Start next is the topbar button, and the unblocked notice is a snackbar over the canvas. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="next.css" />
+    <style>
+      /* Critical path: the chain's edges in the text colour, solid and thicker. The selection lineage keeps its dashed flow. */
+      .edges path.a-path {
+        stroke: var(--text-primary);
+        stroke-width: 3;
+        opacity: 0.7;
+      }
+      .edges path.a-path.is-live {
+        stroke: var(--text-primary);
+      }
+
+      /* Header count: a quiet button after the view tabs that focuses the path. */
+      .a-count {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 30px;
+        margin-left: 10px;
+        padding: 0 10px;
+        border: 1px solid var(--hairline);
+        border-radius: 8px;
+        background: none;
+        color: var(--text-secondary);
+        font-size: 12.5px;
+        white-space: nowrap;
+      }
+      .a-count b {
+        color: var(--text-primary);
+        font-variant-numeric: tabular-nums;
+      }
+      .a-count .i {
+        width: 14px;
+        height: 14px;
+      }
+      .a-count:hover,
+      .a-count[aria-pressed='true'] {
+        background: var(--wash);
+        color: var(--text-primary);
+        border-color: var(--baseline);
+      }
+      .a-count:focus-visible {
+        outline: 2px solid var(--state-claimed);
+        outline-offset: 2px;
+      }
+
+      /* PR and CI on the meta line. */
+      .a-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: var(--text-secondary);
+      }
+      .a-meta .i {
+        width: 12px;
+        height: 12px;
+      }
+      .a-meta .a-dot {
+        color: var(--baseline);
+      }
+
+      /* Stalled: the card's frame goes dashed; its state colour stays on the left edge. */
+      .node.a-stalled {
+        border-style: dashed;
+        border-left-style: solid;
+        border-color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+      }
+      .node.a-stalled .meta {
+        color: var(--text-secondary);
+      }
+
+      /* Just unblocked. */
+      .a-new {
+        margin-left: 6px;
+        padding: 0 5px;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--state-frontier) 16%, transparent);
+        color: var(--handoff-pr-ready);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      /* Snackbar over the canvas, bottom centre, above Key and zoom. */
+      .a-snack {
+        position: absolute;
+        left: 50%;
+        bottom: 16px;
+        z-index: 20;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        max-width: calc(100% - 32px);
+        padding: 8px 8px 8px 14px;
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        background: var(--surface-1);
+        box-shadow: var(--shadow);
+        font-size: 13px;
+        animation: a-rise 0.35s ease-out;
+      }
+      @keyframes a-rise {
+        from {
+          transform: translate(-50%, 12px);
+          opacity: 0;
+        }
+      }
+      .a-snack > .i {
+        width: 16px;
+        height: 16px;
+        color: var(--state-frontier);
+        flex: none;
+      }
+      .a-snack p {
+        margin: 0;
+        white-space: nowrap;
+        color: var(--text-secondary);
+      }
+      .a-snack b {
+        color: var(--text-primary);
+      }
+      .a-snack .primary,
+      .a-snack .ghost {
+        height: 30px;
+        white-space: nowrap;
+      }
+      .a-snack .x {
+        width: 30px;
+        height: 30px;
+      }
+
+      /* Start next: the topbar button with a count. */
+      .map-start .a-n {
+        margin-left: 2px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface-1) 22%, transparent);
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* Ticket panel: PR, CI and review as three lines under the hand-off pill. */
+      .a-pr {
+        display: grid;
+        grid-template-columns: 16px minmax(0, 1fr);
+        gap: 6px 8px;
+        margin: 2px 0 0;
+        padding: 8px 0 0;
+        border-top: 1px solid var(--hairline);
+        font-size: 12.5px;
+        color: var(--text-secondary);
+      }
+      .a-pr .nx-tone .i,
+      .a-pr > .i {
+        width: 14px;
+        height: 14px;
+      }
+      .a-pr a {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      .a-pr .muted {
+        color: var(--text-muted);
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="next.js"></script>
+    <script>
+      const { state, esc, icon, PATH_LEFT, onPath, pathEdge, STARTABLE, FRESH, CI, REVIEW, ciIcon, reviewIcon, numbers, byNumber } = NEXT;
+
+      function prMeta(t) {
+        const pr = t.pr;
+        return `<span class="a-meta">${icon('pr')}#${pr.n}<span class="a-dot">·</span>${ciIcon(pr)}${CI[pr.ci].short}<span class="a-dot">·</span>${reviewIcon(pr)}${REVIEW[pr.review].word.toLowerCase()}</span>`;
+      }
+
+      NEXT.start({
+        topbarAfterTabs: () =>
+          `<button type="button" class="a-count" data-action="path" aria-pressed="${state.pathFocus}" title="Show only the critical path">${icon('route')}<b>${PATH_LEFT}</b> left on the critical path</button>`,
+
+        startButton: () =>
+          state.started
+            ? `<button type="button" class="primary map-start" disabled>${icon('check')}<span class="topbar-action-label">Started ${numbers(STARTABLE)}</span></button>`
+            : `<button type="button" class="primary map-start" data-action="start" title="Hand off ${numbers(STARTABLE)} to T3 Code">${icon('play')}<span class="topbar-action-label">Start next</span><span class="a-n">${STARTABLE.length}</span></button>`,
+
+        edgeClasses: (from, to) => (pathEdge(from, to) ? ['a-path'] : []),
+
+        node: (t) => {
+          if (t.stalled)
+            return {
+              classes: ['a-stalled'],
+              meta: `<span class="a-meta">${icon('clock')}Stalled · ${esc(t.stalled.short.toLowerCase())}</span>`,
+              aria: [`stalled: ${t.stalled.short}`, onPath(t.n) ? 'on the critical path' : ''],
+            };
+          if (t.pr) return { meta: prMeta(t), aria: [`PR #${t.pr.n}, ${CI[t.pr.ci].word}, ${REVIEW[t.pr.review].word}`] };
+          if (t.fresh && state.notice)
+            return { classes: ['nx-fresh'], meta: `${t.type}<span class="a-new">unblocked</span>`, aria: ['just unblocked'] };
+          return { aria: [onPath(t.n) ? 'on the critical path' : ''] };
+        },
+
+        stageOverlay: () =>
+          state.notice
+            ? `<div class="a-snack" role="status" aria-live="polite" data-key="${state.replay ?? 0}">${icon('unlock')}
+                <p><b>#203 closed.</b> ${numbers(FRESH)} are ready.</p>
+                ${state.started ? '' : `<button type="button" class="primary" data-action="start">${icon('play')}Start both</button>`}
+                <button type="button" class="ghost" data-select="214">Show</button>
+                <button type="button" class="iconbtn x" data-action="dismiss" aria-label="Dismiss">${icon('x')}</button></div>`
+            : '',
+
+        handOffCard: (t) => {
+          if (!t.pr) return {};
+          const pr = t.pr;
+          return {
+            body: `<div class="a-pr">
+              ${icon('pr')}<span><a href="#" data-to="PR #${pr.n} on GitHub">PR #${pr.n}</a> <span class="muted">open</span></span>
+              ${ciIcon(pr)}<span>${CI[pr.ci].word} <span class="muted">· ${pr.checks}</span></span>
+              ${reviewIcon(pr)}<span>${REVIEW[pr.review].word} <span class="muted">· @${pr.reviewer}</span></span></div>`,
+          };
+        },
+
+        panel: (t) =>
+          t.stalled
+            ? {
+                banner: `<div class="banner" style="--accent: var(--text-muted)">${icon('clock')}<span><b>Stalled.</b> ${esc(t.stalled.long)}</span></div>`,
+              }
+            : {},
+
+        action: (name) => {
+          if (name === 'path') state.pathFocus = !state.pathFocus;
+          if (name === 'dismiss') state.notice = false;
+          if (name === 'start') {
+            state.started = true;
+            Kit.toast(`Would hand off ${numbers(STARTABLE)} to T3 Code`);
+          }
+        },
+      });
+    </script>
+  </body>
+</html>

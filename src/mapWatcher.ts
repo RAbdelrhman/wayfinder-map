@@ -1,7 +1,9 @@
 import { gh, ghIncludingHeaders, ghProblem, RATE_LIMIT_WARNING } from './github.js';
-import { diffMap, needsPullRequests, nextPollDelay, parseHttpResponse, pullRequestsByTicket, rateLimitOf, watchedTickets } from './mapWatch.js';
+import { branchCommitsByTicket, diffMap, needsPullRequests, nextPollDelay, parseHttpResponse, pullRequestsByTicket, rateLimitOf, watchedTickets } from './mapWatch.js';
 import type { MapEvent, RateLimit, WatchedPullRequest, WatchedTicket } from './mapWatch.js';
 import type { MapWatchStateStore, StoredMapWatch } from './mapWatchStore.js';
+import type { TicketActivity } from './stalled.js';
+import type { TicketState } from './types.js';
 
 /** #122's interval: a `304` is free, and list responses are cached for 60 s anyway. */
 export const WATCH_INTERVAL_MS = 2 * 60 * 1000;
@@ -15,6 +17,8 @@ export type MapRead =
 
 export interface PullRequestRead {
   byTicket: Map<number, WatchedPullRequest[]>;
+  /** The newest commit on each ticket's `wayfinder/<n>-…` branch, for stall detection (#160). */
+  lastCommits: Map<number, string>;
   rateLimit: RateLimit | null;
 }
 
@@ -168,6 +172,30 @@ export class MapWatcher {
       clearTimeout(map.timer);
     }
     this.schedule(map, delay);
+  }
+
+  /**
+   * Each ticket's pull requests and newest branch commit, from the same repository read the
+   * watcher polls with, so asking costs at most one GraphQL call per half interval.
+   */
+  async activity(repo: string): Promise<Map<number, TicketActivity>> {
+    const read = await this.pullRequests(repo);
+    const activity = new Map<number, TicketActivity>();
+    for (const number of new Set([...read.byTicket.keys(), ...read.lastCommits.keys()])) {
+      activity.set(number, { pullRequest: (read.byTicket.get(number) ?? []).length > 0, lastCommitAt: read.lastCommits.get(number) ?? null });
+    }
+    return activity;
+  }
+
+  /**
+   * Each ticket's pull requests for the page (#130): T3 Code's snapshots first, then the shared
+   * repository read, which runs only when a ticket T3 Code has no snapshot for is claimed.
+   */
+  async ticketPullRequests(repo: string, tickets: ReadonlyArray<{ number: number; state: TicketState }>): Promise<Map<number, WatchedPullRequest[]>> {
+    const tracked = (await this.tracked?.(repo).catch(() => null)) ?? new Map<number, WatchedPullRequest[]>();
+    if (!tickets.some((ticket) => ticket.state === 'claimed' && !tracked.has(ticket.number))) return tracked;
+    const github = await this.pullRequests(repo).catch(() => null);
+    return new Map([...(github?.byTicket ?? []), ...tracked]);
   }
 
   /** The map's recent events, oldest first, after `afterId` when given. */
@@ -341,8 +369,14 @@ function key(repo: string, mapNumber: number): string {
 const PULL_REQUESTS_QUERY = `query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     pullRequests(first: 50, orderBy: { field: UPDATED_AT, direction: DESC }) {
-      nodes { number url state headRefName reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
+      nodes {
+        number url state headRefName isDraft reviewDecision
+        latestReviews(first: 5) { nodes { state author { login } } }
+        reviewRequests(first: 3) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
+        commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 0) { checkRunCountsByState { state count } statusContextCountsByState { state count } } } } } }
+      }
     }
+    refs(refPrefix: "refs/heads/wayfinder/", first: 100) { nodes { name target { ... on Commit { committedDate } } } }
   }
   rateLimit { limit remaining resetAt }
 }`;
@@ -368,11 +402,12 @@ export const githubMapWatchReader: MapWatchReader = {
     const [owner = '', name = ''] = repo.split('/', 2);
     const result = JSON.parse(
       await gh(['api', 'graphql', '-f', `query=${PULL_REQUESTS_QUERY}`, '-f', `owner=${owner}`, '-f', `name=${name}`]),
-    ) as { data?: { repository?: { pullRequests?: { nodes?: unknown } }; rateLimit?: { limit?: number; remaining?: number; resetAt?: string } } };
+    ) as { data?: { repository?: { pullRequests?: { nodes?: unknown }; refs?: { nodes?: unknown } }; rateLimit?: { limit?: number; remaining?: number; resetAt?: string } } };
     const budget = result.data?.rateLimit;
     const resetAt = budget?.resetAt === undefined ? Number.NaN : Date.parse(budget.resetAt);
     return {
       byTicket: pullRequestsByTicket(result.data?.repository?.pullRequests?.nodes),
+      lastCommits: branchCommitsByTicket(result.data?.repository?.refs?.nodes),
       rateLimit:
         typeof budget?.limit === 'number' && typeof budget.remaining === 'number' && Number.isFinite(resetAt)
           ? { resource: 'graphql', limit: budget.limit, remaining: budget.remaining, resetAt }

@@ -1,5 +1,7 @@
 import { ticketStateOf } from './github.js';
-import type { TicketState } from './types.js';
+import type { CheckCounts, ChecksState, MapSnapshot, PullRequestState, ReviewState, TicketPullRequest, TicketState } from './types.js';
+
+export type { ChecksState, ReviewState };
 
 /**
  * The pure half of map watching: what one read of a map looks like, what changed between
@@ -7,16 +9,7 @@ import type { TicketState } from './types.js';
  * See docs/design/map-watching.md for why the reads are shaped this way.
  */
 
-export type ChecksState = 'passing' | 'failing' | 'pending';
-export type ReviewState = 'approved' | 'changes_requested' | 'review_required';
-
-export interface WatchedPullRequest {
-  number: number;
-  url: string;
-  state: 'open' | 'closed' | 'merged';
-  checks: ChecksState | null;
-  review: ReviewState | null;
-}
+export type WatchedPullRequest = PullRequestState;
 
 export interface WatchedTicket {
   number: number;
@@ -118,8 +111,44 @@ interface RawPullRequestNode {
   url?: unknown;
   state?: unknown;
   headRefName?: unknown;
+  isDraft?: unknown;
   reviewDecision?: unknown;
-  commits?: { nodes?: Array<{ commit?: { statusCheckRollup?: { state?: unknown } | null } | null } | null> | null } | null;
+  latestReviews?: { nodes?: Array<{ state?: unknown; author?: { login?: unknown } | null } | null> | null } | null;
+  reviewRequests?: { nodes?: Array<{ requestedReviewer?: { login?: unknown; slug?: unknown } | null } | null> | null } | null;
+  commits?: { nodes?: Array<{ commit?: { statusCheckRollup?: RawRollup | null } | null } | null> | null } | null;
+}
+
+interface RawRollup {
+  state?: unknown;
+  contexts?: { checkRunCountsByState?: RawCount[] | null; statusContextCountsByState?: RawCount[] | null } | null;
+}
+
+type RawCount = { state?: unknown; count?: unknown } | null;
+
+const PASSED = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED', 'COMPLETED']);
+const FAILED = new Set(['FAILURE', 'ERROR', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'STALE']);
+
+/** Check runs and commit statuses together, by outcome. Null when GitHub reported none. */
+export function checkCounts(rollup: RawRollup | null | undefined): CheckCounts | null {
+  const counts: CheckCounts = { passed: 0, failed: 0, pending: 0 };
+  const all = [...(rollup?.contexts?.checkRunCountsByState ?? []), ...(rollup?.contexts?.statusContextCountsByState ?? [])];
+  for (const item of all) {
+    if (typeof item?.state !== 'string' || typeof item.count !== 'number' || item.count <= 0) continue;
+    counts[PASSED.has(item.state) ? 'passed' : FAILED.has(item.state) ? 'failed' : 'pending'] += item.count;
+  }
+  return counts.passed + counts.failed + counts.pending === 0 ? null : counts;
+}
+
+/** Who stands behind the review decision: the latest reviewer who made it, or else the first one asked. */
+function reviewerOf(node: RawPullRequestNode, review: ReviewState | null): string | null {
+  const decided = review === 'approved' ? 'APPROVED' : review === 'changes_requested' ? 'CHANGES_REQUESTED' : null;
+  const login = decided === null ? undefined : node.latestReviews?.nodes?.find((item) => item?.state === decided)?.author?.login;
+  if (typeof login === 'string') return login;
+  for (const item of node.reviewRequests?.nodes ?? []) {
+    const name = item?.requestedReviewer?.login ?? item?.requestedReviewer?.slug;
+    if (typeof name === 'string') return name;
+  }
+  return null;
 }
 
 const CHECKS: Record<string, ChecksState> = {
@@ -145,15 +174,37 @@ export function pullRequestsByTicket(nodes: unknown): Map<number, WatchedPullReq
     const ticket = branchTicket(node.headRefName);
     if (ticket === null) continue;
     const state = node.state === 'MERGED' ? 'merged' : node.state === 'CLOSED' ? 'closed' : 'open';
-    const rollup = node.commits?.nodes?.[node.commits.nodes.length - 1]?.commit?.statusCheckRollup?.state;
+    const rollup = node.commits?.nodes?.[node.commits.nodes.length - 1]?.commit?.statusCheckRollup;
+    const review = typeof node.reviewDecision === 'string' ? (REVIEWS[node.reviewDecision] ?? null) : null;
     const pullRequest: WatchedPullRequest = {
       number: node.number,
       url: node.url,
       state,
-      checks: typeof rollup === 'string' ? (CHECKS[rollup] ?? null) : null,
-      review: typeof node.reviewDecision === 'string' ? (REVIEWS[node.reviewDecision] ?? null) : null,
+      checks: typeof rollup?.state === 'string' ? (CHECKS[rollup.state] ?? null) : null,
+      review,
+      draft: node.isDraft === true,
+      checkCounts: checkCounts(rollup),
+      reviewer: reviewerOf(node, review),
     };
     byTicket.set(ticket, [...(byTicket.get(ticket) ?? []), pullRequest]);
+  }
+  return byTicket;
+}
+
+/**
+ * The newest commit on each ticket's branch, from GraphQL `refs` under `refs/heads/wayfinder/`,
+ * whose names come without that prefix. Two branches for one ticket: the later commit wins.
+ */
+export function branchCommitsByTicket(nodes: unknown): Map<number, string> {
+  const byTicket = new Map<number, string>();
+  if (!Array.isArray(nodes)) return byTicket;
+  for (const node of nodes as Array<{ name?: unknown; target?: { committedDate?: unknown } | null } | null>) {
+    const date = node?.target?.committedDate;
+    if (typeof node?.name !== 'string' || typeof date !== 'string' || Number.isNaN(Date.parse(date))) continue;
+    const ticket = branchTicket(`wayfinder/${node.name}`);
+    if (ticket === null) continue;
+    const seen = byTicket.get(ticket);
+    if (seen === undefined || Date.parse(date) > Date.parse(seen)) byTicket.set(ticket, date);
   }
   return byTicket;
 }
@@ -165,6 +216,7 @@ export interface TrackedPullRequestRef {
   state: string | null;
   checksState: string | null;
   reviewDecision: string | null;
+  isDraft?: boolean | null;
   hasSnapshot: boolean;
   syncedAt: string | null;
 }
@@ -197,11 +249,49 @@ export function trackedPullRequestsByTicket(
         state: state === 'MERGED' ? 'merged' : state === 'CLOSED' ? 'closed' : 'open',
         checks: T3_CHECKS[ref.checksState?.toLowerCase() ?? ''] ?? CHECKS[ref.checksState?.toUpperCase() ?? ''] ?? null,
         review: REVIEWS[ref.reviewDecision?.toUpperCase() ?? ''] ?? null,
+        ...(ref.isDraft === true ? { draft: true } : {}),
       });
       byTicket.set(handOff.ticketNumber, known);
     }
   }
   return byTicket;
+}
+
+/**
+ * The one pull request each open ticket shows (#130): an open one first, then the newest merged,
+ * then the newest closed. Closed tickets show none; their card already says done.
+ */
+export function ticketPullRequests(
+  tickets: ReadonlyArray<{ number: number; state: TicketState }>,
+  byTicket: ReadonlyMap<number, readonly WatchedPullRequest[]>,
+): TicketPullRequest[] {
+  const rank = { open: 0, merged: 1, closed: 2 } as const;
+  return tickets.flatMap((ticket) => {
+    if (ticket.state === 'done') return [];
+    const [shown] = [...(byTicket.get(ticket.number) ?? [])].sort((a, b) => rank[a.state] - rank[b.state] || b.number - a.number);
+    return shown === undefined ? [] : [{ ticket: ticket.number, ...shown }];
+  });
+}
+
+/** Reads a repository's pull requests by ticket for the tickets given. `MapWatcher.ticketPullRequests` in the server. */
+export type PullRequestSource = (
+  repo: string,
+  tickets: ReadonlyArray<{ number: number; state: TicketState }>,
+) => Promise<ReadonlyMap<number, readonly WatchedPullRequest[]>>;
+
+/**
+ * Fill each map's `pullRequests` on a snapshot about to be served. Like stalls, they change
+ * without the map's issues changing, so they are marked on every snapshot rather than cached.
+ */
+export async function markPullRequests(snapshot: MapSnapshot, source: PullRequestSource): Promise<MapSnapshot> {
+  const tickets = snapshot.maps.filter((map) => map.ticketsLoaded).flatMap((map) => map.tickets);
+  const byTicket = tickets.some((ticket) => ticket.state !== 'done')
+    ? await source(snapshot.repo, tickets).catch(() => new Map<number, WatchedPullRequest[]>())
+    : new Map<number, WatchedPullRequest[]>();
+  return {
+    ...snapshot,
+    maps: snapshot.maps.map((map) => ({ ...map, pullRequests: map.ticketsLoaded ? ticketPullRequests(map.tickets, byTicket) : [] })),
+  };
 }
 
 /** T3 Code's own `checksState` words. GitHub's rollup states are accepted too. */
