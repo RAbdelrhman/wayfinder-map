@@ -20,6 +20,7 @@ const map: WayfinderMap = {
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
   stalled: [],
+  pullRequests: [],
   settled: null,
   ticketsLoaded: true,
 };

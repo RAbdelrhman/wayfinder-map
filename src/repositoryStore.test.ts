@@ -98,6 +98,7 @@ function map(number: number, settled: MapSettlement | null, ticketsLoaded: boole
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
     stalled: [],
+    pullRequests: [],
     settled,
     ticketsLoaded,
   };

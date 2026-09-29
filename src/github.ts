@@ -722,6 +722,7 @@ function settledMap(repo: string, mapIssue: MapIssue, settled: MapSettlement): W
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
     stalled: [],
+    pullRequests: [],
     settled,
     ticketsLoaded: false,
   };
@@ -830,6 +831,7 @@ async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fal
     outside,
     criticalPath: criticalPath(tickets),
     stalled: [],
+    pullRequests: [],
     settled: null,
     ticketsLoaded: true,
   };

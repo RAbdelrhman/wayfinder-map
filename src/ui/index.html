@@ -15,6 +15,7 @@
       <div class="main">
         <header class="topbar map-topbar" id="topbar">
           <div class="nav-topbar" id="nav-topbar"></div>
+          <button type="button" class="critical-count" id="critical-path" aria-pressed="false" hidden></button>
           <span class="topbar-spacer"></span>
           <div class="handoff-anchor" id="handoff-anchor" hidden>
             <button type="button" class="handoff-trigger" id="handoff-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="handoff-list" aria-label="Hand-offs in T3 Code"></button>
@@ -75,7 +76,7 @@
       </div>
     </div>
 
-    <div class="hovercard" id="hovercard" aria-hidden="true"></div>
+    <div class="hovercard" id="hovercard" aria-hidden="true" inert></div>
 
     <dialog class="dialog" id="models-dialog" aria-labelledby="models-title">
       <form method="dialog">

@@ -2,6 +2,7 @@ import { gh, ghIncludingHeaders, ghProblem, RATE_LIMIT_WARNING } from './github.
 import { branchCommitsByTicket, diffMap, needsPullRequests, nextPollDelay, parseHttpResponse, pullRequestsByTicket, rateLimitOf, watchedTickets } from './mapWatch.js';
 import type { MapEvent, RateLimit, WatchedPullRequest, WatchedTicket } from './mapWatch.js';
 import type { TicketActivity } from './stalled.js';
+import type { TicketState } from './types.js';
 
 /** #122's interval: a `304` is free, and list responses are cached for 60 s anyway. */
 export const WATCH_INTERVAL_MS = 2 * 60 * 1000;
@@ -127,6 +128,17 @@ export class MapWatcher {
       activity.set(number, { pullRequest: (read.byTicket.get(number) ?? []).length > 0, lastCommitAt: read.lastCommits.get(number) ?? null });
     }
     return activity;
+  }
+
+  /**
+   * Each ticket's pull requests for the page (#130): T3 Code's snapshots first, then the shared
+   * repository read, which runs only when a ticket T3 Code has no snapshot for is claimed.
+   */
+  async ticketPullRequests(repo: string, tickets: ReadonlyArray<{ number: number; state: TicketState }>): Promise<Map<number, WatchedPullRequest[]>> {
+    const tracked = (await this.tracked?.(repo).catch(() => null)) ?? new Map<number, WatchedPullRequest[]>();
+    if (!tickets.some((ticket) => ticket.state === 'claimed' && !tracked.has(ticket.number))) return tracked;
+    const github = await this.pullRequests(repo).catch(() => null);
+    return new Map([...(github?.byTicket ?? []), ...tracked]);
   }
 
   /** The map's recent events, oldest first, after `afterId` when given. */
@@ -258,7 +270,12 @@ function key(repo: string, mapNumber: number): string {
 const PULL_REQUESTS_QUERY = `query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     pullRequests(first: 50, orderBy: { field: UPDATED_AT, direction: DESC }) {
-      nodes { number url state headRefName reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
+      nodes {
+        number url state headRefName isDraft reviewDecision
+        latestReviews(first: 5) { nodes { state author { login } } }
+        reviewRequests(first: 3) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
+        commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 0) { checkRunCountsByState { state count } statusContextCountsByState { state count } } } } } }
+      }
     }
     refs(refPrefix: "refs/heads/wayfinder/", first: 100) { nodes { name target { ... on Commit { committedDate } } } }
   }

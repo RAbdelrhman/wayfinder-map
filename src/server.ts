@@ -12,6 +12,7 @@ import { detectT3, handOff } from './t3.js';
 import type { T3HandOff } from './t3.js';
 import type { Config } from './config.js';
 import type { MapSnapshot, Prototype, Ticket, WayfinderMap } from './types.js';
+import { markPullRequests } from './mapWatch.js';
 import type { MapEvent } from './mapWatch.js';
 import { listRepositories, loadHomeState, readAccount } from './home.js';
 import type { HomeState } from './home.js';
@@ -320,14 +321,20 @@ export async function startServer({
   // A thread change is often a PR, CI or review change, so its map is read now rather than in two minutes.
   handOffTracker.onThreadChange((change) => mapWatcher.nudge(change.repo, change.mapNumber));
   const stallSettings = givenStallSettings ?? (fetcher === undefined ? new StallSettingsStore() : memoryStallSettings());
-  /** Stalls depend on the clock, hand-offs and settings, not just GitHub, so they are marked on each snapshot served. */
-  const withStalls = async (snapshot: MapSnapshot): Promise<MapSnapshot> =>
-    markStalls(snapshot, {
-      handOffs: (forRepo) => handOffTracker.repoHandOffs(forRepo),
-      activity: (forRepo) => mapWatcher.activity(forRepo),
-      settings: await stallSettings.get(),
-      now: new Date(),
-    });
+  /**
+   * Stalls depend on the clock, hand-offs and settings, and pull requests change without the map
+   * changing, so both are marked on each snapshot served rather than cached with it.
+   */
+  const withSignals = async (snapshot: MapSnapshot): Promise<MapSnapshot> =>
+    markPullRequests(
+      await markStalls(snapshot, {
+        handOffs: (forRepo) => handOffTracker.repoHandOffs(forRepo),
+        activity: (forRepo) => mapWatcher.activity(forRepo),
+        settings: await stallSettings.get(),
+        now: new Date(),
+      }),
+      (forRepo, tickets) => mapWatcher.ticketPullRequests(forRepo, tickets),
+    );
   /** Tickets whose hand-off request is still in flight, keyed `owner/name#number`, so a double click can't start two. */
   const startingTickets = new Set<string>();
   const progressPanel =
@@ -410,7 +417,7 @@ export async function startServer({
         const force = requestUrl.searchParams.get('refresh') === '1';
         const check = !force && requestUrl.searchParams.get('check') === '1';
         try {
-          json(response, 200, await withStalls(check ? await repositories.refreshIfChanged(repo, openedMaps(requestUrl)) : await repositories.snapshot(repo, force, openedMaps(requestUrl))));
+          json(response, 200, await withSignals(check ? await repositories.refreshIfChanged(repo, openedMaps(requestUrl)) : await repositories.snapshot(repo, force, openedMaps(requestUrl))));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
@@ -699,7 +706,7 @@ export async function startServer({
           const snapshot =
             (await repositories.settle(requestedRepo, mapNumber, body.settled ? { reason: 'manual', since: at } : null)) ??
             (await repositories.snapshot(requestedRepo, false));
-          json(response, 200, await withStalls(snapshot));
+          json(response, 200, await withSignals(snapshot));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
@@ -737,7 +744,7 @@ export async function startServer({
         const force = requestUrl.searchParams.get('refresh') === '1';
         const check = !force && requestUrl.searchParams.get('check') === '1';
         try {
-          json(response, 200, await withStalls(check ? await repositories.refreshIfChanged(requestedRepo, openedMaps(requestUrl)) : await repositories.snapshot(requestedRepo, force, openedMaps(requestUrl))));
+          json(response, 200, await withSignals(check ? await repositories.refreshIfChanged(requestedRepo, openedMaps(requestUrl)) : await repositories.snapshot(requestedRepo, force, openedMaps(requestUrl))));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }

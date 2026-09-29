@@ -1419,6 +1419,8 @@ pre.prompt {
 .runwith .seg {
   padding: 3px 10px;
   font-size: 12px;
+  /* Muted grey on the wash is 4.3:1 at this size; secondary keeps the tiers AA. */
+  color: var(--text-secondary);
 }
 
 .runwith .hint {
@@ -6512,4 +6514,150 @@ textarea.input {
 
 .topbar .synced:has(.synced-label:empty) {
   display: none;
+}
+
+/* ---------- map signals (#125 option A, built in #130) ---------- */
+
+/* The critical path: its edges solid, thicker and in the text colour. The hover lineage keeps its dashed flow on top. */
+.edges path.is-critical,
+.edges path.is-critical.is-live {
+  stroke: var(--text-primary);
+  stroke-width: 3;
+  opacity: 0.7;
+}
+
+.edges path.is-critical.is-dim {
+  opacity: 0.12;
+}
+
+/* "N left on the critical path": a quiet button after the view tabs that focuses the path. */
+.critical-count {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin-left: 10px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.critical-count b {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.critical-count .i {
+  width: 14px;
+  height: 14px;
+  color: currentColor;
+}
+
+.critical-count:hover,
+.critical-count[aria-pressed='true'] {
+  background: var(--wash);
+  color: var(--text-primary);
+  border-color: var(--baseline);
+}
+
+.critical-count:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+
+/* PR, checks and review on the card's meta line; each tone comes with its own icon and word. */
+.signal-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+}
+
+.signal-meta .i {
+  width: 12px;
+  height: 12px;
+  color: currentColor;
+}
+
+.signal-dot {
+  color: var(--text-muted);
+}
+
+.signal-tone {
+  display: inline-flex;
+  color: var(--tone);
+}
+
+.signal-tone .i {
+  color: var(--tone);
+}
+
+/* Stalled: the frame goes dashed and grey; the state colour stays on the solid left edge. */
+.node.is-stalled {
+  border-style: dashed;
+  border-left-style: solid;
+  border-top-color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  border-right-color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+}
+
+/* The ticket panel's PR, checks and review, under the hand-off pill. */
+.signal-pr {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 8px;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--hairline);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.signal-pr .i {
+  width: 14px;
+  height: 14px;
+}
+
+.signal-pr a {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.signal-muted {
+  color: var(--text-muted);
+}
+
+/* A PR with no hand-off gets the card on its own, so the lines have nothing above them. */
+.signal-pr-card {
+  border-left-color: var(--hairline);
+  background: var(--surface-1);
+}
+
+.signal-pr-card .signal-pr {
+  padding: 0;
+  border-top: 0;
+}
+
+/* The Key's swatches for the path line and a stalled card. */
+.key-path {
+  flex: none;
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--text-primary);
+  opacity: 0.7;
+}
+
+.key-stalled {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px dashed var(--text-muted);
+  border-left: 3px solid var(--state-claimed);
+  border-radius: 4px;
 }

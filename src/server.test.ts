@@ -86,6 +86,7 @@ const sampleMap: WayfinderMap = {
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
   stalled: [],
+  pullRequests: [],
   settled: null,
   ticketsLoaded: true,
 };
@@ -178,7 +179,8 @@ describe('repository-scoped server', () => {
     try {
       expect(await fetch(`${running.url}/api/stall-settings`).then((response) => response.json())).toEqual({ untouchedClaimDays: 7, deadHandOffDays: 7 });
       expect(await stalled()).toEqual([]);
-      expect(readPullRequests).not.toHaveBeenCalled();
+      // The claimed ticket's PR state (#130) is the one repository read; stalls share it.
+      expect(readPullRequests).toHaveBeenCalledTimes(1);
 
       expect((await save({ untouchedClaimDays: 4 })).status).toBe(400);
       const saved = await save({ untouchedClaimDays: 3 });
@@ -186,6 +188,33 @@ describe('repository-scoped server', () => {
       expect(await stalled()).toEqual([{ ticket: 11, kind: 'untouched-claim', since: claimed.updatedAt }]);
       expect(readPullRequests).toHaveBeenCalledTimes(1);
       expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally {
+      mapWatcher.close();
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('puts the pull request of each open ticket on the snapshot (#130)', async () => {
+    const claimed = { ...sampleTicket, assignee: 'octo', state: 'claimed' as const };
+    const fetcher: RepositoryFetcher = vi.fn(async () => ({ maps: [{ ...sampleMap, tickets: [claimed] }], warnings: [] }));
+    const open = { number: 232, url: 'https://github.com/octo/one/pull/232', state: 'open' as const, checks: 'failing' as const, review: 'changes_requested' as const, checkCounts: { passed: 3, failed: 2, pending: 0 }, reviewer: 'sam-k' };
+    const readPullRequests = vi.fn(async () => ({ byTicket: new Map([[11, [open]]]), lastCommits: new Map(), rateLimit: null }));
+    const mapWatcher = new MapWatcher({ readMap: async () => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }), readPullRequests });
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      fetcher,
+      homeLoader: async () => home,
+      handOffStore: new HandOffStore({ filePath: null }),
+      mapWatcher,
+    });
+
+    try {
+      const snapshot = (await fetch(`${running.url}/api/repos/octo/one/snapshot`).then((response) => response.json())) as { maps: WayfinderMap[] };
+      expect(snapshot.maps[0]?.pullRequests).toEqual([{ ticket: 11, ...open }]);
     } finally {
       mapWatcher.close();
       await new Promise<void>((resolve) => running.server.close(() => resolve()));

@@ -29,6 +29,7 @@ const MAP = {
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
   stalled: [],
+  pullRequests: [],
   settled: null,
   ticketsLoaded: true,
   sections: { destination: 'A calm Home.' },
