@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>B · Path lane and a moving strip</title>
+    <!-- PROTOTYPE (#125), B: the map gets one strip under the filters that says what just moved and what is in the way, with Start next in it. The critical path is a lane behind the cards with numbered steps and a pip meter in the topbar. Cards carry a three-icon PR strip; stalled cards are hatched. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="next.css" />
+    <style>
+      /* Critical path: a soft lane under the chain's edges, plus step numbers on its open cards. */
+      .edges path.b-lane {
+        stroke: var(--text-primary);
+        stroke-width: 34;
+        stroke-linecap: round;
+        opacity: 0.07;
+      }
+      .edges path.b-lane.is-dim {
+        opacity: 0.02;
+      }
+      .b-step {
+        position: absolute;
+        z-index: 2;
+        display: grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--text-primary);
+        color: var(--surface-1);
+        font-size: 11px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        pointer-events: none;
+      }
+      .b-step.is-done {
+        background: var(--state-done);
+      }
+      .b-step .i {
+        width: 12px;
+        height: 12px;
+      }
+
+      /* Header: a meter, one pip per ticket on the path. */
+      .b-meter {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 30px;
+        margin-left: 10px;
+        padding: 0 10px;
+        border: 1px solid var(--hairline);
+        border-radius: 8px;
+        background: none;
+        color: var(--text-secondary);
+        font-size: 12.5px;
+        white-space: nowrap;
+      }
+      .b-meter:hover,
+      .b-meter[aria-pressed='true'] {
+        background: var(--wash);
+        border-color: var(--baseline);
+        color: var(--text-primary);
+      }
+      .b-meter:focus-visible {
+        outline: 2px solid var(--state-claimed);
+        outline-offset: 2px;
+      }
+      .b-meter b {
+        color: var(--text-primary);
+      }
+      .b-pips {
+        display: inline-flex;
+        gap: 3px;
+      }
+      .b-pips i {
+        width: 10px;
+        height: 6px;
+        border-radius: 2px;
+        background: var(--accent);
+      }
+      .b-pips i.is-stalled {
+        background: repeating-linear-gradient(135deg, var(--accent) 0 2px, transparent 2px 4px);
+        outline: 1px solid var(--accent);
+        outline-offset: -1px;
+      }
+
+      /* Cards: a three-icon strip, bottom right: PR, CI, review. */
+      .b-strip {
+        position: absolute;
+        right: 10px;
+        bottom: 9px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 6px;
+        border: 1px solid var(--hairline);
+        border-radius: 6px;
+        background: var(--surface-1);
+        color: var(--text-muted);
+        font-size: 11px;
+      }
+      .b-strip .i {
+        width: 12px;
+        height: 12px;
+      }
+      .node:has(.b-strip) .meta {
+        max-width: 120px;
+      }
+
+      /* Stalled: hatched, like a card set aside. */
+      .node.b-stalled {
+        background-image: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--text-muted) 11%, transparent) 7px 8px);
+      }
+
+      /* The moving strip, under the filters. */
+      .b-feed {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 44px;
+        padding: 6px 12px 6px 18px;
+        border-bottom: 1px solid var(--hairline);
+        background: var(--surface-1);
+        font-size: 12.5px;
+        color: var(--text-secondary);
+        overflow-x: auto;
+      }
+      .b-feed .b-lbl {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .b-feed .b-lbl .i {
+        width: 13px;
+        height: 13px;
+      }
+      .b-news {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 4px 4px 10px;
+        border: 1px solid color-mix(in srgb, var(--state-frontier) 40%, var(--hairline));
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--state-frontier) 7%, var(--surface-1));
+        white-space: nowrap;
+        animation: b-in 0.5s ease-out;
+      }
+      @keyframes b-in {
+        from {
+          opacity: 0;
+          transform: translateY(-4px);
+        }
+      }
+      .b-news > .i {
+        width: 14px;
+        height: 14px;
+        color: var(--state-frontier);
+      }
+      .b-news b {
+        color: var(--text-primary);
+      }
+      .b-news .primary {
+        height: 28px;
+        padding: 0 10px;
+      }
+      .b-news .iconbtn {
+        width: 28px;
+        height: 28px;
+      }
+      .b-sep {
+        width: 1px;
+        height: 20px;
+        background: var(--hairline);
+        flex: none;
+      }
+      .b-way {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 28px;
+        padding: 0 9px;
+        border: 1px solid var(--hairline);
+        border-radius: 999px;
+        background: none;
+        color: var(--text-secondary);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .b-way b {
+        color: var(--text-primary);
+      }
+      .b-way:hover {
+        border-color: var(--baseline);
+        color: var(--text-primary);
+      }
+      .b-way:focus-visible {
+        outline: 2px solid var(--state-claimed);
+        outline-offset: 2px;
+      }
+      .b-way .i {
+        width: 13px;
+        height: 13px;
+      }
+      .b-way .b-path-tag {
+        padding: 0 5px;
+        border-radius: 4px;
+        background: var(--wash);
+        color: var(--text-primary);
+        font-size: 10.5px;
+        font-weight: 600;
+      }
+
+      /* Panel: a Pull request section after the hand-off card. */
+      .b-prsec {
+        margin: 0 0 16px;
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        overflow: hidden;
+        font-size: 12.5px;
+      }
+      .b-prsec header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--hairline);
+        background: var(--wash);
+      }
+      .b-prsec header .i {
+        width: 14px;
+        height: 14px;
+        color: var(--text-muted);
+      }
+      .b-prsec header a {
+        margin-left: auto;
+        color: var(--text-secondary);
+        font-size: 12px;
+      }
+      .b-prsec ul {
+        margin: 0;
+        padding: 6px 12px 8px;
+        list-style: none;
+      }
+      .b-prsec li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        color: var(--text-secondary);
+      }
+      .b-prsec li .nx-tone .i {
+        width: 14px;
+        height: 14px;
+      }
+      .b-prsec li span.muted {
+        margin-left: auto;
+        color: var(--text-muted);
+      }
+    </style>
+  </head>
+  <body class="viz-root">
+    <div id="root"></div>
+    <script src="../kit/kit.js"></script>
+    <script src="next.js"></script>
+    <script>
+      const { state, esc, icon, TICKETS, byNumber, PATH, PATH_LEFT, onPath, pathEdge, STARTABLE, FRESH, STALLED, WITH_PR, CI, REVIEW, STATE, ciIcon, reviewIcon, numbers, X, Y, W } = NEXT;
+
+      const OPEN_PATH = PATH.filter((n) => byNumber.get(n).open);
+
+      function strip(t) {
+        const pr = t.pr;
+        return `<span class="b-strip" aria-hidden="true" title="PR #${pr.n}: ${CI[pr.ci].word}, ${REVIEW[pr.review].word}">${icon('pr')}${ciIcon(pr)}${reviewIcon(pr)}</span>`;
+      }
+
+      // What stands in the way, most urgent first: stalled on the path, then failing CI, then the rest.
+      function inTheWay() {
+        const items = [];
+        for (const t of STALLED.filter((t) => onPath(t.n))) items.push([t, 'clock', 'stalled', true]);
+        for (const t of WITH_PR.filter((t) => t.pr.ci === 'fail')) items.push([t, 'ciFail', 'CI failing', onPath(t.n)]);
+        for (const t of TICKETS.filter((t) => t.handOff?.state === 'needs-you')) items.push([t, 'person', 'needs you', onPath(t.n)]);
+        for (const t of STALLED.filter((t) => !onPath(t.n))) items.push([t, 'clock', 'stalled', false]);
+        return items;
+      }
+
+      NEXT.start({
+        topbarAfterTabs: () => {
+          const pips = PATH.map((n) => {
+            const t = byNumber.get(n);
+            return `<i class="${t.stalled ? 'is-stalled' : ''}" style="--accent: var(${STATE[t.state].variable})"></i>`;
+          }).join('');
+          return `<button type="button" class="b-meter" data-action="path" aria-pressed="${state.pathFocus}" aria-label="${PATH_LEFT} of ${PATH.length} left on the critical path. Show only the path.">Critical path <span class="b-pips" aria-hidden="true">${pips}</span><b>${PATH_LEFT} left</b></button>`;
+        },
+
+        belowToolbar: () => {
+          const news = state.notice
+            ? `<span class="b-news" role="status" aria-live="polite">${icon('unlock')}<span><b>#203 closed</b> 2 min ago · ${numbers(FRESH)} unblocked</span>
+                ${state.started ? `<span>${icon('check')} Started</span>` : `<button type="button" class="primary" data-action="start">${icon('play')}Start next · ${STARTABLE.length}</button>`}
+                <button type="button" class="iconbtn" data-action="dismiss" aria-label="Dismiss">${icon('x')}</button></span><span class="b-sep"></span>`
+            : `${state.started ? '' : `<button type="button" class="b-way" data-action="start">${icon('play')}<b>Start next · ${STARTABLE.length}</b></button><span class="b-sep"></span>`}`;
+          const way = inTheWay()
+            .map(([t, ic, word, path]) => `<button type="button" class="b-way" data-select="${t.n}">${icon(ic)}<b>#${t.n}</b> ${word}${path ? '<span class="b-path-tag">on path</span>' : ''}</button>`)
+            .join('');
+          return `<div class="b-feed" role="region" aria-label="What's moving">${news}<span class="b-lbl">In the way</span>${way}</div>`;
+        },
+
+        edgesUnder: (es) =>
+          es
+            .filter((e) => pathEdge(e.from, e.to))
+            .map((e) => `<path class="b-lane" d="${e.d}"/>`)
+            .join(''),
+
+        nodesUnder: () =>
+          PATH.map((n) => {
+            const t = byNumber.get(n);
+            const step = OPEN_PATH.indexOf(n) + 1;
+            return `<span class="b-step${t.open ? '' : ' is-done'}" style="left:${X(t) - 11}px; top:${Y(t) - 11}px">${t.open ? step : icon('check')}</span>`;
+          }).join(''),
+
+        node: (t) => {
+          const o = { classes: [], aria: [] };
+          if (onPath(t.n)) o.aria.push(t.open ? `step ${OPEN_PATH.indexOf(t.n) + 1} of ${PATH_LEFT} on the critical path` : 'on the critical path');
+          if (t.pr) {
+            o.inner = strip(t);
+            o.aria.push(`PR #${t.pr.n}, ${CI[t.pr.ci].word}, ${REVIEW[t.pr.review].word}`);
+          }
+          if (t.stalled) {
+            o.classes.push('b-stalled');
+            o.meta = `@${esc(t.who)} · stalled ${t.stalled.age}`;
+            o.aria.push(`stalled: ${t.stalled.short}`);
+          }
+          if (t.fresh && state.notice) {
+            o.classes.push('nx-fresh');
+            o.aria.push('just unblocked');
+          }
+          return o;
+        },
+
+        panel: (t) => {
+          const o = {};
+          if (t.stalled)
+            o.banner = `<div class="banner" style="--accent: var(--text-muted)">${icon('clock')}<span><b>Stalled for ${t.stalled.age}.</b> ${esc(t.stalled.long)}</span></div>`;
+          if (t.pr) {
+            const pr = t.pr;
+            o.afterLaunch = `<section class="b-prsec" aria-label="Pull request #${pr.n}"><header>${icon('pr')}<b>Pull request #${pr.n}</b><a href="#" data-to="PR #${pr.n} on GitHub">Open ↗</a></header><ul>
+              <li>${ciIcon(pr)}${CI[pr.ci].word}<span class="muted">${pr.checks}</span></li>
+              <li>${reviewIcon(pr)}${REVIEW[pr.review].word}<span class="muted">@${pr.reviewer}</span></li></ul></section>`;
+          }
+          if (onPath(t.n) && t.open)
+            o.facts = `<dt>Path</dt><dd>${icon('route')}Step ${OPEN_PATH.indexOf(t.n) + 1} of ${PATH_LEFT} on the critical path</dd>`;
+          return o;
+        },
+
+        action: (name) => {
+          if (name === 'path') state.pathFocus = !state.pathFocus;
+          if (name === 'dismiss') state.notice = false;
+          if (name === 'start') {
+            state.started = true;
+            Kit.toast(`Would hand off ${numbers(STARTABLE)} to T3 Code`);
+          }
+        },
+      });
+    </script>
+  </body>
+</html>

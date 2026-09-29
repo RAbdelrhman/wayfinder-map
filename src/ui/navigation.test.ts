@@ -16,6 +16,7 @@ function ticket(number: number, title: string): Ticket {
     blockedBy: [],
     openBlockers: [],
     state: 'frontier',
+    updatedAt: null,
   };
 }
 
@@ -32,6 +33,7 @@ function map(number: number, title: string, tickets: Ticket[] = []): WayfinderMa
     tickets,
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
+    stalled: [],
     settled: null,
     ticketsLoaded: true,
   };
@@ -42,6 +44,7 @@ const SNAPSHOT: MapSnapshot = {
   fetchedAt: '2026-09-22T00:00:00.000Z',
   maps: [map(35, 'Build the navigation shell', [ticket(51, 'Search tickets and maps')])],
   hiddenMaps: 0,
+  publicMaps: [],
   warnings: [],
 };
 

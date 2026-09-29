@@ -21,6 +21,7 @@ const map: WayfinderMap = {
   tickets: [],
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
+  stalled: [],
   settled: null,
   ticketsLoaded: true,
 };
@@ -37,6 +38,7 @@ const ticket: Ticket = {
   blockedBy: [27],
   openBlockers: [27],
   state: 'blocked',
+  updatedAt: null,
 };
 
 describe('renderTemplate', () => {
@@ -178,7 +180,7 @@ describe('buildPrompt', () => {
   });
 
   it('leaves the blocker line out when nothing blocks the ticket', () => {
-    const free: Ticket = { ...ticket, blockedBy: [], openBlockers: [], state: 'frontier' };
+    const free: Ticket = { ...ticket, blockedBy: [], openBlockers: [], state: 'frontier', updatedAt: null };
     const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: free });
     expect(prompt).not.toContain('Blocked by');
   });
@@ -205,8 +207,20 @@ describe('buildNewMapPrompt', () => {
     expect(prompt).toContain('  Build an offline-first sync engine.\n\n  Keep drafts local.');
   });
 
-  it('asks T3 to run the wayfinder workflow, interview the user, and create the map and tickets', () => {
-    expect(prompt).toContain('Run the wayfinder workflow');
+  it('spells out the map format, so no particular skill is needed', () => {
+    expect(prompt).not.toContain('Run the wayfinder workflow');
+    expect(prompt).toContain('no particular skill is\nneeded');
+    expect(prompt).toContain('`## Destination`');
+    expect(prompt).toContain('blocked-by relationships');
+  });
+
+  it('asks whether the map is private or public, and marks a public one', () => {
+    expect(prompt).toContain('stay private (the default');
+    expect(prompt).toContain('`Visibility: public`');
+    expect(prompt).toContain('whether it is private or public');
+  });
+
+  it('asks T3 to interview the user and create the map and tickets', () => {
     expect(prompt).toContain('Interview the user as needed');
     expect(prompt).toContain('labeled `wayfinder:map`');
     expect(prompt).toContain('labeled `wayfinder:<type>`');

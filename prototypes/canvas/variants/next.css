@@ -1,0 +1,137 @@
+/* PROTOTYPE (#125): shared additions for the next-*.html variants. The map page itself is src/ui/styles.css. */
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* The canvas opens at the top left at 85% instead of homing, so the long chain shows. */
+.nx-stage {
+  padding: 8px 24px 96px 8px;
+  zoom: 0.85;
+}
+
+.repo-mono {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: rgba(156, 163, 175, 0.14);
+  color: #9ca3af;
+  font: 700 8px ui-monospace, Consolas, monospace;
+}
+
+/* An icon that carries a tone; the word beside it always says the same thing. */
+.nx-tone {
+  display: inline-flex;
+  color: var(--tone);
+}
+
+.nx-tone .i {
+  width: 13px;
+  height: 13px;
+}
+
+/* ---------- prototype bar ---------- */
+
+.nx-proto {
+  position: fixed;
+  z-index: 90;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 372px;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border: 1.5px dashed #b07cff;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-1) 94%, #b07cff);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.nx-proto-tag {
+  padding: 3px 7px;
+  border-radius: 7px;
+  background: #7c4dcc;
+  color: #fff;
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nx-proto-lbl {
+  padding: 0 4px 0 6px;
+  color: var(--text-muted);
+}
+
+.nx-proto button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-secondary);
+}
+
+.nx-proto button:hover {
+  background: var(--wash);
+}
+
+.nx-proto button.is-on {
+  background: var(--text-primary);
+  color: var(--surface-1);
+}
+
+.nx-proto button:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+
+.nx-proto .i {
+  width: 12px;
+  height: 12px;
+}
+
+.nx-proto-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--hairline);
+}
+
+/* A just-unblocked card pulses once in its own colour. */
+@keyframes nx-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  30% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+}
+
+.node.nx-fresh {
+  animation: nx-pulse 1.4s ease-out 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .node.nx-fresh {
+    animation: none;
+  }
+}
+
+/* Room for the prototype bar at the bottom of the panel. */
+.insp-panel {
+  padding-bottom: 110px;
+}

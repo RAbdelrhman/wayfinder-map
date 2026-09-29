@@ -10,7 +10,7 @@ import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver } from './workspaces.js';
 import type { WorkspaceDependencies } from './workspaces.js';
 import { RepositoryCloneError } from './clone.js';
-import type { Ticket, WayfinderMap } from './types.js';
+import type { MapSnapshot, Ticket, WayfinderMap } from './types.js';
 import { HandOffStore } from './handOffTracking.js';
 import { MapWatcher } from './mapWatcher.js';
 import type { MapRead } from './mapWatcher.js';
@@ -64,6 +64,7 @@ const sampleTicket: Ticket = {
   blockedBy: [],
   openBlockers: [],
   state: 'frontier',
+  updatedAt: null,
 };
 
 const sampleMap: WayfinderMap = {
@@ -84,6 +85,7 @@ const sampleMap: WayfinderMap = {
   tickets: [sampleTicket],
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
+  stalled: [],
   settled: null,
   ticketsLoaded: true,
 };
@@ -120,7 +122,7 @@ describe('repository-scoped server', () => {
     ];
     const readMap = vi.fn(async (): Promise<MapRead> => reads.shift() ?? { status: 'unchanged', rateLimit: null, pollIntervalSeconds: null });
     const mapWatcher = new MapWatcher(
-      { readMap, readPullRequests: async () => ({ byTicket: new Map(), rateLimit: null }) },
+      { readMap, readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) },
       { intervalMs: 10 },
     );
     const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, mapWatcher });
@@ -150,6 +152,44 @@ describe('repository-scoped server', () => {
     const readsAtClose = readMap.mock.calls.length;
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(readMap.mock.calls.length).toBe(readsAtClose);
+  });
+
+  it('marks stalled tickets on the snapshot and follows the stall settings', async () => {
+    const claimed = { ...sampleTicket, assignee: 'octo', state: 'claimed' as const, updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() };
+    const fetcher: RepositoryFetcher = vi.fn(async () => ({ maps: [{ ...sampleMap, tickets: [claimed] }], warnings: [] }));
+    const readPullRequests = vi.fn(async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }));
+    const mapWatcher = new MapWatcher({ readMap: async () => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }), readPullRequests });
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      fetcher,
+      homeLoader: async () => home,
+      handOffStore: new HandOffStore({ filePath: null }),
+      mapWatcher,
+    });
+    const stalled = async (): Promise<unknown> =>
+      ((await fetch(`${running.url}/api/repos/octo/one/snapshot`).then((response) => response.json())) as { maps: WayfinderMap[] }).maps[0]?.stalled;
+    const save = (body: unknown): Promise<Response> =>
+      fetch(`${running.url}/api/stall-settings`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+    try {
+      expect(await fetch(`${running.url}/api/stall-settings`).then((response) => response.json())).toEqual({ untouchedClaimDays: 7, deadHandOffDays: 7 });
+      expect(await stalled()).toEqual([]);
+      expect(readPullRequests).not.toHaveBeenCalled();
+
+      expect((await save({ untouchedClaimDays: 4 })).status).toBe(400);
+      const saved = await save({ untouchedClaimDays: 3 });
+      expect(await saved.json()).toEqual({ untouchedClaimDays: 3, deadHandOffDays: 7 });
+      expect(await stalled()).toEqual([{ ticket: 11, kind: 'untouched-claim', since: claimed.updatedAt }]);
+      expect(readPullRequests).toHaveBeenCalledTimes(1);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally {
+      mapWatcher.close();
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
   });
 
   it('isolates snapshots for repositories requested through scoped endpoints', async () => {
@@ -927,7 +967,7 @@ describe('local clone for a hand-off', () => {
           }),
         );
         const [input] = startThread.mock.calls[0] ?? [];
-        expect(input?.prompt(null)).toContain('Run the wayfinder workflow');
+        expect(input?.prompt(null)).toContain('Turn this into a map.');
       } finally {
         await new Promise<void>((resolve) => running.server.close(() => resolve()));
       }
@@ -988,6 +1028,83 @@ describe('progress panel endpoints', () => {
       await expect(rejected.json()).resolves.toEqual({ error: 'Choose a goal of 3, 5, 8.' });
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+});
+
+describe('following public maps', () => {
+  function followingServer(login: string | null) {
+    const saved = new Set<number>();
+    const store = {
+      follows: vi.fn(async () => [...saved]),
+      set: vi.fn(async (_login: string, _repo: string, mapNumber: number, followed: boolean) => {
+        if (followed) saved.add(mapNumber);
+        else saved.delete(mapNumber);
+        return [...saved];
+      }),
+    };
+    // #7 is someone else's public map; it joins the list once followed.
+    const fetcher = vi.fn<RepositoryFetcher>(async ({ viewer }) => {
+      const followed = viewer?.follows.includes(7) === true;
+      return {
+        maps: followed ? [{ ...sampleMap, number: 7, author: 'drive-by', visibility: 'public' as const }] : [],
+        hiddenMaps: followed ? 0 : 1,
+        publicMaps: [{ number: 7, title: 'Theirs', url: 'https://github.com/octo/one/issues/7', author: 'drive-by', open: true, followed, progress: { completed: 1, total: 3 } }],
+        warnings: [],
+      };
+    });
+    const running = startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      fetcher,
+      homeLoader: async () => home,
+      handOffStore: new HandOffStore({ filePath: null }),
+      following: { login: async () => login, store },
+    });
+    return { running, store };
+  }
+
+  const post = (url: string, body: unknown) =>
+    fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+  it('follows and unfollows a public map for the signed-in login', async () => {
+    const { running: started, store } = followingServer('octo');
+    const running = await started;
+    try {
+      const followed = (await (await post(`${running.url}/api/repos/octo/one/follow`, { map: 7, followed: true })).json()) as MapSnapshot;
+      expect(store.set).toHaveBeenCalledWith('octo', 'octo/one', 7, true);
+      expect(followed.maps.map((map) => map.number)).toEqual([7]);
+      expect(followed.publicMaps[0]?.followed).toBe(true);
+
+      const unfollowed = (await (await post(`${running.url}/api/repos/octo/one/follow`, { map: 7, followed: false })).json()) as MapSnapshot;
+      expect(unfollowed.maps).toEqual([]);
+      expect(unfollowed.publicMaps[0]?.followed).toBe(false);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('refuses to follow a map that is not public, or with no one signed in', async () => {
+    const { running: started, store } = followingServer('octo');
+    const running = await started;
+    try {
+      expect((await post(`${running.url}/api/repos/octo/one/follow`, { map: 8, followed: true })).status).toBe(404);
+      expect((await post(`${running.url}/api/repos/octo/one/follow`, { map: 'x', followed: true })).status).toBe(400);
+      // Unfollowing works even when the map is no longer public.
+      expect((await post(`${running.url}/api/repos/octo/one/follow`, { map: 8, followed: false })).status).toBe(200);
+      expect(store.set).toHaveBeenCalledTimes(1);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+    const { running: anonymous } = followingServer(null);
+    const signedOut = await anonymous;
+    try {
+      expect((await post(`${signedOut.url}/api/repos/octo/one/follow`, { map: 7, followed: true })).status).toBe(409);
+    } finally {
+      await new Promise<void>((resolve) => signedOut.server.close(() => resolve()));
     }
   });
 });
@@ -1057,7 +1174,7 @@ describe('settling maps', () => {
 
   it('never watches a settled map', async () => {
     const readMap = vi.fn(async (): Promise<MapRead> => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }));
-    const mapWatcher = new MapWatcher({ readMap, readPullRequests: async () => ({ byTicket: new Map(), rateLimit: null }) }, { intervalMs: 10 });
+    const mapWatcher = new MapWatcher({ readMap, readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) }, { intervalMs: 10 });
     const { running: started } = settlingServer('octo', mapWatcher);
     const running = await started;
     try {

@@ -1,5 +1,7 @@
 import type { HomeAccount } from '../home.js';
 import type { DailyGoal, ProgressSettings, ProgressState } from '../progress.js';
+import { STALL_DAY_CHOICES } from '../types.js';
+import type { StallSettings } from '../types.js';
 import { currentTheme, paintIcons, renderAccountMarkContent, setTheme, THEME_CHANGE_EVENT } from './chrome.js';
 import type { Theme } from './chrome.js';
 import { escapeHtml } from './markdown.js';
@@ -7,7 +9,7 @@ import { defaultTier, saveDefaultTier, TIER_HINT, TIER_LABEL, TIERS } from './mo
 import type { Tier } from './models.js';
 import { GOALS, PROGRESS_SETTINGS_EVENT } from './progress.js';
 
-/* Settings (#40, #104): the GitHub account and the preferences that belong to no one page. */
+/* Settings (#40, #104): the GitHub account and the preferences that belong to no one page. Stall days are #160. */
 
 export interface SettingsView {
   /** Null while the account loads. */
@@ -16,6 +18,8 @@ export interface SettingsView {
   tier: Tier;
   /** Null while progress loads or when no one is signed in to save it for. */
   progress: ProgressSettings | null;
+  /** Null while the stall settings load. */
+  stalls: StallSettings | null;
   /** The action in flight, so its button can say so and the rest stay still. */
   busy: 'switch' | 'logout' | null;
 }
@@ -72,7 +76,20 @@ export function settingsBodyHtml(view: SettingsView): string {
       <div class="settings-row"><span class="grow">Theme</span>${themes}</div>
       <div class="settings-row"><span class="grow">Default model tier<span class="hint">${escapeHtml(TIER_HINT[view.tier])}. New tickets and maps start here.</span></span>${tiers}</div>
       <div class="settings-row"><span class="grow">Daily goal<span class="hint">${view.progress === null ? 'Sign in to set a goal.' : 'Tickets to clear each day on Home.'}</span></span>${goals}</div>
+    </section>
+    <section class="settings-section" aria-labelledby="settings-stalls-title">
+      <h3 id="settings-stalls-title">Stalled tickets</h3>
+      ${stallRow('untouchedClaimDays', 'Untouched claim', 'Claimed, with no commit, PR, comment or live hand-off.', view.stalls)}
+      ${stallRow('deadHandOffDays', 'Dead hand-off', 'The hand-off failed or never started, with no retry or PR.', view.stalls)}
     </section>`;
+}
+
+function stallRow(key: keyof StallSettings, label: string, hint: string, stalls: StallSettings | null): string {
+  const days = segmented(
+    `${label}, in days`,
+    STALL_DAY_CHOICES.map((choice) => seg(`data-settings-${key === 'untouchedClaimDays' ? 'claim' : 'hand-off'}-days`, String(choice), `${String(choice)}d`, choice === stalls?.[key], stalls === null)).join(''),
+  );
+  return `<div class="settings-row"><span class="grow">${escapeHtml(label)}<span class="hint">${escapeHtml(hint)}</span></span>${days}</div>`;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -104,7 +121,7 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
   trigger.setAttribute('aria-haspopup', 'dialog');
   trigger.setAttribute('aria-controls', dialog.id);
 
-  let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), progress: null, busy: null };
+  let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), progress: null, stalls: null, busy: null };
 
   const draw = (): void => {
     const focusKey = document.activeElement instanceof HTMLElement && body.contains(document.activeElement) ? focusKeyOf(document.activeElement) : null;
@@ -114,14 +131,16 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
   };
 
   const load = async (): Promise<void> => {
-    const [account, progress] = await Promise.allSettled([
+    const [account, progress, stalls] = await Promise.allSettled([
       fetch('/api/auth/status').then((response) => readJson<HomeAccount>(response)),
       fetch('/api/progress').then((response) => readJson<ProgressState>(response)),
+      fetch('/api/stall-settings').then((response) => readJson<StallSettings>(response)),
     ]);
     view = {
       ...view,
       account: account.status === 'fulfilled' ? account.value : { status: 'unavailable', host: 'github.com', login: null, accounts: [], missingScopes: [], tokenSource: null, message: 'GitHub account information is unavailable.' },
       progress: progress.status === 'fulfilled' && progress.value.login !== null ? progress.value.settings : null,
+      stalls: stalls.status === 'fulfilled' ? stalls.value : view.stalls,
     };
     if (dialog.open) draw();
   };
@@ -193,6 +212,28 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
       );
       return;
     }
+    const claimDays = Number(target?.closest<HTMLElement>('[data-settings-claim-days]')?.dataset['settingsClaimDays']);
+    const handOffDays = Number(target?.closest<HTMLElement>('[data-settings-hand-off-days]')?.dataset['settingsHandOffDays']);
+    const stallKey = Number.isFinite(claimDays) ? 'untouchedClaimDays' : Number.isFinite(handOffDays) ? 'deadHandOffDays' : null;
+    if (view.stalls !== null && stallKey !== null) {
+      const days = stallKey === 'untouchedClaimDays' ? claimDays : handOffDays;
+      if (days === view.stalls[stallKey]) return;
+      const before = view.stalls;
+      view = { ...view, stalls: { ...before, [stallKey]: days } };
+      draw();
+      postJson<StallSettings>('/api/stall-settings', { [stallKey]: days }).then(
+        (settings) => {
+          view = { ...view, stalls: settings };
+          if (dialog.open) draw();
+        },
+        (error: unknown) => {
+          view = { ...view, stalls: before };
+          if (dialog.open) draw();
+          toast(error instanceof Error ? error.message : String(error), 9000);
+        },
+      );
+      return;
+    }
     const login = target?.closest<HTMLElement>('[data-settings-switch]')?.dataset['settingsSwitch'];
     if (login !== undefined && view.busy === null) {
       void accountAction('switch', () => postJson<HomeAccount>('/api/auth/switch', { login }), `Switched to ${login}.`);
@@ -206,7 +247,7 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
 
 /** A selector that finds the same control after a redraw, so keyboard focus stays put. */
 export function focusKeyOf(element: Element): string | null {
-  for (const attribute of ['data-settings-theme', 'data-settings-tier', 'data-settings-goal', 'data-settings-switch']) {
+  for (const attribute of ['data-settings-theme', 'data-settings-tier', 'data-settings-goal', 'data-settings-claim-days', 'data-settings-hand-off-days', 'data-settings-switch']) {
     const value = element.getAttribute(attribute);
     if (value !== null) return `[${attribute}="${value}"]`;
   }

@@ -540,8 +540,34 @@ function paintRepository(repo: string, snapshot: MapSnapshot, settledOpen: boole
   navigation?.setSnapshot(snapshot, null);
   paint(repositoryPageHtml(repo, snapshot), 'repository-sheet');
   bindRepositoryMaps(repo, snapshot.maps, settledOpen);
+  bindPublicMaps(repo, snapshot, settledOpen);
   const root = els.main.querySelector<HTMLElement>('[data-repository-page]');
   if (root !== null) void loadRepositoryHandOffCounts(repo, root);
+}
+
+/** Follow and Unfollow in the Public maps list. The page is redrawn from the snapshot the server sends back. */
+function bindPublicMaps(repo: string, snapshot: MapSnapshot, settledOpen: boolean): void {
+  const section = els.main.querySelector<HTMLElement>('[data-repo-public]');
+  section?.addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-follow-map], [data-unfollow-map]');
+    if (button === null) return;
+    const followed = button.dataset['followMap'] !== undefined;
+    const mapNumber = Number(followed ? button.dataset['followMap'] : button.dataset['unfollowMap']);
+    if (!Number.isSafeInteger(mapNumber)) return;
+    const title = snapshot.publicMaps.find((map) => map.number === mapNumber)?.title ?? '';
+    button.disabled = true;
+    void postJson<MapSnapshot>(scopedApiPath(repo, 'follow'), { map: mapNumber, followed })
+      .then((next) => {
+        paintRepository(repo, next, settledOpen);
+        // The list was redrawn, so put focus back on the same map's new button.
+        els.main.querySelector<HTMLElement>(`[data-public-map="${String(mapNumber)}"] button`)?.focus();
+        toast(followed ? `Following #${String(mapNumber)} ${title}. It is on your maps now.` : `Unfollowed #${String(mapNumber)} ${title}.`);
+      })
+      .catch((error: unknown) => {
+        button.disabled = false;
+        toast((error as Error).message || 'Could not change this follow.', 8000);
+      });
+  });
 }
 
 async function renderNewMap(): Promise<void> {

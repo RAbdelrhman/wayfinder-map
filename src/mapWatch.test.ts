@@ -8,6 +8,7 @@ import {
   needsPullRequests,
   nextPollDelay,
   parseHttpResponse,
+  branchCommitsByTicket,
   pullRequestsByTicket,
   rateLimitOf,
   trackedPullRequestsByTicket,
@@ -110,6 +111,27 @@ describe('needsPullRequests', () => {
     expect(needsPullRequests([ticket(1, 'frontier'), ticket(2, 'done', [pr(9, { state: 'merged' })])])).toBe(false);
     expect(needsPullRequests([ticket(1, 'claimed')])).toBe(true);
     expect(needsPullRequests([ticket(1, 'done', [pr(9)])])).toBe(true);
+  });
+});
+
+describe('branchCommitsByTicket', () => {
+  it('keys the newest commit on each wayfinder branch by its ticket', () => {
+    expect(
+      branchCommitsByTicket([
+        { name: '160-detect-stalled-tickets', target: { committedDate: '2026-09-20T00:00:00Z' } },
+        { name: '160-detect-stalled-tickets-retry', target: { committedDate: '2026-09-25T00:00:00Z' } },
+        { name: '42-older', target: { committedDate: '2026-09-01T00:00:00Z' } },
+        { name: 'no-ticket', target: { committedDate: '2026-09-25T00:00:00Z' } },
+        { name: '43-not-a-commit', target: {} },
+        null,
+      ]),
+    ).toEqual(
+      new Map([
+        [160, '2026-09-25T00:00:00Z'],
+        [42, '2026-09-01T00:00:00Z'],
+      ]),
+    );
+    expect(branchCommitsByTicket(undefined)).toEqual(new Map());
   });
 });
 
