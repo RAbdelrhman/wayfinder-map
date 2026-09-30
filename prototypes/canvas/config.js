@@ -25,6 +25,41 @@ window.CANVAS = {
 
   pages: [
     {
+      title: 'Everything in the map menu',
+      round: 4,
+      sections: [
+        {
+          title: 'No Start next button in the topbar',
+          note: 'The user asked to remove the blue Start next button. The map-name menu now holds both map-level controls: Start next, which opens A’s confirm dialog, and the Auto map toggle, whose first turn-on opens its setup dialog.',
+          items: [
+            {
+              id: 'M',
+              name: 'The map menu',
+              src: 'variants/start-menu.html?menu=1',
+              note: {
+                idea:
+                  'The topbar has no Start next button. Open the map-name menu: "Start next · 5 ready" opens A’s confirm dialog (Auto tiers, queue over the cap, skips, needs you, tier per ticket). Below it is the Auto map toggle; the first time it opens "Turn on auto map", after that it just flips.',
+                pros: ['The topbar loses its biggest button', 'Both map-level controls sit together, apart from the single-ticket Open in T3 Code'],
+                cons: ['Start next is one click deeper and not visible until you open the menu'],
+                basedOn: ['AM-setup', 'AM-on'],
+              },
+            },
+            {
+              id: 'M-running',
+              name: 'Running: progress stays in the topbar',
+              src: 'variants/start-menu.html?phase=running',
+              note: {
+                idea: 'While a batch runs, "2 running · 3 queued" with its bar sits in the topbar as in A, and turns into "Stopped: usage limit" on a stop. It only appears during a batch.',
+                pros: ['Progress and the usage-limit stop stay visible from anywhere on the map'],
+                cons: ['The topbar still changes during a batch'],
+                basedOn: ['A-running', 'A-stopped'],
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
       title: 'Start next and the auto map, apart',
       round: 3,
       sections: [
