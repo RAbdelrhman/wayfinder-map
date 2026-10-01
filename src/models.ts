@@ -123,6 +123,21 @@ export function toCatalog(rawProviders: readonly RawProvider[], hiddenByProvider
   return { providers };
 }
 
+export function findModel(catalog: ModelCatalog, choice: Pick<ModelChoice, 'instanceId' | 'model'> | null): CatalogModel | null {
+  if (choice === null) return null;
+  const provider = catalog.providers.find((candidate) => candidate.instanceId === choice.instanceId);
+  return provider?.models.find((model) => model.slug === choice.model) ?? null;
+}
+
+/** Drop a saved choice whose model T3 Code no longer offers, and an effort the model no longer takes. */
+export function liveChoice(catalog: ModelCatalog, choice: ModelChoice | null | undefined): ModelChoice | null {
+  if (!choice) return null;
+  const model = findModel(catalog, choice);
+  if (model === null) return null;
+  const effort = choice.effort && model.effort?.options.some((option) => option.id === choice.effort?.value) ? choice.effort : undefined;
+  return effort ? { instanceId: choice.instanceId, model: choice.model, effort } : { instanceId: choice.instanceId, model: choice.model };
+}
+
 /** The `modelSelection` T3 Code's thread commands take. */
 export function toModelSelection(choice: ModelChoice): Record<string, unknown> {
   return {

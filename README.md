@@ -237,7 +237,14 @@ off every ticket that is next at once. A confirm list groups them as Ready, Need
   thread, so they start unticked as "Needs you" (tick one to include it).
 - A ticket that already has a live hand-off (or is queued in a running batch) is skipped, and the row
   says why.
-- Each row has one tier choice, Simple, Mid or Hard, which resolves to that tier's model from **Models**.
+- Each row has one choice, **Auto** (the default), Simple, Mid or Hard. Under Auto the row shows the
+  tier, the model and a one-line reason ("Hard → gpt-5.6-sol: touches 6 files") and who rated it;
+  picking a tier yourself shows "your pick". A tier resolves to its model from **Models**.
+- Auto rates each ticket from its type, the files and modules it names, risk words and blockers, and
+  starts at Mid when the ticket says little. Under **Settings → Auto rates tickets** you can have a
+  Codex or Claude model rate instead; if it can't, the rules do and the row says so. Auto skips a
+  provider that T3 Code reports as not ready, or that hit a usage limit in the last 30 minutes, by
+  using a harder tier's model from another provider. It never moves a ticket to an easier tier.
 - At most 4 hand-offs run at once on this machine (change it under **Settings → Hand-offs at once**).
   The rest queue and start as slots free. Each ticket gets its own thread and worktree.
 
@@ -245,6 +252,22 @@ While a batch runs, a topbar control shows "N running · M queued" and a per-tic
 **Stop the queue**. Cards show Starting or a dashed Queued chip. On the first usage-limit error the
 batch stops, queued tickets go back to next, and the control turns red with when the limit resets.
 Queued tickets start only while Wayfinder is open.
+
+### Auto map
+
+The same menu has an **Auto map** switch, off by default and set per map. While it is on, every ticket
+the watcher reports as newly next is handed off with no click, through the same batch as Start next:
+the per-machine cap applies and the rest queue. The map name shows a blue **auto** mark and next cards
+read "auto map will start this".
+
+- The first time you turn it on, a setup dialog explains this and has one **Tier** choice (Auto by
+  default, where Auto rates each ticket and picks its tier and model, as in Start next). **Auto map settings…** reopens it.
+- Grilling and prototype tickets start too, then stop at the first question or design choice and wait
+  for you ("needs you").
+- The first usage-limit error stops the batch, notifies you, and turns the auto map off until you turn
+  it back on.
+- It runs only while Wayfinder is open and the map has been opened. After a quit, the catch-up pass
+  reports what became next but starts nothing.
 
 ## Prompt template
 

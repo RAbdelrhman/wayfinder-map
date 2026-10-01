@@ -1,4 +1,4 @@
-import { TIERS } from '../models.js';
+import { findModel, liveChoice, parseModelChoice, TIERS } from '../models.js';
 import type { CatalogModel, ModelCatalog, ModelChoice, Tier } from '../models.js';
 
 /* The model picker: what T3 Code can run, a default per task tier, and a tier per ticket. */
@@ -31,6 +31,25 @@ export function defaultTier(storage: Pick<Storage, 'getItem'> = localStorage): T
 
 export function saveDefaultTier(tier: Tier, storage: Pick<Storage, 'setItem'> = localStorage): void {
   storage.setItem(DEFAULT_TIER_KEY, tier);
+}
+
+/** How Auto rates a ticket: by Wayfinder's rules alone, or by a model the user chose (#166). */
+export type AutoRater = { kind: 'logic' } | { kind: 'model'; choice: ModelChoice };
+
+const AUTO_RATER_KEY = 'wayfinder-map:auto-rater:v1';
+
+export function autoRater(storage: Pick<Storage, 'getItem'> = localStorage): AutoRater {
+  try {
+    const saved = JSON.parse(storage.getItem(AUTO_RATER_KEY) ?? 'null') as { kind?: unknown; choice?: unknown } | null;
+    const choice = saved?.kind === 'model' ? parseModelChoice(saved.choice) : null;
+    return choice === null ? { kind: 'logic' } : { kind: 'model', choice };
+  } catch {
+    return { kind: 'logic' };
+  }
+}
+
+export function saveAutoRater(rater: AutoRater, storage: Pick<Storage, 'setItem'> = localStorage): void {
+  storage.setItem(AUTO_RATER_KEY, JSON.stringify(rater));
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -91,21 +110,6 @@ export function loadCatalog(force = false): Promise<CatalogState> {
   return inFlight;
 }
 
-export function findModel(catalog: ModelCatalog, choice: Pick<ModelChoice, 'instanceId' | 'model'> | null): CatalogModel | null {
-  if (choice === null) return null;
-  const provider = catalog.providers.find((candidate) => candidate.instanceId === choice.instanceId);
-  return provider?.models.find((model) => model.slug === choice.model) ?? null;
-}
-
-/** Drop a saved choice whose model T3 Code no longer offers, and an effort the model no longer takes. */
-export function liveChoice(catalog: ModelCatalog, choice: ModelChoice | null | undefined): ModelChoice | null {
-  if (!choice) return null;
-  const model = findModel(catalog, choice);
-  if (model === null) return null;
-  const effort = choice.effort && model.effort?.options.some((option) => option.id === choice.effort?.value) ? choice.effort : undefined;
-  return effort ? { instanceId: choice.instanceId, model: choice.model, effort } : { instanceId: choice.instanceId, model: choice.model };
-}
-
 /* ---------- controls ---------- */
 
 const SEPARATOR = '::';
@@ -160,5 +164,5 @@ export function readChoice(catalog: ModelCatalog, modelSelect: HTMLSelectElement
   return choice;
 }
 
-export { TIERS };
+export { findModel, liveChoice, TIERS };
 export type { ModelChoice, Tier };

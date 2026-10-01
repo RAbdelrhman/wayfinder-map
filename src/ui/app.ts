@@ -63,7 +63,8 @@ import {
   mountHandOffs,
   restoreMapTicketFocus,
 } from './handOffs.js';
-import { batchCardChip, mountStartNext } from './startNext.js';
+import { batchCardChip, handOffCap, mountStartNext } from './startNext.js';
+import { AutoMapStarter, autoCardMetaHtml, autoCardNote, mountAutoMapDialog } from './autoMap.js';
 import {
   desktopNotificationFor,
   changedPrototypeNotifications,
@@ -298,6 +299,7 @@ function repaintCards(): void {
   if (selected !== null) renderInspector();
   syncHighlights();
   navigation?.setStartNext(startNext.menuLabel());
+  syncAutoMap();
 }
 
 function rememberMapOpen(repo: string, mapNumber: number): void {
@@ -330,6 +332,19 @@ async function receiveMapEvent(event: MapEvent): Promise<void> {
     }
     return;
   }
+  // A map with its auto map on starts the ticket itself, so there is nothing to announce unless that fails.
+  if (event.type === 'ticket-next' && autoStarter.take(event)) return;
+  await announceMapEvent(event);
+}
+
+/** Put a map event in the inbox, and for a ticket that became next, offer to start it. */
+async function announceMapEvent(event: MapEvent): Promise<void> {
+  const eventSnapshot = snapshot;
+  const map = eventSnapshot?.repo.toLocaleLowerCase() === event.repo.toLocaleLowerCase()
+    ? eventSnapshot.maps.find((candidate) => candidate.number === event.mapNumber)
+    : undefined;
+  const mapTitle = map?.title ?? 'Map #' + String(event.mapNumber);
+  const eventKey = event.repo.toLocaleLowerCase() + '#' + String(event.mapNumber) + ':' + event.at;
   const notification = mapEventNotification(event, mapTitle);
   if (notification === null || !(await publishNotification(notification))) return;
   if (notification.kind !== 'unblocked') return;
@@ -399,6 +414,12 @@ navigation = mountNavigation({
   onStartNext() {
     startNext.open();
   },
+  onAutoMapToggle() {
+    autoMapDialog.toggle();
+  },
+  onAutoMapSettings() {
+    autoMapDialog.open();
+  },
 });
 function renderPlanningHandoff(): void {
   const map = currentMap();
@@ -434,13 +455,77 @@ async function loadPlanningHandoff(): Promise<void> {
   }
 }
 
+/** The auto map (#164): hands off each ticket the watcher reports as newly next, through the Start next batch. */
+const autoStarter = new AutoMapStarter({
+  storage: localStorage,
+  post: async (repo, body) => {
+    const response = await fetch(scopedApiPath(repo, 'start-next'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const reply = (await response.json().catch(() => ({}))) as { error?: unknown };
+    if (response.ok) void startNext.refresh();
+    return { ok: response.ok, error: typeof reply.error === 'string' ? reply.error : null };
+  },
+  model: async (tier) => {
+    const state = await loadCatalog();
+    return state.status === 'ready' ? liveChoice(state.catalog, tierDefaults()[tier]) : null;
+  },
+  autoPicks: async (repo, mapNumber, numbers) => {
+    let map = snapshot?.repo === repo ? snapshot.maps.find((candidate) => candidate.number === mapNumber) : undefined;
+    if (map === undefined) {
+      const response = await fetch(`${scopedApiPath(repo, 'snapshot')}?map=${String(mapNumber)}`);
+      map = ((await response.json()) as MapSnapshot).maps.find((candidate) => candidate.number === mapNumber);
+    }
+    return map === undefined ? new Map() : startNext.autoEntries({ repo, map }, numbers);
+  },
+  cap: handOffCap,
+  toast: (message) => toast(message, 6000),
+  fallback: (event) => void announceMapEvent(event),
+});
+
+const autoMapDialog = mountAutoMapDialog({
+  starter: autoStarter,
+  context: () => (snapshot === null || currentMap() === null ? null : { repo: snapshot.repo, mapNumber: currentMap()?.number ?? 0 }),
+  cap: handOffCap,
+  onChange: () => {
+    syncAutoMap();
+    repaintCards();
+  },
+});
+
+/** A usage limit turns the auto map off until the user turns it back on, and says so. */
+function stopAutoMapsOnUsageLimit(): void {
+  for (const batch of autoStarter.checkBatches(startNext.batches())) {
+    const stopped = batch.stop?.kind === 'usage-limit' ? batch.stop : null;
+    const item = batch.items.find((candidate) => candidate.ticketNumber === stopped?.ticketNumber) ?? batch.items[0];
+    const map = snapshot?.repo.toLowerCase() === batch.repo.toLowerCase() ? snapshot.maps.find((candidate) => candidate.number === batch.mapNumber) : undefined;
+    toast(`Auto map turned off on #${String(batch.mapNumber)}: ${stopped?.message ?? 'usage limit reached'}${stopped?.resetsAt == null ? '' : ` Resets ${stopped.resetsAt}.`} Turn it back on from the map name.`, 15000);
+    if (item !== undefined) {
+      void publishNotification(statusNotification('handOffError', `automap:${batch.id}`, batch.repo, batch.mapNumber, map?.title ?? `Map #${String(batch.mapNumber)}`, item.ticketNumber, item.title, new Date().toISOString()));
+    }
+  }
+  syncAutoMap();
+}
+
+/** The map-name menu's Auto map switch and mark follow the map on screen. */
+function syncAutoMap(): void {
+  const map = currentMap();
+  if (snapshot === null || map === null) {
+    navigation?.setAutoMap(null);
+    return;
+  }
+  const { enabled, setUp, tier } = autoStarter.setting(snapshot.repo, map.number);
+  navigation?.setAutoMap({ enabled, setUp, tier });
+}
+
 const startNext = mountStartNext({
   context: () => {
     const map = currentMap();
     return snapshot === null || map === null ? null : { repo: snapshot.repo, map };
   },
   handOffs: () => handOffRecords,
-  onChange: repaintCards,
+  onChange: () => {
+    stopAutoMapsOnUsageLimit();
+    repaintCards();
+  },
   refreshHandOffs: () => handOffSurface.refresh(),
   toast,
 });
@@ -608,6 +693,7 @@ function render(): void {
   else renderPrototypes();
   renderInspector();
   navigation?.setStartNext(startNext.menuLabel());
+  syncAutoMap();
   startNext.render();
 }
 
@@ -690,12 +776,15 @@ function nodeHtml(ticket: Ticket | OutsideTicket, position: PositionedNode): str
         ? `@${ticket.assignee}`
         : (ticket.type ?? (fog && ticket.pullRequest ? 'pull request' : 'untyped'));
   // #125: a stall says so; otherwise the PR, its checks and review take the line `@assignee` had.
+  const autoNote = fog || map === null || snapshot === null ? null : autoCardNote(ticket.state, ticket.type, autoStarter.setting(snapshot.repo, map.number));
   const meta =
     stalled !== null
       ? `<span class="signal-meta">${icon(icons.CLOCK)}${escapeHtml(`Stalled · ${stalled.short}`)}</span>`
       : pullRequest !== undefined
         ? pullRequestMetaHtml(pullRequest)
-        : escapeHtml(plainMeta);
+        : autoNote !== null
+          ? autoCardMetaHtml(autoNote)
+          : escapeHtml(plainMeta);
   const signals = [
     critical ? 'on the critical path' : '',
     stalled === null ? '' : `stalled, ${stalled.short}`,
