@@ -351,6 +351,10 @@ export interface StartNextSurface {
   /** Hand off or queue these tickets without the confirm list. Resolves to the ones the batch took. */
   startTickets(ticketNumbers: readonly number[]): Promise<number[]>;
   batches(): readonly Batch[];
+  /** Auto's tier, model and record for each of these tickets of a map, without the confirm list (the auto map, #166). */
+  autoEntries(context: { repo: string; map: WayfinderMap }, ticketNumbers: readonly number[]): Promise<Map<number, ReturnType<typeof startRequestEntry>>>;
+  /** Read the server's batches now, e.g. after the auto map submitted one. */
+  refresh(): Promise<void>;
   /** Repaint the topbar control after hand-off records changed. */
   render(): void;
 }
@@ -621,7 +625,20 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
     },
     open,
     startTickets,
+    autoEntries: async (context, ticketNumbers) => {
+      await loadCatalog();
+      const state = currentCatalog();
+      const catalog = state.status === 'ready' ? state.catalog : null;
+      const models = tierDefaults();
+      const loaded = await loadAuto(context, ticketNumbers);
+      const entries = new Map<number, ReturnType<typeof startRequestEntry>>();
+      for (const ticket of context.map.tickets) {
+        if (ticketNumbers.includes(ticket.number)) entries.set(ticket.number, startRequestEntry(ticket, 'auto', proposalFor(ticket, loaded, catalog, models), catalog, models));
+      }
+      return entries;
+    },
     batches: () => batches,
+    refresh,
     render,
   };
 }

@@ -1214,6 +1214,36 @@ describe('local clone for a hand-off', () => {
       }
     });
 
+    it('reads the map fresh for an auto map batch, so a ticket that only just became next starts', async () => {
+      const { server, startThread } = liveT3();
+      let reads = 0;
+      const running = await serve({
+        startNextIntervalMs: 20,
+        t3: server,
+        // The first read has #12 blocked, as the page's cached snapshot did before its blocker closed.
+        fetcher: async () => {
+          reads += 1;
+          return { maps: [{ ...startMap, tickets: [ticketAt(11), ticketAt(12, reads === 1 ? { state: 'blocked', openBlockers: [3] } : {})] }], warnings: [] };
+        },
+        changeChecker: async () => true,
+        workspaces: resolver({ '/clone': '/clone' }, ['/clone']),
+      });
+      try {
+        await post(running.url, '/api/repos/octo/one/start-next', { map: 5, tickets: [{ ticket: 12 }] });
+        const plain = await settled(running.url, (items) => items.every((item) => item.status !== 'queued'));
+        expect(plain.items.map((item) => [item.status, item.reason])).toEqual([['skipped', '#12 is blocked, not next.']]);
+
+        const response = await post(running.url, '/api/repos/octo/one/start-next', { map: 5, auto: true, tickets: [{ ticket: 12, tier: 'mid' }] });
+        expect(response.status).toBe(202);
+        expect(((await response.json()) as { batch: { auto: boolean } }).batch.auto).toBe(true);
+        await settledBatch(running.url, (batch) => batch.items.every((item) => item.status === 'started'));
+        expect(startThread).toHaveBeenCalledTimes(1);
+        expect((await batches(running.url))[0]).toMatchObject({ auto: true });
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
     it('needs a clone and at least one ticket on the map', async () => {
       const { server } = liveT3();
       const noClone = await serve({ t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({}, []) });

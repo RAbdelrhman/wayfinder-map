@@ -62,6 +62,8 @@ export interface Batch {
   /** `done` once nothing is queued or starting. `stopped` by the user or a usage limit. */
   status: 'running' | 'done' | 'stopped';
   stop: BatchStop | null;
+  /** Started by a map's auto map rather than from the confirm list (#164). */
+  auto: boolean;
   items: BatchItem[];
 }
 
@@ -129,7 +131,7 @@ export class StartNextRunner {
   }
 
   /** Create a batch and start what fits right away. The returned batch is its state before any start finishes. */
-  submit(input: { repo: string; mapNumber: number; cap: number; items: readonly BatchRequestItem[] }): Batch {
+  submit(input: { repo: string; mapNumber: number; cap: number; items: readonly BatchRequestItem[]; auto?: boolean }): Batch {
     const pending = this.pendingTickets(input.repo);
     const seen = new Set<number>();
     const items = input.items.map((item): BatchItem => {
@@ -155,6 +157,7 @@ export class StartNextRunner {
       createdAt: this.now().toISOString(),
       status: items.some((item) => item.status === 'queued') ? 'running' : 'done',
       stop: null,
+      auto: input.auto === true,
       items,
     };
     this.batches.push(batch);

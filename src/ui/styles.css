@@ -7342,3 +7342,166 @@ textarea.input {
   border: 1px dashed var(--baseline);
   color: var(--text-secondary);
 }
+
+/* ---------- Auto map (#164): the map-menu switch, the mark by the map name, the setup dialog ---------- */
+
+.nav-auto-map {
+  display: grid;
+  gap: 4px;
+  padding: 4px 6px 6px;
+}
+
+.nav-auto-map .menu-sep {
+  height: 1px;
+  margin: 2px 0 4px;
+  background: var(--gridline);
+}
+
+.c-menu-note {
+  margin: 0 0 0 42px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.c-setlink {
+  justify-self: start;
+  margin: 0 0 2px 42px;
+}
+
+.st-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.st-switch:hover {
+  background: var(--wash);
+}
+
+.st-switch:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+
+.st-knob {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 18px;
+  border: 1px solid var(--baseline);
+  border-radius: 999px;
+  background: var(--wash);
+  transition: background 140ms;
+}
+
+.st-knob::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 140ms;
+}
+
+.st-switch[aria-checked='true'] .st-knob {
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+}
+
+.st-switch[aria-checked='true'] .st-knob::after {
+  background: #fff;
+  transform: translateX(12px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-knob,
+  .st-knob::after {
+    transition: none;
+  }
+}
+
+.c-automark {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 2px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--state-claimed) 14%, transparent);
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.c-automark .i {
+  width: 11px;
+  height: 11px;
+}
+
+.c-automark-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent-text);
+}
+
+.c-automark-meta .i {
+  width: 11px;
+  height: 11px;
+}
+
+.am-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.am-list {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.am-list li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.am-list .i {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
+.st-autoctl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.st-lbl {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.st-hint {
+  flex-basis: 100%;
+  color: var(--text-muted);
+  font-size: 12px;
+}

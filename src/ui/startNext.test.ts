@@ -91,7 +91,7 @@ function item(ticketNumber: number, status: BatchItem['status'], extra: Partial<
 }
 
 function batch(items: BatchItem[], extra: Partial<Batch> = {}): Batch {
-  return { id: 'b1', repo: 'octo/one', mapNumber: 5, cap: 4, createdAt: '', status: 'running', stop: null, items, ...extra };
+  return { id: 'b1', repo: 'octo/one', mapNumber: 5, cap: 4, createdAt: '', status: 'running', stop: null, auto: false, items, ...extra };
 }
 
 function memoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
