@@ -43,6 +43,7 @@ const ticket: Ticket = {
   blockedBy: [],
   openBlockers: [],
   state: 'frontier',
+  updatedAt: null,
 };
 
 const map: WayfinderMap = {
@@ -59,6 +60,8 @@ const map: WayfinderMap = {
   criticalPath: { tickets: [], remaining: 0 },
   settled: null,
   ticketsLoaded: true,
+  stalled: [],
+  pullRequests: [],
 };
 
 const SECRETS = ['acct-9f3a', 'sk-live-secret', '91.5', 'usedPercent', 'Hard: concurrent starts share one T3 connection', 'rules-1'];
