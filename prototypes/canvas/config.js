@@ -25,6 +25,41 @@ window.CANVAS = {
 
   pages: [
     {
+      title: 'One tier choice, Auto by default',
+      round: 5,
+      sections: [
+        {
+          title: 'No map-level Tiers selector',
+          note: 'The user found "Tiers: Mid for all / Auto" confusing and redundant with the per-ticket choice. Now each ticket has one choice, Auto by default, with Simple, Mid or Hard to override. The auto map’s setup has the same single choice. Everything else is round 4.',
+          items: [
+            {
+              id: 'F',
+              name: 'Start next: one tier choice per ticket',
+              src: 'variants/start-final.html?phase=confirm',
+              note: {
+                idea:
+                  'The dialog opens with one line under the title: each ticket starts on Auto, which picks its tier and model (rated with logic only, set in Settings); pick a tier on any row to choose yourself. Each row’s choice is Auto | Simple | Mid | Hard, Auto selected, with Auto’s pick and reason below it, or "your pick" once overridden.',
+                pros: ['One decision per ticket instead of two layers', 'Auto by default, so most batches need no changes'],
+                cons: ['No one-click way to set every ticket to the same tier'],
+                basedOn: ['M'],
+              },
+            },
+            {
+              id: 'F-setup',
+              name: 'Auto map setup: one tier choice',
+              src: 'variants/start-final.html?menu=1&setup=1',
+              note: {
+                idea: 'The first turn-on dialog has one Tier choice for every ticket the auto map starts: Auto (default), Simple, Mid or Hard.',
+                pros: ['Same control as the Start next rows'],
+                cons: [],
+                basedOn: ['AM-setup'],
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
       title: 'Everything in the map menu',
       round: 4,
       sections: [
