@@ -4,6 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { buildAutoDecision } from './autoDecision.js';
+import { usageFromLimitEvents } from './autoPick.js';
+import { rateWithModel } from './autoRater.js';
+import type { CliRun } from './autoRater.js';
 import type { AutoDecision } from './autoDecision.js';
 import { parseModelChoice, TIERS } from './models.js';
 import type { ModelChoice, Tier } from './models.js';
@@ -123,6 +126,8 @@ export interface ServeOptions {
   mapWatchStore?: MapWatchStateStore;
   /** How often Start next looks for a free slot and a usage-limit error. Tests shorten it. */
   startNextIntervalMs?: number;
+  /** Replaces the headless CLI that rates a ticket with a model (#166) in tests. */
+  ratingRunner?: CliRun;
   /**
    * Where the two stall settings live (#160). Defaults to `~/.wayfinder-map/stalls.json`, except
    * when tests inject a `fetcher`, where they stay in memory unless given.
@@ -251,6 +256,7 @@ export async function startServer({
   mapWatcher: givenMapWatcher,
   mapWatchStore,
   startNextIntervalMs,
+  ratingRunner,
   stallSettings: givenStallSettings,
   notificationSettings: givenNotificationSettings,
   onDesktopNotification,
@@ -509,7 +515,7 @@ export async function startServer({
       const found = find(await repositories.snapshot(batchRepo, false, [mapNumber]), mapNumber, item.ticketNumber);
       if (found === null) return { kind: 'skipped', reason: `#${String(item.ticketNumber)} is not on the map any more.` };
       if (found.ticket.state !== 'frontier') return { kind: 'skipped', reason: `#${String(item.ticketNumber)} is ${found.ticket.state}, not next.` };
-      const reply = await startTicketHandOff(batchRepo, found.map, found.ticket, { model: item.model, tier: item.tier, auto: null, threadOnly: true });
+      const reply = await startTicketHandOff(batchRepo, found.map, found.ticket, { model: item.model, tier: item.tier, auto: item.auto ?? null, threadOnly: true });
       const text = (value: unknown): string | null => (typeof value === 'string' && value !== '' ? value : null);
       if (reply.status === 409) return { kind: 'skipped', reason: text(reply.body['error']) ?? 'Already in T3 Code.' };
       if (reply.status === 200 && reply.body['rung'] === 'thread') return { kind: 'started', handOffId: text(reply.body['handOffId']) };
@@ -567,6 +573,12 @@ export async function startServer({
 
       if (path === '/api/start-next' && request.method === 'GET') {
         json(response, 200, { batches: startNext.snapshot() });
+        return;
+      }
+
+      if (path === '/api/provider-usage' && request.method === 'GET') {
+        const events = [...startNext.usageLimits(), ...(await handOffTracker.usageLimitEvents())];
+        json(response, 200, { providers: usageFromLimitEvents(events, new Date()) });
         return;
       }
 
@@ -1170,6 +1182,25 @@ export async function startServer({
         return;
       }
 
+      if (requestedRepo !== null && scoped?.action === 'auto-rate' && request.method === 'POST') {
+        const body = (await readBody(request)) as { map?: unknown; tickets?: unknown; model?: unknown };
+        const mapNumber = Number(body.map);
+        const choice = parseModelChoice(body.model);
+        if (!Number.isSafeInteger(mapNumber) || !Array.isArray(body.tickets) || choice === null) {
+          json(response, 400, { error: 'Choose a map, its tickets and a model to rate with.' });
+          return;
+        }
+        const map = (await repositories.snapshot(requestedRepo, false, [mapNumber])).maps.find((candidate) => candidate.number === mapNumber);
+        if (map === undefined) {
+          json(response, 404, { error: 'No such map.' });
+          return;
+        }
+        const wanted = map.tickets.filter((ticket) => (body.tickets as unknown[]).includes(ticket.number)).slice(0, 16);
+        const ratings = await Promise.all(wanted.map(async (ticket) => ({ ticket: ticket.number, ...(await rateWithModel(ticket, choice, ratingRunner)) })));
+        json(response, 200, { ratings });
+        return;
+      }
+
       if (requestedRepo !== null && scoped?.action === 'start-next' && request.method === 'POST') {
         const body = (await readBody(request)) as { map?: unknown; cap?: unknown; tickets?: unknown; auto?: unknown };
         const mapNumber = Number(body.map);
@@ -1189,7 +1220,7 @@ export async function startServer({
           json(response, 409, { error: `Choose a local clone of ${requestedRepo} before starting in T3 Code.` });
           return;
         }
-        const items = (body.tickets as Array<{ ticket?: unknown; tier?: unknown; model?: unknown }>).flatMap((entry): BatchRequestItem[] => {
+        const items = (body.tickets as Array<{ ticket?: unknown; tier?: unknown; model?: unknown; auto?: unknown }>).flatMap((entry): BatchRequestItem[] => {
           const ticket = map.tickets.find((candidate) => candidate.number === Number(entry.ticket));
           if (ticket === undefined) return [];
           const tier = TIERS.find((candidate) => candidate === entry.tier) ?? 'mid';
@@ -1199,6 +1230,7 @@ export async function startServer({
               title: ticket.title,
               tier,
               model: parseModelChoice(entry.model),
+              auto: buildAutoDecision(entry.auto, new Date()),
               ...(ticket.state === 'frontier' ? {} : { skip: `#${String(ticket.number)} is ${ticket.state}, not next.` }),
             },
           ];
@@ -1309,7 +1341,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow|start-next)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow|start-next|auto-rate)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;

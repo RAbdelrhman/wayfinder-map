@@ -46,7 +46,7 @@ describe('auto map setting', () => {
     expect(autoMapKey('Octo/One', 5)).toBe('octo/one#5');
   });
 
-  it('runs Auto on Mid until #166 rates tickets', () => {
+  it('falls back to Mid for Auto when a ticket cannot be rated', () => {
     expect(resolveAutoMapTier('auto')).toBe('mid');
     expect(resolveAutoMapTier('simple')).toBe('simple');
     expect(resolveAutoMapTier('hard')).toBe('hard');

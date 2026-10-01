@@ -5,7 +5,7 @@ import type { Batch } from './startNextRunner.js';
 
 /* The auto map (#164): a per-map opt-in that hands off every ticket as the watcher reports it became next. */
 
-/** Auto is the default tier. Until #166 ships the rating, it runs on Mid. */
+/** Auto is the default tier: Wayfinder rates each ticket and picks its tier and model (#166). */
 export const AUTO_MAP_TIERS = ['auto', ...TIERS] as const;
 export type AutoMapTier = (typeof AUTO_MAP_TIERS)[number];
 
@@ -33,7 +33,7 @@ export function parseAutoMapSetting(value: unknown): AutoMapSetting {
   return { enabled: raw['enabled'] === true && enabledAt !== null, tier, setUp: raw['setUp'] === true, enabledAt };
 }
 
-/** The tier a ticket really runs on: Auto is Mid until #166 rates the ticket. */
+/** The tier a ticket runs on when Auto cannot rate it, e.g. its map could not be read: Mid. */
 export function resolveAutoMapTier(tier: AutoMapTier): Tier {
   return tier === 'auto' ? 'mid' : tier;
 }

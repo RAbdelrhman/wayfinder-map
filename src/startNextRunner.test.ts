@@ -125,6 +125,41 @@ describe('StartNextRunner', () => {
     expect(statuses(h)).toEqual(['1:failed', '2:back-to-next']);
   });
 
+  it('hands each ticket its Auto decision when it starts', async () => {
+    const seen: Array<[number, unknown]> = [];
+    const runner = new StartNextRunner({
+      intervalMs: 1_000_000,
+      running: async () => 0,
+      lastErrors: async () => new Map(),
+      startTicket: async ({ item: requested }) => {
+        seen.push([requested.ticketNumber, requested.auto]);
+        return { kind: 'started', handOffId: null };
+      },
+    });
+    runners.push(runner);
+    const auto = { decidedAt: '2026-10-01T12:00:00.000Z' } as unknown as NonNullable<BatchRequestItem['auto']>;
+    runner.submit({ repo: 'o/r', mapNumber: 1, cap: 4, items: [item(1, { auto }), item(2)] });
+    await runner.tick();
+    expect(seen).toEqual([[1, auto], [2, null]]);
+  });
+
+  it('remembers which provider a usage limit hit, for Auto to steer clear of', async () => {
+    const h = harness();
+    expect(h.runner.usageLimits()).toEqual([]);
+    h.outcomes.set(1, { kind: 'failed', reason: 'Usage limit reached.' });
+    h.runner.submit({ repo: 'o/r', mapNumber: 1, cap: 1, items: [item(1, { model: { instanceId: 'codex', model: 'gpt-5.6-sol' } }), item(2)] });
+    await h.runner.tick();
+    expect(h.runner.usageLimits()).toEqual([{ instanceId: 'codex', at: expect.any(String) as string }]);
+  });
+
+  it('records nothing for a usage limit on a ticket with no chosen model', async () => {
+    const h = harness();
+    h.outcomes.set(1, { kind: 'failed', reason: 'Usage limit reached.' });
+    h.runner.submit({ repo: 'o/r', mapNumber: 1, cap: 1, items: [item(1)] });
+    await h.runner.tick();
+    expect(h.runner.usageLimits()).toEqual([]);
+  });
+
   it('marks a batch the auto map submitted, and an auto batch still obeys the cap, the queue and the usage-limit stop', async () => {
     const h = harness();
     expect(h.runner.submit({ repo: 'o/r', mapNumber: 1, cap: 4, items: [item(9, { skip: 'not now' })] }).auto).toBe(false);

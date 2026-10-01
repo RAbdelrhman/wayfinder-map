@@ -468,6 +468,14 @@ const autoStarter = new AutoMapStarter({
     const state = await loadCatalog();
     return state.status === 'ready' ? liveChoice(state.catalog, tierDefaults()[tier]) : null;
   },
+  autoPicks: async (repo, mapNumber, numbers) => {
+    let map = snapshot?.repo === repo ? snapshot.maps.find((candidate) => candidate.number === mapNumber) : undefined;
+    if (map === undefined) {
+      const response = await fetch(`${scopedApiPath(repo, 'snapshot')}?map=${String(mapNumber)}`);
+      map = ((await response.json()) as MapSnapshot).maps.find((candidate) => candidate.number === mapNumber);
+    }
+    return map === undefined ? new Map() : startNext.autoEntries({ repo, map }, numbers);
+  },
   cap: handOffCap,
   toast: (message) => toast(message, 6000),
   fallback: (event) => void announceMapEvent(event),

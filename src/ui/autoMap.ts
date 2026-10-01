@@ -54,8 +54,11 @@ export interface AutoMapStartBody {
   map: number;
   cap: number;
   auto: true;
-  tickets: Array<{ ticket: number; tier: Tier; model: ModelChoice | null }>;
+  tickets: Array<{ ticket: number; tier: Tier; model: ModelChoice | null; auto?: Record<string, unknown> }>;
 }
+
+/** What Auto chose for one ticket: its tier and model, and the record of the proposal. */
+export type AutoEntry = { tier: Tier; model: ModelChoice | null; auto: Record<string, unknown> };
 
 export interface AutoMapDeps {
   storage: Writer;
@@ -63,6 +66,8 @@ export interface AutoMapDeps {
   post: (repo: string, body: AutoMapStartBody) => Promise<{ ok: boolean; error: string | null }>;
   /** The model the tier resolves to in Settings, or null to let T3 Code decide. */
   model: (tier: Tier) => Promise<ModelChoice | null>;
+  /** Auto's pick for each ticket (#166), by ticket number. Without it, or when it fails, Auto runs on Mid. */
+  autoPicks?: (repo: string, mapNumber: number, tickets: readonly number[]) => Promise<ReadonlyMap<number, AutoEntry>>;
   cap: () => number;
   now?: () => Date;
   batchMs?: number;
@@ -136,8 +141,20 @@ export class AutoMapStarter {
     }
     const tier = resolveAutoMapTier(setting.tier);
     const model = await this.deps.model(tier);
+    const picks =
+      setting.tier === 'auto' && this.deps.autoPicks !== undefined
+        ? await this.deps.autoPicks(entry.repo, entry.mapNumber, events.map((event) => event.ticket.number)).catch(() => new Map<number, AutoEntry>())
+        : new Map<number, AutoEntry>();
     const result = await this.deps
-      .post(entry.repo, { map: entry.mapNumber, cap: this.deps.cap(), auto: true, tickets: events.map((event) => ({ ticket: event.ticket.number, tier, model })) })
+      .post(entry.repo, {
+        map: entry.mapNumber,
+        cap: this.deps.cap(),
+        auto: true,
+        tickets: events.map((event) => {
+          const pick = picks.get(event.ticket.number);
+          return pick === undefined ? { ticket: event.ticket.number, tier, model } : { ticket: event.ticket.number, ...pick };
+        }),
+      })
       .catch((error: unknown) => ({ ok: false, error: (error as Error).message }));
     if (result.ok) {
       this.deps.toast(`Auto map started ${events.map((event) => `#${String(event.ticket.number)}`).join(', ')}.`);
@@ -199,7 +216,7 @@ export function autoMapMenuHtml(state: AutoMapMenuState): string {
 }
 
 const TIER_HINT_COPY: Record<AutoMapTier, string> = {
-  auto: 'Mid for now. Wayfinder will pick each ticket’s tier and model once Auto ships.',
+  auto: 'Wayfinder rates each ticket and picks its tier and model.',
   simple: 'Every ticket it starts runs on the model you set for Simple.',
   mid: 'Every ticket it starts runs on the model you set for Mid.',
   hard: 'Every ticket it starts runs on the model you set for Hard.',

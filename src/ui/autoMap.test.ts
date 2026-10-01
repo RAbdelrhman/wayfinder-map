@@ -127,6 +127,34 @@ describe('AutoMapStarter', () => {
     expect(h.posts[1]?.body.tickets[0]).toMatchObject({ ticket: 13, tier: 'mid' });
   });
 
+  it('starts each ticket on the tier and model Auto picked for it, with the record of the proposal', async () => {
+    const pick = { tier: 'hard' as const, model: MODEL, auto: { scoring: { version: 'rules-1', reason: 'touches 6 files' } } };
+    const autoPicks = vi.fn(async () => new Map([[12, pick]]));
+    const h = harness({ autoPicks });
+    h.starter.enable('octo/one', 5, 'auto');
+    h.starter.take(next(12));
+    h.starter.take(next(13));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(autoPicks).toHaveBeenCalledWith('octo/one', 5, [12, 13]);
+    expect(h.posts[0]?.body.tickets).toEqual([{ ticket: 12, ...pick }, { ticket: 13, tier: 'mid', model: MODEL }]);
+  });
+
+  it('runs Auto on Mid when the picks cannot be read, and never asks Auto for a fixed tier', async () => {
+    const autoPicks = vi.fn(async () => {
+      throw new Error('map not readable');
+    });
+    const h = harness({ autoPicks });
+    h.starter.enable('octo/one', 5, 'auto');
+    h.starter.take(next(12));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(h.posts[0]?.body.tickets).toEqual([{ ticket: 12, tier: 'mid', model: MODEL }]);
+
+    h.starter.enable('octo/one', 5, 'simple');
+    h.starter.take(next(13));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(autoPicks).toHaveBeenCalledTimes(1);
+  });
+
   it('sends the per-machine cap with the batch so the server queues what does not fit', async () => {
     const h = harness({ cap: () => 2 });
     h.starter.enable('octo/one', 5);

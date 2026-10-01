@@ -955,6 +955,17 @@ export class HandOffTracker {
     return (await this.store.list()).filter((item) => isLiveHandOff(item)).length;
   }
 
+  /** Usage-limit errors seen on Auto hand-offs, by the provider instance each was running on. Local only. */
+  async usageLimitEvents(): Promise<Array<{ instanceId: string; at: string }>> {
+    const events: Array<{ instanceId: string; at: string }> = [];
+    for (const item of await this.store.list()) {
+      const instanceId = item.auto?.current?.provider ?? item.auto?.final.provider ?? null;
+      if (instanceId === null) continue;
+      for (const error of item.auto?.usageLimitErrors ?? []) events.push({ instanceId, at: error.at });
+    }
+    return events;
+  }
+
   /** The last error T3 Code reported on each given hand-off that has one. */
   async lastErrors(ids: readonly string[]): Promise<Map<string, string>> {
     this.start();

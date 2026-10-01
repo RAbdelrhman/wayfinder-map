@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import type { HomeAccount } from '../home.js';
-import { notificationSettingsHtml, settingsBodyHtml } from './settings.js';
+import type { CatalogState } from './models.js';
+import { autoRaterHtml, notificationSettingsHtml, ratingModels, settingsBodyHtml } from './settings.js';
 import type { SettingsView } from './settings.js';
 
 const ACCOUNT: HomeAccount = {
@@ -16,7 +17,7 @@ const ACCOUNT: HomeAccount = {
 };
 
 function view(patch: Partial<SettingsView> = {}): SettingsView {
-  return { account: ACCOUNT, theme: 'dark', tier: 'mid', cap: 4, progress: { style: 'trail', goal: 5 }, stalls: { untouchedClaimDays: 7, deadHandOffDays: 7 }, notifications: null, busy: null, ...patch };
+  return { account: ACCOUNT, theme: 'dark', tier: 'mid', rater: { kind: 'logic' }, models: { status: 'loading' }, cap: 4, progress: { style: 'trail', goal: 5 }, stalls: { untouchedClaimDays: 7, deadHandOffDays: 7 }, notifications: null, busy: null, ...patch };
 }
 
 describe('Settings dialog', () => {
@@ -85,5 +86,43 @@ describe('Settings dialog', () => {
 
   it('shows a loading line before the account arrives', () => {
     expect(settingsBodyHtml(view({ account: null }))).toContain('Reading GitHub CLI…');
+  });
+});
+
+describe('Auto rater setting', () => {
+  const models: CatalogState = {
+    status: 'ready',
+    catalog: {
+      providers: [
+        { instanceId: 'codex', name: 'Codex', ready: true, models: [{ slug: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', isDefault: false, effort: null }] },
+        { instanceId: 'opencode', name: 'OpenCode', ready: true, models: [{ slug: 'x', name: 'X', isDefault: false, effort: null }] },
+        { instanceId: 'claudeAgent', name: 'Claude', ready: false, models: [{ slug: 'sonnet-5', name: 'Sonnet 5', isDefault: false, effort: null }] },
+      ],
+    },
+  };
+
+  it('defaults to logic only, with no model picker', () => {
+    const html = autoRaterHtml({ kind: 'logic' }, models);
+    expect(html).toContain('data-settings-rater="logic" aria-pressed="true"');
+    expect(html).toContain('data-settings-rater="model" aria-pressed="false"');
+    expect(html).not.toContain('data-settings-rater-model');
+  });
+
+  it('offers only ready Codex and Claude models once a model is chosen, with the saved one selected', () => {
+    const html = autoRaterHtml({ kind: 'model', choice: { instanceId: 'codex', model: 'gpt-5.6-luna' } }, models);
+    expect(html).toContain('data-settings-rater="model" aria-pressed="true"');
+    expect(html).toContain('<option value="codex::gpt-5.6-luna" selected>GPT-5.6 Luna · Codex</option>');
+    expect(html).not.toContain('OpenCode');
+    expect(html).not.toContain('Sonnet 5');
+    expect(ratingModels(models)).toHaveLength(1);
+  });
+
+  it('says so when no model can rate', () => {
+    expect(autoRaterHtml({ kind: 'model', choice: { instanceId: 'codex', model: 'm' } }, { status: 'unavailable', reason: 'offline' })).toContain('No Codex or Claude model is ready to rate with.');
+    expect(autoRaterHtml({ kind: 'model', choice: { instanceId: 'codex', model: 'm' } }, { status: 'loading' })).toContain('Loading T3 Code models…');
+  });
+
+  it('shows in the preferences section', () => {
+    expect(settingsBodyHtml(view())).toContain('Auto rates tickets');
   });
 });
