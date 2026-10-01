@@ -42,6 +42,8 @@ window.CANVAS = {
                 pros: ['One decision per ticket instead of two layers', 'Auto by default, so most batches need no changes'],
                 cons: ['No one-click way to set every ticket to the same tier'],
                 basedOn: ['M'],
+                disposition: 'keep',
+                feedback: "Final pick (user, 29–30 Sep 2026: \"looks good\"). One tier choice per ticket, Auto by default, Simple/Mid/Hard to override; the map-level \"Mid for all / Auto\" selector is gone because it was confusing and redundant. Until #166 ships Auto, rows start on Mid.",
               },
             },
             {
@@ -53,6 +55,8 @@ window.CANVAS = {
                 pros: ['Same control as the Start next rows'],
                 cons: [],
                 basedOn: ['AM-setup'],
+                disposition: 'keep',
+                feedback: "Final pick (user, 29–30 Sep 2026). The auto map's setup has the same single Tier choice, Auto by default.",
               },
             },
           ],
@@ -77,6 +81,8 @@ window.CANVAS = {
                 pros: ['The topbar loses its biggest button', 'Both map-level controls sit together, apart from the single-ticket Open in T3 Code'],
                 cons: ['Start next is one click deeper and not visible until you open the menu'],
                 basedOn: ['AM-setup', 'AM-on'],
+                disposition: 'change',
+                feedback: "User (29–30 Sep 2026): remove the blue Start next button; Start next goes in the map-name menu with the Auto map toggle. Changed again in round 5 (tier selector).",
               },
             },
             {
@@ -88,6 +94,8 @@ window.CANVAS = {
                 pros: ['Progress and the usage-limit stop stay visible from anywhere on the map'],
                 cons: ['The topbar still changes during a batch'],
                 basedOn: ['A-running', 'A-stopped'],
+                disposition: 'keep',
+                feedback: "Part of the final pick (user, 29–30 Sep 2026): batch progress and \"Stopped: usage limit\" show in the topbar only while a batch runs.",
               },
             },
           ],
@@ -112,6 +120,8 @@ window.CANVAS = {
                 pros: ['Nothing starts on its own before you have read what it does', 'Start next and the auto map no longer share a dialog'],
                 cons: ['One more dialog to build'],
                 basedOn: ['AC', 'C-automap'],
+                disposition: 'keep',
+                feedback: "User (29–30 Sep 2026): Start next and the auto map are two different things. The auto map is a toggle; the first turn-on opens its setup dialog. Kept through rounds 4 and 5.",
               },
             },
             {
@@ -124,6 +134,8 @@ window.CANVAS = {
                 pros: ['A one-click toggle after the first time'],
                 cons: ['Settings sit one link deeper'],
                 basedOn: ['AC-menu', 'C-automap'],
+                disposition: 'keep',
+                feedback: "User (29–30 Sep 2026): after setup the toggle just flips it, with \"Auto map settings…\" to reopen setup. Kept through rounds 4 and 5.",
               },
             },
           ],
@@ -148,8 +160,8 @@ window.CANVAS = {
                 pros: ['One place to start a batch, one place to set the map up', 'No extra topbar button'],
                 cons: ['The auto map is one menu away from Start next'],
                 basedOn: ['A', 'C-automap'],
-                disposition: 'keep',
-                feedback: 'Combines A (kept) and C-automap (combine), as the user agreed on 29 Sep 2026.',
+                disposition: 'change',
+                feedback: "User (29–30 Sep 2026): Start next and the auto map were mixed in one dialog; separated in round 3.",
               },
             },
             {
@@ -162,8 +174,8 @@ window.CANVAS = {
                 pros: ['The mark travels with the map name to every view of the map'],
                 cons: ['On narrow windows the map name truncates further while progress shows'],
                 basedOn: ['A-running', 'C-automap'],
-                disposition: 'keep',
-                feedback: 'Combines A (kept) and C-automap (combine), as the user agreed on 29 Sep 2026.',
+                disposition: 'change',
+                feedback: "User (29–30 Sep 2026): the auto-map switch needs a first-run setup dialog (round 3).",
               },
             },
           ],
@@ -340,6 +352,7 @@ window.CANVAS = {
                 'Sources: src/ui/styles.css (tokens, .dialog, .segmented/.seg, .primary/.ghost, .handoff-pill, .node, .banner), src/ui/models.ts (Simple/Mid/Hard, Mid default), the Run as block in src/ui/app.ts, and #125’s chosen direction A (branch prototype/125-…), reused as the map page. New pieces: a switch (role=switch), a dashed Queued pill, a batch bar and a red stop notice, all built from existing tokens.\n\n' +
                 'Checked (Playwright, Chromium, 1440×900): every variant in Confirm, Running and Stopped, light and dark; A’s dialog at 1024×700; the canvas index. Keyboard: A’s dialog is a real modal <dialog> (focus stays inside, Tab reaches the tier choice, every checkbox and tier, Esc closes); Space ticks a row and the counts update; B’s switch works with Enter and keeps focus; C’s card checkboxes have full labels and Esc leaves pick mode. Contrast of the new text colours: 4.8–10.7:1 in both themes (lowest: the Auto spark text in dark, 4.79).\n\n' +
                 'Findings: A’s dialog opens with focus on Close, not Start. In A, the Prototype bar is blocked while the dialog is open (close it first). A’s topbar truncates the map name while progress and the auto-map tag show. B’s panel clips long titles. C’s card tags sit over the card edge and the dock covers the bottom of the canvas.\n\n' +
+                'Rounds 2–5 (Playwright, Chromium, 1440×900, light and dark): the map-menu Start next item opens the confirm dialog and closes the menu; the first Auto map flip opens setup and leaves it off until confirmed; Esc cancels; later flips are plain toggles; a row set to Hard shows "your pick" and Auto restores Auto’s pick; no Start next button in the topbar; progress appears there only during a batch. Finding: the setup dialog opens with focus on Close.\n\n' +
                 'Not checked: screen-reader announcement of count changes (no live region yet), touch sizes, windows under 1024 px, reduced motion (nothing new animates), and the real app’s sandboxed viewer.',
             },
           ],
