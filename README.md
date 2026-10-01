@@ -237,7 +237,14 @@ off every ticket that is next at once. A confirm list groups them as Ready, Need
   thread, so they start unticked as "Needs you" (tick one to include it).
 - A ticket that already has a live hand-off (or is queued in a running batch) is skipped, and the row
   says why.
-- Each row has one tier choice, Simple, Mid or Hard, which resolves to that tier's model from **Models**.
+- Each row has one choice, **Auto** (the default), Simple, Mid or Hard. Under Auto the row shows the
+  tier, the model and a one-line reason ("Hard → gpt-5.6-sol: touches 6 files") and who rated it;
+  picking a tier yourself shows "your pick". A tier resolves to its model from **Models**.
+- Auto rates each ticket from its type, the files and modules it names, risk words and blockers, and
+  starts at Mid when the ticket says little. Under **Settings → Auto rates tickets** you can have a
+  Codex or Claude model rate instead; if it can't, the rules do and the row says so. Auto skips a
+  provider that T3 Code reports as not ready, or that hit a usage limit in the last 30 minutes, by
+  using a harder tier's model from another provider. It never moves a ticket to an easier tier.
 - At most 4 hand-offs run at once on this machine (change it under **Settings → Hand-offs at once**).
   The rest queue and start as slots free. Each ticket gets its own thread and worktree.
 

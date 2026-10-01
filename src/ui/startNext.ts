@@ -1,3 +1,5 @@
+import { autoDecisionBody, pickAuto, proposalLine, rateByRules } from '../autoPick.js';
+import type { AutoProposal, ProviderUsage, Rating } from '../autoPick.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import { isLiveHandOff } from '../handOffLiveness.js';
 import { scopedApiPath } from '../repoRoutes.js';
@@ -10,8 +12,9 @@ import type { HandOffUiState } from './handOffs.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
-import { currentCatalog, findModel, liveChoice, loadCatalog, TIER_LABEL, TIERS, tierDefaults, ticketTier } from './models.js';
+import { autoRater, currentCatalog, findModel, liveChoice, loadCatalog, TIER_LABEL, TIERS, tierDefaults } from './models.js';
 import type { ModelChoice, Tier } from './models.js';
+import type { ModelCatalog } from '../models.js';
 
 /* Start next (#129): hand off every ticket that is next, up to the machine's cap, from one confirm list. */
 
@@ -243,13 +246,56 @@ export function startRowWord(row: StartNextRow): string {
   }
 }
 
+/* ---------- auto (#166) ---------- */
+
+/** A row's choice: Auto, the default, or a tier the user picked over it. */
+export type RowChoice = Tier | 'auto';
+const ROW_CHOICES: readonly RowChoice[] = ['auto', ...TIERS];
+
+const CHOICE_LABEL: Record<RowChoice, string> = { auto: 'Auto', ...TIER_LABEL };
+
+/** What Auto reads beyond the tickets: each ticket's rating, provider usage, and whether a model is still rating. */
+export interface AutoState {
+  ratings: ReadonlyMap<number, Rating>;
+  usage: Readonly<Record<string, ProviderUsage>>;
+  pending: boolean;
+}
+
+export const NO_AUTO: AutoState = { ratings: new Map(), usage: {}, pending: false };
+
+/** The tier and model Auto proposes for a ticket. A ticket the rater has not answered for yet is rated by the rules. */
+export function proposalFor(ticket: Ticket, auto: AutoState, catalog: ModelCatalog | null, tierModels: Partial<Record<Tier, ModelChoice>>): AutoProposal {
+  return pickAuto({ rating: auto.ratings.get(ticket.number) ?? rateByRules(ticket), catalog, tierModels, usage: auto.usage });
+}
+
+/** One ticket of the start request: what it starts with, and Auto's record of its proposal and the final choice. */
+export function startRequestEntry(
+  ticket: Ticket,
+  choice: RowChoice,
+  proposal: AutoProposal,
+  catalog: ModelCatalog | null,
+  tierModels: Partial<Record<Tier, ModelChoice>>,
+): { ticket: number; tier: Tier; model: ModelChoice | null; auto: Record<string, unknown> } {
+  const final = choice === 'auto' ? { tier: proposal.tier, choice: proposal.choice } : { tier: choice, choice: catalog === null ? null : liveChoice(catalog, tierModels[choice]) };
+  return { ticket: ticket.number, tier: final.tier, model: final.choice, auto: autoDecisionBody(proposal, final) };
+}
+
+function ratedBy(rating: Rating): string {
+  return rating.by === 'logic' ? 'logic' : rating.version.split(':').slice(1).join(':') || 'a model';
+}
+
 function modelLine(tier: Tier): string {
   const state = currentCatalog();
   const name = state.status === 'ready' ? (findModel(state.catalog, liveChoice(state.catalog, tierDefaults()[tier]))?.name ?? 'T3 Code default') : 'T3 Code default';
-  return `<span class="start-model"><b>${TIER_LABEL[tier]}</b> · ${escapeHtml(name)}</span>`;
+  return `<span class="start-model"><b>${TIER_LABEL[tier]}</b> · ${escapeHtml(name)}<i>your pick</i></span>`;
 }
 
-function rowHtml(row: StartNextRow, tier: Tier): string {
+function autoLine(proposal: AutoProposal | null, pending: boolean): string {
+  if (proposal === null || pending) return '<span class="start-model is-auto"><b>Auto</b> · rating…</span>';
+  return `<span class="start-model is-auto"><b>${escapeHtml(proposalLine(proposal, TIER_LABEL[proposal.tier]))}</b><i>Rated by ${escapeHtml(ratedBy(proposal.rating))}</i></span>`;
+}
+
+function rowHtml(row: StartNextRow, choice: RowChoice, proposal: AutoProposal | null, pending: boolean): string {
   const { ticket } = row;
   const id = `start-cb-${String(ticket.number)}`;
   const box =
@@ -259,10 +305,10 @@ function rowHtml(row: StartNextRow, tier: Tier): string {
   const tiers =
     row.kind === 'skipped'
       ? ''
-      : `<div class="start-tiers"><div class="segmented" role="group" aria-label="Tier for #${String(ticket.number)}">${TIERS.map(
+      : `<div class="start-tiers"><div class="segmented" role="group" aria-label="Tier for #${String(ticket.number)}">${ROW_CHOICES.map(
           (candidate) =>
-            `<button type="button" class="seg${candidate === tier ? ' is-on' : ''}" data-start-tier="${candidate}" data-start-ticket="${String(ticket.number)}" aria-pressed="${String(candidate === tier)}">${TIER_LABEL[candidate]}</button>`,
-        ).join('')}</div>${modelLine(tier)}</div>`;
+            `<button type="button" class="seg${candidate === choice ? ' is-on' : ''}" data-start-tier="${candidate}" data-start-ticket="${String(ticket.number)}" aria-pressed="${String(candidate === choice)}">${CHOICE_LABEL[candidate]}</button>`,
+        ).join('')}</div>${choice === 'auto' ? autoLine(proposal, pending) : modelLine(choice)}</div>`;
   return `<li class="start-row is-${row.kind}">${box}<label class="start-main" for="${id}"><span class="start-head">${typeGlyph(ticket)}<span class="num">#${String(ticket.number)}</span><span class="start-title">${escapeHtml(ticket.title)}</span></span><span class="start-sub" id="${id}-status"><span class="start-status is-${row.kind}">${escapeHtml(startRowWord(row))}</span>${row.reason === null ? '' : `<span class="start-reason">${escapeHtml(row.reason)}</span>`}</span></label>${tiers}</li>`;
 }
 
@@ -273,17 +319,17 @@ const GROUPS: ReadonlyArray<readonly [StartNextRow['group'], string]> = [
 ];
 
 /** The dialog's body: the Ready, Needs you and Skipped groups, then the footer with the Start button. */
-export function startDialogHtml(plan: StartNextPlan, tiers: ReadonlyMap<number, Tier>, repo: string): string {
+export function startDialogHtml(plan: StartNextPlan, view: { choices: ReadonlyMap<number, RowChoice>; proposals: ReadonlyMap<number, AutoProposal>; pending: boolean }): string {
   const groups = GROUPS.flatMap(([group, label]) => {
     const rows = plan.rows.filter((row) => row.group === group);
     if (rows.length === 0) return [];
-    return [`<section class="start-group"><h3>${label} <span>${String(rows.length)}</span></h3><ul>${rows.map((row) => rowHtml(row, tiers.get(row.ticket.number) ?? ticketTier(repo, row.ticket.number))).join('')}</ul></section>`];
+    return [`<section class="start-group"><h3>${label} <span>${String(rows.length)}</span></h3><ul>${rows.map((row) => rowHtml(row, view.choices.get(row.ticket.number) ?? 'auto', view.proposals.get(row.ticket.number) ?? null, view.pending)).join('')}</ul></section>`];
   });
   const footer = startNextFooter(plan);
   return `<div class="dialog-head"><h2 id="start-title">Start next</h2><button type="button" class="detail-close" data-start-cancel aria-label="Close">×</button></div>
     <p class="hint">Each ticket gets its own thread and worktree in T3 Code. Over ${String(plan.cap)} running on this machine, the rest queue.</p>
     <div class="start-groups">${groups.join('') || '<p class="hint">No ticket is next on this map.</p>'}</div>
-    <div class="start-foot"><span class="start-count">${escapeHtml(footer.counts)} <span class="muted">· ${escapeHtml(footer.machine)}</span></span><button type="button" class="ghost" data-start-cancel>Cancel</button><button type="button" class="primary" data-start-go${plan.picked === 0 ? ' disabled' : ''}>${icon(icons.PLAY)}Start ${String(plan.picked)}</button></div>`;
+    <div class="start-foot"><span class="start-count">${escapeHtml(footer.counts)} <span class="muted">· ${escapeHtml(footer.machine)}</span></span><button type="button" class="ghost" data-start-cancel>Cancel</button><button type="button" class="primary" data-start-go${plan.picked === 0 || view.pending ? ' disabled' : ''}>${icon(icons.PLAY)}Start ${String(plan.picked)}</button></div>`;
 }
 
 /* ---------- mount ---------- */
@@ -312,7 +358,8 @@ export interface StartNextSurface {
 export function mountStartNext(options: StartNextOptions): StartNextSurface {
   let batches: Batch[] = [];
   let ticked = new Map<number, boolean>();
-  let tiers = new Map<number, Tier>();
+  let choices = new Map<number, RowChoice>();
+  let auto: AutoState = NO_AUTO;
   let timer: number | undefined;
   let signature = '';
 
@@ -336,7 +383,14 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
     const current = plan();
     if (context === null || current === null) return;
     const active = document.activeElement instanceof HTMLElement && dialog.contains(document.activeElement) ? document.activeElement.id || null : null;
-    dialog.innerHTML = startDialogHtml(current, tiers, context.repo);
+    const state = currentCatalog();
+    const byNumber = new Map(context.map.tickets.map((ticket) => [ticket.number, ticket]));
+    const proposals = new Map<number, AutoProposal>();
+    for (const row of current.rows) {
+      const ticket = byNumber.get(row.ticket.number);
+      if (ticket !== undefined && row.kind !== 'skipped') proposals.set(ticket.number, proposalFor(ticket, auto, state.status === 'ready' ? state.catalog : null, tierDefaults()));
+    }
+    dialog.innerHTML = startDialogHtml(current, { choices, proposals, pending: auto.pending });
     if (active !== null) dialog.querySelector<HTMLElement>(`#${CSS.escape(active)}`)?.focus();
   };
 
@@ -390,16 +444,44 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
     return { ok: response.ok, body: (await response.json()) as Record<string, unknown> };
   };
 
+  /** Rate the tickets and read provider usage: by the rules at once, and by the user's model when Settings says so. */
+  const loadAuto = async (context: { repo: string; map: WayfinderMap }, numbers: readonly number[]): Promise<AutoState> => {
+    const tickets = context.map.tickets.filter((ticket) => numbers.includes(ticket.number));
+    const ratings = new Map<number, Rating>(tickets.map((ticket) => [ticket.number, rateByRules(ticket)]));
+    const rater = autoRater();
+    const usage = fetch('/api/provider-usage')
+      .then(async (response) => (response.ok ? ((await response.json()) as { providers: Record<string, ProviderUsage> }).providers : {}))
+      .catch(() => ({}));
+    const rated =
+      rater.kind === 'model' && tickets.length > 0
+        ? post(scopedApiPath(context.repo, 'auto-rate'), { map: context.map.number, tickets: numbers, model: rater.choice }).catch(() => null)
+        : Promise.resolve(null);
+    const [providers, reply] = await Promise.all([usage, rated]);
+    if (rater.kind === 'model') {
+      const answers = (reply?.ok === true ? (reply.body['ratings'] as Array<{ ticket: number; ok: boolean; rating?: Rating; error?: string }>) : []) ?? [];
+      for (const answer of answers) {
+        const fallback = ratings.get(answer.ticket);
+        if (fallback === undefined) continue;
+        if (answer.ok && answer.rating !== undefined) ratings.set(answer.ticket, answer.rating);
+        else ratings.set(answer.ticket, { ...fallback, reason: `${fallback.reason} (${answer.error ?? 'the model could not rate'}; logic rated it)` });
+      }
+    }
+    return { ratings, usage: providers, pending: false };
+  };
+
+  /** The tickets a plan starts or queues. */
+  const startable = (current: StartNextPlan): number[] => current.rows.filter((row) => row.kind === 'start' || row.kind === 'queue').map((row) => row.ticket.number);
+
   /** Post the rows a plan starts or queues as one batch. Returns whether the server accepted it. */
   const submit = async (context: { repo: string; map: WayfinderMap }, current: StartNextPlan): Promise<boolean> => {
     const state = currentCatalog();
-    const tickets = current.rows
-      .filter((row) => row.kind === 'start' || row.kind === 'queue')
-      .map((row) => {
-        const tier = tiers.get(row.ticket.number) ?? ticketTier(context.repo, row.ticket.number);
-        const model: ModelChoice | null = state.status === 'ready' ? liveChoice(state.catalog, tierDefaults()[tier]) : null;
-        return { ticket: row.ticket.number, tier, model };
-      });
+    const catalog = state.status === 'ready' ? state.catalog : null;
+    const models = tierDefaults();
+    const byNumber = new Map(context.map.tickets.map((ticket) => [ticket.number, ticket]));
+    const tickets = startable(current).flatMap((number) => {
+      const ticket = byNumber.get(number);
+      return ticket === undefined ? [] : [startRequestEntry(ticket, choices.get(number) ?? 'auto', proposalFor(ticket, auto, catalog, models), catalog, models)];
+    });
     try {
       const result = await post(scopedApiPath(context.repo, 'start-next'), { map: context.map.number, cap: handOffCap(), tickets });
       if (!result.ok) {
@@ -424,7 +506,7 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
     if (await submit(context, current)) {
       dialog.close();
       ticked = new Map();
-      tiers = new Map();
+      choices = new Map();
     } else if (button !== null) {
       button.disabled = false;
     }
@@ -439,18 +521,32 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
     const all = mapStartPlan({ repo: context.repo, map: context.map, handOffs: options.handOffs(), batches, cap: handOffCap() });
     const only = mapStartPlan({ repo: context.repo, map: context.map, handOffs: options.handOffs(), batches, cap: handOffCap(), ticked: new Map(all.rows.map((row) => [row.ticket.number, wanted.has(row.ticket.number)])) });
     const picked = only.rows.filter((row) => row.kind === 'start' || row.kind === 'queue').map((row) => row.ticket.number);
-    return picked.length > 0 && (await submit(context, only)) ? picked : [];
+    if (picked.length === 0) return [];
+    const previous = auto;
+    auto = await loadAuto(context, picked);
+    const started = await submit(context, only);
+    auto = previous;
+    return started ? picked : [];
   };
 
   const open = (): void => {
     if (options.context() === null) return;
+    const context = options.context();
     ticked = new Map();
-    tiers = new Map();
+    choices = new Map();
+    auto = { ...NO_AUTO, pending: autoRater().kind === 'model' };
     drawDialog();
     if (!dialog.open) dialog.showModal();
     void loadCatalog().then(() => {
       if (dialog.open) drawDialog();
     });
+    const numbers = (plan()?.rows ?? []).filter((row) => row.kind !== 'skipped').map((row) => row.ticket.number);
+    if (context !== null) {
+      void loadAuto(context, numbers).then((loaded) => {
+        auto = loaded;
+        if (dialog.open) drawDialog();
+      });
+    }
   };
 
   dialog.addEventListener('click', (event) => {
@@ -466,8 +562,8 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
       const tierButton = target.closest<HTMLElement>('[data-start-tier]');
       const tier = tierButton?.dataset['startTier'];
       const ticket = Number(tierButton?.dataset['startTicket']);
-      if (tier !== undefined && (TIERS as readonly string[]).includes(tier) && Number.isSafeInteger(ticket)) {
-        tiers.set(ticket, tier as Tier);
+      if (tier !== undefined && (ROW_CHOICES as readonly string[]).includes(tier) && Number.isSafeInteger(ticket)) {
+        choices.set(ticket, tier as RowChoice);
         drawDialog();
       }
     }

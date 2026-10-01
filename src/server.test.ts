@@ -1139,6 +1139,81 @@ describe('local clone for a hand-off', () => {
       }
     });
 
+    it('starts each Auto ticket on its chosen model and records the proposal, with an override as an override', async () => {
+      const { server, startThread } = liveT3();
+      const store = new HandOffStore({ filePath: null });
+      const running = await serve({ startNextIntervalMs: 20, t3: server, handOffStore: store, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      const pick = (tier: string, model: string) => ({ tier, provider: 'codex', model, effort: null });
+      const auto = (proposed: ReturnType<typeof pick>, final: ReturnType<typeof pick>) => ({ scoring: { version: 'rules-1', reason: 'touches 6 files' }, proposed, final, usage: { state: 'unknown', observedAt: null } });
+      try {
+        const response = await post(running.url, '/api/repos/octo/one/start-next', {
+          map: 5,
+          cap: 4,
+          tickets: [
+            { ticket: 11, tier: 'hard', model: { instanceId: 'codex', model: 'gpt-5.6-sol' }, auto: auto(pick('hard', 'gpt-5.6-sol'), pick('hard', 'gpt-5.6-sol')) },
+            { ticket: 12, tier: 'simple', model: { instanceId: 'codex', model: 'gpt-5.6-luna' }, auto: auto(pick('hard', 'gpt-5.6-sol'), pick('simple', 'gpt-5.6-luna')) },
+          ],
+        });
+        expect(response.status).toBe(202);
+        await settled(running.url, (items) => items.every((item) => item.status === 'started'));
+
+        const models = (startThread.mock.calls as unknown as Array<[{ title: string; model: { model: string } | null }]>).map(([input]) => [input.title, input.model?.model]);
+        expect(models).toEqual([['#11 Ticket 11', 'gpt-5.6-sol'], ['#12 Ticket 12', 'gpt-5.6-luna']]);
+
+        const records = await store.list();
+        const byTicket = (number: number) => records.find((record) => record.ticketNumber === number);
+        expect(byTicket(11)).toMatchObject({ tier: 'hard', auto: { scoring: { reason: 'touches 6 files' }, overrides: [] } });
+        expect(byTicket(12)).toMatchObject({ tier: 'simple', auto: { proposed: { tier: 'hard' }, final: { tier: 'simple' }, overrides: ['tier', 'model'] } });
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('reports a provider as limited after a batch hit its usage limit, so Auto can avoid it', async () => {
+      const { server, sessions } = liveT3();
+      const failing: ServerT3 = {
+        ...server,
+        readHandOffSnapshot: async () => ({
+          environmentId: 't3-env',
+          origin: 'http://127.0.0.1:3773',
+          snapshot: { threads: [...sessions].map(([id, status]) => ({ id, session: { status, ...(status === 'error' ? { lastError: 'Usage limit reached. Resets at 4:00 PM.' } : {}) } })) },
+        }),
+      };
+      const running = await serveNext(failing);
+      try {
+        const usage = async () => ((await (await fetch(`${running.url}/api/provider-usage`, { headers: { origin: running.url } })).json()) as { providers: Record<string, { state: string; observedAt: string | null }> }).providers;
+        expect(await usage()).toEqual({});
+        await post(running.url, '/api/repos/octo/one/start-next', { map: 5, cap: 1, tickets: [{ ticket: 11, model: { instanceId: 'codex', model: 'gpt-5.6-sol' } }, { ticket: 12 }] });
+        await settled(running.url, (items) => items.some((item) => item.status === 'started'));
+        sessions.set('thread-1', 'error');
+        await settledBatch(running.url, (current) => current.status === 'stopped');
+        expect(await usage()).toEqual({ codex: { state: 'limited', observedAt: expect.any(String) as string } });
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('rates tickets with the chosen model and says which could not be rated', async () => {
+      const { server } = liveT3();
+      const ratingRunner = vi.fn(async (_command: string, _args: readonly string[], input: string) => (input.includes('Title: Ticket 11') ? '{"tier":"hard","reason":"touches 6 files"}' : 'no idea'));
+      const running = await serve({ t3: server, ratingRunner, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      try {
+        const rate = (body: unknown) => post(running.url, '/api/repos/octo/one/auto-rate', body);
+        const response = await rate({ map: 5, tickets: [11, 12, 99], model: { instanceId: 'codex', model: 'gpt-5.6-luna' } });
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({
+          ratings: [
+            { ticket: 11, ok: true, rating: { tier: 'hard', reason: 'touches 6 files', by: 'model', version: 'model-1:gpt-5.6-luna' } },
+            { ticket: 12, ok: false, error: 'gpt-5.6-luna did not answer with a tier' },
+          ],
+        });
+        expect((await rate({ map: 5, tickets: [11] })).status).toBe(400);
+        expect((await rate({ map: 6, tickets: [11], model: { instanceId: 'codex', model: 'm' } })).status).toBe(404);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
     it('needs a clone and at least one ticket on the map', async () => {
       const { server } = liveT3();
       const noClone = await serve({ t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({}, []) });

@@ -5,8 +5,9 @@ import type { StallSettings } from '../types.js';
 import { currentTheme, paintIcons, renderAccountMarkContent, setTheme, THEME_CHANGE_EVENT } from './chrome.js';
 import type { Theme } from './chrome.js';
 import { escapeHtml } from './markdown.js';
-import { defaultTier, saveDefaultTier, TIER_HINT, TIER_LABEL, TIERS } from './models.js';
-import type { Tier } from './models.js';
+import { supportsModelRating } from '../autoPick.js';
+import { autoRater, currentCatalog, defaultTier, loadCatalog, saveAutoRater, saveDefaultTier, TIER_HINT, TIER_LABEL, TIERS, tierDefaults } from './models.js';
+import type { AutoRater, CatalogState, Tier } from './models.js';
 import { GOALS, PROGRESS_SETTINGS_EVENT } from './progress.js';
 import { handOffCap, HAND_OFF_CAPS, saveHandOffCap } from './startNext.js';
 import { DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_KINDS } from '../notificationTypes.js';
@@ -19,6 +20,10 @@ export interface SettingsView {
   account: HomeAccount | null;
   theme: Theme;
   tier: Tier;
+  /** How Auto rates a ticket in Start next: by the rules alone, or by a model. */
+  rater: AutoRater;
+  /** T3 Code's models, for choosing the rating model. */
+  models: CatalogState;
   /** How many hand-offs may run at once on this machine before Start next queues the rest. */
   cap: number;
   /** Null while progress loads or when no one is signed in to save it for. */
@@ -77,6 +82,34 @@ function accountHtml(account: HomeAccount | null, busy: SettingsView['busy']): s
     ${switcher}`;
 }
 
+/** The models Wayfinder can rate with: the ones whose provider it can run headless. */
+export function ratingModels(models: CatalogState): Array<{ instanceId: string; slug: string; name: string; provider: string }> {
+  if (models.status !== 'ready') return [];
+  return models.catalog.providers.filter((provider) => provider.ready && supportsModelRating(provider.instanceId)).flatMap((provider) => provider.models.map((model) => ({ instanceId: provider.instanceId, slug: model.slug, name: model.name, provider: provider.name })));
+}
+
+const RATER_SEPARATOR = '::';
+
+/** "How Auto rates a ticket": logic only, or a model, with the model's picker once it is chosen. */
+export function autoRaterHtml(rater: AutoRater, models: CatalogState): string {
+  const kinds = segmented('How Auto rates a ticket', [seg('data-settings-rater', 'logic', 'Logic only', rater.kind === 'logic'), seg('data-settings-rater', 'model', 'A model', rater.kind === 'model')].join(''));
+  const hint = rater.kind === 'logic' ? 'Wayfinder scores each ticket with its own rules. No model runs.' : 'A model reads each ticket and rates it. If it cannot, the rules do, and the row says so.';
+  const row = `<div class="settings-row"><span class="grow">Auto rates tickets<span class="hint">${escapeHtml(hint)}</span></span>${kinds}</div>`;
+  if (rater.kind === 'logic') return row;
+  const options = ratingModels(models);
+  const picked = `${rater.choice.instanceId}${RATER_SEPARATOR}${rater.choice.model}`;
+  const select =
+    options.length === 0
+      ? `<span class="hint">${models.status === 'loading' ? 'Loading T3 Code models…' : 'No Codex or Claude model is ready to rate with.'}</span>`
+      : `<select data-settings-rater-model aria-label="Rating model">${options
+          .map((option) => {
+            const value = `${option.instanceId}${RATER_SEPARATOR}${option.slug}`;
+            return `<option value="${escapeHtml(value)}"${value === picked ? ' selected' : ''}>${escapeHtml(`${option.name} · ${option.provider}`)}</option>`;
+          })
+          .join('')}</select>`;
+  return `${row}<div class="settings-row"><span class="grow">Rating model</span>${select}</div>`;
+}
+
 export function settingsBodyHtml(view: SettingsView): string {
   const themes = segmented('Theme', (['light', 'dark'] as const).map((theme) => seg('data-settings-theme', theme, THEME_LABEL[theme], theme === view.theme)).join(''));
   const tiers = segmented('Default model tier', TIERS.map((tier) => seg('data-settings-tier', tier, TIER_LABEL[tier], tier === view.tier)).join(''));
@@ -93,6 +126,7 @@ export function settingsBodyHtml(view: SettingsView): string {
       <h3 id="settings-prefs-title">Preferences</h3>
       <div class="settings-row"><span class="grow">Theme</span>${themes}</div>
       <div class="settings-row"><span class="grow">Default model tier<span class="hint">${escapeHtml(TIER_HINT[view.tier])}. New tickets and maps start here.</span></span>${tiers}</div>
+      ${autoRaterHtml(view.rater, view.models)}
       <div class="settings-row"><span class="grow">Hand-offs at once<span class="hint">Start next runs this many in T3 Code on this machine and queues the rest.</span></span>${caps}</div>
       <div class="settings-row"><span class="grow">Daily goal<span class="hint">${view.progress === null ? 'Sign in to set a goal.' : 'Tickets to clear each day on Home.'}</span></span>${goals}</div>
     </section>
@@ -153,7 +187,7 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
   trigger.setAttribute('aria-haspopup', 'dialog');
   trigger.setAttribute('aria-controls', dialog.id);
 
-  let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), cap: handOffCap(), progress: null, stalls: null, notifications: null, busy: null };
+  let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), rater: autoRater(), models: currentCatalog(), cap: handOffCap(), progress: null, stalls: null, notifications: null, busy: null };
 
   const draw = (): void => {
     const focusKey = document.activeElement instanceof HTMLElement && body.contains(document.activeElement) ? focusKeyOf(document.activeElement) : null;
@@ -199,15 +233,30 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
   };
 
   trigger.addEventListener('click', () => {
-    view = { ...view, theme: currentTheme(), tier: defaultTier(), cap: handOffCap() };
+    view = { ...view, theme: currentTheme(), tier: defaultTier(), rater: autoRater(), models: currentCatalog(), cap: handOffCap() };
     draw();
     dialog.showModal();
     void load();
+    void loadCatalog().then((models) => {
+      view = { ...view, models };
+      if (dialog.open) draw();
+    });
   });
 
   document.addEventListener(THEME_CHANGE_EVENT, () => {
     view = { ...view, theme: currentTheme() };
     if (dialog.open) draw();
+  });
+
+  dialog.addEventListener('change', (event) => {
+    const select = event.target;
+    if (!(select instanceof HTMLSelectElement) || !select.hasAttribute('data-settings-rater-model')) return;
+    const [instanceId = '', ...rest] = select.value.split(RATER_SEPARATOR);
+    const model = rest.join(RATER_SEPARATOR);
+    if (instanceId === '' || model === '') return;
+    const next: AutoRater = { kind: 'model', choice: { instanceId, model } };
+    saveAutoRater(next);
+    view = { ...view, rater: next };
   });
 
   dialog.addEventListener('click', (event) => {
@@ -229,6 +278,21 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
     if (tier !== undefined && (TIERS as readonly string[]).includes(tier)) {
       saveDefaultTier(tier as Tier);
       view = { ...view, tier: tier as Tier };
+      draw();
+      return;
+    }
+    const rater = target?.closest<HTMLElement>('[data-settings-rater]')?.dataset['settingsRater'];
+    if (rater === 'logic' || rater === 'model') {
+      const choice = tierDefaults().mid;
+      const options = ratingModels(view.models);
+      const first = options.find((option) => option.instanceId === choice?.instanceId && option.slug === choice.model) ?? options[0];
+      if (rater === 'model' && first === undefined) {
+        toast('No Codex or Claude model is ready to rate with. Auto stays on logic only.', 6000);
+        return;
+      }
+      const next: AutoRater = rater === 'model' && first !== undefined ? { kind: 'model', choice: { instanceId: first.instanceId, model: first.slug } } : { kind: 'logic' };
+      saveAutoRater(next);
+      view = { ...view, rater: next };
       draw();
       return;
     }
@@ -315,9 +379,10 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
 
 /** A selector that finds the same control after a redraw, so keyboard focus stays put. */
 export function focusKeyOf(element: Element): string | null {
-  for (const attribute of ['data-settings-theme', 'data-settings-tier', 'data-settings-cap', 'data-settings-goal', 'data-settings-claim-days', 'data-settings-hand-off-days', 'data-settings-notification', 'data-settings-switch']) {
+  for (const attribute of ['data-settings-theme', 'data-settings-tier', 'data-settings-rater', 'data-settings-cap', 'data-settings-goal', 'data-settings-claim-days', 'data-settings-hand-off-days', 'data-settings-notification', 'data-settings-switch']) {
     const value = element.getAttribute(attribute);
     if (value !== null) return `[${attribute}="${value}"]`;
   }
+  if (element.hasAttribute('data-settings-rater-model')) return '[data-settings-rater-model]';
   return element.hasAttribute('data-settings-logout') ? '[data-settings-logout]' : null;
 }

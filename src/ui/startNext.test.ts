@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import type { Batch, BatchItem } from '../startNextRunner.js';
 import type { Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
+import type { AutoProposal } from '../autoPick.js';
 import {
   batchCardChip,
   batchPanelHtml,
@@ -10,13 +11,34 @@ import {
   batchView,
   handOffCap,
   mapStartPlan,
+  proposalFor,
   saveHandOffCap,
+  startRequestEntry,
   startDialogHtml,
   startRowWord,
   visibleBatch,
 } from './startNext.js';
+import type { AutoState } from './startNext.js';
+import type { ModelCatalog, ModelChoice, Tier } from '../models.js';
 
 const NOW = Date.parse('2026-09-30T12:00:00.000Z');
+
+function model(slug: string, name: string): ModelCatalog['providers'][number]['models'][number] {
+  return { slug, name, isDefault: false, effort: null };
+}
+
+const CATALOG: ModelCatalog = {
+  providers: [
+    { instanceId: 'codex', name: 'Codex', ready: true, models: [model('s', 'GPT Simple'), model('m', 'GPT Mid'), model('h', 'GPT Hard')] },
+    { instanceId: 'claude', name: 'Claude', ready: true, models: [model('c', 'Claude')] },
+  ],
+};
+const TIER_MODELS: Partial<Record<Tier, ModelChoice>> = {
+  simple: { instanceId: 'codex', model: 's' },
+  mid: { instanceId: 'codex', model: 'm' },
+  hard: { instanceId: 'codex', model: 'h' },
+};
+const NO_AUTO: AutoState = { ratings: new Map(), usage: {}, pending: false };
 
 function ticket(number: number, type: TicketType | null = 'task', state: TicketState = 'frontier'): Ticket {
   return {
@@ -65,7 +87,7 @@ function handOff(ticketNumber: number, overrides: Partial<HandOffStatusDto> = {}
 }
 
 function item(ticketNumber: number, status: BatchItem['status'], extra: Partial<BatchItem> = {}): BatchItem {
-  return { ticketNumber, title: `Ticket ${String(ticketNumber)}`, tier: 'mid', model: null, status, handOffId: null, reason: null, ...extra };
+  return { ticketNumber, title: `Ticket ${String(ticketNumber)}`, tier: 'mid', model: null, auto: null, status, handOffId: null, reason: null, ...extra };
 }
 
 function batch(items: BatchItem[], extra: Partial<Batch> = {}): Batch {
@@ -139,8 +161,14 @@ describe('start next confirm list', () => {
     handOffs: [handOff(4)],
   });
 
+  const view = (choices: Map<number, 'auto' | Tier> = new Map(), pending = false): Parameters<typeof startDialogHtml>[1] => ({
+    choices,
+    proposals: new Map(plan.rows.filter((row) => row.kind !== 'skipped').map((row) => [row.ticket.number, proposalFor(ticket(row.ticket.number, row.ticket.type), NO_AUTO, CATALOG, TIER_MODELS)])),
+    pending,
+  });
+
   it('groups Ready, Needs you and Skipped, each row saying what will happen', () => {
-    const html = startDialogHtml(plan, new Map(), 'octo/one');
+    const html = startDialogHtml(plan, view());
     expect(html.indexOf('Ready')).toBeLessThan(html.indexOf('Needs you'));
     expect(html.indexOf('Needs you')).toBeLessThan(html.indexOf('Skipped'));
     expect(html).toContain('Starts now');
@@ -151,30 +179,44 @@ describe('start next confirm list', () => {
   });
 
   it('writes the footer and a Start button for what is picked', () => {
-    const html = startDialogHtml(plan, new Map(), 'octo/one');
+    const html = startDialogHtml(plan, view());
     expect(html).toContain('1 start now · 1 queued');
     expect(html).toContain('1 of 2 running on this machine');
     expect(html).toContain('Start 2</button>');
     expect(html).not.toContain('data-start-go disabled');
   });
 
-  it('offers one tier choice per startable row, honouring a chosen tier, and none for a skipped one', () => {
-    const html = startDialogHtml(plan, new Map([[1, 'hard']]), 'octo/one');
+  it('offers Auto, Simple, Mid and Hard per startable row, on Auto by default, and none for a skipped one', () => {
+    const html = startDialogHtml(plan, view(new Map([[1, 'hard']])));
     expect(html).toContain('data-start-tier="hard" data-start-ticket="1" aria-pressed="true"');
-    expect(html).toContain('data-start-tier="mid" data-start-ticket="2" aria-pressed="true"');
+    expect(html).toContain('data-start-tier="auto" data-start-ticket="2" aria-pressed="true"');
+    expect(html).toContain('data-start-tier="auto" data-start-ticket="1" aria-pressed="false"');
     expect(html).not.toContain('data-start-ticket="4"');
-    expect(html).not.toContain('data-start-tier="auto"');
+    expect(html).not.toContain('Mid for all');
+  });
+
+  it("shows Auto's pick, a one-line reason and who rated it, and 'your pick' once the user overrides", () => {
+    const html = startDialogHtml(plan, view(new Map([[1, 'hard']])));
+    expect(html).toContain('Mid → GPT Mid: research ticket');
+    expect(html).toContain('Rated by logic');
+    expect(html).toContain('<b>Hard</b> · T3 Code default<i>your pick</i>');
+  });
+
+  it('says the rating is on its way while a model rates, and holds Start back', () => {
+    const html = startDialogHtml(plan, view(new Map(), true));
+    expect(html).toContain('rating…');
+    expect(html).toContain('data-start-go disabled');
   });
 
   it('unticks grilling and prototype rows and ticks the rest', () => {
-    const html = startDialogHtml(plan, new Map(), 'octo/one');
+    const html = startDialogHtml(plan, view());
     expect(html).toMatch(/data-start-toggle="1" checked/);
     expect(html).toMatch(/data-start-toggle="3"(?! checked)/);
   });
 
   it('disables Start when nothing is picked', () => {
     const empty = mapStartPlan({ repo: 'octo/one', cap: 4, batches: [], handOffs: [], map: map([ticket(3, 'grilling')]) });
-    expect(startDialogHtml(empty, new Map(), 'octo/one')).toContain('data-start-go disabled');
+    expect(startDialogHtml(empty, { choices: new Map(), proposals: new Map(), pending: false })).toContain('data-start-go disabled');
   });
 
   it('names the status of each kind of row', () => {
@@ -252,5 +294,33 @@ describe('batch progress', () => {
     expect(batchCardChip([running], 'octo/one', 5, 1)).toBeNull();
     expect(batchCardChip([running], 'octo/one', 5, 99)).toBeNull();
     expect(batchCardChip([batch([item(3, 'queued')], { status: 'stopped' })], 'octo/one', 5, 3)).toBeNull();
+  });
+});
+
+describe('start request entries', () => {
+  const hardTicket: Ticket = { ...ticket(7, 'research'), body: 'See `src/a.ts`, `src/b.ts`, `src/c.ts`, `src/d.ts`, `src/e.ts` and `src/f.ts`; the queue runs concurrent starts.' };
+  const proposal: AutoProposal = proposalFor(hardTicket, NO_AUTO, CATALOG, TIER_MODELS);
+
+  it('starts an Auto row on the proposed tier and model, and records the proposal', () => {
+    const entry = startRequestEntry(hardTicket, 'auto', proposal, CATALOG, TIER_MODELS);
+    expect(entry).toMatchObject({ ticket: 7, tier: 'hard', model: { instanceId: 'codex', model: 'h' } });
+    expect(entry.auto).toMatchObject({
+      scoring: { version: 'rules-1' },
+      proposed: { tier: 'hard', provider: 'codex', model: 'h' },
+      final: { tier: 'hard', provider: 'codex', model: 'h' },
+      usage: { state: 'unknown', observedAt: null },
+    });
+  });
+
+  it("honours an override: the chosen tier's model starts, and the record keeps both the proposal and the final choice", () => {
+    const entry = startRequestEntry(hardTicket, 'simple', proposal, CATALOG, TIER_MODELS);
+    expect(entry).toMatchObject({ tier: 'simple', model: { instanceId: 'codex', model: 's' } });
+    expect(entry.auto).toMatchObject({ proposed: { tier: 'hard', model: 'h' }, final: { tier: 'simple', model: 's' } });
+  });
+
+  it("starts on T3 Code's default when the models are not loaded", () => {
+    const offline = proposalFor(hardTicket, NO_AUTO, null, TIER_MODELS);
+    expect(startRequestEntry(hardTicket, 'auto', offline, null, TIER_MODELS)).toMatchObject({ tier: 'hard', model: null });
+    expect(startRequestEntry(hardTicket, 'mid', offline, null, TIER_MODELS)).toMatchObject({ tier: 'mid', model: null });
   });
 });

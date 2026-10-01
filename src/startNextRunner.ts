@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
 import { isUsageLimitError } from './autoDecision.js';
+import type { AutoDecision } from './autoDecision.js';
 import type { ModelChoice, Tier } from './models.js';
 import { normalizeCap } from './startNext.js';
+
+const MAX_LIMITS = 50;
 
 /** One ticket in a Start next batch, as the confirm list chose it. */
 export interface BatchRequestItem {
@@ -11,6 +14,8 @@ export interface BatchRequestItem {
   tier: Tier;
   /** The model the tier resolves to, or null to let T3 Code decide. */
   model: ModelChoice | null;
+  /** What Auto proposed and the user confirmed, saved on the hand-off for calibration (#172). Null for a plain tier. */
+  auto?: AutoDecision | null;
   /** Set when the ticket is already known not to start, e.g. it is no longer next. */
   skip?: string;
 }
@@ -26,6 +31,7 @@ export interface BatchItem {
   title: string;
   tier: Tier;
   model: ModelChoice | null;
+  auto: AutoDecision | null;
   status: BatchItemStatus;
   handOffId: string | null;
   /** Why it was skipped or failed, or why it went back to next. */
@@ -36,6 +42,12 @@ export interface UsageLimit {
   message: string;
   /** When the provider says the limit resets, in its own words ("4:00 PM"), or null. */
   resetsAt: string | null;
+}
+
+/** A provider instance a batch saw hit its usage limit, so Auto can steer clear of it for a while. */
+export interface UsageLimitSeen {
+  instanceId: string;
+  at: string;
 }
 
 export type BatchStop = ({ kind: 'usage-limit'; ticketNumber: number } & UsageLimit) | { kind: 'user' };
@@ -81,6 +93,7 @@ export function parseUsageLimit(message: string): UsageLimit {
  */
 export class StartNextRunner {
   private readonly batches: Batch[] = [];
+  private readonly limits: UsageLimitSeen[] = [];
   private readonly intervalMs: number;
   private readonly keep: number;
   private readonly now: () => Date;
@@ -98,6 +111,11 @@ export class StartNextRunner {
   /** Every batch, newest first. */
   snapshot(): Batch[] {
     return this.batches.map((batch) => structuredClone(batch)).reverse();
+  }
+
+  /** Usage limits the batches have hit since Wayfinder started, oldest first. */
+  usageLimits(): UsageLimitSeen[] {
+    return [...this.limits];
   }
 
   /** Tickets in `repo` that a running batch has queued or is starting. */
@@ -123,6 +141,7 @@ export class StartNextRunner {
         title: item.title,
         tier: item.tier,
         model: item.model,
+        auto: item.auto ?? null,
         status: skip === null ? 'queued' : 'skipped',
         handOffId: null,
         reason: skip,
@@ -217,7 +236,7 @@ export class StartNextRunner {
       outcome = await this.deps.startTicket({
         repo: batch.repo,
         mapNumber: batch.mapNumber,
-        item: { ticketNumber: item.ticketNumber, title: item.title, tier: item.tier, model: item.model },
+        item: { ticketNumber: item.ticketNumber, title: item.title, tier: item.tier, model: item.model, auto: item.auto },
       });
     } catch (error) {
       outcome = { kind: 'failed', reason: (error as Error).message };
@@ -236,6 +255,10 @@ export class StartNextRunner {
   }
 
   private stopForUsageLimit(batch: Batch, item: BatchItem, limit: UsageLimit): void {
+    if (item.model !== null) {
+      this.limits.push({ instanceId: item.model.instanceId, at: this.now().toISOString() });
+      this.limits.splice(0, Math.max(0, this.limits.length - MAX_LIMITS));
+    }
     this.backToNext(batch, 'Went back to next when the batch stopped');
     batch.status = 'stopped';
     batch.stop = { kind: 'usage-limit', ticketNumber: item.ticketNumber, ...limit };
