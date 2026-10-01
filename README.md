@@ -228,6 +228,24 @@ its tier; new tickets start on Mid. A tier with no default, or a model T3 Code n
 longer offers, falls back to T3 Code's own default. The defaults live in the
 browser's local storage.
 
+### Start next
+
+Open the map-name menu (the map's name in the breadcrumb) and choose **Start next · N ready** to hand
+off every ticket that is next at once. A confirm list groups them as Ready, Needs you and Skipped:
+
+- Task, research and untyped tickets are ticked. Grilling and prototype tickets wait for you in the
+  thread, so they start unticked as "Needs you" (tick one to include it).
+- A ticket that already has a live hand-off (or is queued in a running batch) is skipped, and the row
+  says why.
+- Each row has one tier choice, Simple, Mid or Hard, which resolves to that tier's model from **Models**.
+- At most 4 hand-offs run at once on this machine (change it under **Settings → Hand-offs at once**).
+  The rest queue and start as slots free. Each ticket gets its own thread and worktree.
+
+While a batch runs, a topbar control shows "N running · M queued" and a per-ticket list, with
+**Stop the queue**. Cards show Starting or a dashed Queued chip. On the first usage-limit error the
+batch stops, queued tickets go back to next, and the control turns red with when the limit resets.
+Queued tickets start only while Wayfinder is open.
+
 ## Prompt template
 
 The default prompt names the repo, the map, the ticket, the map's destination and

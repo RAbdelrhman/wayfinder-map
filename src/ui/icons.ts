@@ -64,6 +64,9 @@ export const FOLDER = '<path d="M4 20a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5l2 2.5h8a1 
 /** A flame: the progress panel's streak. */
 export const FLAME =
   '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4.1 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3.2.2 1.4 1.2 2.7 2.5 2.7z"/>';
+/** Lines with an arrow: waiting in line to start. */
+export const QUEUE = '<path d="M4 6h16M4 12h10M4 18h6"/><path d="m17 15 3 3-3 3"/>';
+export const CLOSE = '<path d="M18 6 6 18M6 6l12 12"/>';
 
 /* ---------- map signals (#130): the critical path, pull requests, CI, review, stalls ---------- */
 export const ROUTE = '<circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H16a3.5 3.5 0 0 0 0-7H8a3.5 3.5 0 0 1 0-7h7.5"/>';

@@ -996,6 +996,168 @@ describe('local clone for a hand-off', () => {
     });
   });
 
+  describe('start next', () => {
+    const ticketAt = (number: number, overrides: Partial<Ticket> = {}): Ticket => ({
+      ...sampleTicket,
+      number,
+      title: `Ticket ${String(number)}`,
+      url: `https://github.com/octo/one/issues/${String(number)}`,
+      ...overrides,
+    });
+    const startMap: WayfinderMap = {
+      ...sampleMap,
+      tickets: [ticketAt(11), ticketAt(12), ticketAt(13), ticketAt(14, { state: 'claimed', assignee: 'someone' })],
+    };
+
+    function liveT3() {
+      const sessions = new Map<string, string>();
+      const titles: string[] = [];
+      const startThread = vi.fn(async (input: { title: string }) => {
+        const threadId = `thread-${String(sessions.size + 1)}`;
+        sessions.set(threadId, 'running');
+        titles.push(input.title);
+        return { threadId, prompt: 'prompt', tracking: { environmentId: 't3-env', projectId: 'p', branch: `branch-${threadId}`, worktreePath: `/wt/${threadId}` } };
+      });
+      const server: ServerT3 = {
+        ...t3,
+        steps: () => ({ startThread, openApp: async () => undefined, copy: async () => undefined }),
+        readHandOffSnapshot: async () => ({
+          environmentId: 't3-env',
+          origin: 'http://127.0.0.1:3773',
+          snapshot: { threads: [...sessions].map(([id, status]) => ({ id, session: { status } })) },
+        }),
+        subscribeShell: async () => () => undefined,
+      };
+      return { server, startThread, titles, sessions };
+    }
+
+    const post = (url: string, path: string, body: unknown) =>
+      fetch(`${url}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', origin: url }, body: JSON.stringify(body) });
+    const batches = async (url: string): Promise<Array<{ id: string; status: string; stop: unknown; items: Array<{ ticketNumber: number; status: string; reason: string | null; handOffId: string | null }> }>> =>
+      ((await (await fetch(`${url}/api/start-next`, { headers: { origin: url } })).json()) as { batches: never }).batches;
+    async function settled(url: string, until: (items: Array<{ status: string }>) => boolean) {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const [batch] = await batches(url);
+        if (batch !== undefined && until(batch.items)) return batch;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      throw new Error('The batch never settled.');
+    }
+    async function settledBatch(url: string, until: (batch: Awaited<ReturnType<typeof batches>>[number]) => boolean) {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const [batch] = await batches(url);
+        if (batch !== undefined && until(batch)) return batch;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      throw new Error('The batch never settled.');
+    }
+    const serveNext = (server: ServerT3) => serve({ startNextIntervalMs: 20, t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+
+    it('hands off a batch of 3 as 3 separate threads, recorded with their tier', async () => {
+      const { server, startThread, sessions } = liveT3();
+      const running = await serveNext(server);
+      try {
+        const response = await post(running.url, '/api/repos/octo/one/start-next', {
+          map: 5,
+          cap: 4,
+          tickets: [{ ticket: 11, tier: 'hard' }, { ticket: 12 }, { ticket: 13, tier: 'simple' }],
+        });
+        expect(response.status).toBe(202);
+        const batch = await settled(running.url, (items) => items.every((item) => item.status === 'started'));
+        expect(batch.items.map((item) => item.ticketNumber)).toEqual([11, 12, 13]);
+        expect(startThread).toHaveBeenCalledTimes(3);
+        expect(new Set(sessions.keys()).size).toBe(3);
+
+        const status = (await (await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } })).json()) as { handOffs: Array<{ ticketNumber: number; tier: string; threadId: string }> };
+        expect(status.handOffs.map((item) => [item.ticketNumber, item.tier]).sort()).toEqual([[11, 'hard'], [12, 'mid'], [13, 'simple']]);
+        expect(new Set(status.handOffs.map((item) => item.threadId)).size).toBe(3);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('starts up to the cap, queues the rest and sends them back to next when stopped', async () => {
+      const { server, startThread } = liveT3();
+      const running = await serveNext(server);
+      try {
+        await post(running.url, '/api/repos/octo/one/start-next', { map: 5, cap: 1, tickets: [{ ticket: 11 }, { ticket: 12 }, { ticket: 13 }] });
+        const batch = await settled(running.url, (items) => items.some((item) => item.status === 'started'));
+        expect(batch.items.map((item) => item.status)).toEqual(['started', 'queued', 'queued']);
+        expect(startThread).toHaveBeenCalledTimes(1);
+
+        const stopped = await post(running.url, '/api/start-next/stop', { id: batch.id });
+        expect(stopped.status).toBe(200);
+        const [after] = await batches(running.url);
+        expect(after?.status).toBe('stopped');
+        expect(after?.items.map((item) => item.status)).toEqual(['started', 'back-to-next', 'back-to-next']);
+        expect((await post(running.url, '/api/start-next/stop', { id: 'nope' })).status).toBe(404);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('skips a ticket with a live hand-off, a ticket that is no longer next and a repeat in another batch, saying why', async () => {
+      const { server, startThread } = liveT3();
+      const running = await serveNext(server);
+      try {
+        expect((await post(running.url, '/api/repos/octo/one/hand-off', { map: 5, ticket: 11 })).status).toBe(200);
+        await post(running.url, '/api/repos/octo/one/start-next', { map: 5, cap: 4, tickets: [{ ticket: 11 }, { ticket: 14 }, { ticket: 12 }] });
+        const batch = await settled(running.url, (items) => items.every((item) => item.status !== 'queued' && item.status !== 'starting'));
+        expect(batch.items.map((item) => [item.ticketNumber, item.status, item.reason])).toEqual([
+          [11, 'skipped', '#11 already has a hand-off in T3 Code. Open that thread instead of starting another.'],
+          [14, 'skipped', '#14 is claimed, not next.'],
+          [12, 'started', null],
+        ]);
+        expect(startThread).toHaveBeenCalledTimes(2);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('stops the batch on a usage-limit error and reports what went back to next', async () => {
+      const { server, sessions } = liveT3();
+      const failing: ServerT3 = {
+        ...server,
+        readHandOffSnapshot: async () => ({
+          environmentId: 't3-env',
+          origin: 'http://127.0.0.1:3773',
+          snapshot: { threads: [...sessions].map(([id, status]) => ({ id, session: { status, ...(status === 'error' ? { lastError: 'Usage limit reached. Resets at 4:00 PM.' } : {}) } })) },
+        }),
+      };
+      const running = await serveNext(failing);
+      try {
+        await post(running.url, '/api/repos/octo/one/start-next', { map: 5, cap: 1, tickets: [{ ticket: 11 }, { ticket: 12 }] });
+        const batch = await settled(running.url, (items) => items.some((item) => item.status === 'started'));
+        sessions.set('thread-1', 'error');
+        const stopped = await settledBatch(running.url, (current) => current.status === 'stopped');
+        expect(batch.status).toBe('running');
+        expect(stopped.status).toBe('stopped');
+        expect(stopped.stop).toMatchObject({ kind: 'usage-limit', ticketNumber: 11, resetsAt: '4:00 PM' });
+        expect(stopped.items.map((item) => item.status)).toEqual(['started', 'back-to-next']);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('needs a clone and at least one ticket on the map', async () => {
+      const { server } = liveT3();
+      const noClone = await serve({ t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({}, []) });
+      try {
+        expect((await post(noClone.url, '/api/repos/octo/one/start-next', { map: 5, tickets: [{ ticket: 11 }] })).status).toBe(409);
+      } finally {
+        await new Promise<void>((resolve) => noClone.server.close(() => resolve()));
+      }
+      const running = await serveNext(server);
+      try {
+        expect((await post(running.url, '/api/repos/octo/one/start-next', { map: 5, tickets: [] })).status).toBe(400);
+        expect((await post(running.url, '/api/repos/octo/one/start-next', { map: 5, tickets: [{ ticket: 99 }] })).status).toBe(400);
+        expect((await post(running.url, '/api/repos/octo/one/start-next', { map: 6, tickets: [{ ticket: 11 }] })).status).toBe(404);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+  });
+
   it('records a T3-down hand-off as untracked without failing the copy fallback', async () => {
     const steps = {
       startThread: async (): Promise<never> => {

@@ -8,6 +8,7 @@ import { escapeHtml } from './markdown.js';
 import { defaultTier, saveDefaultTier, TIER_HINT, TIER_LABEL, TIERS } from './models.js';
 import type { Tier } from './models.js';
 import { GOALS, PROGRESS_SETTINGS_EVENT } from './progress.js';
+import { handOffCap, HAND_OFF_CAPS, saveHandOffCap } from './startNext.js';
 import { DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_KINDS } from '../notificationTypes.js';
 import type { NotificationKind, NotificationSettings } from '../notificationTypes.js';
 
@@ -18,6 +19,8 @@ export interface SettingsView {
   account: HomeAccount | null;
   theme: Theme;
   tier: Tier;
+  /** How many hand-offs may run at once on this machine before Start next queues the rest. */
+  cap: number;
   /** Null while progress loads or when no one is signed in to save it for. */
   progress: ProgressSettings | null;
   /** Null while the stall settings load. */
@@ -77,6 +80,7 @@ function accountHtml(account: HomeAccount | null, busy: SettingsView['busy']): s
 export function settingsBodyHtml(view: SettingsView): string {
   const themes = segmented('Theme', (['light', 'dark'] as const).map((theme) => seg('data-settings-theme', theme, THEME_LABEL[theme], theme === view.theme)).join(''));
   const tiers = segmented('Default model tier', TIERS.map((tier) => seg('data-settings-tier', tier, TIER_LABEL[tier], tier === view.tier)).join(''));
+  const caps = segmented('Hand-offs at once', HAND_OFF_CAPS.map((cap) => seg('data-settings-cap', String(cap), String(cap), cap === view.cap)).join(''));
   const goals = segmented(
     'Daily goal',
     GOALS.map((goal) => seg('data-settings-goal', String(goal), String(goal), goal === view.progress?.goal, view.progress === null)).join(''),
@@ -89,6 +93,7 @@ export function settingsBodyHtml(view: SettingsView): string {
       <h3 id="settings-prefs-title">Preferences</h3>
       <div class="settings-row"><span class="grow">Theme</span>${themes}</div>
       <div class="settings-row"><span class="grow">Default model tier<span class="hint">${escapeHtml(TIER_HINT[view.tier])}. New tickets and maps start here.</span></span>${tiers}</div>
+      <div class="settings-row"><span class="grow">Hand-offs at once<span class="hint">Start next runs this many in T3 Code on this machine and queues the rest.</span></span>${caps}</div>
       <div class="settings-row"><span class="grow">Daily goal<span class="hint">${view.progress === null ? 'Sign in to set a goal.' : 'Tickets to clear each day on Home.'}</span></span>${goals}</div>
     </section>
     <section class="settings-section" aria-labelledby="settings-stalls-title">
@@ -148,7 +153,7 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
   trigger.setAttribute('aria-haspopup', 'dialog');
   trigger.setAttribute('aria-controls', dialog.id);
 
-  let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), progress: null, stalls: null, notifications: null, busy: null };
+  let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), cap: handOffCap(), progress: null, stalls: null, notifications: null, busy: null };
 
   const draw = (): void => {
     const focusKey = document.activeElement instanceof HTMLElement && body.contains(document.activeElement) ? focusKeyOf(document.activeElement) : null;
@@ -194,7 +199,7 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
   };
 
   trigger.addEventListener('click', () => {
-    view = { ...view, theme: currentTheme(), tier: defaultTier() };
+    view = { ...view, theme: currentTheme(), tier: defaultTier(), cap: handOffCap() };
     draw();
     dialog.showModal();
     void load();
@@ -224,6 +229,13 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
     if (tier !== undefined && (TIERS as readonly string[]).includes(tier)) {
       saveDefaultTier(tier as Tier);
       view = { ...view, tier: tier as Tier };
+      draw();
+      return;
+    }
+    const cap = Number(target?.closest<HTMLElement>('[data-settings-cap]')?.dataset['settingsCap']);
+    if ((HAND_OFF_CAPS as readonly number[]).includes(cap)) {
+      saveHandOffCap(cap);
+      view = { ...view, cap };
       draw();
       return;
     }
@@ -303,7 +315,7 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
 
 /** A selector that finds the same control after a redraw, so keyboard focus stays put. */
 export function focusKeyOf(element: Element): string | null {
-  for (const attribute of ['data-settings-theme', 'data-settings-tier', 'data-settings-goal', 'data-settings-claim-days', 'data-settings-hand-off-days', 'data-settings-notification', 'data-settings-switch']) {
+  for (const attribute of ['data-settings-theme', 'data-settings-tier', 'data-settings-cap', 'data-settings-goal', 'data-settings-claim-days', 'data-settings-hand-off-days', 'data-settings-notification', 'data-settings-switch']) {
     const value = element.getAttribute(attribute);
     if (value !== null) return `[${attribute}="${value}"]`;
   }

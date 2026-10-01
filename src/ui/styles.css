@@ -7068,3 +7068,269 @@ textarea.input {
   border-left: 3px solid var(--state-claimed);
   border-radius: 4px;
 }
+
+/* ---------- Start next (#129): the confirm list, the batch progress and the queued chip ---------- */
+
+.start-dialog {
+  width: min(680px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+}
+
+.start-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.start-group h3 {
+  margin: 0 0 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.start-group h3 span {
+  color: var(--text-muted);
+}
+
+.start-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.start-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--gridline);
+}
+
+.start-row.is-skipped {
+  opacity: 0.75;
+}
+
+.start-cb,
+.start-box {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.start-main {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.start-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.start-title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.start-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.start-status {
+  font-weight: 600;
+}
+
+.start-status.is-start {
+  color: var(--handoff-working);
+}
+
+.start-status.is-unticked {
+  color: var(--handoff-needs-you);
+}
+
+.start-tiers {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.start-model {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+}
+
+.start-foot {
+  position: sticky;
+  bottom: -16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--hairline);
+  background: var(--surface-1);
+}
+
+.start-count {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.start-count .muted {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.nav-start-next {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.batch-trigger.is-stopped {
+  border-color: var(--state-failed);
+  color: var(--state-failed);
+}
+
+.batch-trigger.is-stopped .i {
+  color: var(--state-failed);
+}
+
+.batch-bar {
+  display: flex;
+  width: 56px;
+  height: 6px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--wash);
+}
+
+.batch-bar i {
+  display: block;
+  height: 100%;
+}
+
+.batch-bar .is-done {
+  background: var(--state-frontier);
+}
+
+.batch-bar .is-run {
+  background: var(--state-claimed);
+}
+
+.batch-bar .is-failed {
+  background: var(--state-failed);
+}
+
+.batch-bar .is-queue {
+  background: var(--text-muted);
+  opacity: 0.45;
+}
+
+.batch-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.batch-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 2px 10px;
+  align-items: center;
+  padding: 9px 14px;
+  border-top: 1px solid var(--gridline);
+  font-size: 13px;
+}
+
+.batch-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--handoff-working);
+  font-weight: 600;
+}
+
+.batch-row.is-queued .batch-status,
+.batch-row.is-skipped .batch-status,
+.batch-row.is-back .batch-status {
+  color: var(--text-secondary);
+}
+
+.batch-row.is-needs-you .batch-status {
+  color: var(--handoff-needs-you);
+}
+
+.batch-row.is-done .batch-status {
+  color: var(--handoff-pr-ready);
+}
+
+.batch-row.is-failed .batch-status {
+  color: var(--state-failed);
+}
+
+.batch-status .i {
+  width: 13px;
+  height: 13px;
+}
+
+.batch-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-reason {
+  grid-column: 2;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.batch-stop {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--state-failed);
+}
+
+.batch-stop p {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.batch-stop p span {
+  color: var(--text-secondary);
+}
+
+.batch-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--hairline);
+}
+
+/* Waiting for a slot: the chip is dashed so it reads as not started yet. */
+.node-handoff-pill.is-queued {
+  border: 1px dashed var(--baseline);
+  color: var(--text-secondary);
+}

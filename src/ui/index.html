@@ -17,6 +17,16 @@
           <div class="nav-topbar" id="nav-topbar"></div>
           <button type="button" class="critical-count" id="critical-path" aria-pressed="false" hidden></button>
           <span class="topbar-spacer"></span>
+          <div class="handoff-anchor batch-anchor" id="batch-anchor" hidden>
+            <button type="button" class="handoff-trigger batch-trigger" id="batch-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="batch-list"></button>
+            <section class="handoff-list batch-panel" id="batch-list" role="dialog" aria-labelledby="batch-list-title" hidden>
+              <header class="handoff-list-head">
+                <div><h2 id="batch-list-title">Start next</h2></div>
+                <button type="button" class="handoff-close" aria-label="Close">×</button>
+              </header>
+              <div class="handoff-list-body" id="batch-list-body"></div>
+            </section>
+          </div>
           <div class="notification-anchor">
             <button type="button" class="notification-trigger" id="notification-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="notification-panel" aria-label="Notifications" title="Notifications"><span data-icon="bell" aria-hidden="true"></span><span class="notification-count" id="notification-count" hidden></span></button>
             <section class="notification-panel" id="notification-panel" role="dialog" aria-labelledby="notification-title" hidden>

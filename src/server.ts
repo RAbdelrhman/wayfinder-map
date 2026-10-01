@@ -4,8 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { buildAutoDecision } from './autoDecision.js';
+import type { AutoDecision } from './autoDecision.js';
 import { parseModelChoice, TIERS } from './models.js';
-import type { Tier } from './models.js';
+import type { ModelChoice, Tier } from './models.js';
 import { copyToClipboard } from './clipboard.js';
 import { DEFAULT_TEMPLATE, buildNewMapPrompt, buildPrompt, ticketBranch } from './prompt.js';
 import { PROTOTYPE_SHOTS_DIR, parsePrototypeFilePath, parsePrototypeShotPath } from './prototypes.js';
@@ -35,6 +36,9 @@ import type { MapWatchStateStore } from './mapWatchStore.js';
 import { markStalls, memoryStallSettings, StallSettingsStore } from './stalled.js';
 import type { StallSettingsSource } from './stalled.js';
 import { ProgressError, ProgressService, ProgressSettingsStore, readCompletedTickets } from './progress.js';
+import { normalizeCap } from './startNext.js';
+import { StartNextRunner } from './startNextRunner.js';
+import type { BatchRequestItem } from './startNextRunner.js';
 import { SettleStore } from './settling.js';
 import { FollowStore } from './follows.js';
 import type { Viewer } from './visibility.js';
@@ -117,6 +121,8 @@ export interface ServeOptions {
   mapWatcher?: MapWatcher;
   /** Persists opened-map snapshots and events in the local app's state directory. */
   mapWatchStore?: MapWatchStateStore;
+  /** How often Start next looks for a free slot and a usage-limit error. Tests shorten it. */
+  startNextIntervalMs?: number;
   /**
    * Where the two stall settings live (#160). Defaults to `~/.wayfinder-map/stalls.json`, except
    * when tests inject a `fetcher`, where they stay in memory unless given.
@@ -244,6 +250,7 @@ export async function startServer({
   progress,
   mapWatcher: givenMapWatcher,
   mapWatchStore,
+  startNextIntervalMs,
   stallSettings: givenStallSettings,
   notificationSettings: givenNotificationSettings,
   onDesktopNotification,
@@ -413,6 +420,103 @@ export async function startServer({
     return map && ticket ? { map, ticket } : null;
   };
 
+  /**
+   * Start one ticket's T3 Code thread and record it. The hand-off route and Start next's batches both
+   * come through here. `threadOnly` is for batches: when the thread cannot start, report that rather than
+   * falling back to the clipboard, which would hold only the last of several prompts.
+   */
+  const startTicketHandOff = async (
+    requestedRepo: string,
+    map: WayfinderMap | null,
+    ticket: Ticket,
+    options: { model: ModelChoice | null; tier: Tier | null; auto: AutoDecision | null; threadOnly: boolean },
+  ): Promise<{ status: number; body: Record<string, unknown> }> => {
+    if (ticket.state === 'done' || ticket.state === 'blocked') {
+      return { status: 409, body: { error: `#${String(ticket.number)} is ${ticket.state}, so there is nothing to start.` } };
+    }
+    const ticketKey = `${requestedRepo.toLowerCase()}#${String(ticket.number)}`;
+    const alreadyRunning = `#${String(ticket.number)} already has a hand-off in T3 Code. Open that thread instead of starting another.`;
+    if (startingTickets.has(ticketKey)) return { status: 409, body: { error: alreadyRunning, handOffId: null } };
+    startingTickets.add(ticketKey);
+    try {
+      const live = await handOffTracker.liveTicketHandOff(requestedRepo, ticket.number);
+      if (live !== undefined) return { status: 409, body: { error: alreadyRunning, handOffId: live.id } };
+      const runtime = await detectT3();
+      const requestedBranch = ticketBranch(ticket);
+      const steps = t3.steps(runtime);
+      const result = await handOff(
+        {
+          title: `#${String(ticket.number)} ${ticket.title}`,
+          workspaceRoot: await clones.resolve(requestedRepo),
+          branch: requestedBranch,
+          model: options.model,
+          prompt: (worktree) =>
+            buildPrompt({
+              repo: requestedRepo,
+              map,
+              ticket,
+              template: map ? template : undefined,
+              ...(worktree ? { worktree } : {}),
+            }),
+        },
+        options.threadOnly
+          ? {
+              ...steps,
+              copy: () => Promise.reject(new Error('Start next does not use the clipboard.')),
+              openApp: () => Promise.reject(new Error('Start next does not open an empty thread.')),
+            }
+          : steps,
+      );
+      const { tracking, ...publicResult } = result;
+      try {
+        const saved = await handOffTracker.record({
+          repo: requestedRepo,
+          mapNumber: map?.number ?? null,
+          mapTitle: map?.title ?? null,
+          ticketNumber: ticket.number,
+          title: ticket.title,
+          ...(options.auto === null ? (options.tier === null ? {} : { tier: options.tier }) : { tier: options.auto.final.tier, auto: options.auto }),
+          environmentId: tracking?.environmentId ?? null,
+          t3Origin: runtime.origin,
+          projectId: tracking?.projectId ?? null,
+          branch: tracking?.branch ?? null,
+          worktreePath: tracking?.worktreePath ?? null,
+          threadId: result.threadId,
+          requestedBranch,
+          rung: result.rung,
+        });
+        return { status: 200, body: { ...publicResult, handOffId: saved.id } };
+      } catch (error) {
+        return {
+          status: 200,
+          body: {
+            ...publicResult,
+            handOffId: null,
+            trackingWarning: `The hand-off started, but Wayfinder could not save its tracking record: ${(error as Error).message}`,
+          },
+        };
+      }
+    } finally {
+      startingTickets.delete(ticketKey);
+    }
+  };
+
+  const startNext = new StartNextRunner({
+    ...(startNextIntervalMs === undefined ? {} : { intervalMs: startNextIntervalMs }),
+    running: () => handOffTracker.liveCount(),
+    lastErrors: (ids) => handOffTracker.lastErrors(ids),
+    startTicket: async ({ repo: batchRepo, mapNumber, item }) => {
+      const found = find(await repositories.snapshot(batchRepo, false, [mapNumber]), mapNumber, item.ticketNumber);
+      if (found === null) return { kind: 'skipped', reason: `#${String(item.ticketNumber)} is not on the map any more.` };
+      if (found.ticket.state !== 'frontier') return { kind: 'skipped', reason: `#${String(item.ticketNumber)} is ${found.ticket.state}, not next.` };
+      const reply = await startTicketHandOff(batchRepo, found.map, found.ticket, { model: item.model, tier: item.tier, auto: null, threadOnly: true });
+      const text = (value: unknown): string | null => (typeof value === 'string' && value !== '' ? value : null);
+      if (reply.status === 409) return { kind: 'skipped', reason: text(reply.body['error']) ?? 'Already in T3 Code.' };
+      if (reply.status === 200 && reply.body['rung'] === 'thread') return { kind: 'started', handOffId: text(reply.body['handOffId']) };
+      return { kind: 'failed', reason: text(reply.body['notice']) ?? text(reply.body['error']) ?? 'T3 Code did not start the thread.' };
+    },
+  });
+
   let port = config.port;
   let url = `http://${config.host}:${String(port)}`;
 
@@ -424,6 +528,7 @@ export async function startServer({
   server.on('close', () => {
     handOffTracker.close();
     mapWatcher.close();
+    startNext.close();
   });
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -457,6 +562,21 @@ export async function startServer({
 
       if (path === '/api/hand-offs' && request.method === 'GET') {
         json(response, 200, await handOffTracker.snapshot());
+        return;
+      }
+
+      if (path === '/api/start-next' && request.method === 'GET') {
+        json(response, 200, { batches: startNext.snapshot() });
+        return;
+      }
+
+      if (path === '/api/start-next/stop' && request.method === 'POST') {
+        const body = (await readBody(request)) as { id?: unknown };
+        if (typeof body.id !== 'string' || !startNext.stop(body.id)) {
+          json(response, 404, { error: 'No such batch.' });
+          return;
+        }
+        json(response, 200, { batches: startNext.snapshot() });
         return;
       }
 
@@ -1003,6 +1123,7 @@ export async function startServer({
           ticket?: number;
           copyOnly?: boolean;
           model?: unknown;
+          tier?: unknown;
           auto?: unknown;
         };
 
@@ -1043,74 +1164,47 @@ export async function startServer({
           json(response, 200, { prompt, ...(await copyOnly(prompt)) });
           return;
         }
-        if (ticket.state === 'done' || ticket.state === 'blocked') {
-          json(response, 409, { error: `#${String(ticket.number)} is ${ticket.state}, so there is nothing to start.` });
-          return;
-        }
+        const tier = typeof body.tier === 'string' && TIERS.includes(body.tier as Tier) ? (body.tier as Tier) : null;
+        const reply = await startTicketHandOff(requestedRepo, map, ticket, { model: parseModelChoice(body.model), tier, auto: buildAutoDecision(body.auto, new Date()), threadOnly: false });
+        json(response, reply.status, reply.body);
+        return;
+      }
 
-        // Auto's proposal and the user's final pick stay in the local hand-off store; GitHub never sees them.
-        const auto = buildAutoDecision(body.auto, new Date());
-        const ticketKey = `${requestedRepo.toLowerCase()}#${String(ticket.number)}`;
-        const alreadyRunning = `#${String(ticket.number)} already has a hand-off in T3 Code. Open that thread instead of starting another.`;
-        if (startingTickets.has(ticketKey)) {
-          json(response, 409, { error: alreadyRunning, handOffId: null });
+      if (requestedRepo !== null && scoped?.action === 'start-next' && request.method === 'POST') {
+        const body = (await readBody(request)) as { map?: unknown; cap?: unknown; tickets?: unknown };
+        const mapNumber = Number(body.map);
+        if (!Number.isSafeInteger(mapNumber) || !Array.isArray(body.tickets) || body.tickets.length === 0) {
+          json(response, 400, { error: 'Choose a map and at least one ticket to start.' });
           return;
         }
-        startingTickets.add(ticketKey);
-        try {
-          const live = await handOffTracker.liveTicketHandOff(requestedRepo, ticket.number);
-          if (live !== undefined) {
-            json(response, 409, { error: alreadyRunning, handOffId: live.id });
-            return;
-          }
-          const runtime = await detectT3();
-          const requestedBranch = ticketBranch(ticket);
-          const result = await handOff(
+        const map = (await repositories.snapshot(requestedRepo, false, [mapNumber])).maps.find((candidate) => candidate.number === mapNumber);
+        if (map === undefined) {
+          json(response, 404, { error: 'No such map.' });
+          return;
+        }
+        if ((await clones.resolve(requestedRepo)) === null) {
+          json(response, 409, { error: `Choose a local clone of ${requestedRepo} before starting in T3 Code.` });
+          return;
+        }
+        const items = (body.tickets as Array<{ ticket?: unknown; tier?: unknown; model?: unknown }>).flatMap((entry): BatchRequestItem[] => {
+          const ticket = map.tickets.find((candidate) => candidate.number === Number(entry.ticket));
+          if (ticket === undefined) return [];
+          const tier = TIERS.find((candidate) => candidate === entry.tier) ?? 'mid';
+          return [
             {
-              title: `#${String(ticket.number)} ${ticket.title}`,
-              workspaceRoot: await clones.resolve(requestedRepo),
-              branch: requestedBranch,
-              model: parseModelChoice(body.model),
-              prompt: (worktree) =>
-                buildPrompt({
-                  repo: requestedRepo,
-                  map,
-                  ticket,
-                  template: map ? template : undefined,
-                  ...(worktree ? { worktree } : {}),
-                }),
-            },
-            t3.steps(runtime),
-          );
-          const { tracking, ...publicResult } = result;
-          try {
-            const saved = await handOffTracker.record({
-              repo: requestedRepo,
-              mapNumber: map?.number ?? null,
-              mapTitle: map?.title ?? null,
               ticketNumber: ticket.number,
               title: ticket.title,
-              ...(auto === null ? {} : { tier: auto.final.tier, auto }),
-              environmentId: tracking?.environmentId ?? null,
-              t3Origin: runtime.origin,
-              projectId: tracking?.projectId ?? null,
-              branch: tracking?.branch ?? null,
-              worktreePath: tracking?.worktreePath ?? null,
-              threadId: result.threadId,
-              requestedBranch,
-              rung: result.rung,
-            });
-            json(response, 200, { ...publicResult, handOffId: saved.id });
-          } catch (error) {
-            json(response, 200, {
-              ...publicResult,
-              handOffId: null,
-              trackingWarning: `The hand-off started, but Wayfinder could not save its tracking record: ${(error as Error).message}`,
-            });
-          }
-        } finally {
-          startingTickets.delete(ticketKey);
+              tier,
+              model: parseModelChoice(entry.model),
+              ...(ticket.state === 'frontier' ? {} : { skip: `#${String(ticket.number)} is ${ticket.state}, not next.` }),
+            },
+          ];
+        });
+        if (items.length === 0) {
+          json(response, 400, { error: 'None of those tickets are on this map.' });
+          return;
         }
+        json(response, 202, { batch: startNext.submit({ repo: requestedRepo, mapNumber, cap: normalizeCap(body.cap), items }) });
         return;
       }
 
@@ -1212,7 +1306,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow|start-next)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;

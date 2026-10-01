@@ -63,6 +63,7 @@ import {
   mountHandOffs,
   restoreMapTicketFocus,
 } from './handOffs.js';
+import { batchCardChip, mountStartNext } from './startNext.js';
 import {
   desktopNotificationFor,
   changedPrototypeNotifications,
@@ -182,9 +183,6 @@ const unblockedNotice = mountUnblockedNotice(need('unblocked-notice'), (ticketNu
 let notificationSettings: NotificationSettings = { ...DEFAULT_NOTIFICATION_SETTINGS };
 let pendingMapEvents: MapEvent[] = [];
 let previousHandOffRecords: readonly HandOffStatusDto[] | null = null;
-let unblockedStartQueue: number[] = [];
-let unblockedStartQueueMap = '';
-let drainingUnblockedStartQueue = false;
 const mapEventInbox = mountMapEventInbox((event) => {
   if (snapshot === null) pendingMapEvents.push(event);
   else void receiveMapEvent(event);
@@ -221,90 +219,9 @@ async function publishNotification(notification: NewInboxNotification): Promise<
   return true;
 }
 
-function modelForTicket(ticketNumber: number): ModelChoice | null {
-  const state = currentCatalog();
-  if (state.status !== 'ready') return null;
-  const tier = ticketTier(repoName(), ticketNumber);
-  return liveChoice(state.catalog, tierDefaults()[tier]);
-}
-
-async function startUnblockedBatch(ticketNumbers: readonly number[]): Promise<readonly number[]> {
-  const map = currentMap();
-  if (map === null || snapshot === null) return [];
-  const key = snapshot.repo.toLocaleLowerCase() + '#' + String(map.number);
-  if (unblockedStartQueueMap !== '' && unblockedStartQueueMap !== key) unblockedStartQueue = [];
-  unblockedStartQueueMap = key;
-  const startable = Array.from(new Set(ticketNumbers)).filter((number) => {
-    const ticket = map.tickets.find((candidate) => candidate.number === number);
-    return ticket !== undefined && ticket.state === 'frontier' && (ticket.type === 'task' || ticket.type === 'research');
-  });
-  for (const number of startable) {
-    if (!unblockedStartQueue.includes(number)) unblockedStartQueue.push(number);
-  }
-  if (startable.length === 0) return [];
-  const active = handOffRecords.filter((item) => isLiveHandOff(item)).length;
-  const available = Math.max(0, 4 - active);
-  toast(available === 0
-    ? 'Queued ' + String(startable.length) + ' ticket' + (startable.length === 1 ? '' : 's') + '. They will start as hand-off slots open.'
-    : 'Starting ' + String(Math.min(startable.length, available)) + ' ticket' + (Math.min(startable.length, available) === 1 ? '' : 's') + '.');
-  void drainUnblockedStartQueue();
-  return startable;
-}
-
-async function drainUnblockedStartQueue(): Promise<void> {
-  if (drainingUnblockedStartQueue || unblockedStartQueue.length === 0) return;
-  const map = currentMap();
-  if (map === null || snapshot === null) return;
-  const key = snapshot.repo.toLocaleLowerCase() + '#' + String(map.number);
-  if (key !== unblockedStartQueueMap) return;
-  drainingUnblockedStartQueue = true;
-  try {
-    let startedThisDrain = 0;
-    while (unblockedStartQueue.length > 0 && handOffRecords.filter((item) => isLiveHandOff(item)).length + startedThisDrain < 4) {
-      const number = unblockedStartQueue[0];
-      if (number === undefined) break;
-      const ticket = map.tickets.find((candidate) => candidate.number === number);
-      if (ticket === undefined || ticket.state !== 'frontier' || (ticket.type !== 'task' && ticket.type !== 'research')) {
-        unblockedStartQueue.shift();
-        continue;
-      }
-      const live = ticketHandOff(map, number);
-      if (live !== undefined && isLiveHandOff(live)) {
-        unblockedStartQueue.shift();
-        continue;
-      }
-      const response = await fetch(scopedApiPath(snapshot.repo, 'hand-off'), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ map: map.number, ticket: number, copyOnly: false, model: modelForTicket(number) }),
-      });
-      const result = await response.json() as { error?: string };
-      if (!response.ok) {
-        unblockedStartQueue = [];
-        const at = new Date().toISOString();
-        await publishNotification(statusNotification(
-          'handOffError',
-          'handoff-start:' + snapshot.repo.toLocaleLowerCase() + '#' + String(map.number) + '#' + String(number) + ':' + at,
-          snapshot.repo,
-          map.number,
-          map.title,
-          number,
-          ticket.title,
-          at,
-        ));
-        toast(result.error ?? 'The hand-off failed.', 9000);
-        break;
-      }
-      unblockedStartQueue.shift();
-      startedThisDrain += 1;
-      await handOffSurface.refresh();
-    }
-  } catch (error) {
-    unblockedStartQueue = [];
-    toast(error instanceof Error ? error.message : String(error), 9000);
-  } finally {
-    drainingUnblockedStartQueue = false;
-  }
+/** The "ready" notice's Start goes through the same batch as Start next, so the cap and queue are one. */
+function startUnblockedBatch(ticketNumbers: readonly number[]): Promise<readonly number[]> {
+  return startNext.startTickets(ticketNumbers);
 }
 
 function currentMap(): WayfinderMap | null {
@@ -356,27 +273,32 @@ handOffSurface.subscribe((records) => {
   previousHandOffRecords = records;
   notifyHandOffTransitions(previous ?? [], records);
   handOffRecords = records;
-  void drainUnblockedStartQueue();
   const key = handOffVisualSignature(records);
   if (key === handOffVisualKey) return;
   handOffVisualKey = key;
   if (filter === 'in-t3' && activeTicketHandOffs(currentMap()).length === 0) filter = null;
-  if (snapshot !== null) {
-    renderFilters();
-    if (view === 'map') {
-      const focusedNode = document.activeElement instanceof HTMLElement
-        ? document.activeElement.closest<HTMLElement>('.node')
-        : null;
-      const focusedTicket = focusedMapTicketNumber(focusedNode, focusedNode !== null && els.nodes.contains(focusedNode));
-      renderGraph();
-      restoreMapTicketFocus(focusedTicket, (number) =>
-        els.nodes.querySelector<HTMLElement>(`.node[data-number="${String(number)}"]`),
-      );
-    }
-    if (selected !== null) renderInspector();
-    syncHighlights();
-  }
+  repaintCards();
+  startNext.render();
 });
+
+/** Redraw the cards, filters and panel after hand-offs or a Start next batch changed, keeping keyboard focus on its card. */
+function repaintCards(): void {
+  if (snapshot === null) return;
+  renderFilters();
+  if (view === 'map') {
+    const focusedNode = document.activeElement instanceof HTMLElement
+      ? document.activeElement.closest<HTMLElement>('.node')
+      : null;
+    const focusedTicket = focusedMapTicketNumber(focusedNode, focusedNode !== null && els.nodes.contains(focusedNode));
+    renderGraph();
+    restoreMapTicketFocus(focusedTicket, (number) =>
+      els.nodes.querySelector<HTMLElement>(`.node[data-number="${String(number)}"]`),
+    );
+  }
+  if (selected !== null) renderInspector();
+  syncHighlights();
+  navigation?.setStartNext(startNext.menuLabel());
+}
 
 function rememberMapOpen(repo: string, mapNumber: number): void {
   try {
@@ -474,6 +396,9 @@ navigation = mountNavigation({
   onViewChange(nextView) {
     setView(nextView);
   },
+  onStartNext() {
+    startNext.open();
+  },
 });
 function renderPlanningHandoff(): void {
   const map = currentMap();
@@ -508,6 +433,17 @@ async function loadPlanningHandoff(): Promise<void> {
     // Keep the map usable when hand-off tracking is temporarily unavailable.
   }
 }
+
+const startNext = mountStartNext({
+  context: () => {
+    const map = currentMap();
+    return snapshot === null || map === null ? null : { repo: snapshot.repo, map };
+  },
+  handOffs: () => handOffRecords,
+  onChange: repaintCards,
+  refreshHandOffs: () => handOffSurface.refresh(),
+  toast,
+});
 
 let toastTimer: number | undefined;
 let loadInFlight: Promise<boolean> | null = null;
@@ -671,6 +607,8 @@ function render(): void {
   else if (view === 'table') renderTable();
   else renderPrototypes();
   renderInspector();
+  navigation?.setStartNext(startNext.menuLabel());
+  startNext.render();
 }
 
 function renderSynced(): void {
@@ -729,6 +667,12 @@ function renderKey(): void {
   els.keyMenu.innerHTML = `${states}${FOG_KEY_ROW}<div class="menu-sep"></div>${SIGNAL_KEY_ROWS}<div class="menu-sep"></div>${types}`;
 }
 
+/** A card's chip while its ticket waits in a Start next batch or is being handed off. */
+function batchChip(ticketNumber: number): string | null {
+  const map = currentMap();
+  return snapshot === null || map === null ? null : batchCardChip(startNext.batches(), snapshot.repo, map.number, ticketNumber);
+}
+
 /** A card on the canvas. An issue off the map gets the same card under a fog effect, placed where its dependencies put it. */
 function nodeHtml(ticket: Ticket | OutsideTicket, position: PositionedNode): string {
   const style = STATE_STYLE[ticket.state];
@@ -765,7 +709,7 @@ function nodeHtml(ticket: Ticket | OutsideTicket, position: PositionedNode): str
     <span class="node-top">
       ${typeGlyph(ticket.type)}
       <span class="num">#${String(ticket.number)}</span>
-      ${cardShowsHandOff(ticket.state, handOff) ? handOffPill(handOff, true) : stateChip(ticket.state)}
+      ${cardShowsHandOff(ticket.state, handOff) ? handOffPill(handOff, true) : (batchChip(ticket.number) ?? stateChip(ticket.state))}
     </span>
     <span class="title">${escapeHtml(ticket.title)}</span>
     <span class="meta">${meta}</span>
@@ -1394,7 +1338,7 @@ async function handOff(copyOnly: boolean): Promise<void> {
     const response = await fetch(scopedApiPath(repoName(), 'hand-off'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ map: map.number, ticket: selected, copyOnly, model: copyOnly ? null : pickedModel() }),
+      body: JSON.stringify({ map: map.number, ticket: selected, copyOnly, model: copyOnly ? null : pickedModel(), tier: ticketTier(repoName(), selected) }),
     });
     const body = (await response.json()) as {
       prompt?: string;
