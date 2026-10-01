@@ -305,6 +305,8 @@ export interface StartNextSurface {
   /** Hand off or queue these tickets without the confirm list. Resolves to the ones the batch took. */
   startTickets(ticketNumbers: readonly number[]): Promise<number[]>;
   batches(): readonly Batch[];
+  /** Read the server's batches now, e.g. after the auto map submitted one. */
+  refresh(): Promise<void>;
   /** Repaint the topbar control after hand-off records changed. */
   render(): void;
 }
@@ -526,6 +528,7 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
     open,
     startTickets,
     batches: () => batches,
+    refresh,
     render,
   };
 }
