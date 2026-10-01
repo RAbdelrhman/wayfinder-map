@@ -16,6 +16,7 @@ import {
   ticketPullRequests,
   trackedPullRequestsByTicket,
   watchedTickets,
+  withGithubDetail,
 } from './mapWatch.js';
 import type { TrackedPullRequestRef, WatchedPullRequest, WatchedTicket } from './mapWatch.js';
 import type { MapSnapshot, TicketState } from './types.js';
@@ -377,3 +378,36 @@ describe('pull request details for the page (#130)', () => {
 function pullRequest(number: number, state: WatchedPullRequest['state']): WatchedPullRequest {
   return { number, url: `https://github.com/o/r/pull/${String(number)}`, state, checks: null, review: null };
 }
+
+describe('withGithubDetail (#171)', () => {
+  const counts = { passed: 3, failed: 2, pending: 0 };
+
+  it('adds the check count and reviewer from GitHub when it saw the same checks and review', () => {
+    const tracked = new Map([[1, [pr(10, { checks: 'failing', review: 'changes_requested' })]]]);
+    const github = new Map([[1, [pr(10, { checks: 'failing', review: 'changes_requested', checkCounts: counts, reviewer: 'sam-k' })]]]);
+    expect(withGithubDetail(tracked, github).get(1)).toEqual([
+      pr(10, { checks: 'failing', review: 'changes_requested', checkCounts: counts, reviewer: 'sam-k' }),
+    ]);
+  });
+
+  it('keeps the tracked state and fills the two fields independently', () => {
+    const tracked = new Map([[1, [pr(10, { checks: 'passing', review: 'approved' })]]]);
+    const github = new Map([[1, [pr(10, { checks: 'failing', review: 'approved', checkCounts: counts, reviewer: 'sam-k' })]]]);
+    const [filled] = withGithubDetail(tracked, github).get(1) ?? [];
+    expect(filled).toMatchObject({ checks: 'passing', review: 'approved', reviewer: 'sam-k' });
+    expect(filled?.checkCounts).toBeUndefined();
+  });
+
+  it('leaves a PR alone when GitHub has no matching one, or nothing was read', () => {
+    const tracked = new Map([[1, [pr(10, { checks: 'failing' })]]]);
+    const other = new Map([[1, [pr(11, { checks: 'failing', checkCounts: counts })]], [2, [pr(10, { checks: 'failing', checkCounts: counts })]]]);
+    expect(withGithubDetail(tracked, other)).toEqual(tracked);
+    expect(withGithubDetail(tracked, undefined)).toEqual(tracked);
+  });
+
+  it('does not overwrite what the tracked PR already knows', () => {
+    const tracked = new Map([[1, [pr(10, { checks: 'failing', checkCounts: { passed: 0, failed: 1, pending: 0 }, reviewer: 'kim' })]]]);
+    const github = new Map([[1, [pr(10, { checks: 'failing', checkCounts: counts, reviewer: 'sam-k' })]]]);
+    expect(withGithubDetail(tracked, github).get(1)?.[0]).toMatchObject({ checkCounts: { failed: 1 }, reviewer: 'kim' });
+  });
+});

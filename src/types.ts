@@ -147,7 +147,7 @@ export interface PullRequestState {
   checks: ChecksState | null;
   review: ReviewState | null;
   draft?: boolean;
-  /** Only GitHub reports these; T3 Code's snapshot does not. */
+  /** Only GitHub reports these; T3 Code's snapshot does not, so a T3 PR gets them from a fresh GitHub read (#171). */
   checkCounts?: CheckCounts | null;
   /** Who approved or asked for changes, or whose review is requested. GitHub only. */
   reviewer?: string | null;

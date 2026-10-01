@@ -262,6 +262,34 @@ export function trackedPullRequestsByTicket(
 }
 
 /**
+ * T3 Code's snapshot has no check counts or reviewer (#171), so a tracked PR gets them from
+ * GitHub's read of the same PR. Each fills only when GitHub saw the same checks state or review
+ * decision, so a count or name never contradicts the word beside it.
+ */
+export function withGithubDetail(
+  tracked: ReadonlyMap<number, WatchedPullRequest[]>,
+  github: ReadonlyMap<number, readonly WatchedPullRequest[]> | undefined,
+): Map<number, WatchedPullRequest[]> {
+  if (github === undefined) return new Map(tracked);
+  return new Map(
+    [...tracked].map(([ticket, pullRequests]) => [
+      ticket,
+      pullRequests.map((pullRequest) => {
+        const read = github.get(ticket)?.find((candidate) => candidate.number === pullRequest.number);
+        if (read === undefined) return pullRequest;
+        const counts = pullRequest.checkCounts ?? (read.checks === pullRequest.checks ? read.checkCounts : null);
+        const reviewer = pullRequest.reviewer ?? (read.review === pullRequest.review ? read.reviewer : null);
+        return {
+          ...pullRequest,
+          ...(counts == null ? {} : { checkCounts: counts }),
+          ...(reviewer == null ? {} : { reviewer }),
+        };
+      }),
+    ]),
+  );
+}
+
+/**
  * The one pull request each open ticket shows (#130): an open one first, then the newest merged,
  * then the newest closed. Closed tickets show none; their card already says done.
  */

@@ -1,5 +1,5 @@
 import { gh, ghIncludingHeaders, ghProblem, RATE_LIMIT_WARNING } from './github.js';
-import { branchCommitsByTicket, diffMap, needsPullRequests, nextPollDelay, parseHttpResponse, pullRequestsByTicket, rateLimitOf, watchedTickets } from './mapWatch.js';
+import { branchCommitsByTicket, diffMap, needsPullRequests, nextPollDelay, parseHttpResponse, pullRequestsByTicket, rateLimitOf, watchedTickets, withGithubDetail } from './mapWatch.js';
 import type { MapEvent, RateLimit, WatchedPullRequest, WatchedTicket } from './mapWatch.js';
 import type { MapWatchStateStore, StoredMapWatch } from './mapWatchStore.js';
 import type { TicketActivity } from './stalled.js';
@@ -71,6 +71,7 @@ export class MapWatcher {
   private readonly maps = new Map<string, WatchedMap>();
   private readonly rateLimits = new Map<string, RateLimit>();
   private readonly pullRequestReads = new Map<string, { at: number; read: Promise<PullRequestRead> }>();
+  private readonly pullRequestResults = new Map<string, { at: number; result: PullRequestRead }>();
   private readonly intervalMs: number;
   private readonly now: () => number;
   private readonly tracked: TrackedPullRequests | null;
@@ -193,9 +194,12 @@ export class MapWatcher {
    */
   async ticketPullRequests(repo: string, tickets: ReadonlyArray<{ number: number; state: TicketState }>): Promise<Map<number, WatchedPullRequest[]>> {
     const tracked = (await this.tracked?.(repo).catch(() => null)) ?? new Map<number, WatchedPullRequest[]>();
-    if (!tickets.some((ticket) => ticket.state === 'claimed' && !tracked.has(ticket.number))) return tracked;
+    // T3 Code's snapshot has no check counts or reviewer, so those come from the shared read, but only when it is already fresh.
+    if (!tickets.some((ticket) => ticket.state === 'claimed' && !tracked.has(ticket.number))) {
+      return withGithubDetail(tracked, this.freshPullRequests(repo)?.byTicket);
+    }
     const github = await this.pullRequests(repo).catch(() => null);
-    return new Map([...(github?.byTicket ?? []), ...tracked]);
+    return new Map([...(github?.byTicket ?? []), ...withGithubDetail(tracked, github?.byTicket)]);
   }
 
   /** The map's recent events, oldest first, after `afterId` when given. */
@@ -309,13 +313,21 @@ export class MapWatcher {
   private pullRequests(repo: string): Promise<PullRequestRead> {
     const cached = this.pullRequestReads.get(repo);
     if (cached !== undefined && this.now() - cached.at < this.intervalMs / 2) return cached.read;
+    const at = this.now();
     const read = this.reader.readPullRequests(repo).then((result) => {
       this.noteRateLimit(result.rateLimit);
+      this.pullRequestResults.set(repo, { at, result });
       return result;
     });
-    this.pullRequestReads.set(repo, { at: this.now(), read });
+    this.pullRequestReads.set(repo, { at, read });
     read.catch(() => this.pullRequestReads.delete(repo));
     return read;
+  }
+
+  /** The shared read if one finished within its sharing window. Never makes a GitHub call. */
+  private freshPullRequests(repo: string): PullRequestRead | null {
+    const done = this.pullRequestResults.get(repo);
+    return done !== undefined && this.now() - done.at < this.intervalMs / 2 ? done.result : null;
   }
 
   private noteRateLimit(rateLimit: RateLimit | null): void {
