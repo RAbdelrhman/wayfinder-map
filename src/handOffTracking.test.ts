@@ -5,7 +5,14 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import { buildAutoDecision, usageAgeMs } from './autoDecision.js';
-import { HandOffStore, HandOffTracker, mapT3Status, representativeHandOffs, type HandOffStatusDto } from './handOffTracking.js';
+import {
+  HandOffStore,
+  HandOffTracker,
+  mapT3Status,
+  representativeHandOffs,
+  USAGE_LIMIT_LABEL,
+  type HandOffStatusDto,
+} from './handOffTracking.js';
 
 const input = {
   repo: 'octo/one',
@@ -29,6 +36,24 @@ describe('mapT3Status', () => {
     expect(mapT3Status({ id: 'failed', session: { status: 'error', lastError: 'provider failed' } })?.status).toBe('failed');
     expect(mapT3Status({ id: 'starting' })?.status).toBe('starting');
     expect(mapT3Status({ projectId: 'missing-thread-id' })).toBeNull();
+  });
+
+  it('swaps a usage-limit error for a fixed label and keeps the text apart, in memory only', () => {
+    const message = 'You have hit your usage limit (91.5% of the 5h window). Account acct-123. Resets at 4:00 PM.';
+    expect(mapT3Status({ id: 'limited', session: { status: 'error', lastError: message } })).toMatchObject({
+      status: 'failed',
+      lastError: USAGE_LIMIT_LABEL,
+      rawError: message,
+    });
+    expect(mapT3Status({ id: 'limited', session: { status: 'error', lastError: `${'x'.repeat(600)} usage limit` } })?.lastError).toBe(USAGE_LIMIT_LABEL);
+  });
+
+  it('keeps any other error message', () => {
+    expect(mapT3Status({ id: 'failed', session: { status: 'error', lastError: 'Cannot find module' } })).toMatchObject({
+      lastError: 'Cannot find module',
+      rawError: 'Cannot find module',
+    });
+    expect(mapT3Status({ id: 'fine', session: { status: 'running' } })).toMatchObject({ lastError: null, rawError: null });
   });
 
   it('keeps the observed branch and T3 reported pull request references', () => {
@@ -320,8 +345,53 @@ describe('HandOffStore', () => {
         expect(saved?.auto?.modelChanges).toHaveLength(1);
         expect(saved?.auto?.usageLimitErrors).toHaveLength(1);
         expect(saved?.auto?.final).toMatchObject({ model: 'gpt-5.6-sol' });
-        // The decision keeps the fact of the error, never its text (the record's own `lastError` is unchanged).
+        // Neither the decision nor the record keeps the error's text.
         expect(JSON.stringify(saved?.auto)).not.toContain('Resets in 2h');
+        expect(saved?.lastError).toBe(USAGE_LIMIT_LABEL);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it('never writes a usage-limit error to the file, but still shows other errors', async () => {
+      const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+      const filePath = join(directory, 'hand-offs.json');
+      const message = 'You have hit your usage limit (91.5% of the 5h window). Account acct-123.';
+      try {
+        const store = new HandOffStore({ filePath, now: () => new Date('2026-09-30T12:10:00.000Z') });
+        const { id } = await store.record(input);
+        await store.applySnapshot('env-1', input.t3Origin ?? '', {
+          snapshotSequence: 1,
+          threads: [{ id: 'thread-1', session: { status: 'error', lastError: message } }],
+        });
+
+        const written = await readFile(filePath, 'utf8');
+        for (const leaked of ['91.5', 'acct-123', '5h window']) expect(written).not.toContain(leaked);
+        expect((await new HandOffStore({ filePath }).list())[0]?.lastError).toBe(USAGE_LIMIT_LABEL);
+        expect(store.rawError(id)).toBe(message);
+
+        await store.applySnapshot('env-1', input.t3Origin ?? '', {
+          snapshotSequence: 2,
+          threads: [{ id: 'thread-1', session: { status: 'error', lastError: 'Cannot find module' } }],
+        });
+        expect(await readFile(filePath, 'utf8')).toContain('Cannot find module');
+        expect(store.rawError(id)).toBe('Cannot find module');
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it('withholds usage-limit text from a record saved before it was withheld', async () => {
+      const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+      const filePath = join(directory, 'hand-offs.json');
+      try {
+        const store = new HandOffStore({ filePath });
+        await store.record(input);
+        const saved = JSON.parse(await readFile(filePath, 'utf8')) as { records: Array<Record<string, unknown>> };
+        saved.records[0] = { ...saved.records[0], lastError: 'Usage limit hit: 88% used. Account acct-9.' };
+        await writeFile(filePath, JSON.stringify(saved));
+
+        expect((await new HandOffStore({ filePath }).list())[0]?.lastError).toBe(USAGE_LIMIT_LABEL);
       } finally {
         await rm(directory, { recursive: true, force: true });
       }
