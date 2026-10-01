@@ -71,3 +71,9 @@ The current score also under-rates several cross-module tasks because their issu
 - #166 implements Auto using this policy.
 - [#172](https://github.com/RAbdelrhman/wayfinder-map/issues/172) records Auto proposals, user overrides, usage state age, model changes, and outcomes locally.
 - [#173](https://github.com/RAbdelrhman/wayfinder-map/issues/173) compares the rule score and shadow model after 30 completed hand-offs. It is blocked by #166 and #172.
+
+## Recorded for calibration (#172)
+
+A hand-off started with Auto carries an `auto` block in `~/.wayfinder-map/hand-offs.json`, under the store's 30-day retention after the hand-off ends. `POST /api/repos/{owner}/{name}/hand-off` takes it as `auto: { scoring: { version, reason }, proposed, final, usage: { state, observedAt } }`, where `proposed` and `final` are `{ tier, provider, model, effort }`. Wayfinder derives `overrides` (any of `tier`, `model`, `effort`) by comparing the two, so it can't be claimed by the caller. Unknown fields are dropped, so quota values, account IDs and tokens are never stored. Usage state is `available`, `limited` or `unknown`, and a state with no `observedAt` is saved as `unknown`. The age at decision time is `decidedAt - usage.observedAt` (`usageAgeMs`).
+
+Each T3 read of the thread then appends to the block: `modelChanges` (from and to, after the start, separate from overrides), `usageLimitErrors` (time and model, never the error text) and `outcome` (`finished`, `failed`, `interrupted`, `pull-request` or `untracked`), which clears if the thread continues. The block is local only; nothing in it is passed to `gh`. #171 and #173 read it through `HandOffStore.list()`.

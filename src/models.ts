@@ -37,7 +37,7 @@ export const TIERS = ['simple', 'mid', 'hard'] as const;
 export type Tier = (typeof TIERS)[number];
 
 /** Descriptor ids providers use for reasoning depth: Codex and Grok, Claude, OpenCode. */
-const EFFORT_IDS = ['reasoningEffort', 'effort', 'variant'];
+export const EFFORT_IDS = ['reasoningEffort', 'effort', 'variant'];
 
 interface RawDescriptor {
   id?: unknown;

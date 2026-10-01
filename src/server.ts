@@ -3,6 +3,7 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { buildAutoDecision } from './autoDecision.js';
 import { parseModelChoice, TIERS } from './models.js';
 import type { Tier } from './models.js';
 import { copyToClipboard } from './clipboard.js';
@@ -1002,6 +1003,7 @@ export async function startServer({
           ticket?: number;
           copyOnly?: boolean;
           model?: unknown;
+          auto?: unknown;
         };
 
         const snapshot = await repositories.snapshot(requestedRepo, false, Number.isSafeInteger(Number(body.map)) ? [Number(body.map)] : []);
@@ -1046,6 +1048,8 @@ export async function startServer({
           return;
         }
 
+        // Auto's proposal and the user's final pick stay in the local hand-off store; GitHub never sees them.
+        const auto = buildAutoDecision(body.auto, new Date());
         const ticketKey = `${requestedRepo.toLowerCase()}#${String(ticket.number)}`;
         const alreadyRunning = `#${String(ticket.number)} already has a hand-off in T3 Code. Open that thread instead of starting another.`;
         if (startingTickets.has(ticketKey)) {
@@ -1086,6 +1090,7 @@ export async function startServer({
               mapTitle: map?.title ?? null,
               ticketNumber: ticket.number,
               title: ticket.title,
+              ...(auto === null ? {} : { tier: auto.final.tier, auto }),
               environmentId: tracking?.environmentId ?? null,
               t3Origin: runtime.origin,
               projectId: tracking?.projectId ?? null,
