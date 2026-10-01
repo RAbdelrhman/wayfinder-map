@@ -3,7 +3,7 @@ import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { autoResultOf, observeModelSelection, observeThread, parseStoredAutoDecision } from './autoDecision.js';
+import { autoResultOf, isUsageLimitError, observeModelSelection, observeThread, parseStoredAutoDecision } from './autoDecision.js';
 import type { AutoDecision, ModelObservation } from './autoDecision.js';
 import { gh } from './github.js';
 import { isLiveHandOff } from './handOffLiveness.js';
@@ -24,6 +24,8 @@ const STORE_LOCK_TIMEOUT_MS = 5_000;
 const STORE_LOCK_STALE_MS = 30_000;
 const RENAME_RETRY_LIMIT = 4;
 const RENAME_RETRY_MS = 20;
+/** Saved in place of a usage-limit error's text, which can carry a quota percentage, a reset time or an account detail. */
+export const USAGE_LIMIT_LABEL = 'Usage limit reached';
 
 export type HandOffStatus = 'starting' | 'running' | 'waiting' | 'ready' | 'finished' | 'interrupted' | 'failed' | 'untracked';
 export type HandOffRung = 'thread' | 'app' | 'clipboard' | null;
@@ -159,7 +161,10 @@ export interface MappedT3Thread {
   worktreePath: string | null;
   sessionStatus: string | null;
   turnState: string | null;
+  /** What is saved: a usage-limit error is its fixed label, any other error its message. */
   lastError: string | null;
+  /** T3 Code's own message. Held in memory only, never saved. */
+  rawError: string | null;
   model: ModelObservation | null;
   pendingApproval: boolean;
   pendingUserInput: boolean;
@@ -248,6 +253,11 @@ function pullRequests(thread: Record<string, unknown>): PullRequestRef[] {
   return result;
 }
 
+/** The form of a thread error that is safe to save. */
+export function storableError(message: string | null): string | null {
+  return message === null ? null : isUsageLimitError(message) ? USAGE_LIMIT_LABEL : message.slice(0, 500);
+}
+
 export function mapT3Status(thread: unknown): MappedT3Thread | null {
   const item = record(thread);
   if (item === null) return null;
@@ -297,7 +307,8 @@ export function mapT3Status(thread: unknown): MappedT3Thread | null {
     worktreePath: text(item['worktreePath']),
     sessionStatus,
     turnState,
-    lastError: lastError?.slice(0, 500) ?? null,
+    lastError: storableError(lastError),
+    rawError: lastError?.slice(0, 500) ?? null,
     model: observeModelSelection(item['modelSelection']),
     pendingApproval,
     pendingUserInput,
@@ -350,6 +361,8 @@ function normalizeStoredHandOffs(value: unknown): StoredHandOff[] {
   }
   return root['records'].filter(isStoredHandOff).map(({ auto, ...item }) => ({
     ...item,
+    // Records saved before usage-limit text was withheld.
+    lastError: storableError(item.lastError),
     ...withAuto(auto),
     mapTitle: item.mapTitle ?? null,
     acknowledged: item.acknowledged === true,
@@ -508,6 +521,7 @@ export class HandOffStore {
   private loading: Promise<void> | null = null;
   private writes: Promise<void> = Promise.resolve();
   private readonly deletedIds = new Set<string>();
+  private readonly rawErrors = new Map<string, string>();
   private readonly now: () => Date;
 
   constructor(
@@ -562,6 +576,11 @@ export class HandOffStore {
     const pruned = this.prune();
     if (pruned) await this.persist();
     return this.current().map(cloneHandOff);
+  }
+
+  /** T3 Code's own message for a hand-off's last error, as of the latest snapshot. Never saved. */
+  rawError(id: string): string | undefined {
+    return this.rawErrors.get(id);
   }
 
   async acknowledge(id: string): Promise<boolean> {
@@ -694,6 +713,8 @@ export class HandOffStore {
           result: autoResultOf(thread.status, hasT3PullRequest),
           resultAt: nextTerminalAt,
         });
+    if (thread.rawError === null) this.rawErrors.delete(handOff.id);
+    else this.rawErrors.set(handOff.id, thread.rawError);
     const next = {
       ...handOff,
       environmentId: handOff.environmentId ?? environmentId,
@@ -744,7 +765,9 @@ export class HandOffStore {
     if (retained.length === this.current().length) return false;
     const retainedIds = new Set(retained.map((item) => item.id));
     for (const handOff of this.current()) {
-      if (!retainedIds.has(handOff.id)) this.deletedIds.add(handOff.id);
+      if (retainedIds.has(handOff.id)) continue;
+      this.deletedIds.add(handOff.id);
+      this.rawErrors.delete(handOff.id);
     }
     this.records = retained;
     return true;
@@ -966,14 +989,15 @@ export class HandOffTracker {
     return events;
   }
 
-  /** The last error T3 Code reported on each given hand-off that has one. */
+  /** The last error T3 Code reported on each given hand-off that has one. A usage-limit error keeps its full text only while T3 Code is reachable. */
   async lastErrors(ids: readonly string[]): Promise<Map<string, string>> {
     this.start();
     await this.refresh();
     const wanted = new Set(ids);
     const errors = new Map<string, string>();
     for (const item of await this.store.list()) {
-      if (wanted.has(item.id) && item.lastError !== null) errors.set(item.id, item.lastError);
+      const error = this.store.rawError(item.id) ?? item.lastError;
+      if (wanted.has(item.id) && error !== null) errors.set(item.id, error);
     }
     return errors;
   }
