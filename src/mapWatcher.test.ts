@@ -466,4 +466,33 @@ describe('MapWatcher.ticketPullRequests (#130)', () => {
     expect(fake.reader.pullRequestReads).toBe(1);
     watcher.close();
   });
+
+  it('adds check counts and the reviewer to a T3 PR from the shared read only while it is fresh, without a GitHub call', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-26T12:00:00Z'));
+    try {
+      const fake = fakeReader();
+      const counts = { passed: 3, failed: 2, pending: 0 };
+      fake.setPullRequests([[1, [pr(10, { checks: 'failing', review: 'changes_requested', checkCounts: counts, reviewer: 'sam-k' })]]]);
+      const tracked = new Map([[1, [pr(10, { checks: 'failing', review: 'changes_requested' })]]]);
+      const watcher = new MapWatcher(fake.reader, { intervalMs: INTERVAL, now: () => Date.now(), trackedPullRequests: async () => tracked });
+      const tickets = [{ number: 1, state: 'claimed' as const }];
+
+      // Nothing has read GitHub yet, and showing the panel must not be what does.
+      expect((await watcher.ticketPullRequests('o/r', tickets)).get(1)?.[0]?.checkCounts).toBeUndefined();
+      expect(fake.reader.pullRequestReads).toBe(0);
+
+      await watcher.activity('o/r');
+      const filled = (await watcher.ticketPullRequests('o/r', tickets)).get(1)?.[0];
+      expect(filled).toMatchObject({ checks: 'failing', checkCounts: counts, reviewer: 'sam-k' });
+      expect(fake.reader.pullRequestReads).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(INTERVAL / 2);
+      expect((await watcher.ticketPullRequests('o/r', tickets)).get(1)?.[0]?.checkCounts).toBeUndefined();
+      expect(fake.reader.pullRequestReads).toBe(1);
+      watcher.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
