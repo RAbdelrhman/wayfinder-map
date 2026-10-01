@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Round 5 · One tier choice, Auto by default</title>
-    <!-- PROTOTYPE (#163), round 5: round 4 with no map-level Tiers selector. Each ticket has one tier choice, Auto by default, with Simple/Mid/Hard to override. The auto map has the same single choice. -->
+    <!-- PROTOTYPE (#163), round 5: round 4 with no map-level Tiers selector. Each ticket has one tier choice, Auto by default, with Simple/Mid/Hard to override. The auto map has the same single choice. Amended 30 Sep 2026: the auto map starts every ticket type; grilling and prototype threads start, then wait for the user's choices. -->
     <link rel="stylesheet" href="../../../src/ui/styles.css" />
     <link rel="stylesheet" href="start.css" />
     <style>
@@ -303,7 +303,8 @@
     <script src="../kit/kit.js"></script>
     <script src="start.js"></script>
     <script>
-      const { state, icon, esc, plan, counts, batch, batchCounts, rowHtml, autoControl, capLine, autoMapSwitch, AUTOMAP_HINT, pill, MAP } = START;
+      const { state, icon, esc, plan, counts, batch, batchCounts, rowHtml, autoControl, capLine, autoMapSwitch, pill, MAP } = START;
+      const AUTOMAP_HINT = 'Starts tickets as they become next. Grilling and prototype threads start, then wait for your choices.';
       state.ui.pop = new URLSearchParams(location.search).get('pop') === '1';
       state.ui.menu = new URLSearchParams(location.search).get('menu') === '1';
       state.ui.setup = new URLSearchParams(location.search).get('setup') === '1';
@@ -377,7 +378,7 @@
           <div class="a-body am-body">
             <ul class="am-list">
               <li>${icon('play')}<span><b>Task and research tickets</b> start in T3 Code as soon as they become next.</span></li>
-              <li>${icon('person')}<span><b>Grilling and prototype tickets</b> never start by themselves. You get a notification.</span></li>
+              <li>${icon('person')}<span><b>Grilling and prototype tickets</b> start too, then stop at the first question or design choice and wait for you. You get a “needs you” notification; nothing goes on without your answer.</span></li>
               <li>${icon('queue')}<span>They count toward the <b>${START.CAP} running on this machine</b>. Over that, they queue.</span></li>
               <li>${icon('alert')}<span>It pauses on a <b>usage limit</b>, and only runs while the app is open.</span></li>
             </ul>
@@ -392,8 +393,10 @@
         scope,
         startButton,
         node: (t) =>
-          state.autoMap && t.state === 'frontier' && !START.HITL(t) && !t.handOff && state.phase !== 'running' && state.phase !== 'stopped'
-            ? { meta: `<span class="c-automark-meta">${icon('bolt')}auto map will start this</span>`, aria: ['auto map will start this'] }
+          state.autoMap && t.state === 'frontier' && !t.handOff && state.phase !== 'running' && state.phase !== 'stopped'
+            ? START.HITL(t)
+              ? { meta: `<span class="c-automark-meta">${icon('bolt')}auto map starts this, then waits for you</span>`, aria: ['auto map starts this, then waits for you'] }
+              : { meta: `<span class="c-automark-meta">${icon('bolt')}auto map will start this</span>`, aria: ['auto map will start this'] }
             : {},
         overlay: () => dialog() + setupDialog(),
         afterPaint: () => {

@@ -56,7 +56,7 @@ window.CANVAS = {
                 cons: [],
                 basedOn: ['AM-setup'],
                 disposition: 'keep',
-                feedback: "Final pick (user, 29–30 Sep 2026). The auto map's setup has the same single Tier choice, Auto by default.",
+                feedback: "Final pick (user, 29–30 Sep 2026). The auto map's setup has the same single Tier choice, Auto by default. Amended (user, 30 Sep 2026): the auto map starts every ticket type. Grilling and prototype threads start, then stop at the first question or design choice and wait for the user; nothing continues without the user's choice. The same holds for grilling and prototype tickets ticked in Start next.",
               },
             },
           ],
