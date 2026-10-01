@@ -1,6 +1,6 @@
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 /** `~/.wayfinder-map/follows.json`: the public maps each GitHub login follows, by repository. */
 export function followsFile(): string {
@@ -17,6 +17,25 @@ export class FollowStore {
     const list = user[repo.toLowerCase()];
     if (!Array.isArray(list)) return [];
     return [...new Set(list.filter((value): value is number => Number.isSafeInteger(value) && (value as number) > 0))];
+  }
+
+  /** Follows or unfollows one map. Saves run one at a time, so two quick clicks can't overwrite each other. */
+  set(login: string, repo: string, mapNumber: number, followed: boolean): Promise<number[]> {
+    const saved = this.writing.then(() => this.write(login, repo, mapNumber, followed));
+    this.writing = saved.catch(() => undefined);
+    return saved;
+  }
+
+  private writing: Promise<unknown> = Promise.resolve();
+
+  private async write(login: string, repo: string, mapNumber: number, followed: boolean): Promise<number[]> {
+    const current = (await this.follows(login, repo)).filter((number) => number !== mapNumber);
+    const next = followed ? [...current, mapNumber].sort((a, b) => a - b) : current;
+    const all = await this.readAll();
+    const user = objectAt(all, login.toLowerCase());
+    await mkdir(dirname(this.path), { recursive: true });
+    await writeFile(this.path, `${JSON.stringify({ ...all, [login.toLowerCase()]: { ...user, [repo.toLowerCase()]: next } }, null, 2)}\n`, 'utf8');
+    return next;
   }
 
   private async readAll(): Promise<Record<string, unknown>> {

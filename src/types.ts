@@ -25,6 +25,8 @@ export interface Ticket {
   /** Of `blockedBy`, the ones still open. */
   openBlockers: number[];
   state: TicketState;
+  /** When the issue last changed (a comment, claim or edit), or null when GitHub did not say. */
+  updatedAt: string | null;
 }
 
 /** The prose sections a map body carries, by the headings the wayfinder flow writes. */
@@ -64,6 +66,10 @@ export interface WayfinderMap {
   outside: OutsideTicket[];
   /** The chain of tickets most of what is left waits on. See `criticalPath`. */
   criticalPath: CriticalPath;
+  /** Tickets that have stalled, in map order. The server fills it from hand-offs and the stall settings; see `stalledTickets`. */
+  stalled: Stall[];
+  /** Each open ticket's pull request, in map order. The server fills it like `stalled`; see `markPullRequests`. */
+  pullRequests: TicketPullRequest[];
   /** Why and since when the map sits in the Settled section, or null while it is active. */
   settled: MapSettlement | null;
   /** False for a settled map whose tickets were not read, to save GitHub calls until it is opened. */
@@ -72,6 +78,19 @@ export interface WayfinderMap {
 
 /** Private maps show only to their author in Wayfinder; public ones also show to people who follow them. */
 export type MapVisibility = 'public' | 'private';
+
+/** Someone else's public map, as the Public maps list shows it: read from the map list alone, with no ticket calls. */
+export interface PublicMap {
+  number: number;
+  title: string;
+  url: string;
+  author: string;
+  open: boolean;
+  /** Whether the signed-in login follows it, so it joins their map list. */
+  followed: boolean;
+  /** Closed and total sub-issues, from GitHub's summary on the map issue. */
+  progress: { completed: number; total: number };
+}
 
 /** Why a map settled: its issue closed, nothing on it changed for 30 days, or someone settled it by hand. */
 export type SettleReason = 'closed' | 'idle' | 'manual';
@@ -88,6 +107,55 @@ export interface CriticalPath {
   tickets: number[];
   /** Of `tickets`, how many are still open. */
   remaining: number;
+}
+
+/** A claim nobody touched, or a hand-off that died and was never retried (#125). */
+export type StallKind = 'untouched-claim' | 'dead-hand-off';
+
+/** How many days before each kind counts as stalled. Set in Settings, 7 days each by default. */
+export interface StallSettings {
+  untouchedClaimDays: number;
+  deadHandOffDays: number;
+}
+
+/** The day counts Settings offers for each kind. */
+export const STALL_DAY_CHOICES = [3, 7, 14, 30] as const;
+export const DEFAULT_STALL_SETTINGS: StallSettings = { untouchedClaimDays: 7, deadHandOffDays: 7 };
+
+export interface Stall {
+  ticket: number;
+  kind: StallKind;
+  /** When the ticket went quiet, as an ISO timestamp. */
+  since: string;
+}
+
+export type ChecksState = 'passing' | 'failing' | 'pending';
+export type ReviewState = 'approved' | 'changes_requested' | 'review_required';
+
+/** How many of a pull request's checks passed, failed, or are still running. */
+export interface CheckCounts {
+  passed: number;
+  failed: number;
+  pending: number;
+}
+
+/** A pull request's state, CI and review, from T3 Code's PR snapshot or GitHub (#135, #142). */
+export interface PullRequestState {
+  number: number;
+  url: string;
+  state: 'open' | 'closed' | 'merged';
+  checks: ChecksState | null;
+  review: ReviewState | null;
+  draft?: boolean;
+  /** Only GitHub reports these; T3 Code's snapshot does not. */
+  checkCounts?: CheckCounts | null;
+  /** Who approved or asked for changes, or whose review is requested. GitHub only. */
+  reviewer?: string | null;
+}
+
+/** The pull request a ticket's card and panel show (#130). */
+export interface TicketPullRequest extends PullRequestState {
+  ticket: number;
 }
 
 /** A prototype branch belonging to one of a map's tickets. */
@@ -128,6 +196,8 @@ export interface MapSnapshot {
   maps: WayfinderMap[];
   /** Maps from other people left out because they are private or not followed. */
   hiddenMaps: number;
+  /** Other people's public maps, followed or not. Empty when no one is signed in. */
+  publicMaps: PublicMap[];
   /** Non-fatal problems worth showing in the UI rather than swallowing. */
   warnings: string[];
 }

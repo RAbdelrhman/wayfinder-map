@@ -1,11 +1,15 @@
 import type { HomeAccount } from '../home.js';
 import type { DailyGoal, ProgressSettings, ProgressState } from '../progress.js';
+import { STALL_DAY_CHOICES } from '../types.js';
+import type { StallSettings } from '../types.js';
 import { currentTheme, paintIcons, renderAccountMarkContent, setTheme, THEME_CHANGE_EVENT } from './chrome.js';
 import type { Theme } from './chrome.js';
 import { escapeHtml } from './markdown.js';
 import { defaultTier, saveDefaultTier, TIER_HINT, TIER_LABEL, TIERS } from './models.js';
 import type { Tier } from './models.js';
 import { GOALS, PROGRESS_SETTINGS_EVENT } from './progress.js';
+import { DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_KINDS } from '../notificationTypes.js';
+import type { NotificationKind, NotificationSettings } from '../notificationTypes.js';
 
 /* Settings (#40, #104): the GitHub account and the preferences that belong to no one page. */
 
@@ -16,11 +20,25 @@ export interface SettingsView {
   tier: Tier;
   /** Null while progress loads or when no one is signed in to save it for. */
   progress: ProgressSettings | null;
+  /** Null while the stall settings load. */
+  stalls: StallSettings | null;
+  /** Null while notification choices load. */
+  notifications: NotificationSettings | null;
   /** The action in flight, so its button can say so and the rest stay still. */
   busy: 'switch' | 'logout' | null;
 }
 
 const THEME_LABEL: Record<Theme, string> = { light: 'Light', dark: 'Dark' };
+export const NOTIFICATION_SETTINGS_EVENT = 'wayfinder:notification-settings';
+const NOTIFICATION_LABEL: Record<NotificationKind, readonly [string, string]> = {
+  unblocked: ['Tickets become ready', 'An unblocked ticket can be started from the map.'],
+  threadWaiting: ['T3 Code needs you', 'A thread is waiting for input or approval.'],
+  failingCi: ['CI is failing', 'A ticket PR has failing checks.'],
+  reviewReady: ['A PR is ready for review', 'Checks passed and the PR is waiting for review.'],
+  handOffError: ['A hand-off has an error', 'T3 Code reported an error, including a usage limit.'],
+  stalled: ['A ticket stalled', 'A ticket crossed one of the stall settings.'],
+  prototypeReady: ['A prototype is ready', 'A prototype branch or snapshot changed.'],
+};
 
 function segmented(label: string, buttons: string): string {
   return `<span class="segmented" role="group" aria-label="${label}">${buttons}</span>`;
@@ -72,7 +90,33 @@ export function settingsBodyHtml(view: SettingsView): string {
       <div class="settings-row"><span class="grow">Theme</span>${themes}</div>
       <div class="settings-row"><span class="grow">Default model tier<span class="hint">${escapeHtml(TIER_HINT[view.tier])}. New tickets and maps start here.</span></span>${tiers}</div>
       <div class="settings-row"><span class="grow">Daily goal<span class="hint">${view.progress === null ? 'Sign in to set a goal.' : 'Tickets to clear each day on Home.'}</span></span>${goals}</div>
+    </section>
+    <section class="settings-section" aria-labelledby="settings-stalls-title">
+      <h3 id="settings-stalls-title">Stalled tickets</h3>
+      ${stallRow('untouchedClaimDays', 'Untouched claim', 'Claimed, with no commit, PR, comment or live hand-off.', view.stalls)}
+      ${stallRow('deadHandOffDays', 'Dead hand-off', 'The hand-off failed or never started, with no retry or PR.', view.stalls)}
     </section>`;
+}
+
+export function notificationSettingsHtml(settings: NotificationSettings | null): string {
+  const rows = NOTIFICATION_KINDS.map((kind) => {
+    const [label, hint] = NOTIFICATION_LABEL[kind];
+    const checked = settings?.[kind] ?? DEFAULT_NOTIFICATION_SETTINGS[kind];
+    return '<label class="settings-row settings-notification"><span class="grow">' +
+      escapeHtml(label) +
+      '<span class="hint">' + escapeHtml(hint) + '</span></span><input type="checkbox" data-settings-notification="' +
+      kind + '" aria-label="' + escapeHtml(label) + '"' + (checked ? ' checked' : '') + (settings === null ? ' disabled' : '') + ' /></label>';
+  }).join('');
+  return '<section class="settings-section" aria-labelledby="settings-notifications-title">' +
+    '<h3 id="settings-notifications-title">Notifications</h3>' + rows + '</section>';
+}
+
+function stallRow(key: keyof StallSettings, label: string, hint: string, stalls: StallSettings | null): string {
+  const days = segmented(
+    `${label}, in days`,
+    STALL_DAY_CHOICES.map((choice) => seg(`data-settings-${key === 'untouchedClaimDays' ? 'claim' : 'hand-off'}-days`, String(choice), `${String(choice)}d`, choice === stalls?.[key], stalls === null)).join(''),
+  );
+  return `<div class="settings-row"><span class="grow">${escapeHtml(label)}<span class="hint">${escapeHtml(hint)}</span></span>${days}</div>`;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -104,24 +148,33 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
   trigger.setAttribute('aria-haspopup', 'dialog');
   trigger.setAttribute('aria-controls', dialog.id);
 
-  let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), progress: null, busy: null };
+  let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), progress: null, stalls: null, notifications: null, busy: null };
 
   const draw = (): void => {
     const focusKey = document.activeElement instanceof HTMLElement && body.contains(document.activeElement) ? focusKeyOf(document.activeElement) : null;
-    body.innerHTML = settingsBodyHtml(view);
+    body.innerHTML = settingsBodyHtml(view) + notificationSettingsHtml(view.notifications);
     paintIcons(body);
     if (focusKey !== null) body.querySelector<HTMLElement>(focusKey)?.focus();
   };
 
   const load = async (): Promise<void> => {
-    const [account, progress] = await Promise.allSettled([
+    void fetch('/api/notification-settings').then((response) => readJson<NotificationSettings>(response)).then(
+      (notifications) => {
+        view = { ...view, notifications };
+        if (dialog.open) draw();
+      },
+      () => undefined,
+    );
+    const [account, progress, stalls] = await Promise.allSettled([
       fetch('/api/auth/status').then((response) => readJson<HomeAccount>(response)),
       fetch('/api/progress').then((response) => readJson<ProgressState>(response)),
+      fetch('/api/stall-settings').then((response) => readJson<StallSettings>(response)),
     ]);
     view = {
       ...view,
       account: account.status === 'fulfilled' ? account.value : { status: 'unavailable', host: 'github.com', login: null, accounts: [], missingScopes: [], tokenSource: null, message: 'GitHub account information is unavailable.' },
       progress: progress.status === 'fulfilled' && progress.value.login !== null ? progress.value.settings : null,
+      stalls: stalls.status === 'fulfilled' ? stalls.value : view.stalls,
     };
     if (dialog.open) draw();
   };
@@ -193,6 +246,50 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
       );
       return;
     }
+    const claimDays = Number(target?.closest<HTMLElement>('[data-settings-claim-days]')?.dataset['settingsClaimDays']);
+    const handOffDays = Number(target?.closest<HTMLElement>('[data-settings-hand-off-days]')?.dataset['settingsHandOffDays']);
+    const stallKey = Number.isFinite(claimDays) ? 'untouchedClaimDays' : Number.isFinite(handOffDays) ? 'deadHandOffDays' : null;
+    if (view.stalls !== null && stallKey !== null) {
+      const days = stallKey === 'untouchedClaimDays' ? claimDays : handOffDays;
+      if (days === view.stalls[stallKey]) return;
+      const before = view.stalls;
+      view = { ...view, stalls: { ...before, [stallKey]: days } };
+      draw();
+      postJson<StallSettings>('/api/stall-settings', { [stallKey]: days }).then(
+        (settings) => {
+          view = { ...view, stalls: settings };
+          if (dialog.open) draw();
+        },
+        (error: unknown) => {
+          view = { ...view, stalls: before };
+          if (dialog.open) draw();
+          toast(error instanceof Error ? error.message : String(error), 9000);
+        },
+      );
+      return;
+    }
+    const notificationInput = target?.closest<HTMLInputElement>('[data-settings-notification]');
+    const notificationKind = notificationInput?.dataset['settingsNotification'] as NotificationKind | undefined;
+    if (view.notifications !== null && notificationInput instanceof HTMLInputElement && notificationKind !== undefined && NOTIFICATION_KINDS.includes(notificationKind)) {
+      const before = view.notifications;
+      const enabled = notificationInput.checked;
+      if (enabled === before[notificationKind]) return;
+      view = { ...view, notifications: { ...before, [notificationKind]: enabled } };
+      draw();
+      postJson<NotificationSettings>('/api/notification-settings', { [notificationKind]: enabled }).then(
+        (settings) => {
+          view = { ...view, notifications: settings };
+          if (dialog.open) draw();
+          document.dispatchEvent(new CustomEvent<NotificationSettings>(NOTIFICATION_SETTINGS_EVENT, { detail: settings }));
+        },
+        (error: unknown) => {
+          view = { ...view, notifications: before };
+          if (dialog.open) draw();
+          toast(error instanceof Error ? error.message : String(error), 9000);
+        },
+      );
+      return;
+    }
     const login = target?.closest<HTMLElement>('[data-settings-switch]')?.dataset['settingsSwitch'];
     if (login !== undefined && view.busy === null) {
       void accountAction('switch', () => postJson<HomeAccount>('/api/auth/switch', { login }), `Switched to ${login}.`);
@@ -206,7 +303,7 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
 
 /** A selector that finds the same control after a redraw, so keyboard focus stays put. */
 export function focusKeyOf(element: Element): string | null {
-  for (const attribute of ['data-settings-theme', 'data-settings-tier', 'data-settings-goal', 'data-settings-switch']) {
+  for (const attribute of ['data-settings-theme', 'data-settings-tier', 'data-settings-goal', 'data-settings-claim-days', 'data-settings-hand-off-days', 'data-settings-notification', 'data-settings-switch']) {
     const value = element.getAttribute(attribute);
     if (value !== null) return `[${attribute}="${value}"]`;
   }

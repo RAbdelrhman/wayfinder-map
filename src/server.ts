@@ -13,12 +13,13 @@ import { detectT3, handOff } from './t3.js';
 import type { T3HandOff } from './t3.js';
 import type { Config } from './config.js';
 import type { MapSnapshot, Prototype, Ticket, WayfinderMap } from './types.js';
+import { markPullRequests } from './mapWatch.js';
 import type { MapEvent } from './mapWatch.js';
 import { listRepositories, loadHomeState, readAccount } from './home.js';
 import type { HomeState } from './home.js';
 import { fetchAllPrototypes, fetchBranchFile, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, fetchTicketWithParent, gh } from './github.js';
 import { AuthFlow } from './authFlow.js';
-import { parseRepoPagePath } from './repoRoutes.js';
+import { normalizeRepo, parseRepoPagePath } from './repoRoutes.js';
 import type { ScopedApiAction } from './repoRoutes.js';
 import { RepositoryStore } from './repositoryStore.js';
 import type { RepositoryChangeChecker, RepositoryFetcher } from './repositoryStore.js';
@@ -30,10 +31,15 @@ import { resolveRepoIcon, type ResolvedRepoIcon } from './repoIcon.js';
 import { HandOffStore, HandOffTracker, handOffStorePath } from './handOffTracking.js';
 import type { HandOffTrackingClient } from './handOffTracking.js';
 import { githubMapWatchReader, MapWatcher } from './mapWatcher.js';
+import type { MapWatchStateStore } from './mapWatchStore.js';
+import { markStalls, memoryStallSettings, StallSettingsStore } from './stalled.js';
+import type { StallSettingsSource } from './stalled.js';
 import { ProgressError, ProgressService, ProgressSettingsStore, readCompletedTickets } from './progress.js';
 import { SettleStore } from './settling.js';
 import { FollowStore } from './follows.js';
 import type { Viewer } from './visibility.js';
+import { memoryNotificationSettings, NotificationSettingsStore, parseDesktopNotification } from './notifications.js';
+import type { DesktopNotification, NotificationSettingsSource } from './notifications.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -109,16 +115,39 @@ export interface ServeOptions {
   progress?: Pick<ProgressService, 'state' | 'save'>;
   /** Replaces the GitHub map watcher in tests. */
   mapWatcher?: MapWatcher;
+  /** Persists opened-map snapshots and events in the local app's state directory. */
+  mapWatchStore?: MapWatchStateStore;
+  /**
+   * Where the two stall settings live (#160). Defaults to `~/.wayfinder-map/stalls.json`, except
+   * when tests inject a `fetcher`, where they stay in memory unless given.
+   */
+  stallSettings?: StallSettingsSource;
+  /** Per-event notification choices. */
+  notificationSettings?: NotificationSettingsSource;
+  /** Desktop-only bridge for OS notifications and the tray badge. */
+  onDesktopNotification?: (notification: DesktopNotification) => void;
+  /** Clears the desktop tray badge after the inbox is opened. */
+  onNotificationsRead?: () => void;
   /**
    * Whose settle choices apply and where they are kept. Defaults to the signed-in GitHub login and
    * `~/.wayfinder-map/settled.json`, except when tests inject a `fetcher`, where it is off unless given.
    */
   settling?: Settling;
+  /**
+   * Whose follows apply and where they are kept. Defaults to the signed-in GitHub login and
+   * `~/.wayfinder-map/follows.json`, except when tests inject a `fetcher`, where it is off unless given.
+   */
+  following?: Following;
 }
 
 export interface Settling {
   login: () => Promise<string | null>;
   store: Pick<SettleStore, 'choices' | 'set'>;
+}
+
+export interface Following {
+  login: () => Promise<string | null>;
+  store: Pick<FollowStore, 'follows' | 'set'>;
 }
 
 export interface UpdaterStatus {
@@ -214,7 +243,13 @@ export async function startServer({
   handOffStore,
   progress,
   mapWatcher: givenMapWatcher,
+  mapWatchStore,
+  stallSettings: givenStallSettings,
+  notificationSettings: givenNotificationSettings,
+  onDesktopNotification,
+  onNotificationsRead,
   settling,
+  following,
 }: ServeOptions): Promise<RunningServer> {
   const defaultUpdater: UpdaterService = {
     async check(): Promise<UpdaterStatus> {
@@ -256,10 +291,10 @@ export async function startServer({
     const account = homeState?.account ?? (await readAccount());
     return account.status === 'ready' ? account.login : null;
   };
-  const follows = new FollowStore();
+  const follow: Following | null = following ?? (fetcher === undefined ? { login: signedInLogin, store: new FollowStore() } : null);
   const viewerOf = async (forRepo: string): Promise<Viewer | null> => {
-    const login = await signedInLogin();
-    return login === null ? null : { login, follows: await follows.follows(login, forRepo) };
+    const login = follow === null ? null : await follow.login();
+    return follow === null || login === null ? null : { login, follows: await follow.store.follows(login, forRepo) };
   };
   const settle: Settling | null = settling ?? (fetcher === undefined ? { login: signedInLogin, store: new SettleStore() } : null);
   const repositories = new RepositoryStore({
@@ -276,7 +311,7 @@ export async function startServer({
           },
         }),
     // Your own maps and the public maps you follow. Tests that inject a fetcher list every map.
-    ...(fetcher === undefined ? { viewer: viewerOf } : {}),
+    ...(follow === null ? {} : { viewer: viewerOf }),
   });
   const repoIcons = new Map<string, Promise<ResolvedRepoIcon | null>>();
   let repoList: Promise<string[]> | null = null;
@@ -298,9 +333,35 @@ export async function startServer({
     trackingClient,
   );
   const mapWatcher =
-    givenMapWatcher ?? new MapWatcher(githubMapWatchReader, { trackedPullRequests: (forRepo) => handOffTracker.trackedPullRequests(forRepo) });
+    givenMapWatcher ?? new MapWatcher(githubMapWatchReader, {
+      trackedPullRequests: (forRepo) => handOffTracker.trackedPullRequests(forRepo),
+      ...(mapWatchStore === undefined ? {} : { stateStore: mapWatchStore }),
+    });
+  await mapWatcher.restore();
+  const reconcileMapWatches = (snapshot: MapSnapshot): void => {
+    const active = new Set(snapshot.maps.filter((map) => map.open && map.settled === null).map((map) => map.number));
+    mapWatcher.reconcile(snapshot.repo, active);
+    void mapWatcher.catchUp(snapshot.repo);
+  };
   // A thread change is often a PR, CI or review change, so its map is read now rather than in two minutes.
   handOffTracker.onThreadChange((change) => mapWatcher.nudge(change.repo, change.mapNumber));
+  const stallSettings = givenStallSettings ?? (fetcher === undefined ? new StallSettingsStore() : memoryStallSettings());
+  const notificationSettings =
+    givenNotificationSettings ?? (fetcher === undefined ? new NotificationSettingsStore() : memoryNotificationSettings());
+  /**
+   * Stalls depend on the clock, hand-offs and settings, and pull requests change without the map
+   * changing, so both are marked on each snapshot served rather than cached with it.
+   */
+  const withSignals = async (snapshot: MapSnapshot): Promise<MapSnapshot> =>
+    markPullRequests(
+      await markStalls(snapshot, {
+        handOffs: (forRepo) => handOffTracker.repoHandOffs(forRepo),
+        activity: (forRepo) => mapWatcher.activity(forRepo),
+        settings: await stallSettings.get(),
+        now: new Date(),
+      }),
+      (forRepo, tickets) => mapWatcher.ticketPullRequests(forRepo, tickets),
+    );
   /** Tickets whose hand-off request is still in flight, keyed `owner/name#number`, so a double click can't start two. */
   const startingTickets = new Set<string>();
   const progressPanel =
@@ -383,7 +444,11 @@ export async function startServer({
         const force = requestUrl.searchParams.get('refresh') === '1';
         const check = !force && requestUrl.searchParams.get('check') === '1';
         try {
-          json(response, 200, check ? await repositories.refreshIfChanged(repo, openedMaps(requestUrl)) : await repositories.snapshot(repo, force, openedMaps(requestUrl)));
+          const snapshot = check
+            ? await repositories.refreshIfChanged(repo, openedMaps(requestUrl))
+            : await repositories.snapshot(repo, force, openedMaps(requestUrl));
+          reconcileMapWatches(snapshot);
+          json(response, 200, await withSignals(snapshot));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
@@ -449,6 +514,47 @@ export async function startServer({
         } catch (error) {
           json(response, error instanceof ProgressError ? error.status : 400, { error: (error as Error).message });
         }
+        return;
+      }
+
+      if (path === '/api/stall-settings') {
+        if (request.method === 'POST') {
+          const saved = await stallSettings.update(await readBody(request));
+          if (saved === null) json(response, 400, { error: 'Stall settings take 3, 7, 14 or 30 days.' });
+          else json(response, 200, saved);
+          return;
+        }
+        json(response, 200, await stallSettings.get());
+        return;
+      }
+
+      if (path === '/api/notification-settings') {
+        if (request.method === 'GET') {
+          json(response, 200, await notificationSettings.get());
+        } else if (request.method === 'POST') {
+          const saved = await notificationSettings.update(await readBody(request));
+          if (saved === null) json(response, 400, { error: 'Choose on or off for at least one notification type.' });
+          else json(response, 200, saved);
+        } else {
+          json(response, 405, { error: 'Use GET or POST for notification settings.' });
+        }
+        return;
+      }
+
+      if (path === '/api/desktop/notification' && request.method === 'POST') {
+        const notification = parseDesktopNotification(await readBody(request));
+        if (notification === null) {
+          json(response, 400, { error: 'The desktop notification is invalid.' });
+          return;
+        }
+        onDesktopNotification?.(notification);
+        json(response, 200, { shown: onDesktopNotification !== undefined });
+        return;
+      }
+
+      if (path === '/api/desktop/notifications/read' && request.method === 'POST') {
+        onNotificationsRead?.();
+        json(response, 200, { cleared: true });
         return;
       }
 
@@ -573,6 +679,28 @@ export async function startServer({
       const scoped = parseScopedApiPath(path);
       const requestedRepo = scoped?.repo ?? (path === '/api/hand-off' || path === '/api/prototypes' || path === '/api/ticket' ? repo : null);
 
+      if (path === '/api/events' && request.method === 'GET') {
+        const targets = parseMapWatchTargets(requestUrl);
+        if (targets === null) {
+          json(response, 400, { error: 'Name one or more maps with repeated ?watch=owner/repo:number parameters.' });
+          return;
+        }
+        const active: MapWatchTarget[] = [];
+        const ended: MapWatchTarget[] = [];
+        for (const target of targets) {
+          const cached = repositories.cached(target.repo);
+          const map = cached?.maps.find((candidate) => candidate.number === target.mapNumber);
+          if (cached !== null && cached !== undefined && (map === undefined || !map.open || map.settled !== null)) {
+            mapWatcher.stop(target.repo, target.mapNumber);
+            ended.push(target);
+          } else {
+            active.push(target);
+          }
+        }
+        streamMapEvents(request, response, mapWatcher, active, requestUrl.searchParams.get('after'), ended);
+        return;
+      }
+
       if (requestedRepo !== null && (scoped?.action === 'ticket' || path === '/api/ticket')) {
         const ticketParam = requestUrl.searchParams.get('number') ?? requestUrl.searchParams.get('ticket');
         if (!ticketParam || Number.isNaN(Number(ticketParam))) {
@@ -634,12 +762,16 @@ export async function startServer({
           json(response, 400, { error: 'Name a map with ?map=<number>.' });
           return;
         }
-        // A settled map costs no calls, so it is never watched. The page read the snapshot before listening.
-        if (repositories.cached(requestedRepo)?.maps.some((candidate) => candidate.number === mapNumber && candidate.settled !== null)) {
-          json(response, 409, { error: `Map #${String(mapNumber)} is settled. Unsettle it to watch it.` });
+        // EventSource treats 204 as a completed stream and does not keep reconnecting.
+        const cached = repositories.cached(requestedRepo);
+        const map = cached?.maps.find((candidate) => candidate.number === mapNumber);
+        if (cached !== null && cached !== undefined && (map === undefined || !map.open || map.settled !== null)) {
+          mapWatcher.stop(requestedRepo, mapNumber);
+          response.writeHead(204);
+          response.end();
           return;
         }
-        streamMapEvents(request, response, mapWatcher, requestedRepo, mapNumber);
+        streamMapEvents(request, response, mapWatcher, [{ repo: requestedRepo, mapNumber }], requestUrl.searchParams.get('after'));
         return;
       }
 
@@ -661,7 +793,35 @@ export async function startServer({
           const snapshot =
             (await repositories.settle(requestedRepo, mapNumber, body.settled ? { reason: 'manual', since: at } : null)) ??
             (await repositories.snapshot(requestedRepo, false));
-          json(response, 200, snapshot);
+          reconcileMapWatches(snapshot);
+          json(response, 200, await withSignals(snapshot));
+        } catch (error) {
+          json(response, 502, { error: (error as Error).message });
+        }
+        return;
+      }
+
+      if (requestedRepo !== null && scoped?.action === 'follow' && request.method === 'POST') {
+        const body = (await readBody(request)) as { map?: unknown; followed?: unknown };
+        const mapNumber = Number(body.map);
+        if (!Number.isSafeInteger(mapNumber) || mapNumber <= 0 || typeof body.followed !== 'boolean') {
+          json(response, 400, { error: 'Name a map and whether you follow it.' });
+          return;
+        }
+        const login = follow === null ? null : await follow.login();
+        if (follow === null || login === null) {
+          json(response, 409, { error: 'Sign in with GitHub to follow maps.' });
+          return;
+        }
+        try {
+          // Only a public map can be followed; unfollowing always works, even once a map went private.
+          const listed = repositories.cached(requestedRepo) ?? (await repositories.snapshot(requestedRepo, false));
+          if (body.followed && !listed.publicMaps.some((map) => map.number === mapNumber)) {
+            json(response, 404, { error: `Map #${String(mapNumber)} is not a public map by someone else.` });
+            return;
+          }
+          await follow.store.set(login, requestedRepo, mapNumber, body.followed);
+          json(response, 200, await repositories.snapshot(requestedRepo, true));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
@@ -672,7 +832,11 @@ export async function startServer({
         const force = requestUrl.searchParams.get('refresh') === '1';
         const check = !force && requestUrl.searchParams.get('check') === '1';
         try {
-          json(response, 200, check ? await repositories.refreshIfChanged(requestedRepo, openedMaps(requestUrl)) : await repositories.snapshot(requestedRepo, force, openedMaps(requestUrl)));
+          const snapshot = check
+            ? await repositories.refreshIfChanged(requestedRepo, openedMaps(requestUrl))
+            : await repositories.snapshot(requestedRepo, force, openedMaps(requestUrl));
+          reconcileMapWatches(snapshot);
+          json(response, 200, await withSignals(snapshot));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
         }
@@ -1048,7 +1212,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;
@@ -1056,6 +1220,27 @@ function parseScopedApiPath(path: string): { repo: string; action: ScopedApiActi
 }
 
 type MapTicket = WayfinderMap['tickets'][number];
+
+interface MapWatchTarget {
+  repo: string;
+  mapNumber: number;
+}
+
+function parseMapWatchTargets(url: URL): MapWatchTarget[] | null {
+  const values = url.searchParams.getAll('watch');
+  if (values.length === 0 || values.length > 200) return null;
+  const targets: MapWatchTarget[] = [];
+  for (const value of values) {
+    const separator = value.lastIndexOf(':');
+    const repo = separator < 0 ? null : normalizeRepo(value.slice(0, separator));
+    const mapNumber = Number(separator < 0 ? Number.NaN : value.slice(separator + 1));
+    if (repo === null || !Number.isSafeInteger(mapNumber) || mapNumber <= 0) return null;
+    if (!targets.some((target) => target.repo.toLowerCase() === repo.toLowerCase() && target.mapNumber === mapNumber)) {
+      targets.push({ repo, mapNumber });
+    }
+  }
+  return targets;
+}
 
 /** `?map=N`: the settled map a page opened, whose tickets it needs read. */
 function openedMaps(url: URL): number[] {
@@ -1067,7 +1252,14 @@ function openedMaps(url: URL): number[] {
  * Server-sent events for one map: its recent history first, then each change as the
  * watcher finds it. The browser resends the last `id` on reconnect, so nothing repeats.
  */
-function streamMapEvents(request: IncomingMessage, response: ServerResponse, watcher: MapWatcher, repo: string, mapNumber: number): void {
+function streamMapEvents(
+  request: IncomingMessage,
+  response: ServerResponse,
+  watcher: MapWatcher,
+  targets: readonly MapWatchTarget[],
+  after: string | null,
+  ended: readonly MapWatchTarget[] = [],
+): void {
   response.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
     'cache-control': 'no-store',
@@ -1077,10 +1269,30 @@ function streamMapEvents(request: IncomingMessage, response: ServerResponse, wat
   const send = (event: MapEvent): void => {
     response.write(`id: ${String(event.id)}\nevent: map\ndata: ${JSON.stringify(event)}\n\n`);
   };
-  const lastId = Number(request.headers['last-event-id'] ?? 0);
-  for (const event of watcher.history(repo, mapNumber, Number.isFinite(lastId) ? lastId : 0)) send(event);
-  const stop = watcher.watch(repo, mapNumber, send);
-  response.once('close', stop);
+  const headerId = Number(request.headers['last-event-id']);
+  const queryId = Number(after ?? 0);
+  const lastId = Number.isFinite(headerId) && headerId > 0 ? headerId : Number.isFinite(queryId) ? queryId : 0;
+  const history = targets.flatMap((target) => watcher.history(target.repo, target.mapNumber, lastId)).sort((a, b) => a.id - b.id);
+  for (const event of history) send(event);
+  const stops = new Map<string, () => void>();
+  for (const target of ended) {
+    response.write(`event: watch-ended\ndata: ${JSON.stringify(target)}\n\n`);
+  }
+  for (const target of targets) {
+    const id = `${target.repo.toLowerCase()}#${String(target.mapNumber)}`;
+    const stop = watcher.watch(target.repo, target.mapNumber, send, () => {
+      if (response.destroyed) return;
+      response.write(`event: watch-ended\ndata: ${JSON.stringify(target)}\n\n`);
+      stops.delete(id);
+      if (stops.size === 0) response.end();
+    });
+    stops.set(id, stop);
+  }
+  if (targets.length === 0) response.end();
+  response.once('close', () => {
+    for (const stop of stops.values()) stop();
+    stops.clear();
+  });
 }
 
 async function copyOnly(prompt: string): Promise<{ copied: boolean; error: string | null }> {

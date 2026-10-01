@@ -1,20 +1,18 @@
 /*
-  Wayfinder's canvas for ticket #45: what the user sees after handing off to T3 Code.
+  Wayfinder's canvas for ticket #125: how the map shows what's next, what's in the way, and what has stalled.
   Paths are relative to index.html. Check with: node prototypes/canvas/tools/check.mjs
 */
 
-const G2 = 'Tracking per #41: live thread status, branch and PR links, stale (not failed) when T3 Code is off.';
-
-const HANDOFF = {
-  ticket: 45,
-  title: 'After the hand-off',
+window.CANVAS = {
+  ticket: 125,
+  title: "What's next, what's in the way, what has stalled",
   question:
-    'What do you see after pressing Open in T3 Code: the confirmation, live status, the way back to the ticket or map, and the list of everything in flight?',
+    'How should the map show the critical path, PR and CI state, stalled tickets, and where Start next and the "just unblocked" notice land, without redesigning the canvas or adding a fifth state colour?',
   sampleState:
-    'Fake T3 Code. Open any frame and use the Prototype bar at the bottom to switch #55 between Starting, Working, Needs input, Done with PR, Failed and T3 Code not running, or press Replay hand-off to see the confirmation. Five other hand-offs stay put so the lists have something in them, one of them from podcontrol.',
+    'Fake map #300 "Offline drafts". A 7-ticket blocker chain is the critical path (6 left) and a dead hand-off (#213) holds it up. Three open PRs: #204 passing and approved, #210 failing with changes requested, #211 running with review requested. #212 was claimed 6 days ago and not touched since. #203 just closed, which unblocked #214 and #216. Click any card to open it in the panel. The Prototype bar (bottom right) replays the notice or jumps to a ticket.',
 
   base: {
-    stylesheets: ['../../src/ui/styles.css', 'variants/after.css'],
+    stylesheets: ['../../src/ui/styles.css', 'variants/next.css'],
     bodyClass: 'viz-root',
     surfaces: {
       plane: 'var(--plane)',
@@ -28,458 +26,139 @@ const HANDOFF = {
   pages: [
     {
       title: 'Directions',
+      round: 1,
       sections: [
         {
-          title: 'A + B, with the list in the topbar',
-          note: 'What you picked: A’s live card and node pill, and B’s list behind a topbar button (placement 2). The button only exists while something is in T3 Code (rule 3). Nothing floats over the canvas.',
-          items: [
-            {
-              id: 'AB',
-              name: 'Closed: the topbar button',
-              src: 'variants/after-ab.html?state=input',
-              note: {
-                idea:
-                  'The ticket panel card and node pill are A, unchanged. Next to "Synced just now" sits "6 in T3 Code · 2 need you", with one dot per hand-off, most urgent first. Its border turns amber while something needs you. Handing off never opens it: the card changing in place is the confirmation.',
-                pros: ['Nothing covers the map canvas or the ticket panel', '"Needs you" is visible from every page, on any map', 'Same rows and actions as B'],
-                cons: ['Quieter than a floating pill: a count, not an interruption', 'The topbar gets busier on narrow windows'],
-              },
-            },
-            {
-              id: 'AB-open',
-              name: 'Open: every hand-off',
-              src: 'variants/after-ab.html?state=input&open=1',
-              note: {
-                idea:
-                  'The button opens B’s list as a dropdown under it, grouped Waiting on you, In T3 Code, Done, across every map and repository. Every row names its repository and map, so a podcontrol hand-off sits next to wayfinder-map ones. Each row has its one action and a link back to the ticket or map. Clicking outside closes it.',
-                pros: ['One list for all maps, one click from anywhere'],
-                cons: ['Duplicates Home’s In flight strip'],
-              },
-            },
-            {
-              id: 'AB-quiet',
-              name: 'Nothing in flight yet',
-              src: 'variants/after-ab.html?others=0&fresh=1',
-              note: {
-                idea:
-                  'Rule 3: with nothing in T3 Code there is no button at all. Press Open in T3 Code in the ticket panel: the card goes live and the button pops into the topbar. Toggle "Only #55" in the Prototype bar to bring the other hand-offs back.',
-                pros: ['No empty chrome on a quiet day'],
-                cons: ['The topbar shifts when the button appears'],
-              },
-            },
-            {
-              kind: 'note',
-              name: 'Agreed so far',
-              text: 'A + B with the list in the topbar. The list covers every map and repository, and each row names its repo and map. No hand-off chrome while nothing is in T3 Code, whatever the placement. A finished hand-off (PR ready, Failed) leaves the list once you act on it or open the list after it finished; it stays on its ticket card and in Home history for 30 days (#41).',
-            },
-          ],
-        },
-        {
-          title: 'The three directions',
-          note: `A and B are combined above. C is not chosen: it takes you away from the map. ${G2} All three keep Home's In flight strip from #40.`,
+          title: 'A · On the card',
+          note: 'Each signal goes on the card it belongs to. Start next goes in the topbar. The notice is a snackbar over the canvas.',
           items: [
             {
               id: 'A',
-              name: 'Stays on the ticket',
-              src: 'variants/after-a.html?state=working',
+              name: 'Map with the notice',
+              src: 'variants/next-a.html?ticket=210',
               note: {
                 idea:
-                  'Nothing moves. Open in T3 Code turns into a live card in the ticket panel: the status, the last thing T3 Code did, the one action that fits (Answer, Open PR, Try again), and branch, worktree and timeline behind a fold. The node on the map carries the same pill, and an "In T3 Code" filter finds them all. The only list is Home\'s In flight strip. A map hand-off works the same way: the card sits on top of the draft map (#44).',
+                  'The critical path is its chain of edges drawn solid and darker in the text colour. The selection lineage keeps its dashed flow. "6 left on the critical path" sits after the view tabs, and clicking it dims everything off the path. A PR takes over the card\'s meta line: "#232 · failing · changes requested", with a CI icon and a review icon. A stalled card gets a dashed frame and says "Stalled · …" on its meta line. The topbar button becomes "Start next 2". When a ticket closes, a snackbar says "#203 closed. #214 and #216 are ready." with Start both, and the new cards pulse once.',
                 pros: [
-                  'Smallest change, and the way back is free: you never leave',
-                  'Status sits right where the work is on the map',
-                  'Least new UI to build for #56',
+                  'Smallest change: every signal sits where you already look',
+                  'The meta line is free on claimed cards, so PR state costs no new space',
+                  'Start next is where Next: #N already lives',
                 ],
                 cons: [
-                  'On another map or page you only find out from Home',
-                  'The panel fills with hand-off detail, pushing the ticket body down',
+                  'The @assignee disappears from cards with a PR',
+                  'A snackbar is gone once dismissed, so there is no record of what moved',
+                  'Nothing adds up what is in the way: you scan the canvas for dashed frames and red icons',
                 ],
+                disposition: 'keep',
+                feedback:
+                  'User (27 Sep 2026): "I only like A." B and C are not taken forward. Agreed details: the PR line replaces @assignee on cards with a PR. Stalled is two settings, untouched claim and dead hand-off, 7 days each by default. The snackbar stays until dismissed or started, merges events, and lists but never starts grilling/prototype tickets. Start next hands off every startable (unblocked, unclaimed, task or research) ticket up to the #123 cap, shows "Start next 4 of 6" when capped, falls back to "Next: #N" when only HITL tickets are ready, and does not ask to confirm.',
               },
             },
+            {
+              id: 'A-stalled',
+              name: 'Stalled ticket, path focused',
+              src: 'variants/next-a.html?ticket=213&path=1&notice=0',
+              note: {
+                idea:
+                  'Path focus is on, so everything off the chain dims. The panel shows #213 with a neutral "Stalled" banner in place of the state banner, above the failed hand-off card.',
+                pros: ['Path focus reuses the canvas\'s existing dim treatment'],
+                cons: ['Two ways to dim the canvas (selection and path focus) can fight'],
+                disposition: 'keep',
+                feedback: 'Part of direction A, which the user chose ("I only like A").',
+              },
+            },
+          ],
+        },
+        {
+          title: 'B · Path lane and a moving strip',
+          note: 'One strip under the filters says what just moved and what is in the way. The critical path is a lane with numbered steps.',
+          items: [
             {
               id: 'B',
-              name: 'A tray that follows you',
-              src: 'variants/after-b.html?state=input',
+              name: 'Map with the strip',
+              src: 'variants/next-b.html?ticket=210',
               note: {
                 idea:
-                  'Every hand-off, ticket or map, drops into a tray at the bottom right of every page, like a download manager. Closed, it reads "6 in T3 Code · 2 need you". Open, it groups hand-offs into Waiting on you, In T3 Code and Done, each with its action and a link back to the ticket. The ticket panel and node only say it is in T3 Code.',
+                  'A soft lane runs under the critical path and its open cards carry step numbers 1–6. The topbar has a meter with one pip per path ticket, coloured by state, hatched if stalled, then "6 left". A strip under the filters shows the notice ("#203 closed 2 min ago · #214 and #216 unblocked · Start next · 2") and an "In the way" list sorted by urgency: stalled on the path, failing CI, needs you, then stalled elsewhere. Cards get a small PR · CI · review icon strip in the corner. Stalled cards are hatched. The panel adds a Pull request section with checks and review.',
                 pros: [
-                  'You hear about "needs you" wherever you are',
-                  'One place for everything, whatever map it came from',
-                  'The confirmation is the new row arriving',
+                  'Answers "what\'s in the way" in one row, sorted, without scanning',
+                  'The path reads even when it runs off screen: the meter and step numbers count it',
+                  'Start next sits right next to the news that made it possible',
                 ],
                 cons: [
-                  'Something floats over every page, including the map canvas',
-                  'Duplicates Home\'s In flight strip',
-                  'Status is one click away from the ticket, not on it',
+                  'One more full-width bar pushes the canvas down about 45 px',
+                  'The icon-only strip on cards needs hover or the panel to read',
+                  'Hatching and a lane are new visual ideas on the canvas',
                 ],
               },
             },
+            {
+              id: 'B-stalled',
+              name: 'Stalled ticket, notice dismissed',
+              src: 'variants/next-b.html?ticket=212&notice=0',
+              note: {
+                idea:
+                  'With the notice dismissed, the strip keeps a quiet "Start next · 2" and the In the way list. #212 is open: a neutral "Stalled for 6 days" banner.',
+                pros: ['The strip stays useful after the news is read'],
+                cons: ['An empty-ish strip on a quiet map is wasted height unless it hides'],
+              },
+            },
+          ],
+        },
+        {
+          title: 'C · A Next tab in the panel',
+          note: 'The canvas barely changes. The panel gets a Next tab that lists what just unblocked, the path, PRs and stalled tickets.',
+          items: [
             {
               id: 'C',
-              name: 'Each hand-off gets a page (not chosen)',
-              src: 'variants/after-c.html?state=done',
+              name: 'Next tab open',
+              src: 'variants/next-c.html',
               note: {
                 idea:
-                  'Open in T3 Code takes you to the hand-off\'s own page: a big status callout with its action, a timeline of what the thread did, branch, PR and worktree, and a card back to the ticket. The sidebar (#42) grows an In flight group with one dot per hand-off, and All hand-offs lists them in a table. The draft map from #44 would be this page for a map hand-off.',
+                  'A new Next tab, before Brief, with a count badge. It opens on a green "Just now" card: "#203 closed. #214 and #216 are ready." with the two tickets and Start next · 2. It also says why #215 (grilling) is left out. Then the Critical path listed in order ("6 left", with #213 flagged "Holding up the path"), Pull requests with CI and review, and Stalled. On the canvas, path cards get a "1/6" badge, PR cards get a CI glyph after the pill, and stalled cards get a clock. The topbar says "6 left on the critical path" and the primary button says "3 ready", and both open the tab.',
                 pros: [
-                  'Room for the whole story: questions asked, failures, the PR',
-                  'The sidebar always shows what is in flight and what needs you',
-                  'Each hand-off has a link you can come back to',
+                  'The canvas stays almost untouched',
+                  'The fullest answer: order, reasons and actions in one list',
+                  'The notice has a home that lasts, and the badge shows there is news',
                 ],
                 cons: [
-                  'Takes you away from the map you were working on',
-                  'A new page type and route to build',
-                  'The sidebar gets longer with every hand-off',
+                  'Takes the panel away from the ticket you were reading',
+                  'Signals on the canvas are small; you rely on the tab',
+                  'A third tab makes the panel busier',
                 ],
               },
             },
-          ],
-        },
-        {
-          title: 'The same directions on Home',
-          note: 'Home keeps #40\'s In flight strip in every direction: cards ordered by what waits on you, each with its action and a link back.',
-          items: [
             {
-              id: 'H',
-              name: 'Home · In flight strip',
-              src: 'variants/after-a.html?view=home&state=failed',
+              id: 'C-ticket',
+              name: 'Ticket panel with a PR',
+              src: 'variants/next-c.html?tab=ticket&ticket=211&notice=0',
               note: {
-                idea: 'The shared Home strip, here with #55 failed. It sorts Needs you, Failed, PR ready, Working, Starting.',
-                pros: ['The same cards in every direction'],
-                cons: ['In A it is the only list'],
+                idea: 'The ticket tab for #211: one line under the hand-off pill reads "PR #233 · Checks running · Review requested".',
+                pros: ['One compact line, next to the pill'],
+                cons: ['No check counts or reviewer without opening the PR'],
               },
-            },
-            {
-              id: 'CL',
-              name: 'C · All hand-offs (not chosen)',
-              src: 'variants/after-c.html?view=flight&state=working',
-              note: { idea: "C's list page, reached from the sidebar's In flight group or the rail's plane button on the map." },
             },
           ],
         },
-      ],
-    },
-    {
-      title: 'States',
-      question: 'Do the six states read right? The words, icons, tones and actions are the same in every direction.',
-      sections: [
         {
-          title: 'Shared vocabulary',
+          title: 'Review',
           items: [
             {
-              id: 'S',
-              name: 'The six states',
-              src: 'variants/states.html',
-              height: 620,
-              note: {
-                idea:
-                  'Starting and Working share the claimed blue, Needs you uses the amber of blocked, PR ready the green of next, Failed a new red. When T3 Code is off the last status stays, drawn dashed and marked stale.',
-                pros: ['Hue always comes with an icon and a word', 'Offline never reads as failure'],
-                cons: ['Failed adds a red the map page does not use yet'],
-              },
+              id: 'R',
+              kind: 'note',
+              name: 'Design review',
+              text: [
+                'Sources: src/ui/styles.css (tokens --state-*, --handoff-*, --state-failed; .node, .chip, .edges, .handoff-pill/card, .banner, .facts, .fchip, .map-start), src/ui/app.ts (nodeHtml, ticketHtml, edges), src/ui/handOffs.ts (handOffPill, handOffCard), src/ui/index.html. The chrome was copied from the live map page (Wayfinder on localhost, map #121).',
+                'No new colour: CI and review reuse --handoff-pr-ready (pass/approved), --state-failed (fail/changes) and --text-muted (running/requested). Each also has its own icon shape and word. Stalled uses neutral grey plus a pattern (dashed, hatched or a clock), never a hue.',
+                'Checked: light and dark in all three pages (Chromium, 1440×900). Selected, dimmed (path focus), done and just-unblocked card states. Keyboard: every new control is a native button; focus is restored after each repaint, and path focus toggles aria-pressed. Cards\' aria-label adds path, PR/CI/review and stalled text. Notices are role="status" aria-live="polite". The pulse respects prefers-reduced-motion.',
+                'Contrast (computed): new text uses --text-secondary/--text-muted on --surface-1 (≥ 4.5:1 in both themes). CI red #b42318 / #ff8782 and green #087008 / #58d66a pass 4.5:1 on their surfaces.',
+                'Findings: in B, extra filter chips wrapped the toolbar to two rows at 1440 px, so they were dropped. The prototype bar covers the panel\'s bottom-right corner (padding added).',
+                'Not checked: screen reader walk-through, Windows High Contrast / forced-colors, widths under 1100 px (panel stacks), the table view, and zoom above 100%.',
+              ].join('\n\n'),
             },
           ],
         },
-        {
-          title: 'T3 Code not running, per direction',
-          note: 'The same moment in each direction: the last report stays, dashed and marked stale.',
-          items: [
-            { id: 'A-off', name: 'A · offline', src: 'variants/after-a.html?state=offline', note: 'The canvas banner and the card both say T3 Code is off; the card keeps its last status.' },
-            { id: 'B-off', name: 'B · offline', src: 'variants/after-b.html?state=offline', note: 'The tray button swaps its dots for a plug and every row turns stale.' },
-            { id: 'C-off', name: 'C · offline', src: 'variants/after-c.html?state=offline', note: 'The callout becomes "T3 Code isn\'t running" with the last report under it.' },
-          ],
-        },
       ],
     },
-  ],
-};
-
-const HOME = (() => {
-/*
-  Wayfinder's canvas for ticket #43: three directions for Home, the repository page and a map's Prototypes tab.
-  README.md documents every field. Every frame is a whole clickable prototype (variants/a|b|c.html) inside #42's
-  settled shell (direction D); only the page bodies differ. ?data= picks the fake-data state (see variants/data.js).
-  Check with: node prototypes/canvas/tools/check.mjs
-*/
-
-const DIRECTIONS = {
-  A: {
-    name: 'A · Cards',
-    note: {
-      idea: 'Cards. #40’s layout at its calmest: one card per job, the map page’s cards and rings, lots of air. Progress is a small fogged terrain whose trail clears one waypoint per ticket, over a 5-week calendar of fog.',
-      pros: [
-        'Closest to today’s Home and the map page’s cards, so it’s the cheapest to build (#52, #53)',
-        'Each job reads on its own: Continue, then what’s waiting, then where else to go',
-        'Empty and signed-out states swap the Continue card and leave the rest of the page in place',
-      ],
-      cons: [
-        'Shows the least per screen: with many repositories the list sits below the fold',
-        'The fog is small and decorative next to the numbers, so the reward is quieter',
-        'Map cards repeat a destination paragraph you usually already know',
-      ],
-    },
-  },
-  B: {
-    name: 'B · Terrain',
-    note: {
-      idea: 'Terrain. The Home-owned pages borrow the map page itself: its dotted canvas, node cards with a state edge, and a mini ticket graph for every map with the frontier glowing. Progress is a hex fog-of-war map, one hex per day, that clears as you close tickets.',
-      pros: [
-        'Looks and feels like the same product as the map page, which was map #35’s main complaint',
-        'You can see the shape of a map (how much is done, what is next, what is blocked) before you open it',
-        'The fog-of-war panel makes the progress goal feel like a place you are uncovering, the most satisfying of the three',
-      ],
-      cons: [
-        'The most to build: a mini-graph renderer and a hex chart',
-        'Mini graphs are only a sketch at this size; very large maps turn into texture',
-        'Busier: every surface has a pattern or a coloured edge',
-      ],
-    },
-  },
-  C: {
-    name: 'C · Ledger',
-    note: {
-      idea: 'Ledger. Dense, list-first and keyboard-led, like Linear: one line per thing with its action at the end (Pick, Review, Answer, Open), a table of maps, and list-detail for prototypes. Progress is numbers, a fog bar that burns off toward the goal, and a 12-week strip.',
-      pros: [
-        'The most per screen: every repository, every in-flight item and every map fit without scrolling',
-        'Each in-flight line names its next action, so “what’s waiting on me” can be answered in a glance',
-        'Keyboard hints (J/K, Enter, /, N) make getting back into work one keystroke',
-      ],
-      cons: [
-        'Plainest look, so it shares the least with the map page’s visual language',
-        'Less warmth: the fog is a bar, not a picture',
-        'Tables need care at narrow widths',
-      ],
-    },
-  },
-};
-
-const LETTERS = ['A', 'B', 'C'];
-const PAGE = { home: 'H', repo: 'R', protos: 'P' };
-
-/** One frame per direction for a view and data state. ids: page letter + direction + state number, e.g. HA1. */
-function trio(view, n, query, noteFor) {
-  const path = view === 'protos' ? 'view=map&mapview=prototypes' : `view=${view}`;
-  return LETTERS.map((d) => ({
-    id: `${PAGE[view]}${d}${n}`,
-    name: DIRECTIONS[d].name,
-    src: `variants/${d.toLowerCase()}.html?${path}${query ? `&${query}` : ''}`,
-    note: noteFor ? noteFor(d) : DIRECTIONS[d].note,
-  }));
-}
-
-return {
-  ticket: 43,
-  title: 'Home, repository and Prototypes',
-  question:
-    'What should Home, the repository page and a map’s Prototypes tab look like? Three directions (A Cards, B Terrain, C Ledger) on #40’s job for Home and inside #42’s sidebar shell.',
-  sampleState:
-    'Fake data in four states: 12 repositories on a normal afternoon, a lot in flight, a first run with no repositories, and gh signed out. Every frame is clickable: sidebar, Continue, in-flight items, repositories, maps and tabs all move between views, and repository search filters as you type.',
-
-  base: {
-    stylesheets: ['assets/app.css'],
-    bodyClass: 'viz-root',
-    surfaces: {
-      plane: 'var(--plane)',
-      surface: 'var(--surface-1)',
-      line: 'var(--hairline)',
-      text: 'var(--text-primary)',
-      muted: 'var(--text-muted)',
-    },
-  },
-
-  pages: [
-    {
-      title: 'Your mix',
-      question:
-        'Your mix: B’s UI everywhere (dots only on the map page), A’s repository list with B’s progress bars, progress in the style each user picks (A’s trail by default) with A’s streak and C’s 3 / 5 / 8 goal, and B’s decision board for a map’s prototypes with A’s empty state.',
-      sections: [
-        {
-          title: 'Home',
-          note: 'B’s Home without the dotted canvas. Repositories are A’s list with B’s progress bar on each row and no New map button (starting a map is the sidebar’s job). The Trail / Hexes / Bar switch is live in every frame; each frame just starts on a different style.',
-          items: [
-            {
-              id: 'M1',
-              name: 'Home · Trail (default)',
-              src: 'variants/b.html?view=home&data=many&fog=trail',
-              note: {
-                idea: 'The mix on a normal afternoon. Progress defaults to A’s fog trail and 5-week calendar, with C’s 3 / 5 / 8 goal and A’s streak underneath.',
-                pros: ['B’s node cards, mini graph and in-flight lanes', 'A’s list reads faster than tiles, and the bar still shows each repository’s shape'],
-                cons: ['The progress style is a per-user setting to build and store (locally, like pins and recents)'],
-              },
-            },
-            { id: 'M2', name: 'Home · Hexes', src: 'variants/b.html?view=home&data=many&fog=hex', note: 'Same Home with B’s hex fog-of-war picked.' },
-            { id: 'M3', name: 'Home · Bar', src: 'variants/b.html?view=home&data=inflight&fog=bar', note: 'C’s fog bar and 12-week strip on the busy day, past the goal.' },
-            { id: 'M11', name: 'Home · No repositories', src: 'variants/b.html?view=home&data=none', note: 'First run: the list says what will appear there; everything is still fogged.' },
-            { id: 'M12', name: 'Home · gh signed out', src: 'variants/b.html?view=home&data=signedout', note: 'The blocking banner replaces Continue; the list comes from the local cache.' },
-          ],
-        },
-        {
-          title: 'Repository',
-          items: [
-            { id: 'M4', name: 'Repository · wayfinder-map', src: 'variants/b.html?view=repo&data=many', note: 'B’s map rows with mini graphs on a plain panel. Map #35 is drawn from its real 25 tickets.' },
-            { id: 'M13', name: 'Repository · no maps', src: 'variants/b.html?view=repo&data=many&repo=RAbdelrhman/recipe-box', note: 'B’s empty state, with the one Start a new map action.' },
-          ],
-        },
-        {
-          title: 'A map’s Prototypes tab: B’s decision board, on real data',
-          note: 'Map #35’s real prototypes: #43 (waiting on your pick), #45 (picked A + B), #44 (picked C), #42 (picked D) and #39 (the canvas). Each thumbnail is a screenshot of that variant from its prototype branch. Every variant stays visible next to the winner, so the long page is the record of how the map was decided.',
-          items: [
-            { id: 'M6', name: 'Prototypes · map #35', src: 'variants/b.html?view=map&mapview=prototypes&data=many', note: 'Waiting first with dashed outlines, then each decision with its winner outlined green and the rest dimmed.' },
-            { id: 'M9', name: 'Prototypes · map #14', src: 'variants/b.html?view=map&mapview=prototypes&data=many&map=14', note: 'A map with one older prototype (#17, desktop launch states).' },
-            { id: 'M14', name: 'Prototypes · none yet', src: 'variants/b.html?view=map&mapview=prototypes&data=many&repo=RAbdelrhman/podcontrol&map=2', note: 'A’s empty state: a plain heading and the one sentence on what makes a prototype appear.' },
-          ],
-        },
-        {
-          title: 'Not chosen: the other two Prototypes layouts on the same real data',
-          items: [
-            { id: 'M5', name: 'A · Gallery', src: 'variants/a.html?view=map&mapview=prototypes&data=many', note: 'Waiting callout, then one tile per decision showing only the winner.' },
-            { id: 'M7', name: 'C · List and detail', src: 'variants/c.html?view=map&mapview=prototypes&data=many', note: 'One prototype at a time, with branch and decision facts.' },
-          ],
-        },
-      ],
-    },
-    {
-      title: 'Home',
-      question: 'Home: which direction gets you back into work in one click, and makes the fog worth clearing?',
-      sections: [
-        {
-          title: 'Many repositories, a normal afternoon',
-          note: '12 repositories, 3 tickets cleared of a goal of 5, one prototype waiting on your pick and two hand-offs running. Start here: each frame is the whole flow.',
-          items: trio('home', 1, 'data=many'),
-        },
-        {
-          title: 'Lots in flight',
-          note: 'Four things need you (a pick, a PR, a question from T3 Code, a grilling) and three hand-offs are running. Continue becomes your latest hand-off because it’s newer than the last map you opened. Today is past the goal.',
-          items: trio('home', 2, 'data=inflight', (d) =>
-            ({
-              A: 'Needs you and Running as two groups in one card, capped at 4 and 3 with See all. The hand-off Continue card has Open in T3 Code as its main action.',
-              B: 'Two lanes side by side, three cards each. You see both halves at once, but a lane with more than three items needs See all sooner.',
-              C: 'Every item fits, each with its verb at the end of the line. The first line has the keyboard cursor.',
-            })[d],
-          ),
-        },
-        {
-          title: 'First run: no repositories',
-          note: 'Nothing opened, nothing done. Continue turns into the one next step, and the progress panel shows its empty form.',
-          items: trio('home', 3, 'data=none', (d) =>
-            ({
-              A: 'A welcome card with Start a new map; the repository list says what will appear there. The trail sits fully in fog.',
-              B: 'The Continue slot shows a dashed destination node, the start of a graph. Every hex is fogged.',
-              C: 'One line: Start your first map (N). The numbers read 0 and the bar is all fog.',
-            })[d],
-          ),
-        },
-        {
-          title: 'gh signed out',
-          note: '#40: the account only takes over when action is needed, as a blocking banner in place of Continue. Recents come from the local cache; in-flight work and progress need GitHub. The sidebar footer warns too.',
-          items: trio('home', 4, 'data=signedout', (d) =>
-            ({
-              A: 'An amber card with the command, a Copy button and Check again. In flight and progress say why they’re empty.',
-              B: 'The same banner as a node card with an amber edge. The hex map fogs over entirely.',
-              C: 'A single amber line with Check again; numbers show dashes.',
-            })[d],
-          ),
-        },
-      ],
-    },
-    {
-      title: 'Repository',
-      question: 'Repository: choose or start a map. Which layout makes the right map and its next step obvious?',
-      sections: [
-        {
-          title: 'wayfinder-map: two active maps and one completed',
-          note: '#40: map search/filter and a visible Open on every map. #42: the topbar has the repository switcher and no Start button, since starting a map is the sidebar’s job.',
-          items: trio('repo', 1, 'data=many', (d) =>
-            ({
-              A: {
-                idea: 'Map cards with the ring summary; the footer names the next ticket and has Open. Completed maps sit in their own section.',
-                pros: ['Familiar: today’s map card plus a footer'],
-                cons: ['Two maps fill the screen; a repository with ten maps scrolls a lot'],
-              },
-              B: {
-                idea: 'Each map is a wide card with its mini ticket graph on the left: done, claimed, next up and blocked are visible as shapes. Filter chips match the map page.',
-                pros: ['You recognise a map by its shape', 'Clicking the graph opens the map'],
-                cons: ['Tall rows; the graph is a sketch, not the real layout, for maps without loaded tickets'],
-              },
-              C: {
-                idea: 'A table: number, title and destination, progress bar, next up, running, updated, Open. Active, Completed and All as a segmented filter.',
-                pros: ['Scales to many maps', 'Next up and running are comparable down a column'],
-                cons: ['The least visual, and the furthest from the map page’s look'],
-              },
-            })[d],
-          ),
-        },
-        {
-          title: 'A repository with no maps',
-          note: '#40: the empty state becomes one “Start a new map” action. recipe-box has been opened but never had a map.',
-          items: trio('repo', 2, 'data=many&repo=RAbdelrhman/recipe-box', (d) =>
-            ({
-              A: 'A dashed empty card with one primary action, pre-filled with the repository.',
-              B: 'An empty graph with a dashed Destination node, then the one action.',
-              C: 'A dashed box with one action and its N shortcut.',
-            })[d],
-          ),
-        },
-      ],
-    },
-    {
-      title: 'Prototypes tab',
-      question: 'A map’s Prototypes tab (#42): compare and open the map’s prototypes. Which makes the one waiting on your pick impossible to miss?',
-      sections: [
-        {
-          title: 'Map #35: one waiting on your pick, four picked',
-          note: 'The in-flight “Pick a variant” item deep-links here (#40). The badge on the Prototypes tab turns blue while something waits on you. The sidebar is folded, as on every map page (#42).',
-          items: trio('protos', 1, 'data=many', (d) =>
-            ({
-              A: {
-                idea: 'Gallery. The waiting prototype is a highlighted callout with its variants and Open the canvas; the rest are tiles showing the picked variant.',
-                pros: ['Clear hierarchy: one thing to do, then history'],
-                cons: ['Decided prototypes only show the winner, not what it beat'],
-              },
-              B: {
-                idea: 'Decision board. One row per prototype with every variant side by side like the canvas; the picked one is outlined green, the losers dimmed; the waiting row has dashed outlines.',
-                pros: ['Reads like a record of decisions: what was on the table and what won', 'Closest to the canvas the user already knows'],
-                cons: ['Long page once a map has many prototypes'],
-              },
-              C: {
-                idea: 'List and detail. The list sorts waiting first; the detail shows the variants large, plus branch and decision facts. Click a row to switch.',
-                pros: ['Scales to many prototypes', 'Room for the facts #47/#53 might need (branch, decision)'],
-                cons: ['One prototype at a time; comparing across prototypes takes clicks'],
-              },
-            })[d],
-          ),
-        },
-        {
-          title: 'A map with no prototypes',
-          note: 'podcontrol map #2 has never had a prototype ticket.',
-          items: trio('protos', 2, 'data=many&repo=RAbdelrhman/podcontrol&map=2', (d) =>
-            ({
-              A: 'Heading “No prototypes yet” and what makes one appear.',
-              B: 'An empty board with a dashed placeholder where the variants will go.',
-              C: 'A dashed box with the same sentence.',
-            })[d],
-          ),
-        },
-      ],
-    },
-  ],
-};
-
-})();
-
-window.CANVAS = {
-  ...HANDOFF,
-  title: 'Wayfinder design prototypes',
-  base: {
-    ...HANDOFF.base,
-    stylesheets: [...new Set([...(HOME.base.stylesheets ?? []), ...(HANDOFF.base.stylesheets ?? [])])],
-  },
-  pages: [
-    ...HANDOFF.pages,
-    ...HOME.pages.map((page) => ({
-      ...page,
-      ticket: page.ticket ?? HOME.ticket,
-      sampleState: page.sampleState ?? HOME.sampleState,
-    })),
   ],
 };
