@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, session, shell } from 'electron';
+import { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, session, shell } from 'electron';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -12,6 +12,9 @@ import { DESKTOP_PORT, DesktopLifecycle, isInternalUrl, isSafeExternalUrl, start
 import { startAutoUpdates } from './updater.js';
 import type { DesktopUpdaterHandle } from './updater.js';
 import { shouldEnableUpdates } from './updaterPolicy.js';
+import { notificationBadgePng } from './notificationBadge.js';
+import { mapPath } from '../repoRoutes.js';
+import type { DesktopNotification } from '../notifications.js';
 
 const TRAY_ICON = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFSSURBVDhPjVOhbsMwEA0sLByyBwf3CYWDlUrGWjhNm29wpNLYQD9gcKrUfygKCRkcqTQYKaSJXTUqqKYq4E3npGnsNOpOeoriu/fe2T4HQUdIyvuSzMDiMbvy850hKZsIZWJJBk0IMmupsle/vg52FGSWPtGHIPMlaX3t84P/kGsRZb7lOO7VZKnSB7/oEgRt3k/uSudlYou5BpJwa4tGYQHoPUacWxwAHDB1hPJ+wPtpKk9XAFa7WgwoMJ9VYnbd6WQQSEqHziI7setsjwQFEg1Ei1KYv66AfrHX5ixWxHl4sI7snIR7RFUnTi1fq6Ts1lU9tl452r3jdBYO0uHxCn+bCXsOteMOEf+29496QgVtPlrJC+C5Oc3BOO4J0j9+URfsWPvvg8/CJs4QHDLPzHN255CPYd+DMp8+qeG8bDmfi3K47Hy8WSh9L5/MjV/H8QcYxvxKVQ6UNgAAAABJRU5ErkJggg==';
 
@@ -22,6 +25,7 @@ let runtime: WayfinderRuntime | null = null;
 let runtimeOrigin: string | null = null;
 let startupPromise: Promise<void> | null = null;
 let stopUpdates = (): void => undefined;
+let unreadNotifications = 0;
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] ?? character);
@@ -37,6 +41,45 @@ function showWindow(): void {
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
+}
+
+function updateTray(): void {
+  if (tray === null) return;
+  tray.setImage(unreadNotifications === 0
+    ? applicationIcon().resize({ width: 16, height: 16 })
+    : nativeImage.createFromBuffer(notificationBadgePng(unreadNotifications)));
+  tray.setToolTip(unreadNotifications === 0 ? 'Wayfinder' : 'Wayfinder · ' + String(unreadNotifications) + ' unread');
+  tray.setContextMenu(trayMenu());
+}
+
+function setUnreadNotifications(count: number): void {
+  unreadNotifications = Math.max(0, count);
+  updateTray();
+}
+
+function trayMenu(): Electron.Menu {
+  return Menu.buildFromTemplate([
+    { label: 'Open Wayfinder', click: showWindow },
+    { label: 'Home', click: () => navigate('/') },
+    { label: 'Start a new map', click: () => navigate('/new-map') },
+    { type: 'separator' },
+    { label: 'Quit', click: () => void confirmQuit() },
+  ]);
+}
+
+function showDesktopNotification(notification: DesktopNotification): void {
+  setUnreadNotifications(unreadNotifications + 1);
+  if (!Notification.isSupported()) return;
+  const native = new Notification({ title: notification.title, body: notification.body, icon: applicationIcon() });
+  native.on('click', () => {
+    if (mainWindow === null || runtimeOrigin === null) return;
+    const target = new URL(mapPath(notification.repo, notification.mapNumber), runtimeOrigin);
+    target.searchParams.set('view', 'map');
+    target.searchParams.set('ticket', String(notification.ticketNumber));
+    void mainWindow.loadURL(target.toString()).then(showWindow);
+    setUnreadNotifications(0);
+  });
+  native.show();
 }
 
 function navigate(path: '/' | '/new-map'): void {
@@ -128,13 +171,7 @@ function createTray(): Tray {
   const image = applicationIcon().resize({ width: 16, height: 16 });
   const appTray = new Tray(image, '4cf718aa-6a75-4d10-a817-7299cd31b519');
   appTray.setToolTip('Wayfinder');
-  appTray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Open Wayfinder', click: showWindow },
-    { label: 'Home', click: () => navigate('/') },
-    { label: 'Start a new map', click: () => navigate('/new-map') },
-    { type: 'separator' },
-    { label: 'Quit', click: () => void confirmQuit() },
-  ]));
+  appTray.setContextMenu(trayMenu());
   appTray.on('click', showWindow);
   return appTray;
 }
@@ -175,6 +212,8 @@ async function startRuntime(): Promise<void> {
                   },
                   status: () => (updaterHandle ? updaterHandle.status() : { status: 'disabled', currentVersion: app.getVersion() }),
                 },
+                onDesktopNotification: showDesktopNotification,
+                onNotificationsRead: () => setUnreadNotifications(0),
                 onShutdown: () => void quitApplication(),
               }),
             ),
@@ -261,6 +300,7 @@ if (!primaryInstance) {
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
     mainWindow = createWindow();
     tray = createTray();
+    updateTray();
     await startRuntime();
   });
 }

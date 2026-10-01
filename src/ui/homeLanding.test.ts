@@ -18,7 +18,7 @@ import type { HomeStorage } from './homeRecency.js';
 import type { ContinueDestination } from './homeView.js';
 
 function ticket(number: number, state: Ticket['state'], blockedBy: number[] = []): Ticket {
-  return { number, title: `Ticket ${String(number)}`, url: '', body: '', type: 'task', labels: [], open: state !== 'done', assignee: null, blockedBy, openBlockers: [], state };
+  return { number, title: `Ticket ${String(number)}`, url: '', body: '', type: 'task', labels: [], open: state !== 'done', assignee: null, blockedBy, openBlockers: [], state, updatedAt: null };
 }
 
 const MAP = {
@@ -28,6 +28,8 @@ const MAP = {
   tickets: [ticket(1, 'done'), ticket(2, 'frontier', [1]), ticket(3, 'blocked', [2])],
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
+  stalled: [],
+  pullRequests: [],
   settled: null,
   ticketsLoaded: true,
   sections: { destination: 'A calm Home.' },

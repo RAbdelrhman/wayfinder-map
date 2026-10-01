@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { HomeAccount } from '../home.js';
-import { settingsBodyHtml } from './settings.js';
+import { notificationSettingsHtml, settingsBodyHtml } from './settings.js';
 import type { SettingsView } from './settings.js';
 
 const ACCOUNT: HomeAccount = {
@@ -16,7 +16,7 @@ const ACCOUNT: HomeAccount = {
 };
 
 function view(patch: Partial<SettingsView> = {}): SettingsView {
-  return { account: ACCOUNT, theme: 'dark', tier: 'mid', cap: 4, progress: { style: 'trail', goal: 5 }, busy: null, ...patch };
+  return { account: ACCOUNT, theme: 'dark', tier: 'mid', cap: 4, progress: { style: 'trail', goal: 5 }, stalls: { untouchedClaimDays: 7, deadHandOffDays: 7 }, notifications: null, busy: null, ...patch };
 }
 
 describe('Settings dialog', () => {
@@ -59,6 +59,20 @@ describe('Settings dialog', () => {
 
     expect(html).toContain('data-settings-goal="5" aria-pressed="false" disabled');
     expect(html).toContain('Sign in to set a goal.');
+  });
+
+  it('offers a day count for each kind of stall, marking the saved one', () => {
+    const html = settingsBodyHtml(view({ stalls: { untouchedClaimDays: 14, deadHandOffDays: 3 } }));
+
+    expect(html).toContain('Stalled tickets');
+    expect(html).toContain('data-settings-claim-days="14" aria-pressed="true"');
+    expect(html).toContain('data-settings-claim-days="7" aria-pressed="false"');
+    expect(html).toContain('data-settings-hand-off-days="3" aria-pressed="true"');
+    expect(html).toContain('aria-label="Untouched claim, in days"');
+  });
+
+  it('disables the stall days until they load', () => {
+    expect(settingsBodyHtml(view({ stalls: null }))).toContain('data-settings-hand-off-days="7" aria-pressed="false" disabled');
   });
 
   it('locks the account buttons while a switch or sign-out runs', () => {

@@ -128,8 +128,8 @@ export class RepositoryStore {
         ? list({}, null)
         : Promise.all([choices?.(repo) ?? {}, viewer?.(repo) ?? null]).then(([forRepo, who]) => list(forRepo, who))
     )
-      .then(({ maps, hiddenMaps, warnings }) => {
-        const snapshot = { repo, fetchedAt: this.now().toISOString(), maps, hiddenMaps: hiddenMaps ?? 0, warnings };
+      .then(({ maps, hiddenMaps, publicMaps, warnings }) => {
+        const snapshot = { repo, fetchedAt: this.now().toISOString(), maps, hiddenMaps: hiddenMaps ?? 0, publicMaps: publicMaps ?? [], warnings };
         entry.snapshot = snapshot;
         return snapshot;
       })

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MapWatcher, NUDGE_GAP_MS } from './mapWatcher.js';
 import type { MapRead, MapWatchReader, PullRequestRead } from './mapWatcher.js';
 import type { MapEvent, RateLimit, WatchedPullRequest, WatchedTicket } from './mapWatch.js';
+import type { MapWatchState } from './mapWatchStore.js';
 import type { TicketState } from './types.js';
 
 const INTERVAL = 120_000;
@@ -18,7 +19,7 @@ function pr(number: number, overrides: Partial<WatchedPullRequest> = {}): Watche
 /** A reader that answers from queues, falling back to `unchanged` and the last pull requests. */
 function fakeReader() {
   const maps: Array<MapRead | Error> = [];
-  let pullRequests: PullRequestRead = { byTicket: new Map(), rateLimit: null };
+  let pullRequests: PullRequestRead = { byTicket: new Map(), lastCommits: new Map(), rateLimit: null };
   const etags: Array<string | null> = [];
   const reader: MapWatchReader & { mapReads: number; pullRequestReads: number } = {
     mapReads: 0,
@@ -43,8 +44,8 @@ function fakeReader() {
     fail(error: Error): void {
       maps.push(error);
     },
-    setPullRequests(entries: Array<[number, WatchedPullRequest[]]>): void {
-      pullRequests = { byTicket: new Map(entries), rateLimit: null };
+    setPullRequests(entries: Array<[number, WatchedPullRequest[]]>, lastCommits: Array<[number, string]> = []): void {
+      pullRequests = { byTicket: new Map(entries), lastCommits: new Map(lastCommits), rateLimit: null };
     },
   };
 }
@@ -57,6 +58,24 @@ describe('MapWatcher', () => {
   afterEach(() => vi.useRealTimers());
 
   const make = (reader: MapWatchReader): MapWatcher => new MapWatcher(reader, { intervalMs: INTERVAL, now: () => Date.now() });
+
+  it('answers stall detection with PRs and the newest branch commit per ticket, from the shared read', async () => {
+    const fake = fakeReader();
+    fake.setPullRequests([[1, [pr(10)]]], [[1, '2026-09-25T00:00:00Z'], [2, '2026-09-20T00:00:00Z']]);
+    const watcher = make(fake.reader);
+    expect(await watcher.activity('o/r')).toEqual(
+      new Map([
+        [1, { pullRequest: true, lastCommitAt: '2026-09-25T00:00:00Z' }],
+        [2, { pullRequest: false, lastCommitAt: '2026-09-20T00:00:00Z' }],
+      ]),
+    );
+    await watcher.activity('o/r');
+    expect(fake.reader.pullRequestReads).toBe(1);
+    await vi.advanceTimersByTimeAsync(INTERVAL / 2);
+    await watcher.activity('o/r');
+    expect(fake.reader.pullRequestReads).toBe(2);
+    watcher.close();
+  });
 
   it('takes the first read as a baseline, then reports what changed', async () => {
     const fake = fakeReader();
@@ -240,7 +259,7 @@ describe('MapWatcher', () => {
         reads += 1;
         return reads === 1 ? new Promise<MapRead>((resolve) => (finish = resolve)) : Promise.resolve({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null });
       },
-      readPullRequests: () => Promise.resolve({ byTicket: new Map(), rateLimit: null }),
+      readPullRequests: () => Promise.resolve({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }),
     });
     watcher.watch('o/r', 121, () => undefined);
     await vi.advanceTimersByTimeAsync(0);
@@ -267,6 +286,63 @@ describe('MapWatcher', () => {
     watcher.close();
   });
 
+  it('keeps every open map watched and stops only the map removed from the watch set', async () => {
+    const fake = fakeReader();
+    fake.changed([ticket(1, 'claimed')]);
+    fake.changed([ticket(2, 'frontier')]);
+    const watcher = make(fake.reader);
+    const stopped = vi.fn();
+    watcher.watch('o/r', 121, () => undefined);
+    watcher.watch('o/r', 35, () => undefined, stopped);
+    await vi.advanceTimersByTimeAsync(0);
+
+    watcher.reconcile('o/r', new Set([121]));
+    expect(stopped).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+
+    expect(fake.reader.mapReads).toBe(3);
+    watcher.close();
+  });
+
+  it('restores each saved snapshot and catches up with away events before resuming the interval', async () => {
+    const fake = fakeReader();
+    fake.changed([ticket(1, 'done'), ticket(2, 'frontier')], 'W/"new"');
+    const saved: { state: MapWatchState | null } = { state: null };
+    const stateStore = {
+      load: async (): Promise<MapWatchState> => ({
+        nextEventId: 4,
+        maps: [{
+          repo: 'o/r',
+          mapNumber: 121,
+          etag: 'W/"old"',
+          tickets: [ticket(1, 'claimed'), ticket(2, 'blocked')],
+          history: [],
+          pullRequestsRead: [],
+          lastPolledAt: Date.now() - INTERVAL * 2,
+        }],
+      }),
+      save: async (state: MapWatchState): Promise<void> => { saved.state = state; },
+    };
+    const watcher = new MapWatcher(fake.reader, { intervalMs: INTERVAL, now: () => Date.now(), stateStore });
+    await watcher.restore();
+    const events: MapEvent[] = [];
+    watcher.watch('o/r', 121, (event) => events.push(event));
+    await watcher.catchUp('o/r');
+
+    expect(fake.etags).toEqual(['W/"old"']);
+    expect(events.map((event) => [event.id, event.type, event.whileYouWereAway])).toEqual([
+      [4, 'ticket-closed', true],
+      [5, 'ticket-next', true],
+    ]);
+    expect(saved.state?.maps[0]).toMatchObject({
+      repo: 'o/r',
+      mapNumber: 121,
+      etag: 'W/"new"',
+      tickets: [{ number: 1, state: 'done' }, { number: 2, state: 'frontier' }],
+    });
+    watcher.close();
+  });
+
   it('stops reading once nobody is watching', async () => {
     const fake = fakeReader();
     fake.changed([ticket(1, 'claimed')]);
@@ -287,7 +363,7 @@ describe('MapWatcher', () => {
         reads += 1;
         return reads === 1 ? new Promise<MapRead>((resolve) => (finish = resolve)) : Promise.resolve({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null });
       },
-      readPullRequests: () => Promise.resolve({ byTicket: new Map(), rateLimit: null }),
+      readPullRequests: () => Promise.resolve({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }),
     });
     const stop = watcher.watch('o/r', 121, () => undefined);
     await vi.advanceTimersByTimeAsync(0);
@@ -366,5 +442,57 @@ describe('MapWatcher', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(fake.reader.mapReads).toBe(2);
     watcher.close();
+  });
+});
+
+describe('MapWatcher.ticketPullRequests (#130)', () => {
+  it('takes T3 Code first and reads GitHub only for a claimed ticket T3 Code has no snapshot for', async () => {
+    const fake = fakeReader();
+    fake.setPullRequests([[1, [pr(10, { checks: 'failing' })]], [2, [pr(20)]]]);
+    const tracked = new Map([[1, [pr(10, { checks: 'passing' })]]]);
+    const watcher = new MapWatcher(fake.reader, { trackedPullRequests: async () => tracked });
+
+    const trackedOnly = await watcher.ticketPullRequests('o/r', [{ number: 1, state: 'claimed' }, { number: 2, state: 'frontier' }]);
+    expect(fake.reader.pullRequestReads).toBe(0);
+    expect(trackedOnly.get(1)?.[0]?.checks).toBe('passing');
+
+    const both = await watcher.ticketPullRequests('o/r', [{ number: 1, state: 'claimed' }, { number: 2, state: 'claimed' }]);
+    expect(fake.reader.pullRequestReads).toBe(1);
+    expect(both.get(1)?.[0]?.checks).toBe('passing');
+    expect(both.get(2)?.[0]?.number).toBe(20);
+
+    // The repository read is shared, so asking again soon costs nothing.
+    await watcher.ticketPullRequests('o/r', [{ number: 2, state: 'claimed' }]);
+    expect(fake.reader.pullRequestReads).toBe(1);
+    watcher.close();
+  });
+
+  it('adds check counts and the reviewer to a T3 PR from the shared read only while it is fresh, without a GitHub call', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-26T12:00:00Z'));
+    try {
+      const fake = fakeReader();
+      const counts = { passed: 3, failed: 2, pending: 0 };
+      fake.setPullRequests([[1, [pr(10, { checks: 'failing', review: 'changes_requested', checkCounts: counts, reviewer: 'sam-k' })]]]);
+      const tracked = new Map([[1, [pr(10, { checks: 'failing', review: 'changes_requested' })]]]);
+      const watcher = new MapWatcher(fake.reader, { intervalMs: INTERVAL, now: () => Date.now(), trackedPullRequests: async () => tracked });
+      const tickets = [{ number: 1, state: 'claimed' as const }];
+
+      // Nothing has read GitHub yet, and showing the panel must not be what does.
+      expect((await watcher.ticketPullRequests('o/r', tickets)).get(1)?.[0]?.checkCounts).toBeUndefined();
+      expect(fake.reader.pullRequestReads).toBe(0);
+
+      await watcher.activity('o/r');
+      const filled = (await watcher.ticketPullRequests('o/r', tickets)).get(1)?.[0];
+      expect(filled).toMatchObject({ checks: 'failing', checkCounts: counts, reviewer: 'sam-k' });
+      expect(fake.reader.pullRequestReads).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(INTERVAL / 2);
+      expect((await watcher.ticketPullRequests('o/r', tickets)).get(1)?.[0]?.checkCounts).toBeUndefined();
+      expect(fake.reader.pullRequestReads).toBe(1);
+      watcher.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

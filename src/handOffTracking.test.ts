@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { buildAutoDecision, usageAgeMs } from './autoDecision.js';
 import { HandOffStore, HandOffTracker, mapT3Status, representativeHandOffs, type HandOffStatusDto } from './handOffTracking.js';
 
 const input = {
@@ -227,6 +228,154 @@ describe('HandOffStore', () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  describe('Auto decisions (#172)', () => {
+    const auto = (overrides: Record<string, unknown> = {}) => {
+      const built = buildAutoDecision(
+        {
+          scoring: { version: 'rules-1', reason: 'Hard: concurrent starts share one T3 connection' },
+          proposed: { tier: 'hard', provider: 'codex', model: 'gpt-5.6-sol', effort: 'high' },
+          final: { tier: 'mid', provider: 'codex', model: 'gpt-5.6-terra', effort: 'medium' },
+          usage: { state: 'available', observedAt: '2026-09-30T11:59:00.000Z' },
+          ...overrides,
+        },
+        new Date('2026-09-30T12:00:00.000Z'),
+      );
+      if (built === null) throw new Error('expected a decision');
+      return built;
+    };
+    const thread = (extra: Record<string, unknown> = {}) => ({
+      snapshotSequence: 1,
+      threads: [{
+        id: 'thread-1',
+        modelSelection: { instanceId: 'codex', model: 'gpt-5.6-terra', options: [{ id: 'reasoningEffort', value: 'medium' }] },
+        ...extra,
+      }],
+    });
+
+    it('keeps the proposal, final choice, usage age and outcome across a restart', async () => {
+      const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+      const filePath = join(directory, 'hand-offs.json');
+      let now = new Date('2026-09-30T12:00:00.000Z');
+      try {
+        const store = new HandOffStore({ filePath, now: () => now });
+        await store.record({ ...input, tier: 'mid', auto: auto() });
+        now = new Date('2026-09-30T12:20:00.000Z');
+        await store.applySnapshot('env-1', input.t3Origin ?? '', thread({
+          session: { status: 'ready' },
+          latestTurn: { state: 'completed', settledAt: '2026-09-30T12:19:00.000Z' },
+        }));
+
+        const [restarted] = await new HandOffStore({ filePath }).list();
+        expect(restarted?.auto).toMatchObject({
+          scoring: { version: 'rules-1', reason: 'Hard: concurrent starts share one T3 connection' },
+          proposed: { tier: 'hard', model: 'gpt-5.6-sol', effort: 'high' },
+          final: { tier: 'mid', model: 'gpt-5.6-terra', effort: 'medium' },
+          overrides: ['tier', 'model', 'effort'],
+          usage: { state: 'available', observedAt: '2026-09-30T11:59:00.000Z' },
+          decidedAt: '2026-09-30T12:00:00.000Z',
+          outcome: { result: 'finished', at: '2026-09-30T12:20:00.000Z' },
+        });
+        expect(restarted?.auto === undefined ? null : usageAgeMs(restarted.auto)).toBe(60_000);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it('records an in-session model change and a usage-limit error apart from the proposal', async () => {
+      const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+      const filePath = join(directory, 'hand-offs.json');
+      try {
+        const store = new HandOffStore({ filePath, now: () => new Date('2026-09-30T12:10:00.000Z') });
+        await store.record({ ...input, auto: auto({ final: { tier: 'hard', provider: 'codex', model: 'gpt-5.6-sol', effort: 'high' } }) });
+        await store.applySnapshot('env-1', input.t3Origin ?? '', thread({
+          modelSelection: { instanceId: 'codex', model: 'gpt-5.6-sol', options: [{ id: 'reasoningEffort', value: 'high' }] },
+        }));
+        await store.applySnapshot('env-1', input.t3Origin ?? '', {
+          snapshotSequence: 2,
+          threads: [{
+            id: 'thread-1',
+            modelSelection: { instanceId: 'claude', model: 'opus' },
+            session: { status: 'error', lastError: 'You have hit your usage limit. Resets in 2h.' },
+          }],
+        });
+        await store.applySnapshot('env-1', input.t3Origin ?? '', {
+          snapshotSequence: 3,
+          threads: [{
+            id: 'thread-1',
+            modelSelection: { instanceId: 'claude', model: 'opus' },
+            session: { status: 'error', lastError: 'You have hit your usage limit. Resets in 2h.' },
+          }],
+        });
+
+        const [saved] = await new HandOffStore({ filePath }).list();
+        // The user kept Auto's proposal, so the later switch is a model change, not an override.
+        expect(saved?.auto).toMatchObject({
+          overrides: [],
+          modelChanges: [{ from: { model: 'gpt-5.6-sol', effort: 'high' }, to: { provider: 'claude', model: 'opus' } }],
+          usageLimitErrors: [{ model: 'opus' }],
+          outcome: { result: 'failed' },
+        });
+        expect(saved?.auto?.modelChanges).toHaveLength(1);
+        expect(saved?.auto?.usageLimitErrors).toHaveLength(1);
+        expect(saved?.auto?.final).toMatchObject({ model: 'gpt-5.6-sol' });
+        // The decision keeps the fact of the error, never its text (the record's own `lastError` is unchanged).
+        expect(JSON.stringify(saved?.auto)).not.toContain('Resets in 2h');
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it('ends a hand-off that never reached a thread as untracked', async () => {
+      const store = new HandOffStore({ filePath: null, now: () => new Date('2026-09-30T12:00:00.000Z') });
+      await store.record({ ...input, threadId: null, rung: 'clipboard', auto: auto() });
+      await expect(store.list()).resolves.toMatchObject([{ auto: { outcome: { result: 'untracked', at: '2026-09-30T12:00:00.000Z' } } }]);
+    });
+
+    it('keeps the decision under the hand-off retention and leaves other hand-offs without one', async () => {
+      let now = new Date('2026-09-01T00:00:00.000Z');
+      const store = new HandOffStore({ filePath: null, now: () => now });
+      await store.record({ ...input, auto: auto() });
+      const plain = await store.record({ ...input, ticketNumber: 12, threadId: 'thread-2' });
+      await store.applySnapshot('env-1', input.t3Origin ?? '', {
+        snapshotSequence: 1,
+        threads: [
+          { id: 'thread-1', latestTurn: { state: 'completed', settledAt: now.toISOString() } },
+          { id: 'thread-2', session: { status: 'running' } },
+        ],
+      });
+      expect((await store.list()).find((item) => item.id === plain.id)).not.toHaveProperty('auto');
+      now = new Date('2026-10-03T00:00:00.000Z');
+      await expect(store.list()).resolves.toMatchObject([{ id: plain.id }]);
+    });
+
+    it('does not let a caller mutate the stored decision through a read', async () => {
+      const store = new HandOffStore({ filePath: null });
+      await store.record({ ...input, auto: auto() });
+      const [first] = await store.list();
+      first?.auto?.modelChanges.push({ at: 'x', from: { provider: null, model: 'a', effort: null }, to: { provider: null, model: 'b', effort: null } });
+      const [second] = await store.list();
+      expect(second?.auto?.modelChanges).toEqual([]);
+    });
+
+    it('drops a damaged decision on load but keeps the hand-off', async () => {
+      const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+      const filePath = join(directory, 'hand-offs.json');
+      try {
+        await new HandOffStore({ filePath }).record({ ...input, auto: auto() });
+        const parsed = JSON.parse(await readFile(filePath, 'utf8')) as { records: Array<Record<string, unknown>> };
+        const [record] = parsed.records;
+        if (record === undefined) throw new Error('expected a record');
+        record['auto'] = { proposed: 'mid', usedPercent: 91 };
+        await writeFile(filePath, JSON.stringify({ version: 2, records: [record] }), 'utf8');
+        const [loaded] = await new HandOffStore({ filePath }).list();
+        expect(loaded).toMatchObject({ threadId: 'thread-1' });
+        expect(loaded).not.toHaveProperty('auto');
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
   });
 
   it('updates only from current sequence data and prunes 30 days after terminal status', async () => {

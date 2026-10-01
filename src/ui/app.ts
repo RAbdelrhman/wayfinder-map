@@ -4,7 +4,10 @@ import type { HandOffStatusDto } from '../handOffTracking.js';
 import { isLiveHandOff } from '../handOffLiveness.js';
 import { prototypeBranch } from '../prompt.js';
 import { TICKET_TYPES } from '../types.js';
-import type { MapSections, MapSnapshot, OutsideTicket, Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
+import type { MapSections, MapSnapshot, OutsideTicket, Prototype, Stall, Ticket, TicketPullRequest, TicketState, TicketType, WayfinderMap } from '../types.js';
+import type { MapEvent } from '../mapWatch.js';
+import { DEFAULT_NOTIFICATION_SETTINGS, readNotificationSettings } from '../notificationTypes.js';
+import type { NotificationSettings } from '../notificationTypes.js';
 import {
   TIERS,
   TIER_HINT,
@@ -32,12 +35,24 @@ import { icon } from './icons.js';
 import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { FOG_KEY_ROW, PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
-import { mountSettings } from './settings.js';
+import { mountSettings, NOTIFICATION_SETTINGS_EVENT } from './settings.js';
+import { mountMapEventInbox } from './mapEventInbox.js';
 import { bindPan } from './pan.js';
 import { nextTabIndex, tabAttrs, tabPanelAttrs } from './tabs.js';
 import type { NavigationController, NavigationView } from './navigation.js';
 import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
 import { recordMapOpened } from './homeRecency.js';
+import {
+  SIGNAL_KEY_ROWS,
+  criticalEdges,
+  criticalPathButtonHtml,
+  edgeKey,
+  pullRequestLinesHtml,
+  pullRequestMetaHtml,
+  pullRequestText,
+  stallWords,
+} from './signals.js';
+import type { StallWords } from './signals.js';
 import {
   cardShowsHandOff,
   focusedMapTicketNumber,
@@ -49,6 +64,16 @@ import {
   restoreMapTicketFocus,
 } from './handOffs.js';
 import { batchCardChip, mountStartNext } from './startNext.js';
+import {
+  desktopNotificationFor,
+  changedPrototypeNotifications,
+  handOffTransitionNotifications,
+  mapEventNotification,
+  mountNotificationInbox,
+  mountUnblockedNotice,
+  statusNotification,
+} from './notifications.js';
+import type { NewInboxNotification, NotificationInboxController, UnblockedTicket } from './notifications.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -119,6 +144,7 @@ const els = {
   inspector: need('inspector'),
   hovercard: need('hovercard'),
   toast: need('toast'),
+  criticalPath: need<HTMLButtonElement>('critical-path'),
   modelsDialog: need<HTMLDialogElement>('models-dialog'),
   tierRows: need('tier-rows'),
 };
@@ -145,13 +171,58 @@ let zoom = 1;
 /** The map the canvas was last homed for, so a background refresh keeps the view where it is. */
 let homedMap: number | null = null;
 let inspectorTab: 'brief' | 'ticket' = 'brief';
+/** The critical-path count is pressed: everything off the path is dimmed on the map and hidden in the table. */
+let pathFocus = false;
 let briefSection: keyof MapSections = 'destination';
 
 let query = '';
 let navigation: NavigationController | null = null;
 const handOffSurface = mountHandOffs();
+const notificationInbox = mountNotificationInbox();
+const unblockedNotice = mountUnblockedNotice(need('unblocked-notice'), (ticketNumber) => select(ticketNumber), startUnblockedBatch);
+let notificationSettings: NotificationSettings = { ...DEFAULT_NOTIFICATION_SETTINGS };
+let pendingMapEvents: MapEvent[] = [];
+let previousHandOffRecords: readonly HandOffStatusDto[] | null = null;
+const mapEventInbox = mountMapEventInbox((event) => {
+  if (snapshot === null) pendingMapEvents.push(event);
+  else void receiveMapEvent(event);
+});
 let handOffRecords: readonly HandOffStatusDto[] = [];
 let handOffVisualKey = '';
+let notificationSettingsChanged = false;
+
+const notificationSettingsReady = fetch('/api/notification-settings')
+  .then((response) => response.json())
+  .then((value: unknown) => {
+    if (!notificationSettingsChanged) notificationSettings = readNotificationSettings(value);
+  })
+  .catch(() => undefined);
+
+document.addEventListener(NOTIFICATION_SETTINGS_EVENT, (event) => {
+  notificationSettingsChanged = true;
+  notificationSettings = (event as CustomEvent<NotificationSettings>).detail;
+});
+
+async function publishNotification(notification: NewInboxNotification): Promise<boolean> {
+  await notificationSettingsReady;
+  if (!notificationSettings[notification.kind]) return false;
+  const added = notificationInbox.push(notification);
+  if (!added) return false;
+  const saved = notificationInbox.list().find((item) => item.id === notification.id);
+  if (saved !== undefined) {
+    void fetch('/api/desktop/notification', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(desktopNotificationFor(saved)),
+    }).catch(() => undefined);
+  }
+  return true;
+}
+
+/** The "ready" notice's Start goes through the same batch as Start next, so the cap and queue are one. */
+function startUnblockedBatch(ticketNumbers: readonly number[]): Promise<readonly number[]> {
+  return startNext.startTickets(ticketNumbers);
+}
 
 function currentMap(): WayfinderMap | null {
   return snapshot?.maps[activeMap] ?? null;
@@ -161,6 +232,23 @@ function ticketHandOff(map: WayfinderMap | null, ticketNumber: number): HandOffS
   if (map === null || snapshot === null) return undefined;
   // /api/hand-offs already keeps one record per ticket, the one that is actually running.
   return handOffRecords.find((handOff) => handOff.repo.toLowerCase() === snapshot?.repo.toLowerCase() && handOff.mapNumber === map.number && handOff.ticketNumber === ticketNumber);
+}
+
+function notifyHandOffTransitions(previous: readonly HandOffStatusDto[], next: readonly HandOffStatusDto[]): void {
+  const map = currentMap();
+  if (map === null || snapshot === null) return;
+  const ticketNumbers = new Set([...map.tickets, ...map.outside].map((ticket) => ticket.number));
+  const scoped = (items: readonly HandOffStatusDto[]): HandOffStatusDto[] => items
+    .filter((handOff) =>
+      handOff.repo.toLocaleLowerCase() === snapshot?.repo.toLocaleLowerCase() &&
+      handOff.mapNumber === map.number &&
+      handOff.ticketNumber !== null &&
+      ticketNumbers.has(handOff.ticketNumber),
+    )
+    .map((handOff) => ({ ...handOff, mapTitle: map.title }));
+  for (const notification of handOffTransitionNotifications(scoped(previous), scoped(next))) {
+    void publishNotification(notification);
+  }
 }
 
 function activeTicketHandOffs(map: WayfinderMap | null): HandOffStatusDto[] {
@@ -181,6 +269,9 @@ function inT3TicketNumbers(map: WayfinderMap | null): ReadonlySet<number> {
 }
 
 handOffSurface.subscribe((records) => {
+  const previous = previousHandOffRecords;
+  previousHandOffRecords = records;
+  notifyHandOffTransitions(previous ?? [], records);
   handOffRecords = records;
   const key = handOffVisualSignature(records);
   if (key === handOffVisualKey) return;
@@ -212,8 +303,77 @@ function repaintCards(): void {
 function rememberMapOpen(repo: string, mapNumber: number): void {
   try {
     recordMapOpened(repo, mapNumber, Date.now(), localStorage);
+    const map = snapshot?.maps.find((candidate) => candidate.number === mapNumber);
+    if (map !== undefined && map.open && map.settled === null) mapEventInbox.openMap(repo, mapNumber);
   } catch {
     // Recency is optional and must not block opening a map.
+  }
+}
+
+const closedTicketsByEventTime = new Map<string, number[]>();
+
+async function receiveMapEvent(event: MapEvent): Promise<void> {
+  const eventSnapshot = snapshot;
+  const map = eventSnapshot?.repo.toLocaleLowerCase() === event.repo.toLocaleLowerCase()
+    ? eventSnapshot.maps.find((candidate) => candidate.number === event.mapNumber)
+    : undefined;
+  const mapTitle = map?.title ?? 'Map #' + String(event.mapNumber);
+  const eventKey = event.repo.toLocaleLowerCase() + '#' + String(event.mapNumber) + ':' + event.at;
+  if (event.type === 'ticket-closed') {
+    const closed = closedTicketsByEventTime.get(eventKey) ?? [];
+    closed.push(event.ticket.number);
+    closedTicketsByEventTime.set(eventKey, closed);
+    if (closed.length === 1) {
+      window.setTimeout(() => {
+        if (closedTicketsByEventTime.get(eventKey) === closed) closedTicketsByEventTime.delete(eventKey);
+      }, 10_000);
+    }
+    return;
+  }
+  const notification = mapEventNotification(event, mapTitle);
+  if (notification === null || !(await publishNotification(notification))) return;
+  if (notification.kind !== 'unblocked') return;
+  const route = parseRepoPagePath(window.location.pathname);
+  if (map === undefined || route?.mapNumber !== event.mapNumber || route.repo.toLocaleLowerCase() !== event.repo.toLocaleLowerCase()) return;
+  const ticket = ticketAt(map, event.ticket.number);
+  if (ticket === undefined) return;
+  const closed = closedTicketsByEventTime.get(eventKey);
+  const closedTicket = closed?.shift() ?? null;
+  if (closed !== undefined && closed.length === 0) closedTicketsByEventTime.delete(eventKey);
+  const noticeTicket: UnblockedTicket = { number: ticket.number, title: ticket.title, type: ticket.type };
+  unblockedNotice.add(noticeTicket, closedTicket);
+  const node = els.nodes.querySelector<HTMLElement>('.node[data-number="' + String(ticket.number) + '"]');
+  if (node !== null && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    node.classList.add('is-newly-unblocked');
+    window.setTimeout(() => node.classList.remove('is-newly-unblocked'), 750);
+  }
+}
+
+function flushPendingMapEvents(): void {
+  const pending = pendingMapEvents.splice(0);
+  for (const event of pending) void receiveMapEvent(event);
+}
+
+function notifyNewStalls(previous: MapSnapshot, next: MapSnapshot): void {
+  for (const map of next.maps) {
+    const oldMap = previous.maps.find((candidate) => candidate.number === map.number);
+    if (oldMap === undefined) continue;
+    const before = new Set(oldMap.stalled.map((stall) => String(stall.ticket) + ':' + stall.kind + ':' + stall.since));
+    for (const stall of map.stalled) {
+      if (before.has(String(stall.ticket) + ':' + stall.kind + ':' + stall.since)) continue;
+      const ticket = allTickets(map).find((candidate) => candidate.number === stall.ticket);
+      if (ticket === undefined) continue;
+      void publishNotification(statusNotification(
+        'stalled',
+        'stall:' + next.repo.toLocaleLowerCase() + '#' + String(map.number) + '#' + String(stall.ticket) + ':' + stall.kind + ':' + stall.since,
+        next.repo,
+        map.number,
+        map.title,
+        ticket.number,
+        ticket.title,
+        stall.since,
+      ));
+    }
   }
 }
 function syncedButton(): HTMLButtonElement {
@@ -321,7 +481,10 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
         }
         return false;
       }
-      snapshot = body as MapSnapshot;
+      const nextSnapshot = body as MapSnapshot;
+      if (snapshot !== null) notifyNewStalls(snapshot, nextSnapshot);
+      snapshot = nextSnapshot;
+      mapEventInbox.reconcileSnapshot(snapshot);
       const currentRoute = parseRepoPagePath(window.location.pathname);
       const routedMap = currentRoute?.mapNumber === null
         ? -1
@@ -344,6 +507,7 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
         inspectorTab = selected === null ? 'brief' : 'ticket';
       }
       render();
+      flushPendingMapEvents();
       if (planningHandOffId !== null) void loadPlanningHandoff();
       if (mode === 'initial' && selected !== null && view === 'map') {
         const node = els.nodes.querySelector<HTMLElement>(`.node[data-number="${String(selected)}"]`);
@@ -403,6 +567,23 @@ function dependents(map: WayfinderMap, number: number): number[] {
   return [...map.tickets, ...map.outside].filter((ticket) => ticket.blockedBy.includes(number)).map((ticket) => ticket.number);
 }
 
+function pullRequestOf(map: WayfinderMap, number: number): TicketPullRequest | undefined {
+  return map.pullRequests.find((pullRequest) => pullRequest.ticket === number);
+}
+
+function stallOf(map: WayfinderMap, number: number): Stall | undefined {
+  return map.stalled.find((stall) => stall.ticket === number);
+}
+
+function stallCopy(map: WayfinderMap, ticket: Ticket, stall: Stall): StallWords {
+  const handOff = ticketHandOff(map, ticket.number);
+  return stallWords(stall, ticket.assignee, handOff !== undefined && handOff.threadId === null, Date.now());
+}
+
+function onCriticalPath(map: WayfinderMap, number: number): boolean {
+  return map.criticalPath.remaining > 0 && map.criticalPath.tickets.includes(number);
+}
+
 /* ---------- render ---------- */
 
 function render(): void {
@@ -418,6 +599,7 @@ function render(): void {
 
   els.app.classList.toggle('is-prototypes', view === 'prototypes');
   renderSynced();
+  renderCriticalPath();
   renderPlanningHandoff();
   renderFilters();
   renderKey();
@@ -436,6 +618,17 @@ function renderSynced(): void {
   const synced = syncedButton();
   const label = synced.querySelector<HTMLElement>('.synced-label') ?? synced;
   label.textContent = text;
+}
+
+/** "N left on the critical path", after the view tabs. It focuses the path on the map and in the table. */
+function renderCriticalPath(): void {
+  const map = currentMap();
+  const html = map === null || view === 'prototypes' ? null : criticalPathButtonHtml(map.criticalPath);
+  if (html === null) pathFocus = false;
+  els.criticalPath.hidden = html === null;
+  els.criticalPath.innerHTML = html ?? '';
+  els.criticalPath.setAttribute('aria-pressed', String(pathFocus));
+  els.criticalPath.title = pathFocus ? 'Show every ticket' : 'Show only the critical path';
 }
 
 function renderFilters(): void {
@@ -471,7 +664,7 @@ function renderKey(): void {
     const style = TYPE_STYLE[type];
     return `<div class="keyrow is-type">${icon(style.icon)}<b>${escapeHtml(style.label)}</b>${escapeHtml(style.blurb)}</div>`;
   }).join('');
-  els.keyMenu.innerHTML = `${states}${FOG_KEY_ROW}<div class="menu-sep"></div>${types}`;
+  els.keyMenu.innerHTML = `${states}${FOG_KEY_ROW}<div class="menu-sep"></div>${SIGNAL_KEY_ROWS}<div class="menu-sep"></div>${types}`;
 }
 
 /** A card's chip while its ticket waits in a Start next batch or is being handed off. */
@@ -484,25 +677,42 @@ function batchChip(ticketNumber: number): string | null {
 function nodeHtml(ticket: Ticket | OutsideTicket, position: PositionedNode): string {
   const style = STATE_STYLE[ticket.state];
   const fog = 'pullRequest' in ticket;
-  const handOff = ticketHandOff(currentMap(), ticket.number);
-  const meta =
+  const map = currentMap();
+  const handOff = ticketHandOff(map, ticket.number);
+  const stall = map === null ? undefined : stallOf(map, ticket.number);
+  const stalled = map === null || stall === undefined ? null : stallCopy(map, ticket, stall);
+  const pullRequest = map === null ? undefined : pullRequestOf(map, ticket.number);
+  const critical = map !== null && onCriticalPath(map, ticket.number);
+  const plainMeta =
     ticket.state === 'blocked'
       ? `blocked by ${ticket.openBlockers.map((n) => `#${String(n)}`).join(', ')}`
       : ticket.assignee !== null
         ? `@${ticket.assignee}`
         : (ticket.type ?? (fog && ticket.pullRequest ? 'pull request' : 'untyped'));
+  // #125: a stall says so; otherwise the PR, its checks and review take the line `@assignee` had.
+  const meta =
+    stalled !== null
+      ? `<span class="signal-meta">${icon(icons.CLOCK)}${escapeHtml(`Stalled · ${stalled.short}`)}</span>`
+      : pullRequest !== undefined
+        ? pullRequestMetaHtml(pullRequest)
+        : escapeHtml(plainMeta);
+  const signals = [
+    critical ? 'on the critical path' : '',
+    stalled === null ? '' : `stalled, ${stalled.short}`,
+    pullRequest === undefined ? '' : pullRequestText(pullRequest),
+  ].filter((part) => part !== '');
 
-  return `<button type="button" class="node${ticket.state === 'done' ? ' is-done' : ''}${fog ? ' is-outside' : ''}"
+  return `<button type="button" class="node${ticket.state === 'done' ? ' is-done' : ''}${fog ? ' is-outside' : ''}${stalled === null ? '' : ' is-stalled'}"
     data-number="${String(ticket.number)}"
     style="--accent: var(${style.variable}); left:${String(position.x)}px; top:${String(position.y)}px; width:${String(position.width)}px; height:${String(position.height)}px"
-    aria-label="${escapeHtml(`#${String(ticket.number)} ${ticket.title}, ${style.label}${fog ? ', fog' : ''}${handOff === undefined ? '' : `, hand-off ${handOffPresentation(handOff).label}`}`)}">
+    aria-label="${escapeHtml(`#${String(ticket.number)} ${ticket.title}, ${style.label}${fog ? ', fog' : ''}${handOff === undefined ? '' : `, hand-off ${handOffPresentation(handOff).label}`}${signals.map((part) => `, ${part}`).join('')}`)}">
     <span class="node-top">
       ${typeGlyph(ticket.type)}
       <span class="num">#${String(ticket.number)}</span>
       ${cardShowsHandOff(ticket.state, handOff) ? handOffPill(handOff, true) : (batchChip(ticket.number) ?? stateChip(ticket.state))}
     </span>
     <span class="title">${escapeHtml(ticket.title)}</span>
-    <span class="meta">${escapeHtml(meta)}</span>
+    <span class="meta">${meta}</span>
   </button>`;
 }
 
@@ -523,6 +733,7 @@ function renderGraph(): void {
   const byNumber = new Map(map.tickets.map((ticket) => [ticket.number, ticket]));
   const outsideByNumber = new Map(map.outside.map((outside) => [outside.number, outside]));
   const positions = new Map(layout.nodes.map((node) => [node.number, node]));
+  const critical = map.criticalPath.remaining > 0 ? criticalEdges(map.criticalPath) : new Set<string>();
 
   els.canvas.style.width = `${String(layout.width)}px`;
   els.canvas.style.height = `${String(layout.height)}px`;
@@ -554,7 +765,8 @@ function renderGraph(): void {
       const x2 = to.x;
       const y2 = to.y + to.height / 2;
       const bend = Math.max(28, (x2 - x1) / 2);
-      return `<path class="${live ? 'is-live' : ''}" data-from="${String(edge.from)}" data-to="${String(edge.to)}" d="M${String(x1)},${String(y1)} C${String(x1 + bend)},${String(y1)} ${String(x2 - bend)},${String(y2)} ${String(x2)},${String(y2)}" />`;
+      const classes = [live ? 'is-live' : '', critical.has(edgeKey(edge.from, edge.to)) ? 'is-critical' : ''].filter((name) => name !== '').join(' ');
+      return `<path class="${classes}" data-from="${String(edge.from)}" data-to="${String(edge.to)}" d="M${String(x1)},${String(y1)} C${String(x1 + bend)},${String(y1)} ${String(x2 - bend)},${String(y2)} ${String(x2)},${String(y2)}" />`;
     })
     .join('');
 
@@ -576,12 +788,20 @@ function renderTable(): void {
   const rows = allTickets(map)
     .map((ticket) => {
       const style = STATE_STYLE[ticket.state];
+      const pullRequest = pullRequestOf(map, ticket.number);
+      const stall = stallOf(map, ticket.number);
+      const notes = [
+        onCriticalPath(map, ticket.number) ? 'On the critical path' : '',
+        stall === undefined ? '' : `Stalled: ${stallCopy(map, ticket, stall).short}`,
+      ].filter((note) => note !== '');
       return `<tr data-number="${String(ticket.number)}">
         <td class="num">#${String(ticket.number)}</td>
         <td><span class="typecell">${icon(typeStyle(ticket.type).icon)}${escapeHtml(typeStyle(ticket.type).label)}</span></td>
         <td>${escapeHtml(ticket.title)}</td>
         <td><span class="cellchip" style="--accent: var(${style.variable})">${icon(style.icon)}${escapeHtml(style.label)}</span></td>
         <td>${ticket.assignee === null ? '—' : escapeHtml(`@${ticket.assignee}`)}</td>
+        <td>${pullRequest === undefined ? '—' : `<a href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer">${escapeHtml(pullRequestText(pullRequest))}</a>`}</td>
+        <td>${notes.length === 0 ? '—' : escapeHtml(notes.join('. '))}</td>
         <td class="num">${ticket.blockedBy.length === 0 ? '—' : ticket.blockedBy.map((n) => `#${String(n)}`).join(', ')}</td>
       </tr>`;
     })
@@ -589,7 +809,7 @@ function renderTable(): void {
 
   els.tableWrap.innerHTML = `<table>
     <thead><tr>
-      <th class="num">Issue</th><th>Type</th><th>Title</th><th>State</th><th>Assignee</th><th class="num">Blocked by</th>
+      <th class="num">Issue</th><th>Type</th><th>Title</th><th>State</th><th>Assignee</th><th>Pull request</th><th>Notes</th><th class="num">Blocked by</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
@@ -606,6 +826,7 @@ const prototypeLoads = new Map<number, PrototypeLoad>();
 function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
   const existing = prototypeLoads.get(map.number);
   if (existing !== undefined && !force) return existing;
+  const previous = existing?.status === 'ready' ? existing.list : null;
   const loading: PrototypeLoad = { status: 'loading' };
   prototypeLoads.set(map.number, loading);
   void (async () => {
@@ -627,6 +848,9 @@ function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
       next = { status: 'failed', error: (error as Error).message };
     }
     if (prototypeLoads.get(map.number) !== loading) return;
+    if (force && previous !== null && next.status === 'ready') {
+      for (const notification of changedPrototypeNotifications(repoName(), map, previous, next.list)) void publishNotification(notification);
+    }
     prototypeLoads.set(map.number, next);
     if (currentMap()?.number !== map.number) return;
     navigation?.setPrototypeCount(next.status === 'ready' ? next.list.length : null);
@@ -706,25 +930,29 @@ function syncHighlights(): void {
     return ticket !== undefined && matches(ticket);
   };
   const chain: Lineage | null = hovered === null ? null : lineage(graphTickets(map), hovered);
+  const pathTickets = new Set(pathFocus ? map.criticalPath.tickets : []);
+  const pathEdges = pathFocus ? criticalEdges(map.criticalPath) : null;
+  const offPath = (number: number): boolean => pathFocus && !pathTickets.has(number);
   const related = (number: number): boolean =>
     chain === null || number === hovered || chain.upstream.has(number) || chain.downstream.has(number);
 
   for (const node of els.nodes.querySelectorAll<HTMLElement>('.node')) {
     const number = Number(node.dataset['number']);
     node.classList.toggle('is-selected', number === selected);
-    node.classList.toggle('is-dim', !related(number) || !shown(number));
+    node.classList.toggle('is-dim', !related(number) || !shown(number) || offPath(number));
   }
 
   for (const path of els.edges.querySelectorAll<SVGPathElement>('path')) {
     const edge = { from: Number(path.dataset['from']), to: Number(path.dataset['to']) };
     const onPath = chain !== null && hovered !== null && onLineage(edge, hovered, chain);
     path.classList.toggle('is-path', onPath);
-    path.classList.toggle('is-dim', chain === null ? !(shown(edge.from) && shown(edge.to)) : !onPath);
+    const offPathEdge = pathEdges !== null && !pathEdges.has(edgeKey(edge.from, edge.to));
+    path.classList.toggle('is-dim', (chain === null ? !(shown(edge.from) && shown(edge.to)) : !onPath) || offPathEdge);
   }
 
   for (const row of els.tableWrap.querySelectorAll<HTMLElement>('tr[data-number]')) {
     const number = Number(row.dataset['number']);
-    row.hidden = !shown(number);
+    row.hidden = !shown(number) || offPath(number);
     row.classList.toggle('is-selected', number === selected);
   }
 }
@@ -848,9 +1076,12 @@ function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
   const waitingOn = ticket.openBlockers.map((n) => `#${String(n)}`);
   const startable = startableReason(ticket);
   const trackedHandOff = ticketHandOff(map, ticket.number);
+  const stall = stallOf(map, ticket.number);
 
   const banner =
-    ticket.state === 'blocked'
+    stall !== undefined
+      ? `<b>Stalled.</b> ${escapeHtml(stallCopy(map, ticket, stall).long)}`
+      : ticket.state === 'blocked'
       ? `Waiting on <b>${escapeHtml(waitingOn.join(' and '))}</b>. Copy the prompt now; starting unlocks when ${waitingOn.length === 1 ? 'it closes' : 'they close'}.`
       : ticket.state === 'done'
         ? 'This ticket is closed.'
@@ -866,7 +1097,7 @@ function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
       <a class="iconbtn" href="${escapeHtml(ticket.url)}" target="_blank" rel="noreferrer" title="Open on GitHub" aria-label="Open on GitHub">${icon(icons.EXTERNAL)}</a>
     </div>
     <h2 class="dtitle">${escapeHtml(ticket.title)}</h2>
-    ${banner === null ? '' : `<div class="banner" style="--accent: var(${style.variable})">${icon(style.icon)}<span>${banner}</span></div>`}
+    ${banner === null ? '' : stall !== undefined ? `<div class="banner" style="--accent: var(--text-muted)">${icon(icons.CLOCK)}<span>${banner}</span></div>` : `<div class="banner" style="--accent: var(${style.variable})">${icon(style.icon)}<span>${banner}</span></div>`}
     ${isOutside(map, ticket.number) ? '<p class="hint">Fog: not a sub-issue of this map, but linked to it by a dependency.</p>' : ''}
     <dl class="facts">
       <dt>Type</dt><dd>${icon(typeStyle(ticket.type).icon)}${escapeHtml(typeStyle(ticket.type).label)}</dd>
@@ -1046,8 +1277,12 @@ function launchHtml(ticket: Ticket): string {
 
 /** A live hand-off offers only its thread; once it ends, its card sits above a fresh start. */
 function launchSlotHtml(ticket: Ticket, handOff: HandOffStatusDto | undefined): string {
-  if (handOff === undefined) return launchHtml(ticket);
-  const card = handOffCardHtml(handOff, false, false, false);
+  const map = currentMap();
+  const pullRequest = map === null ? undefined : pullRequestOf(map, ticket.number);
+  const lines = pullRequest === undefined ? '' : pullRequestLinesHtml(pullRequest);
+  // No hand-off, but GitHub knows a PR: the three lines get a card of their own.
+  if (handOff === undefined) return `${lines === '' ? '' : `<section class="handoff-card signal-pr-card">${lines}</section>`}${launchHtml(ticket)}`;
+  const card = handOffCardHtml(handOff, false, false, false, lines);
   return isLiveHandOff(handOff) ? card : `${card}${launchHtml(ticket)}`;
 }
 
@@ -1249,6 +1484,12 @@ els.planningHandoff.addEventListener('click', async (event) => {
   }
 });
 
+els.criticalPath.addEventListener('click', () => {
+  pathFocus = !pathFocus;
+  renderCriticalPath();
+  syncHighlights();
+});
+
 els.filters.addEventListener('click', (event) => {
   const chip = (event.target as HTMLElement).closest<HTMLElement>('[data-filter]');
   if (chip === null) return;
@@ -1420,13 +1661,14 @@ void loadCatalog().then(refreshTicketPicker);
 syncedButton().addEventListener('click', () => {
   void load('manual').then(() => {
     const map = currentMap();
-    prototypeLoads.clear();
-    if (map === null) return;
-    if (view === 'prototypes' || ticketAt(map, selected)?.type === 'prototype') {
-      prototypesFor(map, true);
-      if (view === 'prototypes') renderPrototypes();
-      renderTicketPrototype();
+    const refreshCurrent = map !== null && (view === 'prototypes' || ticketAt(map, selected)?.type === 'prototype');
+    for (const mapNumber of prototypeLoads.keys()) {
+      if (!refreshCurrent || mapNumber !== map?.number) prototypeLoads.delete(mapNumber);
     }
+    if (map === null || !refreshCurrent) return;
+    prototypesFor(map, true);
+    if (view === 'prototypes') renderPrototypes();
+    renderTicketPrototype();
   });
 });
 
@@ -1515,11 +1757,16 @@ const autoRefresh = new AutoRefresh({
 });
 
 document.addEventListener('visibilitychange', () => autoRefresh.visibilityChanged());
-window.addEventListener('pagehide', () => autoRefresh.stop());
+window.addEventListener('pagehide', () => {
+  autoRefresh.stop();
+  closedTicketsByEventTime.clear();
+});
 window.setInterval(renderSynced, 15_000);
 
 renderInspector();
 void load('initial').then((successful) => {
-  if (successful) autoRefresh.markSuccessfulSnapshot();
+  if (successful) {
+    autoRefresh.markSuccessfulSnapshot();
+  }
   autoRefresh.start();
 });

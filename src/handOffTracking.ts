@@ -3,6 +3,8 @@ import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { autoResultOf, observeModelSelection, observeThread, parseStoredAutoDecision } from './autoDecision.js';
+import type { AutoDecision, ModelObservation } from './autoDecision.js';
 import { gh } from './github.js';
 import { isLiveHandOff } from './handOffLiveness.js';
 import { trackedPullRequestsByTicket } from './mapWatch.js';
@@ -52,6 +54,8 @@ export interface StoredHandOff {
   ticketNumber: number | null;
   title: string | null;
   tier?: Tier;
+  /** Set only for tickets started with Auto. Local to this store; never sent to GitHub. */
+  auto?: AutoDecision;
   environmentId: string | null;
   t3Origin: string | null;
   projectId: string | null;
@@ -82,6 +86,7 @@ export interface RecordHandOffInput {
   ticketNumber: number | null;
   title: string | null;
   tier?: Tier | null;
+  auto?: AutoDecision | null;
   environmentId?: string | null;
   t3Origin?: string | null;
   projectId?: string | null;
@@ -155,6 +160,7 @@ export interface MappedT3Thread {
   sessionStatus: string | null;
   turnState: string | null;
   lastError: string | null;
+  model: ModelObservation | null;
   pendingApproval: boolean;
   pendingUserInput: boolean;
   pullRequests: PullRequestRef[];
@@ -292,6 +298,7 @@ export function mapT3Status(thread: unknown): MappedT3Thread | null {
     sessionStatus,
     turnState,
     lastError: lastError?.slice(0, 500) ?? null,
+    model: observeModelSelection(item['modelSelection']),
     pendingApproval,
     pendingUserInput,
     pullRequests: pullRequests(item),
@@ -341,8 +348,9 @@ function normalizeStoredHandOffs(value: unknown): StoredHandOff[] {
   if ((root?.['version'] !== 1 && root?.['version'] !== 2) || !Array.isArray(root['records'])) {
     throw new Error('Unsupported hand-off store format.');
   }
-  return root['records'].filter(isStoredHandOff).map((item) => ({
+  return root['records'].filter(isStoredHandOff).map(({ auto, ...item }) => ({
     ...item,
+    ...withAuto(auto),
     mapTitle: item.mapTitle ?? null,
     acknowledged: item.acknowledged === true,
     pullRequests: item.pullRequests.map((ref) => ({
@@ -353,6 +361,15 @@ function normalizeStoredHandOffs(value: unknown): StoredHandOff[] {
       hasSnapshot: ref.hasSnapshot === true,
     })),
   }));
+}
+
+function withAuto(value: unknown): { auto?: AutoDecision } {
+  const auto = parseStoredAutoDecision(value);
+  return auto === null ? {} : { auto };
+}
+
+function cloneHandOff(item: StoredHandOff): StoredHandOff {
+  return { ...item, ...withAuto(item.auto), pullRequests: item.pullRequests.map((ref) => ({ ...ref })) };
 }
 
 async function readStoredHandOffs(filePath: string): Promise<StoredHandOff[]> {
@@ -510,6 +527,9 @@ export class HandOffStore {
       ticketNumber: input.ticketNumber,
       title: input.title,
       ...(input.tier === undefined || input.tier === null ? {} : { tier: input.tier }),
+      ...(input.auto === undefined || input.auto === null
+        ? {}
+        : { auto: { ...input.auto, outcome: input.threadId === null ? { result: 'untracked' as const, at: now } : null } }),
       environmentId: input.environmentId ?? null,
       t3Origin: input.t3Origin ?? null,
       projectId: input.projectId ?? null,
@@ -534,14 +554,14 @@ export class HandOffStore {
     };
     this.current().push(handOff);
     await this.persist();
-    return { ...handOff, pullRequests: [] };
+    return cloneHandOff(handOff);
   }
 
   async list(): Promise<StoredHandOff[]> {
     await this.ensureLoaded();
     const pruned = this.prune();
     if (pruned) await this.persist();
-    return this.current().map((item) => ({ ...item, pullRequests: item.pullRequests.map((ref) => ({ ...ref })) }));
+    return this.current().map(cloneHandOff);
   }
 
   async acknowledge(id: string): Promise<boolean> {
@@ -664,6 +684,16 @@ export class HandOffStore {
     const terminal = thread.status === 'finished' || thread.status === 'interrupted' || thread.status === 'failed' || hasT3PullRequest;
     const nextTerminalAt = terminal ? (handOff.terminalAt ?? now) : null;
     const nextSequence = sequence === null ? handOff.sequence : Math.max(handOff.sequence ?? sequence, sequence);
+    const auto = handOff.auto === undefined
+      ? null
+      : observeThread(handOff.auto, {
+          at: now,
+          model: thread.model,
+          error: thread.lastError,
+          previousError: handOff.lastError,
+          result: autoResultOf(thread.status, hasT3PullRequest),
+          resultAt: nextTerminalAt,
+        });
     const next = {
       ...handOff,
       environmentId: handOff.environmentId ?? environmentId,
@@ -684,6 +714,7 @@ export class HandOffStore {
       pullRequests: thread.pullRequests.length > 0
         ? thread.pullRequests.map((ref) => keepKnownState(ref, handOff.pullRequests))
         : handOff.pullRequests,
+      ...(auto === null ? {} : { auto }),
     };
     Object.assign(handOff, next);
     return true;
@@ -743,10 +774,7 @@ export class HandOffStore {
   private async persist(): Promise<void> {
     const filePath = this.options.filePath;
     if (filePath === null || filePath === undefined) return;
-    const records = this.current().map((item) => ({
-      ...item,
-      pullRequests: item.pullRequests.map((ref) => ({ ...ref })),
-    }));
+    const records = this.current().map(cloneHandOff);
     const deletedIds = new Set(this.deletedIds);
     this.writes = this.writes.catch(() => undefined).then(async () => {
       await mkdir(dirname(filePath), { recursive: true, mode: 0o700 });
@@ -950,6 +978,12 @@ export class HandOffTracker {
     return trackedPullRequestsByTicket(
       records.filter((item) => item.repo.toLowerCase() === repo.toLowerCase() && item.threadId !== null && item.environmentId !== null && item.environmentId === this.environmentId),
     );
+  }
+
+  /** Every stored hand-off in `repo`, retries and failures included, as last polled. For stall detection (#160). */
+  async repoHandOffs(repo: string): Promise<StoredHandOff[]> {
+    this.start();
+    return (await this.store.list()).filter((item) => item.repo.toLowerCase() === repo.toLowerCase());
   }
 
   /** Call `listener` whenever the shell stream updates the thread of a hand-off on a map. Returns the call that stops it. */

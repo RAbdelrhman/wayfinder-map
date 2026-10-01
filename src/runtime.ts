@@ -10,6 +10,7 @@ import type { RunningServer, ServerT3 } from './server.js';
 import { T3HandOff, detectT3, resolveWorkspace } from './t3.js';
 import type { T3Runtime } from './t3.js';
 import { normalizeRepo, repoPath } from './repoRoutes.js';
+import { MapWatchStore } from './mapWatchStore.js';
 
 export type StartupStage = 'repository' | 'prompt' | 'workspace' | 'server' | 't3';
 
@@ -120,6 +121,7 @@ export async function startWayfinder(
       template,
       workspaceRoot,
       t3,
+      mapWatchStore: new MapWatchStore(),
       ...(options.uiDir === undefined ? {} : { uiDir: options.uiDir }),
     });
   } catch (error) {

@@ -14,16 +14,18 @@ const map: WayfinderMap = {
   visibility: 'private',
   sections: { destination: 'Find and continue maps.', notes: '', decisions: '', fog: '', outOfScope: '' },
   tickets: [
-    { number: 1, title: 'Done work', url: 'https://github.com/octo/wayfinder/issues/1', body: '', type: 'task', labels: [], open: false, assignee: null, blockedBy: [], openBlockers: [], state: 'done' },
-    { number: 2, title: 'Choose a direction', url: 'https://github.com/octo/wayfinder/issues/2', body: '', type: 'grilling', labels: [], open: true, assignee: null, blockedBy: [], openBlockers: [], state: 'frontier' },
+    { number: 1, title: 'Done work', url: 'https://github.com/octo/wayfinder/issues/1', body: '', type: 'task', labels: [], open: false, assignee: null, blockedBy: [], openBlockers: [], state: 'done', updatedAt: null },
+    { number: 2, title: 'Choose a direction', url: 'https://github.com/octo/wayfinder/issues/2', body: '', type: 'grilling', labels: [], open: true, assignee: null, blockedBy: [], openBlockers: [], state: 'frontier', updatedAt: null },
   ],
   outside: [],
   criticalPath: { tickets: [], remaining: 0 },
+  stalled: [],
+  pullRequests: [],
   settled: null,
   ticketsLoaded: true,
 };
 
-const snapshot: MapSnapshot = { repo: 'octo/wayfinder', fetchedAt: '2026-09-20T11:00:00.000Z', maps: [map], hiddenMaps: 0, warnings: [] };
+const snapshot: MapSnapshot = { repo: 'octo/wayfinder', fetchedAt: '2026-09-20T11:00:00.000Z', maps: [map], hiddenMaps: 0, publicMaps: [], warnings: [] };
 
 function handOff(overrides: Partial<HandOffStatusDto> = {}): HandOffStatusDto {
   return {
@@ -74,6 +76,7 @@ describe('Home repository summaries', () => {
       blockedBy: [2],
       openBlockers: [2],
       state: 'frontier',
+      updatedAt: null,
       pullRequest: false,
       blocks: [2],
       waitsOn: [],

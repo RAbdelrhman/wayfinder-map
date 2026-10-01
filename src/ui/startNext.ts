@@ -302,6 +302,8 @@ export interface StartNextSurface {
   /** The map-name menu's item label, or null when no ticket is next. */
   menuLabel(): string | null;
   open(): void;
+  /** Hand off or queue these tickets without the confirm list. Resolves to the ones the batch took. */
+  startTickets(ticketNumbers: readonly number[]): Promise<number[]>;
   batches(): readonly Batch[];
   /** Repaint the topbar control after hand-off records changed. */
   render(): void;
@@ -388,10 +390,8 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
     return { ok: response.ok, body: (await response.json()) as Record<string, unknown> };
   };
 
-  const go = async (): Promise<void> => {
-    const context = options.context();
-    const current = plan();
-    if (context === null || current === null || current.picked === 0) return;
+  /** Post the rows a plan starts or queues as one batch. Returns whether the server accepted it. */
+  const submit = async (context: { repo: string; map: WayfinderMap }, current: StartNextPlan): Promise<boolean> => {
     const state = currentCatalog();
     const tickets = current.rows
       .filter((row) => row.kind === 'start' || row.kind === 'queue')
@@ -400,24 +400,46 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
         const model: ModelChoice | null = state.status === 'ready' ? liveChoice(state.catalog, tierDefaults()[tier]) : null;
         return { ticket: row.ticket.number, tier, model };
       });
-    const button = dialog.querySelector<HTMLButtonElement>('[data-start-go]');
-    if (button !== null) button.disabled = true;
     try {
       const result = await post(scopedApiPath(context.repo, 'start-next'), { map: context.map.number, cap: handOffCap(), tickets });
       if (!result.ok) {
         options.toast(typeof result.body['error'] === 'string' ? result.body['error'] : 'Start next failed.', 9000);
-        if (button !== null) button.disabled = false;
-        return;
+        return false;
       }
+      options.toast(`Starting ${String(tickets.length)} ticket${tickets.length === 1 ? '' : 's'} in T3 Code.`, 4000);
+      await refresh();
+      return true;
+    } catch (error) {
+      options.toast((error as Error).message, 9000);
+      return false;
+    }
+  };
+
+  const go = async (): Promise<void> => {
+    const context = options.context();
+    const current = plan();
+    if (context === null || current === null || current.picked === 0) return;
+    const button = dialog.querySelector<HTMLButtonElement>('[data-start-go]');
+    if (button !== null) button.disabled = true;
+    if (await submit(context, current)) {
       dialog.close();
       ticked = new Map();
       tiers = new Map();
-      options.toast(`Starting ${String(tickets.length)} ticket${tickets.length === 1 ? '' : 's'} in T3 Code.`, 4000);
-      await refresh();
-    } catch (error) {
-      options.toast((error as Error).message, 9000);
-      if (button !== null) button.disabled = false;
+    } else if (button !== null) {
+      button.disabled = false;
     }
+  };
+
+  /** Start just these tickets, as the "ready" notice's Start does. Returns the ones handed off or queued. */
+  const startTickets = async (ticketNumbers: readonly number[]): Promise<number[]> => {
+    const context = options.context();
+    if (context === null) return [];
+    await loadCatalog();
+    const wanted = new Set(ticketNumbers);
+    const all = mapStartPlan({ repo: context.repo, map: context.map, handOffs: options.handOffs(), batches, cap: handOffCap() });
+    const only = mapStartPlan({ repo: context.repo, map: context.map, handOffs: options.handOffs(), batches, cap: handOffCap(), ticked: new Map(all.rows.map((row) => [row.ticket.number, wanted.has(row.ticket.number)])) });
+    const picked = only.rows.filter((row) => row.kind === 'start' || row.kind === 'queue').map((row) => row.ticket.number);
+    return picked.length > 0 && (await submit(context, only)) ? picked : [];
   };
 
   const open = (): void => {
@@ -502,6 +524,7 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
       return current === null ? null : startNextLabel(current);
     },
     open,
+    startTickets,
     batches: () => batches,
     render,
   };

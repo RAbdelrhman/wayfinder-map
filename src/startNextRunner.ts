@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { isUsageLimitError } from './autoDecision.js';
 import type { ModelChoice, Tier } from './models.js';
 import { normalizeCap } from './startNext.js';
 
@@ -64,12 +65,6 @@ export interface RunnerDeps {
   /** How many finished batches to keep for the page to read. */
   keep?: number;
   now?: () => Date;
-}
-
-const USAGE_LIMIT = /usage limit|rate.?limit|quota|limit (?:has been )?(?:reached|hit)|exceeded your|too many requests|credit balance/i;
-
-export function isUsageLimitError(message: string): boolean {
-  return USAGE_LIMIT.test(message);
 }
 
 /** The first line of a provider's error and, when it says so, when the limit resets. */

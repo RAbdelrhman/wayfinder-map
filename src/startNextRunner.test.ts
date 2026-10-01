@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { isUsageLimitError, parseUsageLimit, StartNextRunner } from './startNextRunner.js';
+import { parseUsageLimit, StartNextRunner } from './startNextRunner.js';
 import type { BatchRequestItem, StartOutcome } from './startNextRunner.js';
 
 function item(ticketNumber: number, extra: Partial<BatchRequestItem> = {}): BatchRequestItem {
@@ -204,15 +204,6 @@ describe('StartNextRunner', () => {
 });
 
 describe('usage limit text', () => {
-  it('recognises the usual provider wording and nothing else', () => {
-    for (const message of ['Claude usage limit reached', 'Rate limit exceeded', 'You exceeded your current quota', '429 Too Many Requests', 'Your credit balance is too low']) {
-      expect(isUsageLimitError(message)).toBe(true);
-    }
-    for (const message of ['Tool call failed', 'Process exited with code 1', 'Could not start the thread (no model to use yet)']) {
-      expect(isUsageLimitError(message)).toBe(false);
-    }
-  });
-
   it('keeps the first line and finds the reset time when there is one', () => {
     expect(parseUsageLimit('Usage limit reached. Resets at 4:00 PM.\nmore')).toEqual({ message: 'Usage limit reached. Resets at 4:00 PM.', resetsAt: '4:00 PM' });
     expect(parseUsageLimit('Usage limit reached (resets on Monday)')).toEqual({ message: 'Usage limit reached (resets on Monday)', resetsAt: 'Monday' });

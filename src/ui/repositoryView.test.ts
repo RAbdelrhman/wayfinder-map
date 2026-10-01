@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { MapSnapshot, Ticket, TicketState, WayfinderMap } from '../types.js';
-import { countRunningHandOffs, mapMatchesRepositorySearch, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml, settledAgo, sortRepositoryMaps, sortSettledMaps } from './repositoryView.js';
+import type { MapSnapshot, PublicMap, Ticket, TicketState, WayfinderMap } from '../types.js';
+import { countRunningHandOffs, mapMatchesRepositorySearch, needsYouTicketNumbers, publicMapProgress, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml, settledAgo, sortRepositoryMaps, sortSettledMaps } from './repositoryView.js';
 
 function ticket(number: number, title: string, state: TicketState, blockedBy: number[] = []): Ticket {
   return {
@@ -16,6 +16,7 @@ function ticket(number: number, title: string, state: TicketState, blockedBy: nu
     blockedBy,
     openBlockers: [],
     state,
+    updatedAt: null,
   };
 }
 
@@ -32,13 +33,15 @@ function map(number: number, title: string, open: boolean, tickets: Ticket[] = [
     tickets,
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
+    stalled: [],
+    pullRequests: [],
     settled: null,
     ticketsLoaded: true,
   };
 }
 
 function snapshot(maps: WayfinderMap[]): MapSnapshot {
-  return { repo: 'octo/wayfinder', fetchedAt: '2026-09-23T12:00:00.000Z', maps, hiddenMaps: 0, warnings: [] };
+  return { repo: 'octo/wayfinder', fetchedAt: '2026-09-23T12:00:00.000Z', maps, hiddenMaps: 0, publicMaps: [], warnings: [] };
 }
 
 describe('repository map ordering and filtering', () => {
@@ -87,6 +90,29 @@ describe('repository map ordering and filtering', () => {
 
     expect([...counts]).toEqual([[35, 2]]);
   });
+
+  it('counts distinct tickets that need a person because of a stall, thread, CI, or review', () => {
+    const roadmap = {
+      ...map(35, 'Make the map page feel clear', true, [
+        ticket(101, 'Define the destination', 'claimed'),
+        ticket(102, 'Build the navigation shell', 'claimed'),
+        ticket(103, 'Update the prototype board', 'claimed'),
+        { ...ticket(104, 'Try the new board', 'claimed'), type: 'prototype' },
+        ticket(105, 'Recover the exporter', 'claimed'),
+      ]),
+      stalled: [{ ticket: 101, kind: 'untouched-claim' as const, since: '2026-09-20T12:00:00.000Z' }],
+    };
+    const tickets = needsYouTicketNumbers('octo/wayfinder', roadmap, [
+      { repo: 'OCTO/WAYFINDER', mapNumber: 35, ticketNumber: 101, status: 'waiting', stale: false, pendingUserInput: true },
+      { repo: 'octo/wayfinder', mapNumber: 35, ticketNumber: 102, status: 'running', stale: false, pullRequests: [{ state: 'open', checksState: 'failing' }] },
+      { repo: 'octo/wayfinder', mapNumber: 35, ticketNumber: 103, status: 'running', stale: false, pullRequests: [{ state: 'open', checksState: 'passing', reviewDecision: 'REVIEW_REQUIRED', isDraft: false }] },
+      { repo: 'octo/wayfinder', mapNumber: 35, ticketNumber: 104, status: 'running', stale: false, branch: 'prototype/104-new-board' },
+      { repo: 'octo/wayfinder', mapNumber: 35, ticketNumber: 105, status: 'failed', stale: false },
+      { repo: 'other/repo', mapNumber: 35, ticketNumber: 106, status: 'failed', stale: false },
+    ]);
+
+    expect(tickets).toEqual([101, 102, 103, 104, 105]);
+  });
 });
 
 describe('repositoryPageHtml', () => {
@@ -128,6 +154,17 @@ describe('repositoryPageHtml', () => {
     expect(html).toContain('data-repo-map-no-match role="status" aria-live="polite"');
     expect(html).toContain('2 running in T3 Code');
     expect(html).toContain('data-map-handoffs="35"');
+  });
+
+  it('shows a stalled ticket count on its map card and links to that ticket', () => {
+    const stalledMap = {
+      ...map(35, 'Make the map page feel clear', true, [ticket(103, 'Update the prototype board', 'claimed')]),
+      stalled: [{ ticket: 103, kind: 'dead-hand-off' as const, since: '2026-09-20T12:00:00.000Z' }],
+    };
+    const html = repositoryPageHtml('octo/wayfinder', snapshot([stalledMap]));
+
+    expect(html).toContain('data-map-needs-you="35" href="/repos/octo/wayfinder/maps/35?view=map&amp;ticket=103"');
+    expect(html).toContain('1 needs you');
   });
 
   it('collapses settled maps at the foot of the list with their number, title and age', () => {
@@ -199,6 +236,37 @@ describe('repositoryPageHtml', () => {
     const none = repositoryPageHtml('octo/recipe-box', { ...snapshot([]), hiddenMaps: 1 });
     expect(none).toContain('1 map from other people is hidden.');
     expect(none).toContain('No maps of yours in recipe-box yet');
+  });
+
+  it('lists public maps with author, progress, and Follow or Unfollow', () => {
+    const publicMap = (number: number, followed: boolean, progress = { completed: 0, total: 0 }): PublicMap => ({
+      number,
+      title: `Map <${String(number)}>`,
+      url: `https://github.com/octo/wayfinder/issues/${String(number)}`,
+      author: 'drive-by',
+      open: true,
+      followed,
+      progress,
+    });
+    const html = repositoryPageHtml('octo/wayfinder', { ...snapshot([]), publicMaps: [publicMap(9, false, { completed: 2, total: 6 }), publicMap(3, true)] });
+
+    expect(html).toContain('id="repo-public-title">Public maps <span class="count">2 · 1 followed</span>');
+    expect(html).toContain('<span class="wf-author">by drive-by</span>');
+    expect(html).toContain('2 of 6 tickets done');
+    expect(html).toContain('No tickets yet');
+    expect(html).toContain('<button type="button" class="primary" data-follow-map="9" aria-label="Follow map #9: Map &lt;9&gt;">Follow</button>');
+    expect(html).toContain('<button type="button" class="ghost" data-unfollow-map="3" aria-label="Unfollow map #3: Map &lt;3&gt;">Unfollow</button>');
+    // A followed map opens here; one you don't follow opens on GitHub.
+    expect(html).toContain('href="/repos/octo/wayfinder/maps/3"');
+    expect(html).toContain('href="https://github.com/octo/wayfinder/issues/9" target="_blank" rel="noreferrer"');
+    expect(html).not.toContain('<9>');
+
+    expect(repositoryPageHtml('octo/wayfinder', snapshot([]))).not.toContain('data-repo-public');
+  });
+
+  it('counts tickets in words', () => {
+    expect(publicMapProgress({ completed: 1, total: 1 })).toBe('1 of 1 ticket done');
+    expect(publicMapProgress({ completed: 0, total: 0 })).toBe('No tickets yet');
   });
 
   it('renders a retryable repository error and escapes its message', () => {

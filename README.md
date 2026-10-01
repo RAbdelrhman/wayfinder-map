@@ -16,7 +16,10 @@ labelled `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling` or
 `wayfinder:task`. Tickets wait on each other through GitHub's native issue
 dependencies.
 
-This tool reads that structure and draws it.
+This tool reads that structure and draws it. Nothing has to come from Wayfinder or a
+particular skill: create the issues by hand, with `gh`, or with any agent, and they show
+up. [docs/map-format.md](docs/map-format.md) lists everything Wayfinder reads, with a
+copy-paste map body and the `gh` commands.
 
 ## Run it
 
@@ -133,6 +136,13 @@ Visibility: public
 ```
 
 Remove the line to make the map private again. Wayfinder never edits the issue for you.
+
+Other people's public maps appear under **Public maps** at the bottom of the repository
+page, each with its author and how many of its sub-issues are done. Choose **Follow** to
+add a map to your list, and **Unfollow** to take it off. The choice is saved per login in
+`~/.wayfinder-map/follows.json`, so it survives a restart. Private maps never appear in
+this list. If the author of a map you follow makes it private again, it leaves your list;
+if they make it public again, it comes back.
 
 Private only hides a map inside Wayfinder. It is not access control. Every private map
 carries the note "Private in Wayfinder only. If the repository is public, this issue

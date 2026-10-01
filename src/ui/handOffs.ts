@@ -224,7 +224,8 @@ function handOffActions(handOff: HandOffStatusDto, includeRetry = true): string 
   return `${retry}${pullRequests}${open}`;
 }
 
-export function handOffCardHtml(handOff: HandOffStatusDto, compact = false, includeSource = true, includeRetry = true): string {
+/** `extra` sits under the pill: the ticket panel puts the PR, its checks and review there (#130). */
+export function handOffCardHtml(handOff: HandOffStatusDto, compact = false, includeSource = true, includeRetry = true, extra = ''): string {
   const presentation = handOffPresentation(handOff);
   const source = handOffSourcePath(handOff);
   const branch = handOff.branch === null
@@ -239,6 +240,7 @@ export function handOffCardHtml(handOff: HandOffStatusDto, compact = false, incl
   const sourceLink = includeSource ? `<a class="ghost handoff-source" href="${escapeHtml(source)}">${icon(icons.ARROW)}Back to ${handOff.ticketNumber === null ? 'map' : 'ticket'}</a>` : '';
   return `<section class="handoff-card is-${presentation.state}${handOff.stale ? ' is-stale' : ''}" aria-label="${escapeHtml(`${presentation.label}: ${handOffTitle(handOff)}, ${handOff.repo}, ${handOffMapLabel(handOff)}`)}">
     <div class="handoff-card-head">${handOffPill(handOff)}<time datetime="${escapeHtml(handOff.lastSeenAt ?? handOff.updatedAt)}">${escapeHtml(handOffTime(handOff))}</time></div>
+    ${extra}
     ${stale === '' && presentation.report === '' ? '' : `<p class="handoff-report">${stale}${escapeHtml(presentation.report)}</p>`}
     <div class="handoff-actions">${handOffActions(handOff, includeRetry)}${sourceLink}</div>
     ${details}

@@ -39,6 +39,7 @@ const STATIC_ICONS: Record<string, string> = {
   gear: icons.GEAR,
   'sign-out': icons.SIGN_OUT,
   refresh: icons.REFRESH,
+  bell: icons.BELL,
   moon: icons.MOON,
   lens: icons.LENS,
   info: icons.INFO,

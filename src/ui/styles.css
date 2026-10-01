@@ -1419,6 +1419,8 @@ pre.prompt {
 .runwith .seg {
   padding: 3px 10px;
   font-size: 12px;
+  /* Muted grey on the wash is 4.3:1 at this size; secondary keeps the tiers AA. */
+  color: var(--text-secondary);
 }
 
 .runwith .hint {
@@ -3828,6 +3830,185 @@ textarea.input {
   overscroll-behavior: contain;
 }
 
+.map-inbox-anchor {
+  position: relative;
+  z-index: 43;
+  flex: none;
+}
+
+.map-inbox-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  background: var(--plane);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.map-inbox-trigger:hover,
+.map-inbox-trigger[aria-expanded='true'] {
+  background: var(--wash);
+}
+
+.map-inbox-trigger:focus-visible,
+.map-inbox-clear:focus-visible,
+.map-inbox-event:focus-visible,
+.map-inbox-list .handoff-close:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+
+.map-inbox-trigger .i {
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+}
+
+.map-inbox-count {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--state-frontier);
+  color: var(--surface-1);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.map-inbox-list {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(430px, calc(100vw - 24px));
+  max-height: min(620px, calc(100dvh - 76px));
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  color: var(--text-primary);
+}
+
+.map-inbox-list[hidden] {
+  display: none;
+}
+
+.map-inbox-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 10px 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.map-inbox-head > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.map-inbox-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.map-inbox-head p {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.map-inbox-clear {
+  min-height: 36px;
+  padding: 0 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.map-inbox-clear:hover {
+  background: var(--wash);
+  color: var(--text-primary);
+}
+
+.map-inbox-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.map-inbox-empty {
+  margin: 0;
+  padding: 24px 16px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.map-inbox-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--hairline);
+}
+
+.map-inbox-item:first-child {
+  border-top: 0;
+}
+
+.map-inbox-event {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.map-inbox-event:hover .map-inbox-event-title {
+  color: var(--state-frontier);
+}
+
+.map-inbox-event-title {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.map-inbox-event-scope,
+.map-inbox-time {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.map-inbox-away {
+  grid-column: 1;
+  justify-self: start;
+  color: var(--state-frontier);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.map-inbox-time {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  white-space: nowrap;
+}
+
+.map-inbox-away + .map-inbox-time {
+  grid-row: 1 / span 3;
+}
+
 .handoff-offline {
   margin: 10px 14px 0;
   padding: 8px 10px;
@@ -4942,6 +5123,214 @@ textarea.input {
   margin: 0;
 }
 
+.notification-anchor {
+  position: relative;
+  flex: none;
+}
+
+.notification-trigger {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.notification-trigger:hover,
+.notification-trigger[aria-expanded='true'] {
+  background: var(--wash);
+  color: var(--text-primary);
+}
+
+.notification-trigger > .i {
+  width: 17px;
+  height: 17px;
+}
+
+.notification-count {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border: 2px solid var(--surface-0);
+  border-radius: 999px;
+  background: var(--state-claimed);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 13px;
+  text-align: center;
+}
+
+.notification-panel {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(390px, calc(100vw - 24px));
+  max-height: min(68vh, 560px);
+  overflow: hidden;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 12px;
+  background: var(--surface-0);
+  box-shadow: var(--shadow-float);
+}
+
+.notification-panel[hidden] {
+  display: none;
+}
+
+.notification-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.notification-panel-head h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+}
+
+.notification-body {
+  overflow: auto;
+  padding: 6px;
+}
+
+.notification-empty {
+  margin: 18px 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.notification-items {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notification-item {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.notification-item:hover {
+  background: var(--wash);
+}
+
+.notification-item.is-unread {
+  background: var(--surface-1);
+}
+
+.notification-kind {
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.notification-item strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-context,
+.notification-item time {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unblocked-notice {
+  position: fixed;
+  z-index: 80;
+  right: 24px;
+  bottom: 22px;
+  left: 24px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.unblocked-notice[hidden] {
+  display: none;
+}
+
+.unblocked-notice-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: min(720px, 100%);
+  padding: 12px 14px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 12px;
+  background: var(--surface-0);
+  box-shadow: var(--shadow-float);
+  pointer-events: auto;
+}
+
+.unblocked-notice-card p {
+  flex: 1;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.unblocked-notice-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.unblocked-notice-actions button {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.node.is-newly-unblocked {
+  animation: unblocked-pulse 680ms ease-out 1;
+}
+
+@keyframes unblocked-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--state-frontier) 58%, transparent); }
+  100% { box-shadow: 0 0 0 8px transparent; }
+}
+
+.settings-notification {
+  cursor: pointer;
+}
+
+.settings-notification input {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  accent-color: var(--accent);
+}
+
 .topbar .primary[hidden] {
   display: none;
 }
@@ -4958,6 +5347,22 @@ textarea.input {
 
   .topbar .synced {
     display: none;
+  }
+
+  .unblocked-notice {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+  }
+
+  .unblocked-notice-card {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .unblocked-notice-actions {
+    justify-content: flex-end;
   }
 
   .nav-map-strip {
@@ -4997,6 +5402,10 @@ textarea.input {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .node.is-newly-unblocked {
+    animation: none;
+  }
+
   .twist > .i {
     transition: none;
   }
@@ -5954,6 +6363,131 @@ textarea.input {
   font-size: 12.5px;
 }
 
+/* Public maps (#148): other people's public maps, to follow into your list */
+.wf-public {
+  margin-top: 28px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 16px;
+}
+
+.wf-public h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.wf-public h2 .count {
+  margin-left: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.wf-public-lede {
+  margin: 4px 0 10px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.wf-public-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-1);
+}
+
+.wf-public-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 8px 12px 8px 16px;
+  font-size: 13px;
+}
+
+.wf-public-row + .wf-public-row {
+  border-top: 1px solid var(--hairline);
+}
+
+.wf-public-row .grow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 12rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.wf-public-row .grow:hover {
+  text-decoration: underline;
+}
+
+.wf-public-row .grow:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+.wf-public-row .num,
+.wf-public-row .wf-author,
+.wf-public-progress {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.wf-public-row .grow .i {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.wf-public-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.wf-public-progress .bar {
+  width: 56px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--wash);
+  overflow: hidden;
+}
+
+.wf-public-progress .bar i {
+  display: block;
+  height: 100%;
+  background: var(--state-done);
+}
+
+.wf-following {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wf-following .i {
+  width: 12px;
+  height: 12px;
+}
+
+.wf-public-row button {
+  flex: none;
+  height: 28px;
+  font-size: 12.5px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wf-settled-toggle .i {
     transition: none;
@@ -6387,6 +6921,152 @@ textarea.input {
 
 .topbar .synced:has(.synced-label:empty) {
   display: none;
+}
+
+/* ---------- map signals (#125 option A, built in #130) ---------- */
+
+/* The critical path: its edges solid, thicker and in the text colour. The hover lineage keeps its dashed flow on top. */
+.edges path.is-critical,
+.edges path.is-critical.is-live {
+  stroke: var(--text-primary);
+  stroke-width: 3;
+  opacity: 0.7;
+}
+
+.edges path.is-critical.is-dim {
+  opacity: 0.12;
+}
+
+/* "N left on the critical path": a quiet button after the view tabs that focuses the path. */
+.critical-count {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin-left: 10px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.critical-count b {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.critical-count .i {
+  width: 14px;
+  height: 14px;
+  color: currentColor;
+}
+
+.critical-count:hover,
+.critical-count[aria-pressed='true'] {
+  background: var(--wash);
+  color: var(--text-primary);
+  border-color: var(--baseline);
+}
+
+.critical-count:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+
+/* PR, checks and review on the card's meta line; each tone comes with its own icon and word. */
+.signal-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+}
+
+.signal-meta .i {
+  width: 12px;
+  height: 12px;
+  color: currentColor;
+}
+
+.signal-dot {
+  color: var(--text-muted);
+}
+
+.signal-tone {
+  display: inline-flex;
+  color: var(--tone);
+}
+
+.signal-tone .i {
+  color: var(--tone);
+}
+
+/* Stalled: the frame goes dashed and grey; the state colour stays on the solid left edge. */
+.node.is-stalled {
+  border-style: dashed;
+  border-left-style: solid;
+  border-top-color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  border-right-color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+}
+
+/* The ticket panel's PR, checks and review, under the hand-off pill. */
+.signal-pr {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 8px;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--hairline);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.signal-pr .i {
+  width: 14px;
+  height: 14px;
+}
+
+.signal-pr a {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.signal-muted {
+  color: var(--text-muted);
+}
+
+/* A PR with no hand-off gets the card on its own, so the lines have nothing above them. */
+.signal-pr-card {
+  border-left-color: var(--hairline);
+  background: var(--surface-1);
+}
+
+.signal-pr-card .signal-pr {
+  padding: 0;
+  border-top: 0;
+}
+
+/* The Key's swatches for the path line and a stalled card. */
+.key-path {
+  flex: none;
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--text-primary);
+  opacity: 0.7;
+}
+
+.key-stalled {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px dashed var(--text-muted);
+  border-left: 3px solid var(--state-claimed);
+  border-radius: 4px;
 }
 
 /* ---------- Start next (#129): the confirm list, the batch progress and the queued chip ---------- */

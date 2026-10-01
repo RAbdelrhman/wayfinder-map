@@ -16,6 +16,20 @@
         <header class="topbar" id="topbar">
           <div class="nav-topbar" id="nav-topbar"></div>
           <span class="topbar-spacer"></span>
+          <div class="notification-anchor">
+            <button type="button" class="notification-trigger" id="notification-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="notification-panel" aria-label="Notifications" title="Notifications"><span data-icon="bell" aria-hidden="true"></span><span class="notification-count" id="notification-count" hidden></span></button>
+            <section class="notification-panel" id="notification-panel" role="dialog" aria-labelledby="notification-title" hidden>
+              <header class="notification-panel-head"><h2 id="notification-title">Notifications</h2><button type="button" class="handoff-close" data-notification-close aria-label="Close notifications">×</button></header>
+              <div class="notification-body" id="notification-body"></div>
+            </section>
+          </div>
+          <div class="map-inbox-anchor" id="map-inbox-anchor">
+            <button type="button" class="map-inbox-trigger" id="map-inbox-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="map-inbox-list" aria-label="Map activity inbox"><span data-icon="inbox" aria-hidden="true"></span><span class="map-inbox-label">Inbox</span><span class="map-inbox-count" id="map-inbox-count" hidden></span></button>
+            <section class="map-inbox-list" id="map-inbox-list" role="dialog" aria-labelledby="map-inbox-title" hidden>
+              <header class="map-inbox-head"><div><h2 id="map-inbox-title">Map activity</h2><p id="map-inbox-summary">Changes on maps you have opened</p></div><button type="button" class="map-inbox-clear" id="map-inbox-clear">Clear</button><button type="button" class="handoff-close" id="map-inbox-close" aria-label="Close inbox">×</button></header>
+              <div class="map-inbox-body" id="map-inbox-body"></div>
+            </section>
+          </div>
           <div class="handoff-anchor" id="handoff-anchor" hidden>
             <button type="button" class="handoff-trigger" id="handoff-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="handoff-list" aria-label="Hand-offs in T3 Code"></button>
             <section class="handoff-list" id="handoff-list" role="dialog" aria-labelledby="handoff-list-title" hidden>
@@ -29,6 +43,7 @@
           <button type="button" class="synced" id="synced" aria-label="Resync from GitHub" title="Click to resync from GitHub"><span data-icon="refresh" class="synced-icon" aria-hidden="true"></span><span class="synced-label"></span></button>
         </header>
         <span class="sr-only" id="handoff-announcement" role="status" aria-live="polite"></span>
+        <span class="sr-only" id="map-inbox-announcement" role="status" aria-live="polite"></span>
 
         <main class="page" id="main" tabindex="-1">
           <div class="sheet"><p class="loading">Reading GitHub…</p></div>
