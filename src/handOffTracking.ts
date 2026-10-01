@@ -920,6 +920,25 @@ export class HandOffTracker {
     return live === undefined ? undefined : this.toDto(live);
   }
 
+  /** How many hand-offs are live on this machine, across every repository and map, after a fresh look at T3 Code. */
+  async liveCount(): Promise<number> {
+    this.start();
+    await this.refresh();
+    return (await this.store.list()).filter((item) => isLiveHandOff(item)).length;
+  }
+
+  /** The last error T3 Code reported on each given hand-off that has one. */
+  async lastErrors(ids: readonly string[]): Promise<Map<string, string>> {
+    this.start();
+    await this.refresh();
+    const wanted = new Set(ids);
+    const errors = new Map<string, string>();
+    for (const item of await this.store.list()) {
+      if (wanted.has(item.id) && item.lastError !== null) errors.set(item.id, item.lastError);
+    }
+    return errors;
+  }
+
   /**
    * The PRs T3 Code has a snapshot for, keyed by ticket, in `repo`. Empty while T3 Code is
    * offline: a snapshot from another environment, or from before it went down, may be stale.

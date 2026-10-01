@@ -48,6 +48,7 @@ import {
   mountHandOffs,
   restoreMapTicketFocus,
 } from './handOffs.js';
+import { batchCardChip, mountStartNext } from './startNext.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -185,22 +186,28 @@ handOffSurface.subscribe((records) => {
   if (key === handOffVisualKey) return;
   handOffVisualKey = key;
   if (filter === 'in-t3' && activeTicketHandOffs(currentMap()).length === 0) filter = null;
-  if (snapshot !== null) {
-    renderFilters();
-    if (view === 'map') {
-      const focusedNode = document.activeElement instanceof HTMLElement
-        ? document.activeElement.closest<HTMLElement>('.node')
-        : null;
-      const focusedTicket = focusedMapTicketNumber(focusedNode, focusedNode !== null && els.nodes.contains(focusedNode));
-      renderGraph();
-      restoreMapTicketFocus(focusedTicket, (number) =>
-        els.nodes.querySelector<HTMLElement>(`.node[data-number="${String(number)}"]`),
-      );
-    }
-    if (selected !== null) renderInspector();
-    syncHighlights();
-  }
+  repaintCards();
+  startNext.render();
 });
+
+/** Redraw the cards, filters and panel after hand-offs or a Start next batch changed, keeping keyboard focus on its card. */
+function repaintCards(): void {
+  if (snapshot === null) return;
+  renderFilters();
+  if (view === 'map') {
+    const focusedNode = document.activeElement instanceof HTMLElement
+      ? document.activeElement.closest<HTMLElement>('.node')
+      : null;
+    const focusedTicket = focusedMapTicketNumber(focusedNode, focusedNode !== null && els.nodes.contains(focusedNode));
+    renderGraph();
+    restoreMapTicketFocus(focusedTicket, (number) =>
+      els.nodes.querySelector<HTMLElement>(`.node[data-number="${String(number)}"]`),
+    );
+  }
+  if (selected !== null) renderInspector();
+  syncHighlights();
+  navigation?.setStartNext(startNext.menuLabel());
+}
 
 function rememberMapOpen(repo: string, mapNumber: number): void {
   try {
@@ -228,6 +235,9 @@ navigation = mountNavigation({
   },
   onViewChange(nextView) {
     setView(nextView);
+  },
+  onStartNext() {
+    startNext.open();
   },
 });
 function renderPlanningHandoff(): void {
@@ -263,6 +273,17 @@ async function loadPlanningHandoff(): Promise<void> {
     // Keep the map usable when hand-off tracking is temporarily unavailable.
   }
 }
+
+const startNext = mountStartNext({
+  context: () => {
+    const map = currentMap();
+    return snapshot === null || map === null ? null : { repo: snapshot.repo, map };
+  },
+  handOffs: () => handOffRecords,
+  onChange: repaintCards,
+  refreshHandOffs: () => handOffSurface.refresh(),
+  toast,
+});
 
 let toastTimer: number | undefined;
 let loadInFlight: Promise<boolean> | null = null;
@@ -404,6 +425,8 @@ function render(): void {
   else if (view === 'table') renderTable();
   else renderPrototypes();
   renderInspector();
+  navigation?.setStartNext(startNext.menuLabel());
+  startNext.render();
 }
 
 function renderSynced(): void {
@@ -451,6 +474,12 @@ function renderKey(): void {
   els.keyMenu.innerHTML = `${states}${FOG_KEY_ROW}<div class="menu-sep"></div>${types}`;
 }
 
+/** A card's chip while its ticket waits in a Start next batch or is being handed off. */
+function batchChip(ticketNumber: number): string | null {
+  const map = currentMap();
+  return snapshot === null || map === null ? null : batchCardChip(startNext.batches(), snapshot.repo, map.number, ticketNumber);
+}
+
 /** A card on the canvas. An issue off the map gets the same card under a fog effect, placed where its dependencies put it. */
 function nodeHtml(ticket: Ticket | OutsideTicket, position: PositionedNode): string {
   const style = STATE_STYLE[ticket.state];
@@ -470,7 +499,7 @@ function nodeHtml(ticket: Ticket | OutsideTicket, position: PositionedNode): str
     <span class="node-top">
       ${typeGlyph(ticket.type)}
       <span class="num">#${String(ticket.number)}</span>
-      ${cardShowsHandOff(ticket.state, handOff) ? handOffPill(handOff, true) : stateChip(ticket.state)}
+      ${cardShowsHandOff(ticket.state, handOff) ? handOffPill(handOff, true) : (batchChip(ticket.number) ?? stateChip(ticket.state))}
     </span>
     <span class="title">${escapeHtml(ticket.title)}</span>
     <span class="meta">${escapeHtml(meta)}</span>
@@ -1074,7 +1103,7 @@ async function handOff(copyOnly: boolean): Promise<void> {
     const response = await fetch(scopedApiPath(repoName(), 'hand-off'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ map: map.number, ticket: selected, copyOnly, model: copyOnly ? null : pickedModel() }),
+      body: JSON.stringify({ map: map.number, ticket: selected, copyOnly, model: copyOnly ? null : pickedModel(), tier: ticketTier(repoName(), selected) }),
     });
     const body = (await response.json()) as {
       prompt?: string;

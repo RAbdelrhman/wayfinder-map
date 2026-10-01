@@ -16,6 +16,16 @@
         <header class="topbar map-topbar" id="topbar">
           <div class="nav-topbar" id="nav-topbar"></div>
           <span class="topbar-spacer"></span>
+          <div class="handoff-anchor batch-anchor" id="batch-anchor" hidden>
+            <button type="button" class="handoff-trigger batch-trigger" id="batch-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="batch-list"></button>
+            <section class="handoff-list batch-panel" id="batch-list" role="dialog" aria-labelledby="batch-list-title" hidden>
+              <header class="handoff-list-head">
+                <div><h2 id="batch-list-title">Start next</h2></div>
+                <button type="button" class="handoff-close" aria-label="Close">×</button>
+              </header>
+              <div class="handoff-list-body" id="batch-list-body"></div>
+            </section>
+          </div>
           <div class="handoff-anchor" id="handoff-anchor" hidden>
             <button type="button" class="handoff-trigger" id="handoff-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="handoff-list" aria-label="Hand-offs in T3 Code"></button>
             <section class="handoff-list" id="handoff-list" role="dialog" aria-labelledby="handoff-list-title" hidden>
