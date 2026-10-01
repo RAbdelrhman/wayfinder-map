@@ -246,6 +246,22 @@ While a batch runs, a topbar control shows "N running · M queued" and a per-tic
 batch stops, queued tickets go back to next, and the control turns red with when the limit resets.
 Queued tickets start only while Wayfinder is open.
 
+### Auto map
+
+The same menu has an **Auto map** switch, off by default and set per map. While it is on, every ticket
+the watcher reports as newly next is handed off with no click, through the same batch as Start next:
+the per-machine cap applies and the rest queue. The map name shows a blue **auto** mark and next cards
+read "auto map will start this".
+
+- The first time you turn it on, a setup dialog explains this and has one **Tier** choice (Auto by
+  default, which runs on Mid until the Auto tier ships). **Auto map settings…** reopens it.
+- Grilling and prototype tickets start too, then stop at the first question or design choice and wait
+  for you ("needs you").
+- The first usage-limit error stops the batch, notifies you, and turns the auto map off until you turn
+  it back on.
+- It runs only while Wayfinder is open and the map has been opened. After a quit, the catch-up pass
+  reports what became next but starts nothing.
+
 ## Prompt template
 
 The default prompt names the repo, the map, the ticket, the map's destination and

@@ -5,6 +5,8 @@ import { clickedOutside } from './outsideClick.js';
 import { loadWayfinderRepositories } from './wayfinderRepositories.js';
 import { allTickets, miniRing, paintIcons, repoIconHtml } from './chrome.js';
 import { bone } from './skeleton.js';
+import { autoMapMarkHtml, autoMapMenuHtml } from './autoMap.js';
+import type { AutoMapMenuState } from './autoMap.js';
 
 export type NavigationView = 'map' | 'table' | 'prototypes';
 export type NavigationPage = 'home' | 'repository' | 'new-map' | 'map';
@@ -30,11 +32,17 @@ export interface NavigationOptions {
   onViewChange?: (view: NavigationView) => void;
   /** The map-name menu's "Start next" item was chosen. */
   onStartNext?: () => void;
+  /** The map-name menu's Auto map switch was flipped. */
+  onAutoMapToggle?: () => void;
+  /** The map-name menu's "Auto map settings…" link was chosen. */
+  onAutoMapSettings?: () => void;
 }
 
 export interface NavigationController {
   /** The label of the map-name menu's Start next item, or null to hide it. */
   setStartNext(label: string | null): void;
+  /** The map-name menu's Auto map switch and the mark beside the map name, or null to hide them. */
+  setAutoMap(state: AutoMapMenuState | null): void;
   setSnapshot(snapshot: MapSnapshot, mapNumber?: number | null): void;
   setCurrentRepo(repo: string | null): void;
   setActiveView(view: NavigationView): void;
@@ -223,6 +231,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   let activeView = options.view;
   let prototypeCount: number | null = null;
   let startNextLabel: string | null = null;
+  let autoMap: AutoMapMenuState | null = null;
   let repositories: string[] = [];
   let repositoryListLoaded = false;
   let repositoryListFailed = false;
@@ -499,11 +508,13 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     const repoScope = (menuId: string, repo: string, quiet: boolean): string => `<div class="nav-scope-control"><button type="button" class="scope${quiet ? ' is-quiet' : ''}" data-nav-menu-trigger="${menuId}" aria-haspopup="true" aria-expanded="${String(openMenu === menuId)}" aria-controls="nav-menu-${menuId}" aria-label="Switch repository, current is ${escapeHtml(repo)}" title="Switch repository">${repoIconHtml(repo, 'sm')}<span class="t">${escapeHtml(quiet ? repoLabel(repo, repositories) : repo)}</span>${iconName('chevron')}</button>${scopeMenuMarkup(menuId, 'Repositories', repositories, currentRepo, openMenu === menuId)}</div>`;
     const mapScope = (menuId: string, repo: string, current: WayfinderMap | null): string => {
       const label = current === null ? (currentMapNumber === null ? 'Choose a map' : `Map #${String(currentMapNumber)}`) : `#${String(current.number)} ${current.title}`;
-      const startItem = startNextLabel === null || current === null ? '' : `<ul><li><button type="button" class="menu-item nav-start-next" data-nav-start-next>${iconName('play')}<span class="grow">${escapeHtml(startNextLabel)}</span></button></li></ul>`;
+      const startNextItem = startNextLabel === null || current === null ? '' : `<li><button type="button" class="menu-item nav-start-next" data-nav-start-next>${iconName('play')}<span class="grow">${escapeHtml(startNextLabel)}</span></button></li>`;
+      const autoMapItem = autoMap === null || current === null ? '' : `<li class="nav-auto-map">${autoMapMenuHtml(autoMap)}</li>`;
+      const startItem = startNextItem === '' && autoMapItem === '' ? '' : `<ul>${startNextItem}${autoMapItem}</ul>`;
       const menuMaps = snapshot?.maps.length
         ? `${startItem}<div class="menu-label">Maps in ${escapeHtml(repoLabel(repo, repositories))}</div><ul>${snapshot.maps.map((candidate) => `<li><a class="menu-item${candidate.number === currentMapNumber ? ' is-on' : ''}" href="${mapHref(repo, candidate, activeView)}"${candidate.number === currentMapNumber ? ' aria-current="page"' : ''}>${miniRing(candidate)}<span class="grow">#${String(candidate.number)} ${escapeHtml(candidate.title)}</span></a></li>`).join('')}<li><a class="menu-item nav-all-maps" href="${repoPath(repo)}">${iconName('graph')}<span class="grow">All maps</span></a></li></ul>`
         : `<ul><li class="nav-tree-status">${snapshotRequests.has(repo) ? 'Loading maps…' : snapshotErrors.has(repo) ? 'Could not load maps.' : 'No maps yet'}</li></ul>`;
-      return `<div class="nav-scope-control"><button type="button" class="scope" data-nav-menu-trigger="${menuId}" aria-haspopup="true" aria-expanded="${String(openMenu === menuId)}" aria-controls="nav-menu-${menuId}"${snapshot?.maps.length ? '' : ' disabled'} title="Choose a map">${current === null ? '' : miniRing(current)}<span class="t">${escapeHtml(label)}</span>${iconName('chevron')}</button><div class="menu nav-popover" id="nav-menu-${menuId}" data-nav-menu="${menuId}" aria-label="Maps in ${escapeHtml(repo)}"${openMenu === menuId ? '' : ' hidden'}>${menuMaps}</div></div>`;
+      return `<div class="nav-scope-control"><button type="button" class="scope" data-nav-menu-trigger="${menuId}" aria-haspopup="true" aria-expanded="${String(openMenu === menuId)}" aria-controls="nav-menu-${menuId}"${snapshot?.maps.length ? '' : ' disabled'} title="Choose a map">${current === null ? '' : miniRing(current)}<span class="t">${escapeHtml(label)}</span>${current === null || autoMap === null ? '' : autoMapMarkHtml(autoMap.enabled)}${iconName('chevron')}</button><div class="menu nav-popover" id="nav-menu-${menuId}" data-nav-menu="${menuId}" aria-label="Maps in ${escapeHtml(repo)}"${openMenu === menuId ? '' : ' hidden'}>${menuMaps}</div></div>`;
     };
     const separator = '<span class="crumb-sep" aria-hidden="true">/</span>';
     if (page === 'map' && currentRepo !== null) {
@@ -676,6 +687,17 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
       options.onOpenTicket?.(Number(start.dataset['ticket']));
       return;
     }
+    if (target.closest('[data-nav-auto-map]') !== null) {
+      event.preventDefault();
+      options.onAutoMapToggle?.();
+      return;
+    }
+    if (target.closest('[data-nav-auto-settings]') !== null) {
+      event.preventDefault();
+      closeMenu(false);
+      options.onAutoMapSettings?.();
+      return;
+    }
     if (target.closest('[data-nav-start-next]') !== null) {
       event.preventDefault();
       closeMenu(false);
@@ -770,6 +792,11 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     setStartNext(label) {
       if (label === startNextLabel) return;
       startNextLabel = label;
+      renderTopbar();
+    },
+    setAutoMap(state) {
+      if (state?.enabled === autoMap?.enabled && state?.setUp === autoMap?.setUp && state?.tier === autoMap?.tier) return;
+      autoMap = state;
       renderTopbar();
     },
     setSnapshot(snapshot, mapNumber = currentMapNumber) {

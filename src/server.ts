@@ -1171,13 +1171,16 @@ export async function startServer({
       }
 
       if (requestedRepo !== null && scoped?.action === 'start-next' && request.method === 'POST') {
-        const body = (await readBody(request)) as { map?: unknown; cap?: unknown; tickets?: unknown };
+        const body = (await readBody(request)) as { map?: unknown; cap?: unknown; tickets?: unknown; auto?: unknown };
         const mapNumber = Number(body.map);
         if (!Number.isSafeInteger(mapNumber) || !Array.isArray(body.tickets) || body.tickets.length === 0) {
           json(response, 400, { error: 'Choose a map and at least one ticket to start.' });
           return;
         }
-        const map = (await repositories.snapshot(requestedRepo, false, [mapNumber])).maps.find((candidate) => candidate.number === mapNumber);
+        // An auto map starts a ticket the moment it became next, which the cached snapshot may not show yet.
+        const auto = body.auto === true;
+        const read = auto ? await repositories.refreshIfChanged(requestedRepo, [mapNumber]) : await repositories.snapshot(requestedRepo, false, [mapNumber]);
+        const map = read.maps.find((candidate) => candidate.number === mapNumber);
         if (map === undefined) {
           json(response, 404, { error: 'No such map.' });
           return;
@@ -1204,7 +1207,7 @@ export async function startServer({
           json(response, 400, { error: 'None of those tickets are on this map.' });
           return;
         }
-        json(response, 202, { batch: startNext.submit({ repo: requestedRepo, mapNumber, cap: normalizeCap(body.cap), items }) });
+        json(response, 202, { batch: startNext.submit({ repo: requestedRepo, mapNumber, cap: normalizeCap(body.cap), items, auto }) });
         return;
       }
 
