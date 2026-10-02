@@ -84,8 +84,20 @@ Start next's confirm list has one choice per row: Auto (the default), Simple, Mi
 
 - **Rating.** `rateByRules` scores the ticket type, distinct file and module names, risk words (concurrency, data migration, external integration, failure handling, security) and blockers, with body length breaking a tie at the edge of Hard only. It returns Mid with the reason "the ticket names little scope" when it has nothing to go on, and Simple only for a task that clearly names one file or says it is small. Settings can switch rating to a Codex or Claude model, run headless through that provider's CLI; any failure falls back to the rules and the row's reason says so. The saved `scoring.version` is `rules-1` or `model-1:<slug>`.
 - **Model.** The rated tier resolves through the Settings tier mapping and the models T3 Code currently offers. A provider T3 Code reports as not ready, or one that hit a usage limit in the last 30 minutes, is skipped for a model Settings maps to a *harder* tier on another provider. Wayfinder never takes an easier tier's model, so a quota is not stretched by under-powering a ticket. With no alternative the tier's own model stays and the reason says to pick one.
-- **Usage signal.** Only what Wayfinder has seen: a usage-limit error on a batch start or on an Auto thread, kept as the provider instance and a time. Everything else is `unknown`; "near the limit" is not inferred (see above). Reading Codex's `account/rateLimits/read` and Claude's status-line limits would add `available` and a real near-limit state. That is left for a follow-up.
+- **Usage signal.** Only what Wayfinder has seen: a usage-limit error on a batch start or on an Auto thread, kept as the provider instance and a time. Everything else is `unknown`; "near the limit" is not inferred (see above). #184 added the real readings (below).
 - **Record.** Every row sends an `auto` block (proposal, final choice, usage state), including rows the user overrode, so #172's `overrides` fires on a changed tier or model.
+
+## Built in #184
+
+`GET /api/provider-usage` now reads real usage, in `src/providerUsage.ts`. A provider reads `available`, `limited`, or is left out of the answer, which the page treats as `unknown`.
+
+- **Codex.** The server starts `codex app-server`, calls `account/rateLimits/read` and stops it (about 1.5 s here). The reading is reused for 60 seconds, so the call that opens the Start next confirm list refreshes it before a batch. A failed or unsupported read, or a response without usable windows, leaves Codex `unknown`. Codex is `limited` when `ordinaryUsageAllowed` is false, a reached-limit type is named, or a window is at 100% and has not reset.
+- **Claude Code.** Wayfinder cannot ask Claude for its limits, so a status-line script posts the payload it already receives: `curl -s -X POST -H 'content-type: application/json' --data-binary @- http://127.0.0.1:4478/api/provider-usage/claude` (change the port if you use `--port`). `rate_limits.five_hour` and `seven_day` are read the same way. A payload without `rate_limits` records nothing, so Claude stays `unknown`.
+- **Freshness.** `observedAt` is when Wayfinder received the reading, never the provider's clock. An `available` reading older than 60 seconds is dropped. A `limited` one holds until its window's reset time, since quota does not come back earlier. The newest observation wins between a reading and a usage-limit error (the 30-minute rule above), so a fresh `available` reading overrides an older error.
+- **Which providers.** Readings are filed under T3 Code's default instance ids, `codex` and `claudeAgent`. A custom instance may be another account, so it stays `unknown` until it has a limit error.
+- **Privacy.** A reading is reduced to a state, a time and the reset time held in memory. Percentages, plan names and account IDs are dropped on receipt, so the API, the confirm list, the hand-off record and GitHub never see them.
+- **No near-limit state.** Still not inferred: #165 found the sample too small and the hand-off records (#172) hold no Auto outcomes yet. A provider is `limited` only when its own data says a window is used up.
+- **Not done.** A queued ticket that waits over 60 seconds keeps the model chosen at submit. Re-picking it when a limit appears is tracked as a follow-up.
 
 ## Calibration readiness audit (#173)
 
