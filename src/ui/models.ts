@@ -52,6 +52,28 @@ export function saveAutoRater(rater: AutoRater, storage: Pick<Storage, 'setItem'
   storage.setItem(AUTO_RATER_KEY, JSON.stringify(rater));
 }
 
+/**
+ * Calibration mode (#186): off by default. When on, Start next also rates each task and research ticket with this
+ * model, saves that prediction beside the rules' on the local hand-off record, and never lets it change the pick.
+ */
+export type CalibrationMode = { kind: 'off' } | { kind: 'shadow'; choice: ModelChoice };
+
+const CALIBRATION_KEY = 'wayfinder-map:auto-calibration:v1';
+
+export function calibrationMode(storage: Pick<Storage, 'getItem'> = localStorage): CalibrationMode {
+  try {
+    const saved = JSON.parse(storage.getItem(CALIBRATION_KEY) ?? 'null') as { kind?: unknown; choice?: unknown } | null;
+    const choice = saved?.kind === 'shadow' ? parseModelChoice(saved.choice) : null;
+    return choice === null ? { kind: 'off' } : { kind: 'shadow', choice };
+  } catch {
+    return { kind: 'off' };
+  }
+}
+
+export function saveCalibrationMode(mode: CalibrationMode, storage: Pick<Storage, 'setItem'> = localStorage): void {
+  storage.setItem(CALIBRATION_KEY, JSON.stringify(mode));
+}
+
 function readJson<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);

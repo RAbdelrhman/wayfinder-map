@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import type { Calibration } from './autoCalibration.js';
 import { buildAutoDecision } from './autoDecision.js';
-import { autoDecisionBody, LIMITED_FOR_MS, pickAuto, proposalLine, rateByRules, supportsModelRating, usageFromLimitEvents } from './autoPick.js';
+import { autoDecisionBody, LIMITED_FOR_MS, pickAuto, proposalLine, rateByRules, supportsModelRating, tierMappingOf, usageFromLimitEvents } from './autoPick.js';
 import type { AutoPickInput, RatableTicket, Rating } from './autoPick.js';
 import type { ModelCatalog, Tier } from './models.js';
 
@@ -154,6 +155,72 @@ describe('usageFromLimitEvents', () => {
   it('forgets a limit once it is older than the window, and ignores bad times', () => {
     const old = new Date(now.getTime() - LIMITED_FOR_MS - 1).toISOString();
     expect(usageFromLimitEvents([{ instanceId: 'codex', at: old }, { instanceId: 'claudeAgent', at: 'soon' }], now)).toEqual({});
+  });
+});
+
+describe('provider substitution (#186)', () => {
+  const mapped = {
+    simple: { instanceId: 'codex', model: 'gpt-5.6-luna' },
+    mid: { instanceId: 'codex', model: 'gpt-5.6-terra' },
+    hard: { instanceId: 'claudeAgent', model: 'fable-5' },
+  };
+
+  it('names a usage limit as the reason and the harder tier whose model was used', () => {
+    const pick = pickAuto(input({ rating: rating('mid'), usage: limited('codex'), tierModels: mapped }));
+    expect(pick.substitution).toEqual({
+      reason: 'usage-limit',
+      from: { provider: 'codex', model: 'gpt-5.6-terra', effort: null },
+      to: { provider: 'claudeAgent', model: 'fable-5', effort: null },
+      toTier: 'hard',
+    });
+  });
+
+  it('names readiness as the reason when the provider is not ready', () => {
+    const catalog: ModelCatalog = { providers: CATALOG.providers.map((provider) => (provider.instanceId === 'codex' ? { ...provider, ready: false } : provider)) };
+    expect(pickAuto(input({ rating: rating('mid'), catalog, tierModels: mapped })).substitution).toMatchObject({ reason: 'provider-not-ready', toTier: 'hard' });
+  });
+
+  it('records none when the tier keeps its own model, or when nothing else is usable', () => {
+    expect(pickAuto(input({ tierModels: mapped })).substitution).toBeNull();
+    expect(pickAuto(input({ rating: rating('hard'), usage: limited('claudeAgent'), tierModels: mapped })).substitution).toBeNull();
+    expect(pickAuto(input({ catalog: null })).substitution).toBeNull();
+  });
+
+  it('is saved apart from an explicit correction: the substituted pick is the proposal, so a kept proposal is no override', () => {
+    const proposal = pickAuto(input({ rating: rating('mid'), usage: limited('codex'), tierModels: mapped }));
+    const kept = buildAutoDecision(autoDecisionBody(proposal, { tier: proposal.tier, choice: proposal.choice }), new Date('2026-10-01T12:00:00.000Z'));
+    expect(kept).toMatchObject({ overrides: [], selection: 'auto', substitution: { reason: 'usage-limit' } });
+    const corrected = buildAutoDecision(
+      autoDecisionBody(proposal, { tier: 'mid', choice: { instanceId: 'codex', model: 'gpt-5.6-sol' } }, { selection: 'user' }),
+      new Date('2026-10-01T12:00:00.000Z'),
+    );
+    expect(corrected).toMatchObject({ overrides: ['model'], selection: 'user', substitution: { reason: 'usage-limit' } });
+  });
+});
+
+describe('tierMappingOf', () => {
+  it('records the model each tier maps to, only for models T3 Code still offers', () => {
+    const mapping = tierMappingOf(CATALOG, { simple: { instanceId: 'codex', model: 'gpt-5.6-luna' }, mid: { instanceId: 'codex', model: 'gone' }, hard: { instanceId: 'codex', model: 'gpt-5.6-sol', effort: { id: 'reasoningEffort', value: 'high' } } });
+    expect(mapping).toEqual({ simple: { provider: 'codex', model: 'gpt-5.6-luna', effort: null }, hard: { provider: 'codex', model: 'gpt-5.6-sol', effort: 'high' } });
+    expect(tierMappingOf(null, { simple: { instanceId: 'codex', model: 'gpt-5.6-luna' } })).toEqual({});
+  });
+});
+
+describe('autoDecisionBody with calibration (#186)', () => {
+  const calibration: Calibration = {
+    rules: { tier: 'mid', version: 'rules-1', rubric: null, rater: null, inputId: 'in', elapsedMs: 0.2, status: 'ok', tokens: null, cost: { kind: 'actual', usd: 0 } },
+    shadow: { tier: 'hard', version: 'model-1:gpt-5.6-luna', rubric: 'rubric-1', rater: { provider: 'codex', model: 'gpt-5.6-luna', effort: 'low' }, inputId: 'in', elapsedMs: 7_000, status: 'ok', tokens: null, cost: { kind: 'unavailable' } },
+    proposedBy: 'logic',
+    fallback: false,
+  };
+
+  it('carries the pair without changing the proposal or the final pick', () => {
+    const proposal = pickAuto(input({ rating: rating('mid') }));
+    const plain = autoDecisionBody(proposal, { tier: 'mid', choice: proposal.choice });
+    const shadowed = autoDecisionBody(proposal, { tier: 'mid', choice: proposal.choice }, { calibration });
+    expect(shadowed).toMatchObject({ proposed: plain['proposed'], final: plain['final'], scoring: plain['scoring'] });
+    expect(plain).not.toHaveProperty('calibration');
+    expect(shadowed['calibration']).toEqual(calibration);
   });
 });
 

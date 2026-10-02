@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import type { Batch, BatchItem } from '../startNextRunner.js';
 import type { Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
+import type { Calibration } from '../autoCalibration.js';
 import type { AutoProposal } from '../autoPick.js';
 import {
   batchCardChip,
@@ -38,7 +39,7 @@ const TIER_MODELS: Partial<Record<Tier, ModelChoice>> = {
   mid: { instanceId: 'codex', model: 'm' },
   hard: { instanceId: 'codex', model: 'h' },
 };
-const NO_AUTO: AutoState = { ratings: new Map(), usage: {}, pending: false };
+const NO_AUTO: AutoState = { ratings: new Map(), usage: {}, pending: false, calibrations: new Map(), calibrating: false };
 
 function ticket(number: number, type: TicketType | null = 'task', state: TicketState = 'frontier'): Ticket {
   return {
@@ -208,6 +209,13 @@ describe('start next confirm list', () => {
     expect(html).toContain('data-start-go disabled');
   });
 
+  it('holds Start while a shadow model rates, without hiding the proposals (#186)', () => {
+    const html = startDialogHtml(plan, { ...view(), calibrating: true });
+    expect(html).toContain('data-start-go disabled');
+    expect(html).not.toContain('rating…');
+    expect(startDialogHtml(plan, { ...view(), calibrating: false })).not.toContain('data-start-go disabled');
+  });
+
   it('unticks grilling and prototype rows and ticks the rest', () => {
     const html = startDialogHtml(plan, view());
     expect(html).toMatch(/data-start-toggle="1" checked/);
@@ -316,6 +324,30 @@ describe('start request entries', () => {
     const entry = startRequestEntry(hardTicket, 'simple', proposal, CATALOG, TIER_MODELS);
     expect(entry).toMatchObject({ tier: 'simple', model: { instanceId: 'codex', model: 's' } });
     expect(entry.auto).toMatchObject({ proposed: { tier: 'hard', model: 'h' }, final: { tier: 'simple', model: 's' } });
+  });
+
+  it('records how the row was chosen and the tier mapping at dispatch (#186)', () => {
+    const auto = startRequestEntry(hardTicket, 'auto', proposal, CATALOG, TIER_MODELS);
+    expect(auto.auto).toMatchObject({ selection: 'auto', tierMapping: { simple: { provider: 'codex', model: 's' }, hard: { provider: 'codex', model: 'h' } }, substitution: null });
+    // A tier the user picked by hand is a selection even when it equals the proposal.
+    const same = startRequestEntry(hardTicket, 'hard', proposal, CATALOG, TIER_MODELS);
+    expect(same.auto).toMatchObject({ selection: 'user', proposed: { tier: 'hard' }, final: { tier: 'hard' } });
+  });
+
+  it('sends the paired predictions with the entry, and the pick is the same with or without them', () => {
+    const calibration: Calibration = {
+      rules: { tier: 'hard', version: 'rules-1', rubric: null, rater: null, inputId: 'in', elapsedMs: 0.3, status: 'ok', tokens: null, cost: { kind: 'actual', usd: 0 } },
+      shadow: { tier: 'simple', version: 'model-1:m', rubric: 'rubric-1', rater: { provider: 'codex', model: 'm', effort: 'low' }, inputId: 'in', elapsedMs: 6_000, status: 'ok', tokens: null, cost: { kind: 'unavailable' } },
+      proposedBy: 'logic',
+      fallback: false,
+    };
+    const plain = startRequestEntry(hardTicket, 'auto', proposal, CATALOG, TIER_MODELS);
+    const shadowed = startRequestEntry(hardTicket, 'auto', proposal, CATALOG, TIER_MODELS, calibration);
+    expect(plain.auto).not.toHaveProperty('calibration');
+    expect(shadowed.auto['calibration']).toEqual(calibration);
+    // The shadow's "simple" never reaches dispatch.
+    expect({ tier: shadowed.tier, model: shadowed.model }).toEqual({ tier: plain.tier, model: plain.model });
+    expect(shadowed.auto).toMatchObject({ proposed: plain.auto['proposed'], final: plain.auto['final'] });
   });
 
   it("starts on T3 Code's default when the models are not loaded", () => {

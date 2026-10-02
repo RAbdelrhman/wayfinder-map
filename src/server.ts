@@ -3,7 +3,7 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { buildAutoDecision } from './autoDecision.js';
+import { buildAutoDecision, MODEL_CHANGE_REASONS } from './autoDecision.js';
 import { combineUsage, UsageReadings } from './providerUsage.js';
 import type { CodexLimitsReader } from './providerUsage.js';
 import { rateWithModel } from './autoRater.js';
@@ -615,6 +615,21 @@ export async function startServer({
         return;
       }
 
+      if (path === '/api/hand-offs/model-change' && request.method === 'POST') {
+        const body = (await readBody(request)) as { id?: unknown; at?: unknown; reason?: unknown };
+        const reason = MODEL_CHANGE_REASONS.find((candidate) => candidate === body.reason);
+        if (typeof body.id !== 'string' || typeof body.at !== 'string' || reason === undefined) {
+          json(response, 400, { error: 'Say which hand-off and model change, and one of the known reasons.' });
+          return;
+        }
+        if (!(await handOffTracker.confirmModelChange(body.id, body.at, reason))) {
+          json(response, 404, { error: 'No such model change.' });
+          return;
+        }
+        json(response, 200, { confirmed: true });
+        return;
+      }
+
       if (path === '/api/hand-offs/focus' && request.method === 'POST') {
         const body = (await readBody(request)) as { id?: unknown };
         const id = typeof body.id === 'string' ? body.id : '';
@@ -1189,7 +1204,7 @@ export async function startServer({
           return;
         }
         const tier = typeof body.tier === 'string' && TIERS.includes(body.tier as Tier) ? (body.tier as Tier) : null;
-        const reply = await startTicketHandOff(requestedRepo, map, ticket, { model: parseModelChoice(body.model), tier, auto: buildAutoDecision(body.auto, new Date()), threadOnly: false });
+        const reply = await startTicketHandOff(requestedRepo, map, ticket, { model: parseModelChoice(body.model), tier, auto: buildAutoDecision(body.auto, new Date(), ticket.type), threadOnly: false });
         json(response, reply.status, reply.body);
         return;
       }
@@ -1242,7 +1257,7 @@ export async function startServer({
               title: ticket.title,
               tier,
               model: parseModelChoice(entry.model),
-              auto: buildAutoDecision(entry.auto, new Date()),
+              auto: buildAutoDecision(entry.auto, new Date(), ticket.type),
               ...(ticket.state === 'frontier' ? {} : { skip: `#${String(ticket.number)} is ${ticket.state}, not next.` }),
             },
           ];

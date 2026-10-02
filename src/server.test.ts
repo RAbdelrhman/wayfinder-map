@@ -1169,6 +1169,48 @@ describe('local clone for a hand-off', () => {
       }
     });
 
+    it('saves the paired predictions for a task, the ticket type the server read, and none for a prototype (#186)', async () => {
+      const { server } = liveT3();
+      const store = new HandOffStore({ filePath: null });
+      const typed: WayfinderMap = { ...startMap, tickets: [ticketAt(11, { type: 'task' }), ticketAt(12, { type: 'prototype' })] };
+      const running = await serve({ startNextIntervalMs: 20, t3: server, handOffStore: store, fetcher: async () => ({ maps: [typed], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      const method = (patch: Record<string, unknown> = {}) => ({ tier: 'mid', version: 'rules-1', rubric: null, rater: null, inputId: 'in-1', elapsedMs: 0.5, status: 'ok', tokens: null, cost: { kind: 'actual', usd: 0 }, ...patch });
+      const pick = { tier: 'mid', provider: 'codex', model: 'gpt-5.6-terra', effort: null };
+      const auto = {
+        scoring: { version: 'rules-1', reason: 'touches 3 files' },
+        proposed: pick,
+        final: pick,
+        usage: { state: 'unknown', observedAt: null },
+        ticketType: 'research',
+        selection: 'user',
+        tierMapping: { mid: pick },
+        calibration: { rules: method(), shadow: method({ tier: 'hard', version: 'model-1:gpt-5.6-luna', rubric: 'rubric-1', rater: { provider: 'codex', model: 'gpt-5.6-luna', effort: 'low' } }), proposedBy: 'logic', fallback: false },
+      };
+      try {
+        await post(running.url, '/api/repos/octo/one/start-next', { map: 5, cap: 4, tickets: [{ ticket: 11, tier: 'mid', auto }, { ticket: 12, tier: 'mid', auto }] });
+        await settled(running.url, (items) => items.every((item) => item.status === 'started'));
+        const records = await store.list();
+        const byTicket = (number: number) => records.find((record) => record.ticketNumber === number)?.auto;
+        expect(byTicket(11)).toMatchObject({ ticketType: 'task', selection: 'user', tierMapping: { mid: { model: 'gpt-5.6-terra' } }, calibration: { shadow: { tier: 'hard', rater: { model: 'gpt-5.6-luna' } } } });
+        expect(byTicket(12)).toMatchObject({ ticketType: 'prototype', calibration: null });
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('confirms the reason for a model change, and refuses an unknown reason or change (#186)', async () => {
+      const { server } = liveT3();
+      const store = new HandOffStore({ filePath: null });
+      const running = await serve({ startNextIntervalMs: 20, t3: server, handOffStore: store, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      try {
+        expect((await post(running.url, '/api/hand-offs/model-change', { id: 'nope', at: '2026-10-01T00:00:00.000Z', reason: 'preference' })).status).toBe(404);
+        expect((await post(running.url, '/api/hand-offs/model-change', { id: 'nope', at: '2026-10-01T00:00:00.000Z', reason: 'because' })).status).toBe(400);
+        expect((await post(running.url, '/api/hand-offs/model-change', { id: 7, reason: 'preference' })).status).toBe(400);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
     it('reports a provider as limited after a batch hit its usage limit, so Auto can avoid it', async () => {
       const { server, sessions } = liveT3();
       const failing: ServerT3 = {
@@ -1238,10 +1280,10 @@ describe('local clone for a hand-off', () => {
         const rate = (body: unknown) => post(running.url, '/api/repos/octo/one/auto-rate', body);
         const response = await rate({ map: 5, tickets: [11, 12, 99], model: { instanceId: 'codex', model: 'gpt-5.6-luna' } });
         expect(response.status).toBe(200);
-        await expect(response.json()).resolves.toEqual({
+        await expect(response.json()).resolves.toMatchObject({
           ratings: [
-            { ticket: 11, ok: true, rating: { tier: 'hard', reason: 'touches 6 files', by: 'model', version: 'model-1:gpt-5.6-luna' } },
-            { ticket: 12, ok: false, error: 'gpt-5.6-luna did not answer with a tier' },
+            { ticket: 11, ok: true, rating: { tier: 'hard', reason: 'touches 6 files', by: 'model', version: 'model-1:gpt-5.6-luna' }, prediction: { tier: 'hard', status: 'ok', rubric: 'rubric-1' } },
+            { ticket: 12, ok: false, error: 'gpt-5.6-luna did not answer with a tier', prediction: { tier: null, status: 'unparseable' } },
           ],
         });
         expect((await rate({ map: 5, tickets: [11] })).status).toBe(400);

@@ -64,6 +64,7 @@ const map: WayfinderMap = {
   pullRequests: [],
 };
 
+const CALIBRATION_SECRETS = ['acct-calib', 'calib-quota', 'raw model reply', 'sk-calib-secret'];
 const SECRETS = ['acct-9f3a', 'sk-live-secret', '91.5', 'usedPercent', 'Hard: concurrent starts share one T3 connection', 'rules-1'];
 
 const t3: ServerT3 = {
@@ -134,6 +135,25 @@ describe('Auto decisions stay off GitHub (#172)', () => {
             proposed: { tier: 'hard', provider: 'codex', model: 'gpt-5.6-sol', effort: 'high', accountId: 'acct-9f3a' },
             final: { tier: 'mid', provider: 'codex', model: 'gpt-5.6-terra', effort: 'medium' },
             usage: { state: 'limited', observedAt: new Date().toISOString(), usedPercent: 91.5 },
+            calibration: {
+              rules: { tier: 'mid', version: 'rules-1', rubric: null, rater: null, inputId: 'in-1', elapsedMs: 0.4, status: 'ok', tokens: null, cost: { kind: 'actual', usd: 0 } },
+              shadow: {
+                tier: null,
+                version: 'model-1:gpt-5.6-luna',
+                rubric: 'rubric-1',
+                rater: { provider: 'codex', model: 'gpt-5.6-luna', effort: 'low', accountId: 'acct-calib' },
+                inputId: 'in-1',
+                elapsedMs: 60_001,
+                status: 'timeout',
+                tokens: null,
+                cost: { kind: 'unavailable' },
+                error: 'You have hit your usage limit (calib-quota-88%)',
+                output: 'raw model reply',
+              },
+              proposedBy: 'logic',
+              fallback: false,
+              apiKey: 'sk-calib-secret',
+            },
           },
         }),
       });
@@ -143,11 +163,19 @@ describe('Auto decisions stay off GitHub (#172)', () => {
       await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } });
 
       const [saved] = await store.list();
-      expect(saved?.auto).toMatchObject({ overrides: ['tier', 'model', 'effort'], usage: { state: 'limited' } });
+      expect(saved?.auto).toMatchObject({
+        overrides: ['tier', 'model', 'effort'],
+        usage: { state: 'limited' },
+        ticketType: 'task',
+        calibration: { shadow: { status: 'timeout', elapsedMs: 60_001, tier: null } },
+      });
       expect(saved?.tier).toBe('mid');
 
+      // The pair is kept locally with its measurements, but neither it nor anything it was sent with is stored or sent on.
+      const kept = JSON.stringify(saved);
+      for (const secret of CALIBRATION_SECRETS) expect(kept).not.toContain(secret);
       const sent = JSON.stringify(ghCalls);
-      for (const secret of SECRETS) expect(sent).not.toContain(secret);
+      for (const secret of [...SECRETS, ...CALIBRATION_SECRETS, 'model-1:gpt-5.6-luna', 'rubric-1', '60001']) expect(sent).not.toContain(secret);
       expect(ghCalls.length).toBeGreaterThan(0);
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));

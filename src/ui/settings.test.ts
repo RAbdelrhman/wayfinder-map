@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { HomeAccount } from '../home.js';
 import type { CatalogState } from './models.js';
-import { autoRaterHtml, notificationSettingsHtml, ratingModels, settingsBodyHtml } from './settings.js';
+import { autoRaterHtml, calibrationHtml, notificationSettingsHtml, ratingModels, settingsBodyHtml } from './settings.js';
 import type { SettingsView } from './settings.js';
 
 const ACCOUNT: HomeAccount = {
@@ -17,7 +17,7 @@ const ACCOUNT: HomeAccount = {
 };
 
 function view(patch: Partial<SettingsView> = {}): SettingsView {
-  return { account: ACCOUNT, theme: 'dark', tier: 'mid', rater: { kind: 'logic' }, models: { status: 'loading' }, cap: 4, progress: { style: 'trail', goal: 5 }, stalls: { untouchedClaimDays: 7, deadHandOffDays: 7 }, notifications: null, busy: null, ...patch };
+  return { account: ACCOUNT, theme: 'dark', tier: 'mid', rater: { kind: 'logic' }, calibration: { kind: 'off' }, models: { status: 'loading' }, cap: 4, progress: { style: 'trail', goal: 5 }, stalls: { untouchedClaimDays: 7, deadHandOffDays: 7 }, notifications: null, busy: null, ...patch };
 }
 
 describe('Settings dialog', () => {
@@ -124,5 +124,32 @@ describe('Auto rater setting', () => {
 
   it('shows in the preferences section', () => {
     expect(settingsBodyHtml(view())).toContain('Auto rates tickets');
+  });
+});
+
+describe('Calibration setting (#186)', () => {
+  const models: CatalogState = {
+    status: 'ready',
+    catalog: { providers: [{ instanceId: 'codex', name: 'Codex', ready: true, models: [{ slug: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', isDefault: false, effort: null }] }] },
+  };
+
+  it('is off by default: no model picker, and the hint promises no extra call', () => {
+    const html = calibrationHtml({ kind: 'off' }, models);
+    expect(html).toContain('data-settings-calibration="off" aria-pressed="true"');
+    expect(html).toContain('data-settings-calibration="shadow" aria-pressed="false"');
+    expect(html).toContain('No extra model call');
+    expect(html).not.toContain('data-settings-calibration-model');
+    expect(settingsBodyHtml(view())).toContain('data-settings-calibration="off" aria-pressed="true"');
+  });
+
+  it('when on, picks the shadow model and says what is saved and that the pick is not changed', () => {
+    const html = calibrationHtml({ kind: 'shadow', choice: { instanceId: 'codex', model: 'gpt-5.6-luna' } }, models);
+    expect(html).toContain('data-settings-calibration="shadow" aria-pressed="true"');
+    expect(html).toContain('<option value="codex::gpt-5.6-luna" selected>GPT-5.6 Luna · Codex</option>');
+    expect(html).toContain('never change the pick or reach GitHub');
+  });
+
+  it('says so when no model can rate', () => {
+    expect(calibrationHtml({ kind: 'shadow', choice: { instanceId: 'codex', model: 'm' } }, { status: 'unavailable', reason: 'offline' })).toContain('No Codex or Claude model is ready to rate with.');
   });
 });
