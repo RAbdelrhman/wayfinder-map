@@ -1235,6 +1235,43 @@ describe('local clone for a hand-off', () => {
       }
     });
 
+    it('reports a fresh Codex reading and a Claude status-line reading, and leaves a missing one unknown', async () => {
+      const { server } = liveT3();
+      const reset = Math.floor(Date.now() / 1000) + 3600;
+      const codexLimits = vi.fn(async () => ({ accountId: 'acct-secret', rateLimits: { primary: { usedPercent: 100, resetsAt: reset }, secondary: { usedPercent: 12, resetsAt: reset } } }));
+      const running = await serve({ t3: server, codexLimits, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      try {
+        const read = async () => await (await fetch(`${running.url}/api/provider-usage`, { headers: { origin: running.url } })).text();
+        const first = JSON.parse(await read()) as { providers: Record<string, { state: string; observedAt: string | null }> };
+        expect(first.providers).toEqual({ codex: { state: 'limited', observedAt: expect.any(String) as string } });
+        expect(Math.abs(Date.now() - Date.parse(first.providers['codex']?.observedAt ?? ''))).toBeLessThan(10_000);
+        // A second read inside the freshness window reuses the reading.
+        await read();
+        expect(codexLimits).toHaveBeenCalledTimes(1);
+
+        const claude = (payload: unknown) => post(running.url, '/api/provider-usage/claude', payload);
+        await expect((await claude({ model: { display_name: 'Opus' } })).json()).resolves.toEqual({ recorded: false });
+        await expect((await claude({ rate_limits: { five_hour: { used_percentage: 20, resets_at: reset } } })).json()).resolves.toEqual({ recorded: true });
+        const body = await read();
+        expect(JSON.parse(body)).toMatchObject({ providers: { claudeAgent: { state: 'available' } } });
+        // Percentages and account IDs never reach the response.
+        expect(body).not.toMatch(/acct-secret|usedPercent|used_percentage/);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('keeps a provider unknown when Codex cannot be read', async () => {
+      const { server } = liveT3();
+      const running = await serve({ t3: server, codexLimits: async () => { throw new Error('codex: not found'); }, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      try {
+        const response = await fetch(`${running.url}/api/provider-usage`, { headers: { origin: running.url } });
+        await expect(response.json()).resolves.toEqual({ providers: {} });
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
     it('rates tickets with the chosen model and says which could not be rated', async () => {
       const { server } = liveT3();
       const ratingRunner = vi.fn(async (_command: string, _args: readonly string[], input: string) => (input.includes('Title: Ticket 11') ? '{"tier":"hard","reason":"touches 6 files"}' : 'no idea'));

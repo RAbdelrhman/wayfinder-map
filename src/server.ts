@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { buildAutoDecision, MODEL_CHANGE_REASONS } from './autoDecision.js';
-import { usageFromLimitEvents } from './autoPick.js';
+import { combineUsage, UsageReadings } from './providerUsage.js';
+import type { CodexLimitsReader } from './providerUsage.js';
 import { rateWithModel } from './autoRater.js';
 import type { CliRun } from './autoRater.js';
 import type { AutoDecision } from './autoDecision.js';
@@ -128,6 +129,8 @@ export interface ServeOptions {
   startNextIntervalMs?: number;
   /** Replaces the headless CLI that rates a ticket with a model (#166) in tests. */
   ratingRunner?: CliRun;
+  /** Replaces the Codex app-server read of its rate limits (#184). Off when tests inject a `fetcher`, so they never start Codex. */
+  codexLimits?: CodexLimitsReader;
   /**
    * Where the two stall settings live (#160). Defaults to `~/.wayfinder-map/stalls.json`, except
    * when tests inject a `fetcher`, where they stay in memory unless given.
@@ -257,6 +260,7 @@ export async function startServer({
   mapWatchStore,
   startNextIntervalMs,
   ratingRunner,
+  codexLimits,
   stallSettings: givenStallSettings,
   notificationSettings: givenNotificationSettings,
   onDesktopNotification,
@@ -358,6 +362,7 @@ export async function startServer({
   };
   // A thread change is often a PR, CI or review change, so its map is read now rather than in two minutes.
   handOffTracker.onThreadChange((change) => mapWatcher.nudge(change.repo, change.mapNumber));
+  const usageReadings = codexLimits !== undefined ? new UsageReadings(codexLimits) : fetcher === undefined ? new UsageReadings() : new UsageReadings(null);
   const stallSettings = givenStallSettings ?? (fetcher === undefined ? new StallSettingsStore() : memoryStallSettings());
   const notificationSettings =
     givenNotificationSettings ?? (fetcher === undefined ? new NotificationSettingsStore() : memoryNotificationSettings());
@@ -578,7 +583,14 @@ export async function startServer({
 
       if (path === '/api/provider-usage' && request.method === 'GET') {
         const events = [...startNext.usageLimits(), ...(await handOffTracker.usageLimitEvents())];
-        json(response, 200, { providers: usageFromLimitEvents(events, new Date()) });
+        await usageReadings.refresh();
+        json(response, 200, { providers: combineUsage(events, usageReadings.snapshot(), new Date()) });
+        return;
+      }
+
+      // Claude Code's status-line script posts its payload here (see docs/design/auto-tier-and-provider-usage.md).
+      if (path === '/api/provider-usage/claude' && request.method === 'POST') {
+        json(response, 200, { recorded: usageReadings.recordClaudeStatusLine(await readBody(request)) });
         return;
       }
 
