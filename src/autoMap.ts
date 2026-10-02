@@ -1,9 +1,9 @@
 import type { MapEvent } from './mapWatch.js';
 import { TIERS } from './models.js';
-import type { Tier } from './models.js';
+import type { ModelChoice, Tier } from './models.js';
 import type { Batch } from './startNextRunner.js';
 
-/* The auto map (#164): a per-map opt-in that hands off every ticket as the watcher reports it became next. */
+/* The auto map (#164): a per-map opt-in that hands off every ticket as the watcher reports it became next. The server runs it (#182). */
 
 /** Auto is the default tier: Wayfinder rates each ticket and picks its tier and model (#166). */
 export const AUTO_MAP_TIERS = ['auto', ...TIERS] as const;
@@ -31,6 +31,23 @@ export function parseAutoMapSetting(value: unknown): AutoMapSetting {
   const tier = AUTO_MAP_TIERS.find((candidate) => candidate === raw['tier']) ?? DEFAULT_AUTO_MAP.tier;
   const enabledAt = typeof raw['enabledAt'] === 'string' && !Number.isNaN(Date.parse(raw['enabledAt'])) ? raw['enabledAt'] : null;
   return { enabled: raw['enabled'] === true && enabledAt !== null, tier, setUp: raw['setUp'] === true, enabledAt };
+}
+
+/** The setting after the toggle or the setup dialog's confirm turned it on. */
+export function turnedOn(setting: AutoMapSetting, now: Date, tier: AutoMapTier = setting.tier): AutoMapSetting {
+  return { enabled: true, tier, setUp: true, enabledAt: now.toISOString() };
+}
+
+export function turnedOff(setting: AutoMapSetting): AutoMapSetting {
+  return { ...setting, enabled: false };
+}
+
+/** One batch the auto map hands to Start next: the body of its start request. */
+export interface AutoMapStartBody {
+  map: number;
+  cap: number;
+  auto: true;
+  tickets: Array<{ ticket: number; tier: Tier; model: ModelChoice | null; auto?: Record<string, unknown> }>;
 }
 
 /** The tier a ticket runs on when Auto cannot rate it, e.g. its map could not be read: Mid. */

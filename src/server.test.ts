@@ -15,6 +15,7 @@ import { HandOffStore } from './handOffTracking.js';
 import { MapWatcher } from './mapWatcher.js';
 import type { MapRead } from './mapWatcher.js';
 import { memoryNotificationSettings } from './notifications.js';
+import { memoryAutoMapStore } from './autoMapStore.js';
 
 const config: Config = {
   repo: null,
@@ -1158,12 +1159,55 @@ describe('local clone for a hand-off', () => {
         await settled(running.url, (items) => items.every((item) => item.status === 'started'));
 
         const models = (startThread.mock.calls as unknown as Array<[{ title: string; model: { model: string } | null }]>).map(([input]) => [input.title, input.model?.model]);
-        expect(models).toEqual([['#11 Ticket 11', 'gpt-5.6-sol'], ['#12 Ticket 12', 'gpt-5.6-luna']]);
+        // The two threads start in parallel, so their order is not fixed.
+        expect([...models].sort()).toEqual([['#11 Ticket 11', 'gpt-5.6-sol'], ['#12 Ticket 12', 'gpt-5.6-luna']]);
 
         const records = await store.list();
         const byTicket = (number: number) => records.find((record) => record.ticketNumber === number);
         expect(byTicket(11)).toMatchObject({ tier: 'hard', auto: { scoring: { reason: 'touches 6 files' }, overrides: [] } });
         expect(byTicket(12)).toMatchObject({ tier: 'simple', auto: { proposed: { tier: 'hard' }, final: { tier: 'simple' }, overrides: ['tier', 'model'] } });
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('saves the paired predictions for a task, the ticket type the server read, and none for a prototype (#186)', async () => {
+      const { server } = liveT3();
+      const store = new HandOffStore({ filePath: null });
+      const typed: WayfinderMap = { ...startMap, tickets: [ticketAt(11, { type: 'task' }), ticketAt(12, { type: 'prototype' })] };
+      const running = await serve({ startNextIntervalMs: 20, t3: server, handOffStore: store, fetcher: async () => ({ maps: [typed], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      const method = (patch: Record<string, unknown> = {}) => ({ tier: 'mid', version: 'rules-1', rubric: null, rater: null, inputId: 'in-1', elapsedMs: 0.5, status: 'ok', tokens: null, cost: { kind: 'actual', usd: 0 }, ...patch });
+      const pick = { tier: 'mid', provider: 'codex', model: 'gpt-5.6-terra', effort: null };
+      const auto = {
+        scoring: { version: 'rules-1', reason: 'touches 3 files' },
+        proposed: pick,
+        final: pick,
+        usage: { state: 'unknown', observedAt: null },
+        ticketType: 'research',
+        selection: 'user',
+        tierMapping: { mid: pick },
+        calibration: { rules: method(), shadow: method({ tier: 'hard', version: 'model-1:gpt-5.6-luna', rubric: 'rubric-1', rater: { provider: 'codex', model: 'gpt-5.6-luna', effort: 'low' } }), proposedBy: 'logic', fallback: false },
+      };
+      try {
+        await post(running.url, '/api/repos/octo/one/start-next', { map: 5, cap: 4, tickets: [{ ticket: 11, tier: 'mid', auto }, { ticket: 12, tier: 'mid', auto }] });
+        await settled(running.url, (items) => items.every((item) => item.status === 'started'));
+        const records = await store.list();
+        const byTicket = (number: number) => records.find((record) => record.ticketNumber === number)?.auto;
+        expect(byTicket(11)).toMatchObject({ ticketType: 'task', selection: 'user', tierMapping: { mid: { model: 'gpt-5.6-terra' } }, calibration: { shadow: { tier: 'hard', rater: { model: 'gpt-5.6-luna' } } } });
+        expect(byTicket(12)).toMatchObject({ ticketType: 'prototype', calibration: null });
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('confirms the reason for a model change, and refuses an unknown reason or change (#186)', async () => {
+      const { server } = liveT3();
+      const store = new HandOffStore({ filePath: null });
+      const running = await serve({ startNextIntervalMs: 20, t3: server, handOffStore: store, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      try {
+        expect((await post(running.url, '/api/hand-offs/model-change', { id: 'nope', at: '2026-10-01T00:00:00.000Z', reason: 'preference' })).status).toBe(404);
+        expect((await post(running.url, '/api/hand-offs/model-change', { id: 'nope', at: '2026-10-01T00:00:00.000Z', reason: 'because' })).status).toBe(400);
+        expect((await post(running.url, '/api/hand-offs/model-change', { id: 7, reason: 'preference' })).status).toBe(400);
       } finally {
         await new Promise<void>((resolve) => running.server.close(() => resolve()));
       }
@@ -1193,6 +1237,193 @@ describe('local clone for a hand-off', () => {
       }
     });
 
+    describe('auto map (#182)', () => {
+      const wasBlocked = (state: 'blocked' | 'frontier', numbers: number[]): MapRead => ({
+        status: 'changed',
+        etag: `W/"${state}"`,
+        tickets: numbers.map((number) => ({ number, title: `Ticket ${String(number)}`, state, pullRequests: [] })),
+        rateLimit: null,
+        pollIntervalSeconds: null,
+      });
+      const noPullRequests = async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null });
+      /** A watcher whose map has these tickets blocked on the first read and next from the second. */
+      const watcherWhere = (numbers: number[]) => {
+        const reads: MapRead[] = [wasBlocked('blocked', numbers), wasBlocked('frontier', numbers)];
+        const readMap = vi.fn(async (): Promise<MapRead> => reads.shift() ?? { status: 'unchanged', rateLimit: null, pollIntervalSeconds: null });
+        return { readMap, mapWatcher: new MapWatcher({ readMap, readPullRequests: noPullRequests }, { intervalMs: 10 }) };
+      };
+      const autoMap = async (url: string, body: unknown = { repo: 'octo/one', map: 5, op: 'enable' }) => post(url, '/api/auto-map/map', body);
+      const view = async (url: string) =>
+        (await (await fetch(`${url}/api/auto-map`, { headers: { origin: url } })).json()) as {
+          maps: Array<{ repo: string; mapNumber: number; enabled: boolean; tier: string; stop: { message: string; resetsAt: string | null } | null }>;
+          settings: { cap: number | null };
+          notices: Array<{ id: string; kind: string; ticketNumber: number }>;
+        };
+
+      it('starts a ticket that becomes next with no page open', async () => {
+        const { server, startThread } = liveT3();
+        const { mapWatcher } = watcherWhere([12]);
+        const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        try {
+          // The page turns it on, then goes away. Nothing listens to the event stream from here on.
+          expect((await autoMap(running.url)).status).toBe(200);
+          const batch = await settledBatch(running.url, (current) => current.items.every((item) => item.status === 'started'));
+          expect(batch.items.map((item) => item.ticketNumber)).toEqual([12]);
+          expect(startThread).toHaveBeenCalledTimes(1);
+          expect((await batches(running.url))[0]).toMatchObject({ auto: true });
+          const status = (await (await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } })).json()) as { handOffs: Array<{ ticketNumber: number; tier: string }> };
+          expect(status.handOffs.map((item) => [item.ticketNumber, item.tier])).toEqual([[12, 'mid']]);
+        } finally {
+          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        }
+      });
+
+      it('starts nothing for a map whose auto map is off, even while its map is read', async () => {
+        const { server, startThread } = liveT3();
+        const { readMap, mapWatcher } = watcherWhere([12]);
+        const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        try {
+          // Something else watches the map, so it is read, but its auto map is off.
+          const stop = mapWatcher.watch('octo/one', 5, () => undefined);
+          await vi.waitFor(() => expect(readMap.mock.calls.length).toBeGreaterThan(2));
+          stop();
+          expect(startThread).not.toHaveBeenCalled();
+          expect(await batches(running.url)).toEqual([]);
+        } finally {
+          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        }
+      });
+
+      it('keeps going after a restart: a map that was on is watched again with no page', async () => {
+        const store = memoryAutoMapStore();
+        const first = await serve({ autoMapStore: store, t3, mapWatcher: watcherWhere([12]).mapWatcher, fetcher: async () => ({ maps: [startMap], warnings: [] }) });
+        try {
+          await autoMap(first.url, { repo: 'octo/one', map: 5, op: 'enable', tier: 'hard' });
+        } finally {
+          await new Promise<void>((resolve) => first.server.close(() => resolve()));
+        }
+        const { server, startThread } = liveT3();
+        const { readMap, mapWatcher } = watcherWhere([12]);
+        const second = await serve({ autoMapStore: store, startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        try {
+          expect((await view(second.url)).maps).toMatchObject([{ repo: 'octo/one', mapNumber: 5, enabled: true, tier: 'hard' }]);
+          await vi.waitFor(() => expect(readMap).toHaveBeenCalled());
+          // The first read is a baseline; the second shows the ticket next, which starts it.
+          await settledBatch(second.url, (current) => current.items.every((item) => item.status === 'started'));
+          expect(startThread).toHaveBeenCalledTimes(1);
+        } finally {
+          await new Promise<void>((resolve) => second.server.close(() => resolve()));
+        }
+      });
+
+      it('turns the map off on the first usage-limit error and leaves a notice, in the inbox and on the desktop', async () => {
+        const { server, sessions } = liveT3();
+        const limited: ServerT3 = {
+          ...server,
+          readHandOffSnapshot: async () => ({
+            environmentId: 't3-env',
+            origin: 'http://127.0.0.1:3773',
+            snapshot: { threads: [...sessions].map(([id, status]) => ({ id, session: { status, ...(status === 'error' ? { lastError: 'Usage limit reached. Resets at 4:00 PM.' } : {}) } })) },
+          }),
+        };
+        const desktop = vi.fn();
+        const { readMap, mapWatcher } = watcherWhere([11, 12]);
+        const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, onDesktopNotification: desktop, t3: limited, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        try {
+          // A cap of one queues the second ticket, which keeps the batch running for the error to be seen.
+          expect((await post(running.url, '/api/auto-map/settings', { cap: 1 })).status).toBe(200);
+          await autoMap(running.url);
+          await settled(running.url, (items) => items.some((item) => item.status === 'started'));
+          sessions.set('thread-1', 'error');
+          const stopped = await settledBatch(running.url, (current) => current.status === 'stopped');
+          expect(stopped.items.map((item) => item.status)).toEqual(['started', 'back-to-next']);
+
+          await vi.waitFor(async () => expect((await view(running.url)).maps[0]?.enabled).toBe(false));
+          const after = await view(running.url);
+          expect(after.maps[0]).toMatchObject({ enabled: false, stop: { resetsAt: '4:00 PM' } });
+          expect(after.notices).toEqual([expect.objectContaining({ kind: 'handOffError', ticketNumber: 11 })]);
+          expect(desktop).toHaveBeenCalledTimes(1);
+          expect(desktop).toHaveBeenCalledWith(expect.objectContaining({ kind: 'handOffError', repo: 'octo/one', mapNumber: 5, ticketNumber: 11 }));
+
+          // It no longer watches the map, so the next ticket to become next starts nothing.
+          const readsAtStop = readMap.mock.calls.length;
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          expect(readMap.mock.calls.length).toBe(readsAtStop);
+        } finally {
+          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        }
+      });
+
+      it('keeps each map’s setting and the machine settings, and rejects what is not one', async () => {
+        const running = await serve();
+        try {
+          expect((await view(running.url)).maps).toEqual([]);
+          expect((await autoMap(running.url, { repo: 'octo/one', map: 5, op: 'enable', tier: 'hard' })).status).toBe(200);
+          expect((await view(running.url)).maps).toMatchObject([{ repo: 'octo/one', mapNumber: 5, enabled: true, tier: 'hard' }]);
+          expect((await autoMap(running.url, { repo: 'octo/one', map: 5, op: 'disable' })).status).toBe(200);
+          expect((await view(running.url)).maps[0]?.enabled).toBe(false);
+
+          expect((await autoMap(running.url, { repo: 'nope', map: 5, op: 'enable' })).status).toBe(400);
+          expect((await autoMap(running.url, { repo: 'octo/one', map: 0, op: 'enable' })).status).toBe(400);
+          expect((await autoMap(running.url, { repo: 'octo/one', map: 5, op: 'explode' })).status).toBe(400);
+
+          expect((await post(running.url, '/api/auto-map/settings', { cap: 6, tierModels: { hard: { instanceId: 'codex', model: 'gpt-5.6-sol' } }, rater: { kind: 'logic' }, calibration: { kind: 'off' } })).status).toBe(200);
+          expect((await view(running.url)).settings).toEqual({ cap: 6, tierModels: { hard: { instanceId: 'codex', model: 'gpt-5.6-sol' } }, rater: { kind: 'logic' }, calibration: { kind: 'off' } });
+          expect((await post(running.url, '/api/auto-map/settings', { cap: 99 })).status).toBe(400);
+        } finally {
+          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        }
+      });
+
+      it('refuses a request from another origin', async () => {
+        const running = await serve();
+        try {
+          const response = await fetch(`${running.url}/api/auto-map/map`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify({ repo: 'octo/one', map: 5, op: 'enable' }) });
+          expect(response.status).toBe(403);
+          expect((await view(running.url)).maps).toEqual([]);
+        } finally {
+          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        }
+      });
+    });
+
+    it('reports a fresh Codex reading and a Claude status-line reading, and leaves a missing one unknown', async () => {
+      const { server } = liveT3();
+      const reset = Math.floor(Date.now() / 1000) + 3600;
+      const codexLimits = vi.fn(async () => ({ accountId: 'acct-secret', rateLimits: { primary: { usedPercent: 100, resetsAt: reset }, secondary: { usedPercent: 12, resetsAt: reset } } }));
+      const running = await serve({ t3: server, codexLimits, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      try {
+        const read = async () => await (await fetch(`${running.url}/api/provider-usage`, { headers: { origin: running.url } })).text();
+        const first = JSON.parse(await read()) as { providers: Record<string, { state: string; observedAt: string | null }> };
+        expect(first.providers).toEqual({ codex: { state: 'limited', observedAt: expect.any(String) as string } });
+        expect(Math.abs(Date.now() - Date.parse(first.providers['codex']?.observedAt ?? ''))).toBeLessThan(10_000);
+        // A second read inside the freshness window reuses the reading.
+        await read();
+        expect(codexLimits).toHaveBeenCalledTimes(1);
+
+        const claude = (payload: unknown) => post(running.url, '/api/provider-usage/claude', payload);
+        await expect((await claude({ model: { display_name: 'Opus' } })).json()).resolves.toEqual({ recorded: false });
+        await expect((await claude({ rate_limits: { five_hour: { used_percentage: 20, resets_at: reset } } })).json()).resolves.toEqual({ recorded: true });
+        const body = await read();
+        expect(JSON.parse(body)).toMatchObject({ providers: { claudeAgent: { state: 'available' } } });
+        // Percentages and account IDs never reach the response.
+        expect(body).not.toMatch(/acct-secret|usedPercent|used_percentage/);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('keeps a provider unknown when Codex cannot be read', async () => {
+      const { server } = liveT3();
+      const running = await serve({ t3: server, codexLimits: async () => { throw new Error('codex: not found'); }, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      try {
+        const response = await fetch(`${running.url}/api/provider-usage`, { headers: { origin: running.url } });
+        await expect(response.json()).resolves.toEqual({ providers: {} });
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
     it('rates tickets with the chosen model and says which could not be rated', async () => {
       const { server } = liveT3();
       const ratingRunner = vi.fn(async (_command: string, _args: readonly string[], input: string) => (input.includes('Title: Ticket 11') ? '{"tier":"hard","reason":"touches 6 files"}' : 'no idea'));
@@ -1201,10 +1432,10 @@ describe('local clone for a hand-off', () => {
         const rate = (body: unknown) => post(running.url, '/api/repos/octo/one/auto-rate', body);
         const response = await rate({ map: 5, tickets: [11, 12, 99], model: { instanceId: 'codex', model: 'gpt-5.6-luna' } });
         expect(response.status).toBe(200);
-        await expect(response.json()).resolves.toEqual({
+        await expect(response.json()).resolves.toMatchObject({
           ratings: [
-            { ticket: 11, ok: true, rating: { tier: 'hard', reason: 'touches 6 files', by: 'model', version: 'model-1:gpt-5.6-luna' } },
-            { ticket: 12, ok: false, error: 'gpt-5.6-luna did not answer with a tier' },
+            { ticket: 11, ok: true, rating: { tier: 'hard', reason: 'touches 6 files', by: 'model', version: 'model-1:gpt-5.6-luna' }, prediction: { tier: 'hard', status: 'ok', rubric: 'rubric-1' } },
+            { ticket: 12, ok: false, error: 'gpt-5.6-luna did not answer with a tier', prediction: { tier: null, status: 'unparseable' } },
           ],
         });
         expect((await rate({ map: 5, tickets: [11] })).status).toBe(400);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { autoMapKey, autoMapUsageStop, autoStartTickets, DEFAULT_AUTO_MAP, parseAutoMapSetting, resolveAutoMapTier } from './autoMap.js';
+import { autoMapKey, autoMapUsageStop, autoStartTickets, DEFAULT_AUTO_MAP, parseAutoMapSetting, resolveAutoMapTier, turnedOff, turnedOn } from './autoMap.js';
 import type { AutoMapSetting } from './autoMap.js';
 import type { MapEvent } from './mapWatch.js';
 import type { Batch } from './startNextRunner.js';
@@ -95,5 +95,23 @@ describe('autoMapUsageStop', () => {
 
   it('has nothing to turn off when the auto map is already off', () => {
     expect(autoMapUsageStop([batch()], 'octo/one', 5, { ...on, enabled: false })).toBeUndefined();
+  });
+});
+
+describe('turning it on and off', () => {
+  const now = new Date('2026-10-02T09:00:00.000Z');
+
+  it('turning it on sets it up and stamps the moment, so only later events count', () => {
+    expect(turnedOn(DEFAULT_AUTO_MAP, now)).toEqual({ enabled: true, tier: 'auto', setUp: true, enabledAt: now.toISOString() });
+    expect(turnedOn(on, now, 'hard')).toEqual({ enabled: true, tier: 'hard', setUp: true, enabledAt: now.toISOString() });
+    expect(autoStartTickets([next(12)], turnedOn(DEFAULT_AUTO_MAP, now))).toEqual([]);
+  });
+
+  it('keeps the tier it had when none is given', () => {
+    expect(turnedOn({ ...on, tier: 'simple' }, now).tier).toBe('simple');
+  });
+
+  it('turning it off keeps the rest, so the toggle flips back on directly', () => {
+    expect(turnedOff(on)).toEqual({ ...on, enabled: false });
   });
 });

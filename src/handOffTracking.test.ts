@@ -400,6 +400,107 @@ describe('HandOffStore', () => {
       }
     });
 
+    describe('paired predictions and measurements (#186)', () => {
+      const pair = {
+        rules: { tier: 'mid', version: 'rules-1', rubric: null, rater: null, inputId: 'in-1', elapsedMs: 0.3, status: 'ok', tokens: null, cost: { kind: 'actual', usd: 0 } },
+        shadow: {
+          tier: null,
+          version: 'model-1:gpt-5.6-luna',
+          rubric: 'rubric-1',
+          rater: { provider: 'codex', model: 'gpt-5.6-luna', effort: 'low' },
+          inputId: 'in-1',
+          elapsedMs: 60_004,
+          status: 'timeout',
+          tokens: null,
+          cost: { kind: 'unavailable' },
+        },
+        proposedBy: 'logic',
+        fallback: false,
+      };
+      const calibrated = (type: string | null = 'task') => {
+        const built = buildAutoDecision(
+          {
+            scoring: { version: 'rules-1', reason: 'touches 3 files' },
+            proposed: { tier: 'mid', provider: 'claudeAgent', model: 'fable-5', effort: null },
+            final: { tier: 'mid', provider: 'claudeAgent', model: 'fable-5', effort: null },
+            usage: { state: 'limited', observedAt: '2026-09-30T11:59:00.000Z' },
+            selection: 'auto',
+            tierMapping: { mid: { provider: 'codex', model: 'gpt-5.6-terra', effort: null }, hard: { provider: 'claudeAgent', model: 'fable-5', effort: null } },
+            substitution: { reason: 'usage-limit', from: { provider: 'codex', model: 'gpt-5.6-terra', effort: null }, to: { provider: 'claudeAgent', model: 'fable-5', effort: null }, toTier: 'hard' },
+            calibration: pair,
+          },
+          new Date('2026-09-30T12:00:00.000Z'),
+          type,
+        );
+        if (built === null) throw new Error('expected a decision');
+        return built;
+      };
+
+      it('keeps both predictions, their measurements and the dispatch context across a restart, including a timed-out shadow', async () => {
+        const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+        const filePath = join(directory, 'hand-offs.json');
+        try {
+          const store = new HandOffStore({ filePath, now: () => new Date('2026-09-30T12:00:00.000Z') });
+          await store.record({ ...input, auto: calibrated() });
+          const [restarted] = await new HandOffStore({ filePath }).list();
+          expect(restarted?.auto).toMatchObject({
+            ticketType: 'task',
+            selection: 'auto',
+            overrides: [],
+            tierMapping: { mid: { model: 'gpt-5.6-terra' }, hard: { model: 'fable-5' } },
+            substitution: { reason: 'usage-limit', toTier: 'hard' },
+            calibration: pair,
+          });
+          expect(restarted?.auto?.calibration?.shadow).toMatchObject({ tier: null, status: 'timeout', elapsedMs: 60_004 });
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+      });
+
+      it('saves no pair for a hand-off that was not opted in or is not a task or research', async () => {
+        const store = new HandOffStore({ filePath: null });
+        await store.record({ ...input, auto: calibrated('prototype') });
+        await expect(store.list()).resolves.toMatchObject([{ auto: { ticketType: 'prototype', calibration: null } }]);
+      });
+
+      it('saves the reason a user confirmed for a model change, and leaves other changes unknown', async () => {
+        const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+        const filePath = join(directory, 'hand-offs.json');
+        let now = new Date('2026-09-30T12:10:00.000Z');
+        try {
+          const store = new HandOffStore({ filePath, now: () => now });
+          const { id } = await store.record({ ...input, auto: calibrated() });
+          const modelAt = async (sequence: number, model: string) => {
+            await store.applySnapshot('env-1', input.t3Origin ?? '', { snapshotSequence: sequence, threads: [{ id: 'thread-1', modelSelection: { instanceId: 'claudeAgent', model } }] });
+          };
+          await modelAt(1, 'fable-5');
+          now = new Date('2026-09-30T12:20:00.000Z');
+          await modelAt(2, 'opus-4.8');
+          now = new Date('2026-09-30T12:30:00.000Z');
+          await modelAt(3, 'sonnet-5');
+
+          await expect(store.confirmModelChange(id, '2026-09-30T12:20:00.000Z', 'harder-ticket')).resolves.toBe(true);
+          await expect(store.confirmModelChange(id, '2026-09-30T12:21:00.000Z', 'harder-ticket')).resolves.toBe(false);
+          await expect(store.confirmModelChange('missing', '2026-09-30T12:20:00.000Z', 'harder-ticket')).resolves.toBe(false);
+
+          const [saved] = await new HandOffStore({ filePath }).list();
+          expect(saved?.auto?.modelChanges).toMatchObject([
+            { to: { model: 'opus-4.8' }, reason: 'harder-ticket', confirmedAt: '2026-09-30T12:30:00.000Z' },
+            { to: { model: 'sonnet-5' }, reason: 'unknown', confirmedAt: null },
+          ]);
+          expect(saved?.auto?.overrides).toEqual([]);
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+      });
+
+      it('confirms nothing on a hand-off Auto did not start', async () => {
+        const store = new HandOffStore({ filePath: null });
+        const { id } = await store.record(input);
+        await expect(store.confirmModelChange(id, '2026-09-30T12:20:00.000Z', 'preference')).resolves.toBe(false);
+      });
+    });
+
     it('ends a hand-off that never reached a thread as untracked', async () => {
       const store = new HandOffStore({ filePath: null, now: () => new Date('2026-09-30T12:00:00.000Z') });
       await store.record({ ...input, threadId: null, rung: 'clipboard', auto: auto() });
@@ -427,7 +528,7 @@ describe('HandOffStore', () => {
       const store = new HandOffStore({ filePath: null });
       await store.record({ ...input, auto: auto() });
       const [first] = await store.list();
-      first?.auto?.modelChanges.push({ at: 'x', from: { provider: null, model: 'a', effort: null }, to: { provider: null, model: 'b', effort: null } });
+      first?.auto?.modelChanges.push({ at: 'x', from: { provider: null, model: 'a', effort: null }, to: { provider: null, model: 'b', effort: null }, reason: 'unknown', confirmedAt: null });
       const [second] = await store.list();
       expect(second?.auto?.modelChanges).toEqual([]);
     });

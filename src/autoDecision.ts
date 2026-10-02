@@ -1,9 +1,12 @@
+import { isCalibrationType, parseCalibration, parseSubstitution, parseTierMapping } from './autoCalibration.js';
+import type { Calibration, Substitution, TierMapping } from './autoCalibration.js';
 import { EFFORT_IDS, TIERS } from './models.js';
 import type { Tier } from './models.js';
+import { isoTime, oneOf, record, text } from './parseValue.js';
 
 /**
  * What Auto proposed for a ticket, what the user finally started it with, and what happened after.
- * Saved on the local hand-off record only, for calibration (#171, #173). Fields are parsed
+ * Saved on the local hand-off record only, for calibration (#171, #173, #186). Fields are parsed
  * one by one, so a quota percentage, account id or token handed in alongside is never kept.
  */
 
@@ -35,10 +38,17 @@ export interface ModelObservation {
   effort: string | null;
 }
 
+/** Why a model changed in the session. Only the user can say; `unknown` stays unknown, and a model name never implies `harder-ticket`. */
+export const MODEL_CHANGE_REASONS = ['unknown', 'harder-ticket', 'provider-limit', 'provider-problem', 'preference'] as const;
+export type ModelChangeReason = (typeof MODEL_CHANGE_REASONS)[number];
+
 export interface ModelChange {
   at: string;
   from: ModelObservation;
   to: ModelObservation;
+  reason: ModelChangeReason;
+  /** When the user confirmed the reason. Null while it is unknown. */
+  confirmedAt: string | null;
 }
 
 export interface UsageLimitError {
@@ -56,8 +66,18 @@ export interface AutoDecision {
   scoring: { version: string; reason: string };
   proposed: AutoPick;
   final: AutoPick;
-  /** Which of tier, model and effort the user changed from the proposal. Empty when they kept it. */
+  /** The ticket's type when Auto decided. The type can be relabelled later. */
+  ticketType: string | null;
+  /** Whether the user left the row on Auto or chose a tier themselves, even one equal to the proposal. */
+  selection: 'auto' | 'user';
+  /** Which of tier, model and effort the user changed from the proposal. Empty when they kept it. A provider substitution is not one: it is in `proposed`. */
   overrides: AutoOverride[];
+  /** The model Settings mapped to each tier when Auto decided. */
+  tierMapping: TierMapping;
+  /** Set when readiness or a usage limit moved the proposal off the tier's own model. */
+  substitution: Substitution | null;
+  /** The paired rules and shadow predictions. Null unless the user opted in and the ticket is a task or research. */
+  calibration: Calibration | null;
   /** Coarse provider usage when the pick was made, with when Wayfinder saw it. No quota values. */
   usage: { state: UsageState; observedAt: string | null };
   /** The model the thread was last seen running. Null until T3 reports one. */
@@ -66,19 +86,6 @@ export interface AutoDecision {
   modelChanges: ModelChange[];
   usageLimitErrors: UsageLimitError[];
   outcome: AutoOutcome | null;
-}
-
-function record(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
-
-function text(value: unknown, max = 200): string | null {
-  return typeof value === 'string' && value.length > 0 ? value.slice(0, max) : null;
-}
-
-function isoTime(value: unknown): string | null {
-  const raw = text(value, 40);
-  return raw !== null && Number.isFinite(Date.parse(raw)) ? raw : null;
 }
 
 function parsePick(value: unknown): AutoPick | null {
@@ -126,8 +133,11 @@ function parseUsage(value: unknown): AutoDecision['usage'] {
   return state === undefined || observedAt === null ? { state: 'unknown', observedAt: null } : { state, observedAt };
 }
 
-/** Validate a request's decision and stamp it. Returns null when it lacks a scored proposal or a final pick. */
-export function buildAutoDecision(value: unknown, now: Date): AutoDecision | null {
+/**
+ * Validate a request's decision and stamp it. Returns null when it lacks a scored proposal or a final pick.
+ * `ticketType` is the type the server read for the ticket when it dispatched, not one the request claims.
+ */
+export function buildAutoDecision(value: unknown, now: Date, ticketType: string | null = null): AutoDecision | null {
   const item = record(value);
   const scoring = record(item?.['scoring']);
   const version = text(scoring?.['version'], MAX_VERSION_LENGTH);
@@ -141,7 +151,13 @@ export function buildAutoDecision(value: unknown, now: Date): AutoDecision | nul
     scoring: { version, reason },
     proposed,
     final,
+    ticketType: text(ticketType, MAX_VERSION_LENGTH),
+    selection: item?.['selection'] === 'user' ? 'user' : 'auto',
     overrides: overridesOf(proposed, final),
+    tierMapping: parseTierMapping(item?.['tierMapping']),
+    substitution: parseSubstitution(item?.['substitution']),
+    // The shadow call only runs for task and research tickets, so a record for another type is not kept.
+    calibration: isCalibrationType(ticketType) ? parseCalibration(item?.['calibration']) : null,
     usage,
     current: final.model === null ? null : { provider: final.provider, model: final.model, effort: final.effort },
     modelChanges: [],
@@ -194,7 +210,7 @@ export function observeThread(decision: AutoDecision, observation: ThreadObserva
     if (decision.current === null) {
       next.current = seen;
     } else if (!sameModel(decision.current, seen)) {
-      next.modelChanges = [...next.modelChanges, { at: observation.at, from: decision.current, to: seen }].slice(-MAX_EVENTS);
+      next.modelChanges = [...next.modelChanges, { at: observation.at, from: decision.current, to: seen, reason: 'unknown' as const, confirmedAt: null }].slice(-MAX_EVENTS);
       next.current = seen;
     } else if (decision.current.effort === null && seen.effort !== null) {
       next.current = { ...decision.current, effort: seen.effort };
@@ -204,6 +220,13 @@ export function observeThread(decision: AutoDecision, observation: ThreadObserva
     next.usageLimitErrors = [...next.usageLimitErrors, { at: observation.at, model: (seen ?? decision.current)?.model ?? null }].slice(-MAX_EVENTS);
   }
   return next;
+}
+
+/** Record the reason a user confirmed for the model change made at `at`. Null when the decision has no such change. */
+export function confirmModelChange(decision: AutoDecision, at: string, reason: ModelChangeReason, now: Date): AutoDecision | null {
+  if (!decision.modelChanges.some((change) => change.at === at)) return null;
+  const confirmedAt = reason === 'unknown' ? null : now.toISOString();
+  return { ...decision, modelChanges: decision.modelChanges.map((change) => (change.at === at ? { ...change, reason, confirmedAt } : change)) };
 }
 
 /** A decision read back from disk, or null when it is not one. Anything unknown in it is dropped. */
@@ -224,14 +247,22 @@ export function parseStoredAutoDecision(value: unknown): AutoDecision | null {
     scoring: { version, reason },
     proposed,
     final,
+    ticketType: text(item?.['ticketType'], MAX_VERSION_LENGTH),
+    selection: item?.['selection'] === 'user' ? 'user' : 'auto',
     overrides: overridesOf(proposed, final),
+    tierMapping: parseTierMapping(item?.['tierMapping']),
+    substitution: parseSubstitution(item?.['substitution']),
+    calibration: parseCalibration(item?.['calibration']),
     usage: parseUsage(item?.['usage']),
     current: parseObservation(item?.['current']),
     modelChanges: events(item?.['modelChanges'], (entry) => {
       const at = isoTime(entry['at']);
       const from = parseObservation(entry['from']);
       const to = parseObservation(entry['to']);
-      return at === null || from === null || to === null ? null : { at, from, to };
+      if (at === null || from === null || to === null) return null;
+      // A change saved before reasons existed, or with a reason that is not one, stays unknown.
+      const reason = oneOf(MODEL_CHANGE_REASONS, entry['reason']) ?? 'unknown';
+      return { at, from, to, reason, confirmedAt: reason === 'unknown' ? null : isoTime(entry['confirmedAt']) };
     }),
     usageLimitErrors: events(item?.['usageLimitErrors'], (entry) => {
       const at = isoTime(entry['at']);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { hiddenModelsFromSettings, parseModelChoice, toCatalog, toModelSelection } from './models.js';
+import { hiddenModelsFromSettings, parseAutoRater, parseModelChoice, parseTierModels, toCatalog, toModelSelection } from './models.js';
 
 const select = (id: string, values: string[], fallback: string) => ({
   id,
@@ -146,5 +146,28 @@ describe('parseModelChoice', () => {
     expect(parseModelChoice(null)).toBeNull();
     expect(parseModelChoice({ instanceId: 'codex' })).toBeNull();
     expect(parseModelChoice({ instanceId: '', model: 'm' })).toBeNull();
+  });
+});
+
+describe('parseAutoRater', () => {
+  it('keeps a model the user chose', () => {
+    expect(parseAutoRater({ kind: 'model', choice: { instanceId: 'codex', model: 'm' } })).toEqual({ kind: 'model', choice: { instanceId: 'codex', model: 'm' } });
+  });
+
+  it('rates by the rules for anything else, including a model rater with no usable model', () => {
+    expect(parseAutoRater({ kind: 'logic' })).toEqual({ kind: 'logic' });
+    expect(parseAutoRater({ kind: 'model' })).toEqual({ kind: 'logic' });
+    expect(parseAutoRater({ kind: 'model', choice: { instanceId: '', model: 'm' } })).toEqual({ kind: 'logic' });
+    expect(parseAutoRater(null)).toEqual({ kind: 'logic' });
+  });
+});
+
+describe('parseTierModels', () => {
+  it('keeps the model of each tier and drops what is not a tier or a model', () => {
+    expect(parseTierModels({ simple: { instanceId: 'codex', model: 'a' }, mid: 'x', hard: { instanceId: 'codex', model: 'b' }, huge: { instanceId: 'codex', model: 'c' } })).toEqual({
+      simple: { instanceId: 'codex', model: 'a' },
+      hard: { instanceId: 'codex', model: 'b' },
+    });
+    expect(parseTierModels(null)).toEqual({});
   });
 });

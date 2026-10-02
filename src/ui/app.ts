@@ -64,7 +64,9 @@ import {
   restoreMapTicketFocus,
 } from './handOffs.js';
 import { batchCardChip, handOffCap, mountStartNext } from './startNext.js';
-import { AutoMapStarter, autoCardMetaHtml, autoCardNote, mountAutoMapDialog } from './autoMap.js';
+import type { AutoMapView } from '../autoMapService.js';
+import { AutoMapClient, autoCardMetaHtml, autoCardNote, mountAutoMapDialog } from './autoMap.js';
+import { syncServerSettings } from './settingsSync.js';
 import {
   desktopNotificationFor,
   changedPrototypeNotifications,
@@ -332,8 +334,12 @@ async function receiveMapEvent(event: MapEvent): Promise<void> {
     }
     return;
   }
-  // A map with its auto map on starts the ticket itself, so there is nothing to announce unless that fails.
-  if (event.type === 'ticket-next' && autoStarter.take(event)) return;
+  // A map with its auto map on has the server start the ticket, so there is nothing to announce here unless that fails.
+  // The server puts a failed start in the inbox itself.
+  if (event.type === 'ticket-next') {
+    await autoMaps.refresh();
+    if (autoMaps.covers(event)) return;
+  }
   await announceMapEvent(event);
 }
 
@@ -455,34 +461,30 @@ async function loadPlanningHandoff(): Promise<void> {
   }
 }
 
-/** The auto map (#164): hands off each ticket the watcher reports as newly next, through the Start next batch. */
-const autoStarter = new AutoMapStarter({
-  storage: localStorage,
-  post: async (repo, body) => {
-    const response = await fetch(scopedApiPath(repo, 'start-next'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    const reply = (await response.json().catch(() => ({}))) as { error?: unknown };
-    if (response.ok) void startNext.refresh();
-    return { ok: response.ok, error: typeof reply.error === 'string' ? reply.error : null };
+/** The auto map (#164): its settings live in the server, which starts each ticket that becomes next, even with no page open (#182). */
+const autoMaps = new AutoMapClient({
+  request: async (path, body) => {
+    const response = await fetch(path, body === undefined ? undefined : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return response.ok ? ((await response.json()) as AutoMapView) : null;
   },
-  model: async (tier) => {
-    const state = await loadCatalog();
-    return state.status === 'ready' ? liveChoice(state.catalog, tierDefaults()[tier]) : null;
+  notices: (notices) => {
+    // The server already showed the OS notification, so these only go in the inbox.
+    for (const notice of notices) notificationInbox.push(notice);
   },
-  autoPicks: async (repo, mapNumber, numbers) => {
-    let map = snapshot?.repo === repo ? snapshot.maps.find((candidate) => candidate.number === mapNumber) : undefined;
-    if (map === undefined) {
-      const response = await fetch(`${scopedApiPath(repo, 'snapshot')}?map=${String(mapNumber)}`);
-      map = ((await response.json()) as MapSnapshot).maps.find((candidate) => candidate.number === mapNumber);
+  turnedOff: (stops) => {
+    for (const stop of stops) {
+      void startNext.refresh();
+      toast(`Auto map turned off on #${String(stop.mapNumber)}: ${stop.stop?.message ?? 'usage limit reached'}${stop.stop?.resetsAt == null ? '' : ` Resets ${stop.stop.resetsAt}.`} Turn it back on from the map name.`, 15000);
     }
-    return map === undefined ? new Map() : startNext.autoEntries({ repo, map }, numbers);
   },
-  cap: handOffCap,
-  toast: (message) => toast(message, 6000),
-  fallback: (event) => void announceMapEvent(event),
+  changed: () => {
+    syncAutoMap();
+    repaintCards();
+  },
 });
 
 const autoMapDialog = mountAutoMapDialog({
-  starter: autoStarter,
+  autoMaps,
   context: () => (snapshot === null || currentMap() === null ? null : { repo: snapshot.repo, mapNumber: currentMap()?.number ?? 0 }),
   cap: handOffCap,
   onChange: () => {
@@ -491,20 +493,6 @@ const autoMapDialog = mountAutoMapDialog({
   },
 });
 
-/** A usage limit turns the auto map off until the user turns it back on, and says so. */
-function stopAutoMapsOnUsageLimit(): void {
-  for (const batch of autoStarter.checkBatches(startNext.batches())) {
-    const stopped = batch.stop?.kind === 'usage-limit' ? batch.stop : null;
-    const item = batch.items.find((candidate) => candidate.ticketNumber === stopped?.ticketNumber) ?? batch.items[0];
-    const map = snapshot?.repo.toLowerCase() === batch.repo.toLowerCase() ? snapshot.maps.find((candidate) => candidate.number === batch.mapNumber) : undefined;
-    toast(`Auto map turned off on #${String(batch.mapNumber)}: ${stopped?.message ?? 'usage limit reached'}${stopped?.resetsAt == null ? '' : ` Resets ${stopped.resetsAt}.`} Turn it back on from the map name.`, 15000);
-    if (item !== undefined) {
-      void publishNotification(statusNotification('handOffError', `automap:${batch.id}`, batch.repo, batch.mapNumber, map?.title ?? `Map #${String(batch.mapNumber)}`, item.ticketNumber, item.title, new Date().toISOString()));
-    }
-  }
-  syncAutoMap();
-}
-
 /** The map-name menu's Auto map switch and mark follow the map on screen. */
 function syncAutoMap(): void {
   const map = currentMap();
@@ -512,7 +500,7 @@ function syncAutoMap(): void {
     navigation?.setAutoMap(null);
     return;
   }
-  const { enabled, setUp, tier } = autoStarter.setting(snapshot.repo, map.number);
+  const { enabled, setUp, tier } = autoMaps.setting(snapshot.repo, map.number);
   navigation?.setAutoMap({ enabled, setUp, tier });
 }
 
@@ -523,7 +511,8 @@ const startNext = mountStartNext({
   },
   handOffs: () => handOffRecords,
   onChange: () => {
-    stopAutoMapsOnUsageLimit();
+    // The server turns an auto map off on a usage limit while a batch runs, so look again when the batches change.
+    void autoMaps.refresh();
     repaintCards();
   },
   refreshHandOffs: () => handOffSurface.refresh(),
@@ -593,6 +582,8 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       }
       render();
       flushPendingMapEvents();
+      // The page reloads on its own while open, which is when it hears of a notice the server left.
+      if (mode === 'background') void autoMaps.refresh();
       if (planningHandOffId !== null) void loadPlanningHandoff();
       if (mode === 'initial' && selected !== null && view === 'map') {
         const node = els.nodes.querySelector<HTMLElement>(`.node[data-number="${String(selected)}"]`);
@@ -776,7 +767,7 @@ function nodeHtml(ticket: Ticket | OutsideTicket, position: PositionedNode): str
         ? `@${ticket.assignee}`
         : (ticket.type ?? (fog && ticket.pullRequest ? 'pull request' : 'untyped'));
   // #125: a stall says so; otherwise the PR, its checks and review take the line `@assignee` had.
-  const autoNote = fog || map === null || snapshot === null ? null : autoCardNote(ticket.state, ticket.type, autoStarter.setting(snapshot.repo, map.number));
+  const autoNote = fog || map === null || snapshot === null ? null : autoCardNote(ticket.state, ticket.type, autoMaps.setting(snapshot.repo, map.number));
   const meta =
     stalled !== null
       ? `<span class="signal-meta">${icon(icons.CLOCK)}${escapeHtml(`Stalled · ${stalled.short}`)}</span>`
@@ -1845,7 +1836,13 @@ const autoRefresh = new AutoRefresh({
   isVisible: () => document.visibilityState === 'visible',
 });
 
-document.addEventListener('visibilitychange', () => autoRefresh.visibilityChanged());
+document.addEventListener('visibilitychange', () => {
+  autoRefresh.visibilityChanged();
+  if (document.visibilityState === 'visible') void autoMaps.refresh();
+});
+
+void syncServerSettings();
+void autoMaps.importLegacy(localStorage).then(() => autoMaps.refresh());
 window.addEventListener('pagehide', () => {
   autoRefresh.stop();
   closedTicketsByEventTime.clear();

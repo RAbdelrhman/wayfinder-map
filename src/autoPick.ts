@@ -1,3 +1,4 @@
+import type { Calibration, ModelRef, Substitution, SubstitutionReason, TierMapping } from './autoCalibration.js';
 import type { UsageState } from './autoDecision.js';
 import { findModel, liveChoice, TIERS } from './models.js';
 import type { ModelCatalog, ModelChoice, Tier } from './models.js';
@@ -11,7 +12,6 @@ import type { Ticket } from './types.js';
 
 export const RULES_VERSION = 'rules-1';
 export const MODEL_RATING_VERSION = 'model-1';
-
 /** Wayfinder only learns a provider is limited from an error, and the error does not say for how long. */
 export const LIMITED_FOR_MS = 30 * 60 * 1000;
 
@@ -118,6 +118,23 @@ export function usageFromLimitEvents(events: readonly UsageLimitEvent[], now: Da
 
 /* ---------- pick ---------- */
 
+const BLOCKED_WORDS: Record<SubstitutionReason, string> = { 'provider-not-ready': 'is not ready', 'usage-limit': 'is at its usage limit' };
+
+function refOf(choice: ModelChoice | null): ModelRef {
+  return { provider: choice?.instanceId ?? null, model: choice?.model ?? null, effort: choice?.effort?.value ?? null };
+}
+
+/** The model Settings maps to each tier that T3 Code still offers, as the record keeps it. */
+export function tierMappingOf(catalog: ModelCatalog | null, tierModels: Partial<Record<Tier, ModelChoice>>): TierMapping {
+  const mapping: TierMapping = {};
+  if (catalog === null) return mapping;
+  for (const tier of TIERS) {
+    const choice = liveChoice(catalog, tierModels[tier]);
+    if (choice !== null) mapping[tier] = refOf(choice);
+  }
+  return mapping;
+}
+
 export interface AutoPickInput {
   rating: Rating;
   /** Null while T3 Code's models are not loaded: T3 Code then picks the model. */
@@ -137,6 +154,8 @@ export interface AutoProposal {
   rating: Rating;
   /** The usage reading of the provider picked, or unknown. */
   usage: ProviderUsage;
+  /** Set when the tier's own provider was skipped for being not ready or at its limit. */
+  substitution: Substitution | null;
 }
 
 /**
@@ -146,38 +165,41 @@ export interface AutoProposal {
  */
 export function pickAuto(input: AutoPickInput): AutoProposal {
   const { rating, catalog, tierModels, usage } = input;
-  const base = { tier: rating.tier, rating, reason: rating.reason };
+  const base = { tier: rating.tier, rating, reason: rating.reason, substitution: null };
   if (catalog === null) return { ...base, choice: null, modelName: null, usage: UNKNOWN };
 
   const candidates = TIERS.slice(TIERS.indexOf(rating.tier)).flatMap((tier) => {
     const choice = liveChoice(catalog, tierModels[tier]);
     const provider = choice === null ? undefined : catalog.providers.find((candidate) => candidate.instanceId === choice.instanceId);
-    return choice === null || provider === undefined ? [] : [{ choice, provider, reading: usage[choice.instanceId] ?? UNKNOWN }];
+    return choice === null || provider === undefined ? [] : [{ tier, choice, provider, reading: usage[choice.instanceId] ?? UNKNOWN }];
   });
   const named = (choice: ModelChoice): string => findModel(catalog, choice)?.name ?? choice.model;
   const first = candidates[0];
   if (first === undefined) return { ...base, choice: null, modelName: null, usage: UNKNOWN };
 
-  const blocked = (candidate: (typeof candidates)[number]): string | null =>
-    !candidate.provider.ready ? 'is not ready' : candidate.reading.state === 'limited' ? 'is at its usage limit' : null;
+  const blocked = (candidate: (typeof candidates)[number]): SubstitutionReason | null =>
+    !candidate.provider.ready ? 'provider-not-ready' : candidate.reading.state === 'limited' ? 'usage-limit' : null;
   const usable = candidates.find((candidate) => blocked(candidate) === null);
-  const firstWhy = blocked(first);
+  const firstReason = blocked(first);
+  const firstWhy = firstReason === null ? '' : BLOCKED_WORDS[firstReason];
   if (usable === undefined) {
     return {
       ...base,
       choice: first.choice,
       modelName: named(first.choice),
-      reason: `${rating.reason}; ${first.provider.name} ${firstWhy ?? ''} and no other provider is set for this tier, so pick one`,
+      reason: `${rating.reason}; ${first.provider.name} ${firstWhy} and no other provider is set for this tier, so pick one`,
       usage: first.reading,
     };
   }
-  const moved = usable !== first;
+  const substitution: Substitution | null =
+    usable === first || firstReason === null ? null : { reason: firstReason, from: refOf(first.choice), to: refOf(usable.choice), toTier: usable.tier };
   return {
     ...base,
     choice: usable.choice,
     modelName: named(usable.choice),
-    reason: moved ? `${rating.reason}; ${first.provider.name} ${firstWhy ?? ''}` : rating.reason,
+    reason: substitution === null ? rating.reason : `${rating.reason}; ${first.provider.name} ${firstWhy}`,
     usage: usable.reading,
+    substitution,
   };
 }
 
@@ -190,12 +212,25 @@ function pickOf(tier: Tier, choice: ModelChoice | null): { tier: Tier; provider:
   return { tier, provider: choice?.instanceId ?? null, model: choice?.model ?? null, effort: choice?.effort?.value ?? null };
 }
 
+/** What a start request adds to the `auto` block beyond the proposal and the final choice (#186). */
+export interface DecisionContext {
+  /** `user` when the row was set to a tier by hand, even one equal to the proposal. */
+  selection?: 'auto' | 'user';
+  tierMapping?: TierMapping;
+  /** The paired predictions. Recorded, never read back into the pick. */
+  calibration?: Calibration | null;
+}
+
 /** The `auto` block a start request carries: what Auto proposed and what the user finally chose, for #172's record. */
-export function autoDecisionBody(proposal: AutoProposal, final: { tier: Tier; choice: ModelChoice | null }): Record<string, unknown> {
+export function autoDecisionBody(proposal: AutoProposal, final: { tier: Tier; choice: ModelChoice | null }, context: DecisionContext = {}): Record<string, unknown> {
   return {
     scoring: { version: proposal.rating.version, reason: proposal.rating.reason },
     proposed: pickOf(proposal.tier, proposal.choice),
     final: pickOf(final.tier, final.choice),
     usage: proposal.usage,
+    selection: context.selection ?? 'auto',
+    tierMapping: context.tierMapping ?? {},
+    substitution: proposal.substitution,
+    ...(context.calibration === undefined || context.calibration === null ? {} : { calibration: context.calibration }),
   };
 }

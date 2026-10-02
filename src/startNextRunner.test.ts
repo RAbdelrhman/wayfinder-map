@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { parseUsageLimit, StartNextRunner } from './startNextRunner.js';
-import type { BatchRequestItem, StartOutcome } from './startNextRunner.js';
+import type { Batch, BatchRequestItem, StartOutcome } from './startNextRunner.js';
 
 function item(ticketNumber: number, extra: Partial<BatchRequestItem> = {}): BatchRequestItem {
   return { ticketNumber, title: `Ticket ${String(ticketNumber)}`, tier: 'mid', model: null, ...extra };
@@ -16,6 +16,8 @@ interface Harness {
   errors: Map<string, string>;
   maxInFlight: () => number;
   outcomes: Map<number, StartOutcome | Error>;
+  /** The batches the runner reported as stopped by a usage limit. */
+  usageStops: Batch[];
 }
 
 const runners: StartNextRunner[] = [];
@@ -25,10 +27,12 @@ function harness(): Harness {
   const live = { count: 0 };
   const errors = new Map<string, string>();
   const outcomes = new Map<number, StartOutcome | Error>();
+  const usageStops: Batch[] = [];
   let inFlight = 0;
   let maxInFlight = 0;
   const runner = new StartNextRunner({
     intervalMs: 1_000_000,
+    onUsageStop: (batch) => usageStops.push(batch),
     running: async () => live.count,
     lastErrors: async (ids) => new Map(ids.flatMap((id) => (errors.has(id) ? [[id, errors.get(id) ?? ''] as const] : []))),
     startTicket: async ({ item: requested }) => {
@@ -45,7 +49,7 @@ function harness(): Harness {
     },
   });
   runners.push(runner);
-  return { runner, started, live, errors, maxInFlight: () => maxInFlight, outcomes };
+  return { runner, started, live, errors, maxInFlight: () => maxInFlight, outcomes, usageStops };
 }
 
 afterEach(() => {
@@ -174,6 +178,36 @@ describe('StartNextRunner', () => {
     await h.runner.tick();
     expect(statuses(h)).toEqual(['20:started', '21:back-to-next']);
     expect(h.runner.snapshot()[0]).toMatchObject({ auto: true, status: 'stopped', stop: { kind: 'usage-limit', ticketNumber: 20 } });
+  });
+
+  it('reports a usage-limit stop once, whether it came from a running thread or from starting one', async () => {
+    const h = harness();
+    h.runner.submit({ repo: 'o/r', mapNumber: 2, cap: 1, auto: true, items: [item(20), item(21)] });
+    await h.runner.tick();
+    expect(h.usageStops).toEqual([]);
+    h.errors.set('hand-off-20', 'Usage limit reached. Resets at 4:00 PM.');
+    await h.runner.tick();
+    await h.runner.tick();
+    expect(h.usageStops).toHaveLength(1);
+    expect(h.usageStops[0]).toMatchObject({ auto: true, mapNumber: 2, status: 'stopped', stop: { kind: 'usage-limit', ticketNumber: 20, resetsAt: '4:00 PM' } });
+    // The report is a copy, so the listener cannot change the runner's batch.
+    h.usageStops[0]!.status = 'running';
+    expect(h.runner.snapshot()[0]?.status).toBe('stopped');
+
+    h.outcomes.set(30, { kind: 'failed', reason: 'Could not start the thread (usage limit reached).' });
+    h.runner.submit({ repo: 'o/r', mapNumber: 3, cap: 4, items: [item(30), item(31)] });
+    await h.runner.tick();
+    expect(h.usageStops.map((batch) => batch.mapNumber)).toEqual([2, 3]);
+  });
+
+  it('reports nothing when a batch is stopped by the user or ends without a usage limit', async () => {
+    const h = harness();
+    const batch = h.runner.submit({ repo: 'o/r', mapNumber: 2, cap: 1, items: [item(20), item(21)] });
+    await h.runner.tick();
+    h.runner.stop(batch.id);
+    h.runner.submit({ repo: 'o/r', mapNumber: 3, cap: 4, items: [item(30)] });
+    await h.runner.tick();
+    expect(h.usageStops).toEqual([]);
   });
 
   it('ignores errors that are not usage limits', async () => {

@@ -1,5 +1,8 @@
-import { autoDecisionBody, pickAuto, proposalLine, rateByRules } from '../autoPick.js';
+import type { Calibration } from '../autoCalibration.js';
+import { autoDecisionBody, pickAuto, proposalLine, rateByRules, tierMappingOf } from '../autoPick.js';
 import type { AutoProposal, ProviderUsage, Rating } from '../autoPick.js';
+import { buildCalibrations, rateByRulesTimed, sharesRatingModel, shadowTickets } from '../autoShadow.js';
+import type { RatingAnswer } from '../autoShadow.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import { isLiveHandOff } from '../handOffLiveness.js';
 import { scopedApiPath } from '../repoRoutes.js';
@@ -12,13 +15,14 @@ import type { HandOffUiState } from './handOffs.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
-import { autoRater, currentCatalog, findModel, liveChoice, loadCatalog, TIER_LABEL, TIERS, tierDefaults } from './models.js';
+import { pushServerSettings } from './serverSettings.js';
+import { autoRater, calibrationMode, currentCatalog, findModel, liveChoice, loadCatalog, TIER_LABEL, TIERS, tierDefaults } from './models.js';
 import type { ModelChoice, Tier } from './models.js';
 import type { ModelCatalog } from '../models.js';
 
 /* Start next (#129): hand off every ticket that is next, up to the machine's cap, from one confirm list. */
 
-const CAP_KEY = 'wayfinder-map:hand-off-cap:v1';
+export const CAP_KEY = 'wayfinder-map:hand-off-cap:v1';
 export const HAND_OFF_CAPS = [2, 4, 6, 8] as const;
 const POLL_MS = 3_000;
 
@@ -34,6 +38,7 @@ export function handOffCap(storage: Pick<Storage, 'getItem'> = localStorage): nu
 
 export function saveHandOffCap(cap: number, storage: Pick<Storage, 'setItem'> = localStorage): void {
   storage.setItem(CAP_KEY, String(normalizeCap(cap)));
+  pushServerSettings({ cap: normalizeCap(cap) });
 }
 
 /* ---------- plan ---------- */
@@ -255,14 +260,20 @@ const ROW_CHOICES: readonly RowChoice[] = ['auto', ...TIERS];
 
 const CHOICE_LABEL: Record<RowChoice, string> = { auto: 'Auto', ...TIER_LABEL };
 
-/** What Auto reads beyond the tickets: each ticket's rating, provider usage, and whether a model is still rating. */
+/**
+ * What Auto reads beyond the tickets: each ticket's rating, provider usage, and whether a model is still rating.
+ * `calibrations` holds the paired predictions of calibration mode (#186). They are recorded, never read into a pick.
+ */
 export interface AutoState {
   ratings: ReadonlyMap<number, Rating>;
   usage: Readonly<Record<string, ProviderUsage>>;
   pending: boolean;
+  calibrations: ReadonlyMap<number, Calibration>;
+  /** A shadow model is still rating. The proposals show, but Start waits so no record loses its pair. */
+  calibrating: boolean;
 }
 
-export const NO_AUTO: AutoState = { ratings: new Map(), usage: {}, pending: false };
+export const NO_AUTO: AutoState = { ratings: new Map(), usage: {}, pending: false, calibrations: new Map(), calibrating: false };
 
 /** The tier and model Auto proposes for a ticket. A ticket the rater has not answered for yet is rated by the rules. */
 export function proposalFor(ticket: Ticket, auto: AutoState, catalog: ModelCatalog | null, tierModels: Partial<Record<Tier, ModelChoice>>): AutoProposal {
@@ -276,9 +287,11 @@ export function startRequestEntry(
   proposal: AutoProposal,
   catalog: ModelCatalog | null,
   tierModels: Partial<Record<Tier, ModelChoice>>,
+  calibration: Calibration | null = null,
 ): { ticket: number; tier: Tier; model: ModelChoice | null; auto: Record<string, unknown> } {
   const final = choice === 'auto' ? { tier: proposal.tier, choice: proposal.choice } : { tier: choice, choice: catalog === null ? null : liveChoice(catalog, tierModels[choice]) };
-  return { ticket: ticket.number, tier: final.tier, model: final.choice, auto: autoDecisionBody(proposal, final) };
+  const context = { selection: choice === 'auto' ? ('auto' as const) : ('user' as const), tierMapping: tierMappingOf(catalog, tierModels), calibration };
+  return { ticket: ticket.number, tier: final.tier, model: final.choice, auto: autoDecisionBody(proposal, final, context) };
 }
 
 function ratedBy(rating: Rating): string {
@@ -320,7 +333,7 @@ const GROUPS: ReadonlyArray<readonly [StartNextRow['group'], string]> = [
 ];
 
 /** The dialog's body: the Ready, Needs you and Skipped groups, then the footer with the Start button. */
-export function startDialogHtml(plan: StartNextPlan, view: { choices: ReadonlyMap<number, RowChoice>; proposals: ReadonlyMap<number, AutoProposal>; pending: boolean }): string {
+export function startDialogHtml(plan: StartNextPlan, view: { choices: ReadonlyMap<number, RowChoice>; proposals: ReadonlyMap<number, AutoProposal>; pending: boolean; calibrating?: boolean }): string {
   const groups = GROUPS.flatMap(([group, label]) => {
     const rows = plan.rows.filter((row) => row.group === group);
     if (rows.length === 0) return [];
@@ -330,7 +343,7 @@ export function startDialogHtml(plan: StartNextPlan, view: { choices: ReadonlyMa
   return `<div class="dialog-head"><h2 id="start-title">Start next</h2><button type="button" class="detail-close" data-start-cancel aria-label="Close">×</button></div>
     <p class="hint">Each ticket gets its own thread and worktree in T3 Code. Over ${String(plan.cap)} running on this machine, the rest queue.</p>
     <div class="start-groups">${groups.join('') || '<p class="hint">No ticket is next on this map.</p>'}</div>
-    <div class="start-foot"><span class="start-count">${escapeHtml(footer.counts)} <span class="muted">· ${escapeHtml(footer.machine)}</span></span><button type="button" class="ghost" data-start-cancel>Cancel</button><button type="button" class="primary" data-start-go${plan.picked === 0 || view.pending ? ' disabled' : ''}>${icon(icons.PLAY)}Start ${String(plan.picked)}</button></div>`;
+    <div class="start-foot"><span class="start-count">${escapeHtml(footer.counts)} <span class="muted">· ${escapeHtml(footer.machine)}</span></span><button type="button" class="ghost" data-start-cancel>Cancel</button><button type="button" class="primary" data-start-go${plan.picked === 0 || view.pending || view.calibrating === true ? ' disabled' : ''}>${icon(icons.PLAY)}Start ${String(plan.picked)}</button></div>`;
 }
 
 /* ---------- mount ---------- */
@@ -395,7 +408,7 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
       const ticket = byNumber.get(row.ticket.number);
       if (ticket !== undefined && row.kind !== 'skipped') proposals.set(ticket.number, proposalFor(ticket, auto, state.status === 'ready' ? state.catalog : null, tierDefaults()));
     }
-    dialog.innerHTML = startDialogHtml(current, { choices, proposals, pending: auto.pending });
+    dialog.innerHTML = startDialogHtml(current, { choices, proposals, pending: auto.pending, calibrating: auto.calibrating });
     if (active !== null) dialog.querySelector<HTMLElement>(`#${CSS.escape(active)}`)?.focus();
   };
 
@@ -449,29 +462,48 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
     return { ok: response.ok, body: (await response.json()) as Record<string, unknown> };
   };
 
-  /** Rate the tickets and read provider usage: by the rules at once, and by the user's model when Settings says so. */
+  /** Ask a model to rate these tickets. Null when the request itself failed. */
+  const askModel = async (context: { repo: string; map: WayfinderMap }, choice: ModelChoice, wanted: readonly number[]): Promise<RatingAnswer[] | null> => {
+    if (wanted.length === 0) return null;
+    try {
+      const reply = await post(scopedApiPath(context.repo, 'auto-rate'), { map: context.map.number, tickets: wanted, model: choice });
+      return reply.ok ? (reply.body['ratings'] as RatingAnswer[]) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  /**
+   * Rate the tickets and read provider usage: by the rules at once, and by the user's model when Settings says so.
+   * In calibration mode a task or research ticket is also rated by the shadow model, and both predictions are kept.
+   */
   const loadAuto = async (context: { repo: string; map: WayfinderMap }, numbers: readonly number[]): Promise<AutoState> => {
     const tickets = context.map.tickets.filter((ticket) => numbers.includes(ticket.number));
     const ratings = new Map<number, Rating>(tickets.map((ticket) => [ticket.number, rateByRules(ticket)]));
     const rater = autoRater();
+    const mode = calibrationMode();
+    const shadowed = mode.kind === 'shadow' ? shadowTickets(tickets) : [];
+    // A shadow model equal to the rating model needs no second call: its answer is both the proposal and the shadow.
+    const shared = mode.kind === 'shadow' && sharesRatingModel(rater, mode.choice);
     const usage = fetch('/api/provider-usage')
       .then(async (response) => (response.ok ? ((await response.json()) as { providers: Record<string, ProviderUsage> }).providers : {}))
       .catch(() => ({}));
-    const rated =
-      rater.kind === 'model' && tickets.length > 0
-        ? post(scopedApiPath(context.repo, 'auto-rate'), { map: context.map.number, tickets: numbers, model: rater.choice }).catch(() => null)
-        : Promise.resolve(null);
-    const [providers, reply] = await Promise.all([usage, rated]);
+    const [providers, answers, shadowAnswers, rulesRuns] = await Promise.all([
+      usage,
+      rater.kind === 'model' ? askModel(context, rater.choice, tickets.length > 0 ? numbers : []) : Promise.resolve(null),
+      mode.kind === 'shadow' && !shared ? askModel(context, mode.choice, shadowed.map((ticket) => ticket.number)) : Promise.resolve(null),
+      Promise.all(shadowed.map(async (ticket) => [ticket.number, await rateByRulesTimed(ticket)] as const)),
+    ]);
     if (rater.kind === 'model') {
-      const answers = (reply?.ok === true ? (reply.body['ratings'] as Array<{ ticket: number; ok: boolean; rating?: Rating; error?: string }>) : []) ?? [];
-      for (const answer of answers) {
+      for (const answer of answers ?? []) {
         const fallback = ratings.get(answer.ticket);
         if (fallback === undefined) continue;
         if (answer.ok && answer.rating !== undefined) ratings.set(answer.ticket, answer.rating);
         else ratings.set(answer.ticket, { ...fallback, reason: `${fallback.reason} (${answer.error ?? 'the model could not rate'}; logic rated it)` });
       }
     }
-    return { ratings, usage: providers, pending: false };
+    const calibrations = mode.kind === 'shadow' ? buildCalibrations({ shadow: mode.choice, rater, rules: new Map(rulesRuns), ratings, answers, shadowAnswers }) : new Map<number, Calibration>();
+    return { ratings, usage: providers, pending: false, calibrations, calibrating: false };
   };
 
   /** The tickets a plan starts or queues. */
@@ -485,7 +517,7 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
     const byNumber = new Map(context.map.tickets.map((ticket) => [ticket.number, ticket]));
     const tickets = startable(current).flatMap((number) => {
       const ticket = byNumber.get(number);
-      return ticket === undefined ? [] : [startRequestEntry(ticket, choices.get(number) ?? 'auto', proposalFor(ticket, auto, catalog, models), catalog, models)];
+      return ticket === undefined ? [] : [startRequestEntry(ticket, choices.get(number) ?? 'auto', proposalFor(ticket, auto, catalog, models), catalog, models, auto.calibrations.get(number) ?? null)];
     });
     try {
       const result = await post(scopedApiPath(context.repo, 'start-next'), { map: context.map.number, cap: handOffCap(), tickets });
@@ -539,7 +571,7 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
     const context = options.context();
     ticked = new Map();
     choices = new Map();
-    auto = { ...NO_AUTO, pending: autoRater().kind === 'model' };
+    auto = { ...NO_AUTO, pending: autoRater().kind === 'model', calibrating: calibrationMode().kind === 'shadow' };
     drawDialog();
     if (!dialog.open) dialog.showModal();
     void loadCatalog().then(() => {
@@ -634,7 +666,7 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
       const loaded = await loadAuto(context, ticketNumbers);
       const entries = new Map<number, ReturnType<typeof startRequestEntry>>();
       for (const ticket of context.map.tickets) {
-        if (ticketNumbers.includes(ticket.number)) entries.set(ticket.number, startRequestEntry(ticket, 'auto', proposalFor(ticket, loaded, catalog, models), catalog, models));
+        if (ticketNumbers.includes(ticket.number)) entries.set(ticket.number, startRequestEntry(ticket, 'auto', proposalFor(ticket, loaded, catalog, models), catalog, models, loaded.calibrations.get(ticket.number) ?? null));
       }
       return entries;
     },

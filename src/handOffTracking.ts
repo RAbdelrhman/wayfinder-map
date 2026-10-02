@@ -3,15 +3,15 @@ import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { autoResultOf, isUsageLimitError, observeModelSelection, observeThread, parseStoredAutoDecision } from './autoDecision.js';
-import type { AutoDecision, ModelObservation } from './autoDecision.js';
+import { autoResultOf, confirmModelChange, isUsageLimitError, observeModelSelection, observeThread, parseStoredAutoDecision } from './autoDecision.js';
+import type { AutoDecision, ModelChangeReason, ModelObservation } from './autoDecision.js';
 import { gh } from './github.js';
 import { isLiveHandOff } from './handOffLiveness.js';
 import { trackedPullRequestsByTicket } from './mapWatch.js';
 import type { WatchedPullRequest } from './mapWatch.js';
 import type { Tier } from './models.js';
 
-const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+export const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const PULL_REQUEST_LOOKUP_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_CONCURRENT_PULL_REQUEST_LOOKUPS = 2;
@@ -615,6 +615,18 @@ export class HandOffStore {
     return true;
   }
 
+  /** Save the reason the user gave for a model change in an Auto session. False when the hand-off or the change is not there. */
+  async confirmModelChange(id: string, at: string, reason: ModelChangeReason): Promise<boolean> {
+    await this.ensureLoaded();
+    const handOff = this.current().find((item) => item.id === id);
+    const confirmed = handOff?.auto === undefined ? null : confirmModelChange(handOff.auto, at, reason, this.now());
+    if (handOff === undefined || confirmed === null) return false;
+    handOff.auto = confirmed;
+    handOff.updatedAt = this.now().toISOString();
+    await this.persist();
+    return true;
+  }
+
   async addPullRequests(id: string, refs: readonly PullRequestRef[]): Promise<void> {
     await this.ensureLoaded();
     if (refs.length === 0) return;
@@ -996,6 +1008,10 @@ export class HandOffTracker {
 
   async acknowledge(id: string): Promise<boolean> {
     return this.store.acknowledge(id);
+  }
+
+  async confirmModelChange(id: string, at: string, reason: ModelChangeReason): Promise<boolean> {
+    return this.store.confirmModelChange(id, at, reason);
   }
 
   /** The ticket's live hand-off, read from every stored record after a fresh look at T3 Code, if it has one. */
