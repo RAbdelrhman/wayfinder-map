@@ -15,13 +15,14 @@ import type { HandOffUiState } from './handOffs.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
+import { pushServerSettings } from './serverSettings.js';
 import { autoRater, calibrationMode, currentCatalog, findModel, liveChoice, loadCatalog, TIER_LABEL, TIERS, tierDefaults } from './models.js';
 import type { ModelChoice, Tier } from './models.js';
 import type { ModelCatalog } from '../models.js';
 
 /* Start next (#129): hand off every ticket that is next, up to the machine's cap, from one confirm list. */
 
-const CAP_KEY = 'wayfinder-map:hand-off-cap:v1';
+export const CAP_KEY = 'wayfinder-map:hand-off-cap:v1';
 export const HAND_OFF_CAPS = [2, 4, 6, 8] as const;
 const POLL_MS = 3_000;
 
@@ -37,6 +38,7 @@ export function handOffCap(storage: Pick<Storage, 'getItem'> = localStorage): nu
 
 export function saveHandOffCap(cap: number, storage: Pick<Storage, 'setItem'> = localStorage): void {
   storage.setItem(CAP_KEY, String(normalizeCap(cap)));
+  pushServerSettings({ cap: normalizeCap(cap) });
 }
 
 /* ---------- plan ---------- */

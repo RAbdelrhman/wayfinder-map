@@ -15,6 +15,7 @@ import { HandOffStore } from './handOffTracking.js';
 import { MapWatcher } from './mapWatcher.js';
 import type { MapRead } from './mapWatcher.js';
 import { memoryNotificationSettings } from './notifications.js';
+import { memoryAutoMapStore } from './autoMapStore.js';
 
 const config: Config = {
   repo: null,
@@ -1158,7 +1159,8 @@ describe('local clone for a hand-off', () => {
         await settled(running.url, (items) => items.every((item) => item.status === 'started'));
 
         const models = (startThread.mock.calls as unknown as Array<[{ title: string; model: { model: string } | null }]>).map(([input]) => [input.title, input.model?.model]);
-        expect(models).toEqual([['#11 Ticket 11', 'gpt-5.6-sol'], ['#12 Ticket 12', 'gpt-5.6-luna']]);
+        // The two threads start in parallel, so their order is not fixed.
+        expect([...models].sort()).toEqual([['#11 Ticket 11', 'gpt-5.6-sol'], ['#12 Ticket 12', 'gpt-5.6-luna']]);
 
         const records = await store.list();
         const byTicket = (number: number) => records.find((record) => record.ticketNumber === number);
@@ -1233,6 +1235,156 @@ describe('local clone for a hand-off', () => {
       } finally {
         await new Promise<void>((resolve) => running.server.close(() => resolve()));
       }
+    });
+
+    describe('auto map (#182)', () => {
+      const wasBlocked = (state: 'blocked' | 'frontier', numbers: number[]): MapRead => ({
+        status: 'changed',
+        etag: `W/"${state}"`,
+        tickets: numbers.map((number) => ({ number, title: `Ticket ${String(number)}`, state, pullRequests: [] })),
+        rateLimit: null,
+        pollIntervalSeconds: null,
+      });
+      const noPullRequests = async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null });
+      /** A watcher whose map has these tickets blocked on the first read and next from the second. */
+      const watcherWhere = (numbers: number[]) => {
+        const reads: MapRead[] = [wasBlocked('blocked', numbers), wasBlocked('frontier', numbers)];
+        const readMap = vi.fn(async (): Promise<MapRead> => reads.shift() ?? { status: 'unchanged', rateLimit: null, pollIntervalSeconds: null });
+        return { readMap, mapWatcher: new MapWatcher({ readMap, readPullRequests: noPullRequests }, { intervalMs: 10 }) };
+      };
+      const autoMap = async (url: string, body: unknown = { repo: 'octo/one', map: 5, op: 'enable' }) => post(url, '/api/auto-map/map', body);
+      const view = async (url: string) =>
+        (await (await fetch(`${url}/api/auto-map`, { headers: { origin: url } })).json()) as {
+          maps: Array<{ repo: string; mapNumber: number; enabled: boolean; tier: string; stop: { message: string; resetsAt: string | null } | null }>;
+          settings: { cap: number | null };
+          notices: Array<{ id: string; kind: string; ticketNumber: number }>;
+        };
+
+      it('starts a ticket that becomes next with no page open', async () => {
+        const { server, startThread } = liveT3();
+        const { mapWatcher } = watcherWhere([12]);
+        const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        try {
+          // The page turns it on, then goes away. Nothing listens to the event stream from here on.
+          expect((await autoMap(running.url)).status).toBe(200);
+          const batch = await settledBatch(running.url, (current) => current.items.every((item) => item.status === 'started'));
+          expect(batch.items.map((item) => item.ticketNumber)).toEqual([12]);
+          expect(startThread).toHaveBeenCalledTimes(1);
+          expect((await batches(running.url))[0]).toMatchObject({ auto: true });
+          const status = (await (await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } })).json()) as { handOffs: Array<{ ticketNumber: number; tier: string }> };
+          expect(status.handOffs.map((item) => [item.ticketNumber, item.tier])).toEqual([[12, 'mid']]);
+        } finally {
+          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        }
+      });
+
+      it('starts nothing for a map whose auto map is off, even while its map is read', async () => {
+        const { server, startThread } = liveT3();
+        const { readMap, mapWatcher } = watcherWhere([12]);
+        const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        try {
+          // Something else watches the map, so it is read, but its auto map is off.
+          const stop = mapWatcher.watch('octo/one', 5, () => undefined);
+          await vi.waitFor(() => expect(readMap.mock.calls.length).toBeGreaterThan(2));
+          stop();
+          expect(startThread).not.toHaveBeenCalled();
+          expect(await batches(running.url)).toEqual([]);
+        } finally {
+          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        }
+      });
+
+      it('keeps going after a restart: a map that was on is watched again with no page', async () => {
+        const store = memoryAutoMapStore();
+        const first = await serve({ autoMapStore: store, t3, mapWatcher: watcherWhere([12]).mapWatcher, fetcher: async () => ({ maps: [startMap], warnings: [] }) });
+        try {
+          await autoMap(first.url, { repo: 'octo/one', map: 5, op: 'enable', tier: 'hard' });
+        } finally {
+          await new Promise<void>((resolve) => first.server.close(() => resolve()));
+        }
+        const { server, startThread } = liveT3();
+        const { readMap, mapWatcher } = watcherWhere([12]);
+        const second = await serve({ autoMapStore: store, startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        try {
+          expect((await view(second.url)).maps).toMatchObject([{ repo: 'octo/one', mapNumber: 5, enabled: true, tier: 'hard' }]);
+          await vi.waitFor(() => expect(readMap).toHaveBeenCalled());
+          // The first read is a baseline; the second shows the ticket next, which starts it.
+          await settledBatch(second.url, (current) => current.items.every((item) => item.status === 'started'));
+          expect(startThread).toHaveBeenCalledTimes(1);
+        } finally {
+          await new Promise<void>((resolve) => second.server.close(() => resolve()));
+        }
+      });
+
+      it('turns the map off on the first usage-limit error and leaves a notice, in the inbox and on the desktop', async () => {
+        const { server, sessions } = liveT3();
+        const limited: ServerT3 = {
+          ...server,
+          readHandOffSnapshot: async () => ({
+            environmentId: 't3-env',
+            origin: 'http://127.0.0.1:3773',
+            snapshot: { threads: [...sessions].map(([id, status]) => ({ id, session: { status, ...(status === 'error' ? { lastError: 'Usage limit reached. Resets at 4:00 PM.' } : {}) } })) },
+          }),
+        };
+        const desktop = vi.fn();
+        const { readMap, mapWatcher } = watcherWhere([11, 12]);
+        const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, onDesktopNotification: desktop, t3: limited, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        try {
+          // A cap of one queues the second ticket, which keeps the batch running for the error to be seen.
+          expect((await post(running.url, '/api/auto-map/settings', { cap: 1 })).status).toBe(200);
+          await autoMap(running.url);
+          await settled(running.url, (items) => items.some((item) => item.status === 'started'));
+          sessions.set('thread-1', 'error');
+          const stopped = await settledBatch(running.url, (current) => current.status === 'stopped');
+          expect(stopped.items.map((item) => item.status)).toEqual(['started', 'back-to-next']);
+
+          await vi.waitFor(async () => expect((await view(running.url)).maps[0]?.enabled).toBe(false));
+          const after = await view(running.url);
+          expect(after.maps[0]).toMatchObject({ enabled: false, stop: { resetsAt: '4:00 PM' } });
+          expect(after.notices).toEqual([expect.objectContaining({ kind: 'handOffError', ticketNumber: 11 })]);
+          expect(desktop).toHaveBeenCalledTimes(1);
+          expect(desktop).toHaveBeenCalledWith(expect.objectContaining({ kind: 'handOffError', repo: 'octo/one', mapNumber: 5, ticketNumber: 11 }));
+
+          // It no longer watches the map, so the next ticket to become next starts nothing.
+          const readsAtStop = readMap.mock.calls.length;
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          expect(readMap.mock.calls.length).toBe(readsAtStop);
+        } finally {
+          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        }
+      });
+
+      it('keeps each map’s setting and the machine settings, and rejects what is not one', async () => {
+        const running = await serve();
+        try {
+          expect((await view(running.url)).maps).toEqual([]);
+          expect((await autoMap(running.url, { repo: 'octo/one', map: 5, op: 'enable', tier: 'hard' })).status).toBe(200);
+          expect((await view(running.url)).maps).toMatchObject([{ repo: 'octo/one', mapNumber: 5, enabled: true, tier: 'hard' }]);
+          expect((await autoMap(running.url, { repo: 'octo/one', map: 5, op: 'disable' })).status).toBe(200);
+          expect((await view(running.url)).maps[0]?.enabled).toBe(false);
+
+          expect((await autoMap(running.url, { repo: 'nope', map: 5, op: 'enable' })).status).toBe(400);
+          expect((await autoMap(running.url, { repo: 'octo/one', map: 0, op: 'enable' })).status).toBe(400);
+          expect((await autoMap(running.url, { repo: 'octo/one', map: 5, op: 'explode' })).status).toBe(400);
+
+          expect((await post(running.url, '/api/auto-map/settings', { cap: 6, tierModels: { hard: { instanceId: 'codex', model: 'gpt-5.6-sol' } }, rater: { kind: 'logic' }, calibration: { kind: 'off' } })).status).toBe(200);
+          expect((await view(running.url)).settings).toEqual({ cap: 6, tierModels: { hard: { instanceId: 'codex', model: 'gpt-5.6-sol' } }, rater: { kind: 'logic' }, calibration: { kind: 'off' } });
+          expect((await post(running.url, '/api/auto-map/settings', { cap: 99 })).status).toBe(400);
+        } finally {
+          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        }
+      });
+
+      it('refuses a request from another origin', async () => {
+        const running = await serve();
+        try {
+          const response = await fetch(`${running.url}/api/auto-map/map`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify({ repo: 'octo/one', map: 5, op: 'enable' }) });
+          expect(response.status).toBe(403);
+          expect((await view(running.url)).maps).toEqual([]);
+        } finally {
+          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        }
+      });
     });
 
     it('reports a fresh Codex reading and a Claude status-line reading, and leaves a missing one unknown', async () => {

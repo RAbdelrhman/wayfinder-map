@@ -4,6 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { buildAutoDecision, MODEL_CHANGE_REASONS } from './autoDecision.js';
+import { AutoMapService, parseAutoMapChange } from './autoMapService.js';
+import { AutoMapFileStore, memoryAutoMapStore } from './autoMapStore.js';
+import type { AutoMapStateStore } from './autoMapStore.js';
 import { combineUsage, UsageReadings } from './providerUsage.js';
 import type { CodexLimitsReader } from './providerUsage.js';
 import { rateWithModel } from './autoRater.js';
@@ -125,6 +128,10 @@ export interface ServeOptions {
   mapWatcher?: MapWatcher;
   /** Persists opened-map snapshots and events in the local app's state directory. */
   mapWatchStore?: MapWatchStateStore;
+  /** Where the auto map's settings and notices live. Defaults to `~/.wayfinder-map/auto-maps.json`, except when tests inject a `fetcher`, where they stay in memory unless given. */
+  autoMapStore?: AutoMapStateStore;
+  /** How long the auto map waits to gather a map's tickets that became next into one batch. Tests shorten it. */
+  autoMapBatchMs?: number;
   /** How often Start next looks for a free slot and a usage-limit error. Tests shorten it. */
   startNextIntervalMs?: number;
   /** Replaces the headless CLI that rates a ticket with a model (#166) in tests. */
@@ -258,6 +265,8 @@ export async function startServer({
   progress,
   mapWatcher: givenMapWatcher,
   mapWatchStore,
+  autoMapStore,
+  autoMapBatchMs,
   startNextIntervalMs,
   ratingRunner,
   codexLimits,
@@ -358,6 +367,7 @@ export async function startServer({
   const reconcileMapWatches = (snapshot: MapSnapshot): void => {
     const active = new Set(snapshot.maps.filter((map) => map.open && map.settled === null).map((map) => map.number));
     mapWatcher.reconcile(snapshot.repo, active);
+    autoMaps.reconcile(snapshot.repo, active);
     void mapWatcher.catchUp(snapshot.repo);
   };
   // A thread change is often a PR, CI or review change, so its map is read now rather than in two minutes.
@@ -516,6 +526,9 @@ export async function startServer({
     ...(startNextIntervalMs === undefined ? {} : { intervalMs: startNextIntervalMs }),
     running: () => handOffTracker.liveCount(),
     lastErrors: (ids) => handOffTracker.lastErrors(ids),
+    onUsageStop: (batch) => {
+      if (batch.auto) void autoMaps.usageStopped(batch).catch(() => undefined);
+    },
     startTicket: async ({ repo: batchRepo, mapNumber, item }) => {
       const found = find(await repositories.snapshot(batchRepo, false, [mapNumber]), mapNumber, item.ticketNumber);
       if (found === null) return { kind: 'skipped', reason: `#${String(item.ticketNumber)} is not on the map any more.` };
@@ -528,6 +541,61 @@ export async function startServer({
     },
   });
 
+  /** Validate a start request and hand its tickets to the Start next runner. The route and the auto map both come through here. */
+  const startNextBatch = async (requestedRepo: string, requested: unknown): Promise<{ status: number; body: Record<string, unknown> }> => {
+    const body = requested as { map?: unknown; cap?: unknown; tickets?: unknown; auto?: unknown };
+    const mapNumber = Number(body.map);
+    if (!Number.isSafeInteger(mapNumber) || !Array.isArray(body.tickets) || body.tickets.length === 0) {
+      return { status: 400, body: { error: 'Choose a map and at least one ticket to start.' } };
+    }
+    // An auto map starts a ticket the moment it became next, which the cached snapshot may not show yet.
+    const auto = body.auto === true;
+    const read = auto ? await repositories.refreshIfChanged(requestedRepo, [mapNumber]) : await repositories.snapshot(requestedRepo, false, [mapNumber]);
+    const map = read.maps.find((candidate) => candidate.number === mapNumber);
+    if (map === undefined) return { status: 404, body: { error: 'No such map.' } };
+    if ((await clones.resolve(requestedRepo)) === null) {
+      return { status: 409, body: { error: `Choose a local clone of ${requestedRepo} before starting in T3 Code.` } };
+    }
+    const items = (body.tickets as Array<{ ticket?: unknown; tier?: unknown; model?: unknown; auto?: unknown }>).flatMap((entry): BatchRequestItem[] => {
+      const ticket = map.tickets.find((candidate) => candidate.number === Number(entry.ticket));
+      if (ticket === undefined) return [];
+      const tier = TIERS.find((candidate) => candidate === entry.tier) ?? 'mid';
+      return [
+        {
+          ticketNumber: ticket.number,
+          title: ticket.title,
+          tier,
+          model: parseModelChoice(entry.model),
+          auto: buildAutoDecision(entry.auto, new Date(), ticket.type),
+          ...(ticket.state === 'frontier' ? {} : { skip: `#${String(ticket.number)} is ${ticket.state}, not next.` }),
+        },
+      ];
+    });
+    if (items.length === 0) return { status: 400, body: { error: 'None of those tickets are on this map.' } };
+    return { status: 202, body: { batch: startNext.submit({ repo: requestedRepo, mapNumber, cap: normalizeCap(body.cap), items, auto }) } };
+  };
+
+  /** The auto map (#182): watches its maps and starts what becomes next with no page open. */
+  const autoMaps = new AutoMapService({
+    store: autoMapStore ?? (fetcher === undefined ? new AutoMapFileStore() : memoryAutoMapStore()),
+    watcher: mapWatcher,
+    loadMap: async (forRepo, mapNumber) => (await repositories.refreshIfChanged(forRepo, [mapNumber])).maps.find((candidate) => candidate.number === mapNumber) ?? null,
+    submit: async (forRepo, request) => {
+      const reply = await startNextBatch(forRepo, request);
+      return { ok: reply.status === 202, error: typeof reply.body['error'] === 'string' ? reply.body['error'] : null };
+    },
+    catalog: async () => t3.models(await detectT3()),
+    usage: async () => {
+      await usageReadings.refresh();
+      return combineUsage([...startNext.usageLimits(), ...(await handOffTracker.usageLimitEvents())], usageReadings.snapshot(), new Date());
+    },
+    rate: (ticket, choice) => rateWithModel(ticket, choice, ratingRunner),
+    notificationOn: async (kind) => (await notificationSettings.get())[kind],
+    ...(onDesktopNotification === undefined ? {} : { desktop: onDesktopNotification }),
+    ...(autoMapBatchMs === undefined ? {} : { batchMs: autoMapBatchMs }),
+  });
+  await autoMaps.init();
+
   let port = config.port;
   let url = `http://${config.host}:${String(port)}`;
 
@@ -538,6 +606,7 @@ export async function startServer({
   });
   server.on('close', () => {
     handOffTracker.close();
+    autoMaps.close();
     mapWatcher.close();
     startNext.close();
   });
@@ -823,6 +892,33 @@ export async function startServer({
         }
         json(response, 200, { installing: true });
         void service.install();
+        return;
+      }
+
+      if (path === '/api/auto-map' && request.method === 'GET') {
+        json(response, 200, autoMaps.view());
+        return;
+      }
+
+      if (path === '/api/auto-map/map' && request.method === 'POST') {
+        const body = (await readBody(request)) as { repo?: unknown; map?: unknown };
+        const forRepo = typeof body.repo === 'string' ? normalizeRepo(body.repo) : null;
+        const change = parseAutoMapChange(body);
+        if (forRepo === null || !Number.isSafeInteger(body.map) || (body.map as number) <= 0 || change === null) {
+          json(response, 400, { error: 'Name a repository, a map and what to change.' });
+          return;
+        }
+        await autoMaps.change(forRepo, body.map as number, change);
+        json(response, 200, autoMaps.view());
+        return;
+      }
+
+      if (path === '/api/auto-map/settings' && request.method === 'POST') {
+        if (!(await autoMaps.updateSettings(await readBody(request)))) {
+          json(response, 400, { error: 'Send a cap, the tier models or the rater.' });
+          return;
+        }
+        json(response, 200, autoMaps.view());
         return;
       }
 
@@ -1229,44 +1325,8 @@ export async function startServer({
       }
 
       if (requestedRepo !== null && scoped?.action === 'start-next' && request.method === 'POST') {
-        const body = (await readBody(request)) as { map?: unknown; cap?: unknown; tickets?: unknown; auto?: unknown };
-        const mapNumber = Number(body.map);
-        if (!Number.isSafeInteger(mapNumber) || !Array.isArray(body.tickets) || body.tickets.length === 0) {
-          json(response, 400, { error: 'Choose a map and at least one ticket to start.' });
-          return;
-        }
-        // An auto map starts a ticket the moment it became next, which the cached snapshot may not show yet.
-        const auto = body.auto === true;
-        const read = auto ? await repositories.refreshIfChanged(requestedRepo, [mapNumber]) : await repositories.snapshot(requestedRepo, false, [mapNumber]);
-        const map = read.maps.find((candidate) => candidate.number === mapNumber);
-        if (map === undefined) {
-          json(response, 404, { error: 'No such map.' });
-          return;
-        }
-        if ((await clones.resolve(requestedRepo)) === null) {
-          json(response, 409, { error: `Choose a local clone of ${requestedRepo} before starting in T3 Code.` });
-          return;
-        }
-        const items = (body.tickets as Array<{ ticket?: unknown; tier?: unknown; model?: unknown; auto?: unknown }>).flatMap((entry): BatchRequestItem[] => {
-          const ticket = map.tickets.find((candidate) => candidate.number === Number(entry.ticket));
-          if (ticket === undefined) return [];
-          const tier = TIERS.find((candidate) => candidate === entry.tier) ?? 'mid';
-          return [
-            {
-              ticketNumber: ticket.number,
-              title: ticket.title,
-              tier,
-              model: parseModelChoice(entry.model),
-              auto: buildAutoDecision(entry.auto, new Date(), ticket.type),
-              ...(ticket.state === 'frontier' ? {} : { skip: `#${String(ticket.number)} is ${ticket.state}, not next.` }),
-            },
-          ];
-        });
-        if (items.length === 0) {
-          json(response, 400, { error: 'None of those tickets are on this map.' });
-          return;
-        }
-        json(response, 202, { batch: startNext.submit({ repo: requestedRepo, mapNumber, cap: normalizeCap(body.cap), items, auto }) });
+        const reply = await startNextBatch(requestedRepo, await readBody(request));
+        json(response, reply.status, reply.body);
         return;
       }
 

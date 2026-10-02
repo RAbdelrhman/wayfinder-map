@@ -265,9 +265,11 @@ read "auto map will start this".
 - Grilling and prototype tickets start too, then stop at the first question or design choice and wait
   for you ("needs you").
 - The first usage-limit error stops the batch, notifies you, and turns the auto map off until you turn
-  it back on.
-- It runs only while Wayfinder is open and the map has been opened. After a quit, the catch-up pass
-  reports what became next but starts nothing.
+  it back on. The notice lands in the inbox and, in the desktop app, as an OS notification.
+- The server runs it, so it keeps starting tickets with no page open, for example with the desktop app
+  hidden in the tray, and for every map that has it on. The setting, the cap, the tier-to-model
+  mapping and how Auto rates live in `~/.wayfinder-map/auto-maps.json`. It needs Wayfinder running:
+  after a quit, the catch-up pass reports what became next but starts nothing.
 
 ## Prompt template
 
