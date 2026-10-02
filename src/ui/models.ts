@@ -1,5 +1,6 @@
-import { findModel, liveChoice, parseModelChoice, TIERS } from '../models.js';
-import type { CatalogModel, ModelCatalog, ModelChoice, Tier } from '../models.js';
+import { findModel, liveChoice, parseAutoRater, TIERS } from '../models.js';
+import type { AutoRater, CatalogModel, ModelCatalog, ModelChoice, Tier } from '../models.js';
+import { pushServerSettings } from './serverSettings.js';
 
 /* The model picker: what T3 Code can run, a default per task tier, and a tier per ticket. */
 
@@ -11,7 +12,7 @@ export const TIER_HINT: Record<Tier, string> = {
 };
 export const DEFAULT_TIER: Tier = 'mid';
 
-const TIER_DEFAULTS_KEY = 'wayfinder-map:tier-models:v1';
+export const TIER_DEFAULTS_KEY = 'wayfinder-map:tier-models:v1';
 const TICKET_TIER_KEY = 'wayfinder-map:ticket-tier:v1';
 const DEFAULT_TIER_KEY = 'wayfinder-map:default-tier:v1';
 
@@ -33,16 +34,11 @@ export function saveDefaultTier(tier: Tier, storage: Pick<Storage, 'setItem'> = 
   storage.setItem(DEFAULT_TIER_KEY, tier);
 }
 
-/** How Auto rates a ticket: by Wayfinder's rules alone, or by a model the user chose (#166). */
-export type AutoRater = { kind: 'logic' } | { kind: 'model'; choice: ModelChoice };
-
-const AUTO_RATER_KEY = 'wayfinder-map:auto-rater:v1';
+export const AUTO_RATER_KEY = 'wayfinder-map:auto-rater:v1';
 
 export function autoRater(storage: Pick<Storage, 'getItem'> = localStorage): AutoRater {
   try {
-    const saved = JSON.parse(storage.getItem(AUTO_RATER_KEY) ?? 'null') as { kind?: unknown; choice?: unknown } | null;
-    const choice = saved?.kind === 'model' ? parseModelChoice(saved.choice) : null;
-    return choice === null ? { kind: 'logic' } : { kind: 'model', choice };
+    return parseAutoRater(JSON.parse(storage.getItem(AUTO_RATER_KEY) ?? 'null'));
   } catch {
     return { kind: 'logic' };
   }
@@ -50,6 +46,7 @@ export function autoRater(storage: Pick<Storage, 'getItem'> = localStorage): Aut
 
 export function saveAutoRater(rater: AutoRater, storage: Pick<Storage, 'setItem'> = localStorage): void {
   storage.setItem(AUTO_RATER_KEY, JSON.stringify(rater));
+  pushServerSettings({ rater });
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -70,6 +67,7 @@ export function saveTierDefault(tier: Tier, choice: ModelChoice | null): void {
   if (choice === null) delete next[tier];
   else next[tier] = choice;
   localStorage.setItem(TIER_DEFAULTS_KEY, JSON.stringify(next));
+  pushServerSettings({ tierModels: next });
 }
 
 export function ticketTier(repo: string, ticket: number): Tier {
@@ -165,4 +163,4 @@ export function readChoice(catalog: ModelCatalog, modelSelect: HTMLSelectElement
 }
 
 export { findModel, liveChoice, TIERS };
-export type { ModelChoice, Tier };
+export type { AutoRater, ModelChoice, Tier };

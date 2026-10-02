@@ -75,6 +75,8 @@ export interface RunnerDeps {
   running: () => Promise<number>;
   /** The last error of each given hand-off that has one. */
   lastErrors: (handOffIds: readonly string[]) => Promise<ReadonlyMap<string, string>>;
+  /** Called once when a usage-limit error stops a batch. The batch is a copy. */
+  onUsageStop?: (batch: Batch) => void;
   intervalMs?: number;
   /** How many finished batches to keep for the page to read. */
   keep?: number;
@@ -265,6 +267,7 @@ export class StartNextRunner {
     this.backToNext(batch, 'Went back to next when the batch stopped');
     batch.status = 'stopped';
     batch.stop = { kind: 'usage-limit', ticketNumber: item.ticketNumber, ...limit };
+    this.deps.onUsageStop?.(structuredClone(batch));
   }
 
   private backToNext(batch: Batch, reason: string): void {

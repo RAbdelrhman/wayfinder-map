@@ -18,6 +18,7 @@ import type { NewMapHandOff } from './newMap.js';
 import { renderNewMapPage } from './newMapPage.js';
 import { mountNavigation } from './navigation.js';
 import { mountSettings, NOTIFICATION_SETTINGS_EVENT } from './settings.js';
+import { syncServerSettings } from './settingsSync.js';
 import type { NavigationController, NavigationPage } from './navigation.js';
 import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
 import { homeLoadingMarkup, readHomeShape, rememberHomeShape, renderHomeLanding } from './homeLanding.js';
@@ -738,6 +739,7 @@ paintIcons();
 bindTheme(need('theme'));
 bindUpdater(need('updater'), toast);
 mountSettings(need('settings'), toast);
+void syncServerSettings();
 syncedButton().addEventListener('click', () => void show(true));
 document.addEventListener('visibilitychange', () => draftAutoRefresh?.visibilityChanged());
 window.addEventListener('pagehide', () => {

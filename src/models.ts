@@ -36,6 +36,9 @@ export interface ModelChoice {
 export const TIERS = ['simple', 'mid', 'hard'] as const;
 export type Tier = (typeof TIERS)[number];
 
+/** How Auto rates a ticket: by Wayfinder's rules alone, or by a model the user chose (#166). */
+export type AutoRater = { kind: 'logic' } | { kind: 'model'; choice: ModelChoice };
+
 /** Descriptor ids providers use for reasoning depth: Codex and Grok, Claude, OpenCode. */
 export const EFFORT_IDS = ['reasoningEffort', 'effort', 'variant'];
 
@@ -158,4 +161,21 @@ export function parseModelChoice(value: unknown): ModelChoice | null {
     if (typeof id === 'string' && typeof level === 'string') choice.effort = { id, value: level };
   }
   return choice;
+}
+
+export function parseAutoRater(value: unknown): AutoRater {
+  const saved = typeof value === 'object' && value !== null ? (value as { kind?: unknown; choice?: unknown }) : null;
+  const choice = saved?.kind === 'model' ? parseModelChoice(saved.choice) : null;
+  return choice === null ? { kind: 'logic' } : { kind: 'model', choice };
+}
+
+/** The model each tier maps to, from a saved or requested object. Anything that is not a choice is dropped. */
+export function parseTierModels(value: unknown): Partial<Record<Tier, ModelChoice>> {
+  const raw = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  const models: Partial<Record<Tier, ModelChoice>> = {};
+  for (const tier of TIERS) {
+    const choice = parseModelChoice(raw[tier]);
+    if (choice !== null) models[tier] = choice;
+  }
+  return models;
 }

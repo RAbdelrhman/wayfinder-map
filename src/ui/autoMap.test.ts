@@ -1,250 +1,203 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
+import type { AutoMapSetting } from '../autoMap.js';
+import type { AutoMapNotice } from '../autoMapStore.js';
+import type { AutoMapView } from '../autoMapService.js';
 import type { MapEvent } from '../mapWatch.js';
-import type { Batch } from '../startNextRunner.js';
-import { AutoMapStarter, autoCardNote, autoMapMarkHtml, autoMapMenuHtml, autoMapSetupHtml, readAutoMap, saveAutoMap } from './autoMap.js';
-import type { AutoMapDeps, AutoMapStartBody } from './autoMap.js';
-import type { ModelChoice } from './models.js';
+import { AutoMapClient, autoCardNote, autoMapMarkHtml, autoMapMenuHtml, autoMapSetupHtml, LEGACY_AUTO_MAP_KEY } from './autoMap.js';
+import type { AutoMapClientDeps, AutoMapStop } from './autoMap.js';
 
 const NOW = new Date('2026-10-01T10:00:00.000Z');
-const MODEL: ModelChoice = { instanceId: 'codex', model: 'gpt-5.6-sol' };
-
-function memoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
-  const items = new Map<string, string>();
-  return { getItem: (key) => items.get(key) ?? null, setItem: (key, value) => void items.set(key, value) };
-}
+const ON: AutoMapSetting = { enabled: true, tier: 'auto', setUp: true, enabledAt: NOW.toISOString() };
 
 function next(ticket: number, extra: Partial<MapEvent> = {}): MapEvent {
   return { type: 'ticket-next', from: 'blocked', ticket: { number: ticket, title: `Ticket ${String(ticket)}` }, id: ticket, repo: 'octo/one', mapNumber: 5, at: '2026-10-01T10:05:00.000Z', ...extra } as MapEvent;
 }
 
-interface Harness {
-  starter: AutoMapStarter;
-  posts: Array<{ repo: string; body: AutoMapStartBody }>;
-  toasts: string[];
-  fallbacks: number[];
-  reply: { ok: boolean; error: string | null };
+function view(maps: AutoMapView['maps'] = [], notices: AutoMapNotice[] = []): AutoMapView {
+  return { maps, settings: { cap: null, tierModels: null, rater: null }, notices };
 }
 
-function harness(extra: Partial<AutoMapDeps> = {}): Harness {
-  const posts: Harness['posts'] = [];
-  const toasts: string[] = [];
-  const fallbacks: number[] = [];
-  const reply = { ok: true, error: null as string | null };
-  const starter = new AutoMapStarter({
-    storage: memoryStorage(),
-    post: async (repo, body) => {
-      posts.push({ repo, body });
-      return reply;
+function entry(extra: Partial<AutoMapView['maps'][number]> = {}): AutoMapView['maps'][number] {
+  return { repo: 'octo/one', mapNumber: 5, stop: null, ...ON, ...extra };
+}
+
+function memoryStorage(initial: Record<string, string> = {}): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> {
+  const items = new Map(Object.entries(initial));
+  return { getItem: (key) => items.get(key) ?? null, setItem: (key, value) => void items.set(key, value), removeItem: (key) => void items.delete(key) };
+}
+
+/** A server that answers with a view the test sets, or does not answer at all. */
+function harness(extra: Partial<AutoMapClientDeps> = {}) {
+  const requests: Array<{ path: string; body: unknown }> = [];
+  const notices: AutoMapNotice[][] = [];
+  const turnedOff: AutoMapStop[][] = [];
+  const changed = vi.fn();
+  const server = { view: view(), reachable: true };
+  const client = new AutoMapClient({
+    request: async (path, body) => {
+      requests.push({ path, body });
+      return server.reachable ? server.view : null;
     },
-    model: async (tier) => (tier === 'mid' ? MODEL : null),
-    cap: () => 4,
     now: () => NOW,
-    toast: (message) => toasts.push(message),
-    fallback: (event) => fallbacks.push(event.ticket.number),
+    notices: (items) => notices.push([...items]),
+    turnedOff: (stops) => turnedOff.push([...stops]),
+    changed,
     ...extra,
   });
-  return { starter, posts, toasts, fallbacks, reply };
+  return { client, requests, notices, turnedOff, changed, server };
 }
 
-function stopped(extra: Partial<Batch> = {}): Batch {
-  return {
-    id: 'b1',
-    repo: 'octo/one',
-    mapNumber: 5,
-    cap: 4,
-    createdAt: '2026-10-01T10:06:00.000Z',
-    status: 'stopped',
-    stop: { kind: 'usage-limit', ticketNumber: 11, message: 'Usage limit reached.', resetsAt: '4:00 PM' },
-    auto: true,
-    items: [],
-    ...extra,
-  };
-}
+const settled = async (): Promise<void> => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+};
 
-describe('auto map storage', () => {
-  it('is off for a map nobody set up', () => {
-    expect(readAutoMap(memoryStorage(), 'octo/one', 5)).toEqual({ enabled: false, tier: 'auto', setUp: false, enabledAt: null });
+describe('AutoMapClient', () => {
+  it('is off for a map the server knows nothing about', () => {
+    expect(harness().client.setting('octo/one', 5)).toEqual({ enabled: false, tier: 'auto', setUp: false, enabledAt: null });
   });
 
-  it('saves one setting per map', () => {
-    const storage = memoryStorage();
-    saveAutoMap(storage, 'octo/one', 5, { enabled: true, tier: 'hard', setUp: true, enabledAt: NOW.toISOString() });
-    expect(readAutoMap(storage, 'Octo/One', 5).tier).toBe('hard');
-    expect(readAutoMap(storage, 'octo/one', 6).enabled).toBe(false);
-  });
-
-  it('survives garbage in storage', () => {
-    expect(readAutoMap({ getItem: () => '{nope' }, 'octo/one', 5).enabled).toBe(false);
-  });
-});
-
-describe('AutoMapStarter', () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
-
-  it('is off by default and takes no event', () => {
+  it('reads every map’s setting from the server, whatever the repository’s case', async () => {
     const h = harness();
-    expect(h.starter.take(next(12))).toBe(false);
+    h.server.view = view([entry({ tier: 'hard' }), entry({ mapNumber: 6, enabled: false })]);
+    await h.client.refresh();
+    expect(h.requests).toEqual([{ path: '/api/auto-map', body: undefined }]);
+    expect(h.client.setting('Octo/One', 5)).toMatchObject({ enabled: true, tier: 'hard' });
+    expect(h.client.setting('octo/one', 6).enabled).toBe(false);
+    expect(h.changed).toHaveBeenCalledOnce();
+    await h.client.refresh();
+    // Nothing differs, so nothing repaints.
+    expect(h.changed).toHaveBeenCalledOnce();
   });
 
-  it('hands off the tickets that became next as one batch, once the watcher events settle', async () => {
+  it('shows a change at once and writes it to the server', async () => {
     const h = harness();
-    h.starter.enable('octo/one', 5);
-    expect(h.starter.take(next(14))).toBe(true);
-    expect(h.starter.take(next(12))).toBe(true);
-    expect(h.starter.take(next(12))).toBe(true);
-    expect(h.posts).toEqual([]);
-    await vi.advanceTimersByTimeAsync(500);
-    expect(h.posts).toEqual([
-      {
-        repo: 'octo/one',
-        body: { map: 5, cap: 4, auto: true, tickets: [{ ticket: 12, tier: 'mid', model: MODEL }, { ticket: 14, tier: 'mid', model: MODEL }] },
-      },
+    expect(h.client.enable('octo/one', 5, 'hard')).toEqual({ enabled: true, tier: 'hard', setUp: true, enabledAt: NOW.toISOString() });
+    expect(h.client.setting('octo/one', 5).enabled).toBe(true);
+    expect(h.requests).toEqual([{ path: '/api/auto-map/map', body: { repo: 'octo/one', map: 5, op: 'enable', tier: 'hard' } }]);
+    h.client.disable('octo/one', 5);
+    h.client.setTier('octo/one', 5, 'simple');
+    expect(h.client.setting('octo/one', 5)).toMatchObject({ enabled: false, tier: 'simple', setUp: true });
+    expect(h.requests.slice(1).map((request) => request.body)).toEqual([
+      { repo: 'octo/one', map: 5, op: 'disable' },
+      { repo: 'octo/one', map: 5, op: 'tier', tier: 'simple' },
     ]);
-    expect(h.toasts).toEqual(['Auto map started #12, #14.']);
-    expect(h.fallbacks).toEqual([]);
+    await settled();
   });
 
-  it('starts grilling and prototype tickets too, which wait for the user in their thread', async () => {
-    // The auto map starts every ticket type (#124 amended in #163), so nothing filters on the ticket's type.
+  it('takes the server’s answer over its own guess', async () => {
     const h = harness();
-    h.starter.enable('octo/one', 5);
-    expect(h.starter.take(next(30))).toBe(true);
-    await vi.advanceTimersByTimeAsync(500);
-    expect(h.posts[0]?.body.tickets.map((entry) => entry.ticket)).toEqual([30]);
+    h.server.view = view([entry({ enabledAt: '2026-10-01T10:00:00.250Z' })]);
+    h.client.enable('octo/one', 5);
+    await settled();
+    expect(h.client.setting('octo/one', 5).enabledAt).toBe('2026-10-01T10:00:00.250Z');
   });
 
-  it('uses the map tier, and Auto runs on Mid', async () => {
-    const h = harness({ model: async (tier) => ({ instanceId: 'x', model: tier }) });
-    h.starter.enable('octo/one', 5, 'hard');
-    h.starter.take(next(12));
-    await vi.advanceTimersByTimeAsync(500);
-    expect(h.posts[0]?.body.tickets).toEqual([{ ticket: 12, tier: 'hard', model: { instanceId: 'x', model: 'hard' } }]);
-    h.starter.enable('octo/one', 5, 'auto');
-    h.starter.take(next(13));
-    await vi.advanceTimersByTimeAsync(500);
-    expect(h.posts[1]?.body.tickets[0]).toMatchObject({ ticket: 13, tier: 'mid' });
-  });
-
-  it('starts each ticket on the tier and model Auto picked for it, with the record of the proposal', async () => {
-    const pick = { tier: 'hard' as const, model: MODEL, auto: { scoring: { version: 'rules-1', reason: 'touches 6 files' } } };
-    const autoPicks = vi.fn(async () => new Map([[12, pick]]));
-    const h = harness({ autoPicks });
-    h.starter.enable('octo/one', 5, 'auto');
-    h.starter.take(next(12));
-    h.starter.take(next(13));
-    await vi.advanceTimersByTimeAsync(500);
-    expect(autoPicks).toHaveBeenCalledWith('octo/one', 5, [12, 13]);
-    expect(h.posts[0]?.body.tickets).toEqual([{ ticket: 12, ...pick }, { ticket: 13, tier: 'mid', model: MODEL }]);
-  });
-
-  it('runs Auto on Mid when the picks cannot be read, and never asks Auto for a fixed tier', async () => {
-    const autoPicks = vi.fn(async () => {
-      throw new Error('map not readable');
-    });
-    const h = harness({ autoPicks });
-    h.starter.enable('octo/one', 5, 'auto');
-    h.starter.take(next(12));
-    await vi.advanceTimersByTimeAsync(500);
-    expect(h.posts[0]?.body.tickets).toEqual([{ ticket: 12, tier: 'mid', model: MODEL }]);
-
-    h.starter.enable('octo/one', 5, 'simple');
-    h.starter.take(next(13));
-    await vi.advanceTimersByTimeAsync(500);
-    expect(autoPicks).toHaveBeenCalledTimes(1);
-  });
-
-  it('sends the per-machine cap with the batch so the server queues what does not fit', async () => {
-    const h = harness({ cap: () => 2 });
-    h.starter.enable('octo/one', 5);
-    h.starter.take(next(12));
-    await vi.advanceTimersByTimeAsync(500);
-    expect(h.posts[0]?.body.cap).toBe(2);
-  });
-
-  it('batches each map on its own', async () => {
+  it('keeps its own guess when the server does not answer', async () => {
     const h = harness();
-    h.starter.enable('octo/one', 5);
-    h.starter.enable('octo/one', 6);
-    h.starter.take(next(12));
-    h.starter.take(next(40, { mapNumber: 6 }));
-    await vi.advanceTimersByTimeAsync(500);
-    expect(h.posts.map((post) => [post.body.map, post.body.tickets.map((entry) => entry.ticket)])).toEqual([[5, [12]], [6, [40]]]);
+    h.server.reachable = false;
+    h.client.enable('octo/one', 5);
+    await settled();
+    expect(h.client.setting('octo/one', 5).enabled).toBe(true);
+    await h.client.refresh();
+    expect(h.client.setting('octo/one', 5).enabled).toBe(true);
   });
 
-  it('does not start what became next while the app was closed', () => {
-    const h = harness();
-    h.starter.enable('octo/one', 5);
-    expect(h.starter.take(next(12, { whileYouWereAway: true }))).toBe(false);
-    expect(h.posts).toEqual([]);
-  });
-
-  it('hands a ticket back to the ordinary notification when the server refuses the batch', async () => {
-    const h = harness();
-    h.reply.ok = false;
-    h.reply.error = 'Choose a local clone of octo/one before starting in T3 Code.';
-    h.starter.enable('octo/one', 5);
-    h.starter.take(next(12));
-    await vi.advanceTimersByTimeAsync(500);
-    expect(h.fallbacks).toEqual([12]);
-    expect(h.toasts).toEqual(['Choose a local clone of octo/one before starting in T3 Code.']);
-  });
-
-  it('hands tickets back when the request itself fails', async () => {
+  it('survives a request that throws', async () => {
     const h = harness({
-      post: async () => {
+      request: async () => {
         throw new Error('offline');
       },
     });
-    h.starter.enable('octo/one', 5);
-    h.starter.take(next(12));
-    await vi.advanceTimersByTimeAsync(500);
-    expect(h.fallbacks).toEqual([12]);
-    expect(h.toasts).toEqual(['offline']);
+    h.client.enable('octo/one', 5);
+    await h.client.refresh();
+    await settled();
+    expect(h.client.setting('octo/one', 5).enabled).toBe(true);
   });
 
-  it('starts nothing for a ticket whose map was turned off while it waited to be batched', async () => {
-    const h = harness();
-    h.starter.enable('octo/one', 5);
-    h.starter.take(next(12));
-    h.starter.disable('octo/one', 5);
-    await vi.advanceTimersByTimeAsync(500);
-    expect(h.posts).toEqual([]);
-    expect(h.fallbacks).toEqual([12]);
+  describe('covers', () => {
+    it('is true for a ticket the server’s auto map starts, so the page does not announce it', async () => {
+      const h = harness();
+      h.server.view = view([entry()]);
+      await h.client.refresh();
+      expect(h.client.covers(next(12))).toBe(true);
+    });
+
+    it('is false while the map is off, for what became next while the app was closed, and for other events', async () => {
+      const h = harness();
+      expect(h.client.covers(next(12))).toBe(false);
+      h.server.view = view([entry()]);
+      await h.client.refresh();
+      expect(h.client.covers(next(12, { whileYouWereAway: true }))).toBe(false);
+      expect(h.client.covers(next(12, { at: '2026-10-01T09:00:00.000Z' }))).toBe(false);
+      expect(h.client.covers(next(12, { mapNumber: 6 }))).toBe(false);
+      expect(h.client.covers({ ...next(12), type: 'ticket-closed' } as unknown as MapEvent)).toBe(false);
+    });
   });
 
-  describe('usage limit', () => {
-    it('turns the auto map off on the first usage-limit stop and says which batch stopped it', () => {
+  describe('what the server left while no page was open', () => {
+    it('hands the notices to the inbox', async () => {
       const h = harness();
-      h.starter.enable('octo/one', 5);
-      const batch = stopped();
-      expect(h.starter.checkBatches([batch])).toEqual([batch]);
-      expect(h.starter.setting('octo/one', 5)).toMatchObject({ enabled: false, setUp: true });
-      // Off stays off, however many times the page re-reads the stopped batch.
-      expect(h.starter.checkBatches([batch])).toEqual([]);
-      expect(h.starter.take(next(12))).toBe(false);
-      expect(h.posts).toEqual([]);
+      const notice: AutoMapNotice = { id: 'automap:b1', kind: 'handOffError', repo: 'octo/one', mapNumber: 5, mapTitle: 'Roadmap', ticketNumber: 11, ticketTitle: 'Ticket 11', createdAt: NOW.toISOString() };
+      h.server.view = view([], [notice]);
+      await h.client.refresh();
+      expect(h.notices).toEqual([[notice]]);
     });
 
-    it('stays off until the user turns it back on, then ignores the old stop', () => {
-      let clock = NOW;
-      const h = harness({ now: () => clock });
-      h.starter.enable('octo/one', 5);
-      const old = stopped();
-      h.starter.checkBatches([old]);
-      expect(h.starter.setting('octo/one', 5).enabled).toBe(false);
-      clock = new Date('2026-10-01T11:00:00.000Z');
-      h.starter.enable('octo/one', 5);
-      expect(h.starter.checkBatches([old])).toEqual([]);
-      expect(h.starter.setting('octo/one', 5).enabled).toBe(true);
+    it('reports a map the server turned off on a usage limit, once', async () => {
+      const h = harness();
+      h.server.view = view([entry()]);
+      await h.client.refresh();
+      expect(h.turnedOff).toEqual([]);
+      const off = entry({ enabled: false, stop: { message: 'Usage limit reached.', resetsAt: '4:00 PM' } });
+      h.server.view = view([off]);
+      await h.client.refresh();
+      expect(h.turnedOff).toEqual([[off]]);
+      expect(h.client.setting('octo/one', 5).enabled).toBe(false);
+      await h.client.refresh();
+      expect(h.turnedOff).toHaveLength(1);
     });
 
-    it('leaves a map alone when the stopped batch was started from the confirm list or by the user', () => {
+    it('does not report a map the user turned off', async () => {
       const h = harness();
-      h.starter.enable('octo/one', 5);
-      expect(h.starter.checkBatches([stopped({ auto: false }), stopped({ stop: { kind: 'user' } })])).toEqual([]);
-      expect(h.starter.setting('octo/one', 5).enabled).toBe(true);
+      h.server.view = view([entry()]);
+      await h.client.refresh();
+      h.server.view = view([entry({ enabled: false })]);
+      await h.client.refresh();
+      expect(h.turnedOff).toEqual([]);
+    });
+  });
+
+  describe('settings this browser kept before the server held them', () => {
+    const saved = { 'octo/one#5': ON, 'octo/two#9': { ...ON, tier: 'hard' }, nonsense: ON, 'octo/one#x': ON };
+
+    it('sends each to the server once and forgets them', async () => {
+      const h = harness();
+      const storage = memoryStorage({ [LEGACY_AUTO_MAP_KEY]: JSON.stringify(saved) });
+      await h.client.importLegacy(storage);
+      expect(h.requests.map((request) => request.body)).toEqual([
+        { repo: 'octo/one', map: 5, op: 'import', setting: ON },
+        { repo: 'octo/two', map: 9, op: 'import', setting: { ...ON, tier: 'hard' } },
+      ]);
+      expect(storage.getItem(LEGACY_AUTO_MAP_KEY)).toBeNull();
+    });
+
+    it('keeps them for the next load when the server does not answer', async () => {
+      const h = harness();
+      h.server.reachable = false;
+      const storage = memoryStorage({ [LEGACY_AUTO_MAP_KEY]: JSON.stringify(saved) });
+      await h.client.importLegacy(storage);
+      expect(storage.getItem(LEGACY_AUTO_MAP_KEY)).not.toBeNull();
+      expect(h.requests).toHaveLength(1);
+    });
+
+    it('does nothing when there are none, or they are garbage', async () => {
+      const h = harness();
+      await h.client.importLegacy(memoryStorage());
+      const storage = memoryStorage({ [LEGACY_AUTO_MAP_KEY]: '{nope' });
+      await h.client.importLegacy(storage);
+      expect(h.requests).toEqual([]);
+      expect(storage.getItem(LEGACY_AUTO_MAP_KEY)).toBeNull();
     });
   });
 });
@@ -287,7 +240,7 @@ describe('auto map markup', () => {
     expect(html).toContain('Grilling and prototype tickets');
     expect(html).toContain('4 running on this machine');
     expect(html).toContain('usage limit');
-    expect(html).toContain('only runs while the app is open');
+    expect(html).toContain('even with no window open');
     for (const tier of ['auto', 'simple', 'mid', 'hard']) expect(html).toContain(`data-am-tier="${tier}"`);
     expect(autoMapSetupHtml(5, true, 'mid', 4)).toContain('Auto map settings · #5');
   });

@@ -1,186 +1,129 @@
-import { autoMapKey, autoMapUsageStop, autoStartTickets, AUTO_MAP_TIERS, DEFAULT_AUTO_MAP, parseAutoMapSetting, resolveAutoMapTier } from '../autoMap.js';
+import { autoMapKey, autoStartTickets, AUTO_MAP_TIERS, parseAutoMapSetting, turnedOff, turnedOn } from '../autoMap.js';
 import type { AutoMapSetting, AutoMapTier } from '../autoMap.js';
+import type { AutoMapNotice } from '../autoMapStore.js';
+import type { AutoMapView } from '../autoMapService.js';
 import type { MapEvent } from '../mapWatch.js';
-import type { Batch } from '../startNextRunner.js';
+import { normalizeRepo } from '../repoRoutes.js';
 import type { TicketType } from '../types.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
-import type { ModelChoice, Tier } from './models.js';
 import { TIER_LABEL } from './models.js';
 
-/* The auto map (#164): the page side. Settings live in this browser, next to the hand-off cap and tier defaults. */
+/* The auto map (#164) on the page. The server keeps each map's setting and runs the trigger (#182), so it starts tickets with no page open; this side reads and changes the settings there. */
 
-export const AUTO_MAP_KEY = 'wayfinder-map:auto-maps:v1';
-const BATCH_MS = 400;
+/** Where this browser kept the settings before the server held them. They are imported once, then removed. */
+export const LEGACY_AUTO_MAP_KEY = 'wayfinder-map:auto-maps:v1';
 
 export const AUTO_MAP_HINT = 'Starts tickets as they become next. Grilling and prototype threads start, then wait for your choices.';
 
 export const AUTO_TIER_LABEL: Record<AutoMapTier, string> = { auto: 'Auto', ...TIER_LABEL };
 
 type Reader = Pick<Storage, 'getItem'>;
-type Writer = Pick<Storage, 'getItem' | 'setItem'>;
+type Remover = Pick<Storage, 'getItem' | 'removeItem'>;
 
-function readAll(storage: Reader): Record<string, unknown> {
-  try {
-    const stored: unknown = JSON.parse(storage.getItem(AUTO_MAP_KEY) ?? '{}');
-    return typeof stored === 'object' && stored !== null && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
-}
+/** A map the server turned the auto map off on, and why. */
+export type AutoMapStop = AutoMapView['maps'][number];
 
-/** A map's auto map setting. Off, with Auto as the tier, until someone sets it up. */
-export function readAutoMap(storage: Reader, repo: string, mapNumber: number): AutoMapSetting {
-  return parseAutoMapSetting(readAll(storage)[autoMapKey(repo, mapNumber)] ?? DEFAULT_AUTO_MAP);
-}
-
-export function saveAutoMap(storage: Writer, repo: string, mapNumber: number, setting: AutoMapSetting): void {
-  storage.setItem(AUTO_MAP_KEY, JSON.stringify({ ...readAll(storage), [autoMapKey(repo, mapNumber)]: setting }));
-}
-
-/** The setting after the toggle or the setup dialog's confirm turned it on. */
-export function turnedOn(setting: AutoMapSetting, now: Date, tier: AutoMapTier = setting.tier): AutoMapSetting {
-  return { enabled: true, tier, setUp: true, enabledAt: now.toISOString() };
-}
-
-export function turnedOff(setting: AutoMapSetting): AutoMapSetting {
-  return { ...setting, enabled: false };
-}
-
-/* ---------- starting ---------- */
-
-export interface AutoMapStartBody {
-  map: number;
-  cap: number;
-  auto: true;
-  tickets: Array<{ ticket: number; tier: Tier; model: ModelChoice | null; auto?: Record<string, unknown> }>;
-}
-
-/** What Auto chose for one ticket: its tier and model, and the record of the proposal. */
-export type AutoEntry = { tier: Tier; model: ModelChoice | null; auto: Record<string, unknown> };
-
-export interface AutoMapDeps {
-  storage: Writer;
-  /** Sends one batch to the server. `ok` is false when it did not accept the request. */
-  post: (repo: string, body: AutoMapStartBody) => Promise<{ ok: boolean; error: string | null }>;
-  /** The model the tier resolves to in Settings, or null to let T3 Code decide. */
-  model: (tier: Tier) => Promise<ModelChoice | null>;
-  /** Auto's pick for each ticket (#166), by ticket number. Without it, or when it fails, Auto runs on Mid. */
-  autoPicks?: (repo: string, mapNumber: number, tickets: readonly number[]) => Promise<ReadonlyMap<number, AutoEntry>>;
-  cap: () => number;
+export interface AutoMapClientDeps {
+  /** One call to the server's auto map routes: a GET without a body, a POST with one. Null when it did not answer. */
+  request: (path: string, body?: unknown) => Promise<AutoMapView | null>;
   now?: () => Date;
-  batchMs?: number;
-  /** Tells the user the auto map started tickets or could not. */
-  toast: (message: string) => void;
-  /** An event the auto map could not start goes back to the ordinary "ready" notification. */
-  fallback: (event: MapEvent) => void;
+  /** The server's notices for the inbox, which it raised while no page was there. The inbox ignores one it already has. */
+  notices: (notices: readonly AutoMapNotice[]) => void;
+  /** The server turned these maps off on a usage limit since the last answer. */
+  turnedOff: (stops: readonly AutoMapStop[]) => void;
+  /** The settings changed, so the menu, the map name and the cards repaint. */
+  changed: () => void;
 }
 
-/**
- * Collects the tickets that became next on auto maps, then hands each map's tickets to the
- * Start next runner in one batch, so the cap and the queue work as they do for Start next.
- */
-export class AutoMapStarter {
-  private readonly pending = new Map<string, { repo: string; mapNumber: number; events: Map<number, MapEvent> }>();
-  private timer: ReturnType<typeof setTimeout> | null = null;
+/** The page's view of the auto map settings the server keeps. Changes show at once and are sent in the background. */
+export class AutoMapClient {
+  private settings = new Map<string, AutoMapSetting>();
   private readonly now: () => Date;
 
-  constructor(private readonly deps: AutoMapDeps) {
+  constructor(private readonly deps: AutoMapClientDeps) {
     this.now = deps.now ?? (() => new Date());
   }
 
+  /** A map's auto map setting. Off, with Auto as the tier, until someone sets it up. */
   setting(repo: string, mapNumber: number): AutoMapSetting {
-    return readAutoMap(this.deps.storage, repo, mapNumber);
+    return this.settings.get(autoMapKey(repo, mapNumber)) ?? parseAutoMapSetting(undefined);
   }
 
-  save(repo: string, mapNumber: number, setting: AutoMapSetting): void {
-    saveAutoMap(this.deps.storage, repo, mapNumber, setting);
+  /** True when the server's auto map starts the ticket this event reports, so the page need not announce it. */
+  covers(event: MapEvent): boolean {
+    return event.type === 'ticket-next' && autoStartTickets([event], this.setting(event.repo, event.mapNumber)).length > 0;
+  }
+
+  /** Read the settings, and the notices and stops that came up since. */
+  async refresh(): Promise<void> {
+    const view = await this.deps.request('/api/auto-map').catch(() => null);
+    if (view !== null) this.adopt(view);
   }
 
   /** Turn it on, now or after the setup dialog. Only events after this moment start anything. */
   enable(repo: string, mapNumber: number, tier?: AutoMapTier): AutoMapSetting {
     const next = turnedOn(this.setting(repo, mapNumber), this.now(), tier);
-    this.save(repo, mapNumber, next);
+    this.settings.set(autoMapKey(repo, mapNumber), next);
+    this.send(repo, mapNumber, { op: 'enable', ...(tier === undefined ? {} : { tier }) });
     return next;
   }
 
   disable(repo: string, mapNumber: number): AutoMapSetting {
     const next = turnedOff(this.setting(repo, mapNumber));
-    this.save(repo, mapNumber, next);
+    this.settings.set(autoMapKey(repo, mapNumber), next);
+    this.send(repo, mapNumber, { op: 'disable' });
     return next;
   }
 
-  /** Take a map event. True when the auto map will start the ticket, so the page need not announce it. */
-  take(event: MapEvent): boolean {
-    if (autoStartTickets([event], this.setting(event.repo, event.mapNumber)).length === 0) return false;
-    const key = autoMapKey(event.repo, event.mapNumber);
-    const entry = this.pending.get(key) ?? { repo: event.repo, mapNumber: event.mapNumber, events: new Map<number, MapEvent>() };
-    entry.events.set(event.ticket.number, event);
-    this.pending.set(key, entry);
-    this.timer ??= setTimeout(() => void this.flush(), this.deps.batchMs ?? BATCH_MS);
-    return true;
+  /** Change the tier without turning the map on or off. */
+  setTier(repo: string, mapNumber: number, tier: AutoMapTier): AutoMapSetting {
+    const next = { ...this.setting(repo, mapNumber), tier };
+    this.settings.set(autoMapKey(repo, mapNumber), next);
+    this.send(repo, mapNumber, { op: 'tier', tier });
+    return next;
   }
 
-  /** Hand off everything collected so far. */
-  async flush(): Promise<void> {
-    if (this.timer !== null) clearTimeout(this.timer);
-    this.timer = null;
-    const entries = [...this.pending.values()];
-    this.pending.clear();
-    await Promise.all(entries.map((entry) => this.start(entry)));
-  }
-
-  private async start(entry: { repo: string; mapNumber: number; events: Map<number, MapEvent> }): Promise<void> {
-    // It may have been turned off while the tickets waited to be batched.
-    const setting = this.setting(entry.repo, entry.mapNumber);
-    const events = [...entry.events.values()].sort((a, b) => a.ticket.number - b.ticket.number);
-    if (!setting.enabled) {
-      for (const event of events) this.deps.fallback(event);
-      return;
+  /** Send up the settings this browser kept before the server held them. The server keeps its own where it has one. */
+  async importLegacy(storage: Remover): Promise<void> {
+    let saved: unknown;
+    try {
+      saved = JSON.parse(storage.getItem(LEGACY_AUTO_MAP_KEY) ?? 'null');
+    } catch {
+      saved = null;
     }
-    const tier = resolveAutoMapTier(setting.tier);
-    const model = await this.deps.model(tier);
-    const picks =
-      setting.tier === 'auto' && this.deps.autoPicks !== undefined
-        ? await this.deps.autoPicks(entry.repo, entry.mapNumber, events.map((event) => event.ticket.number)).catch(() => new Map<number, AutoEntry>())
-        : new Map<number, AutoEntry>();
-    const result = await this.deps
-      .post(entry.repo, {
-        map: entry.mapNumber,
-        cap: this.deps.cap(),
-        auto: true,
-        tickets: events.map((event) => {
-          const pick = picks.get(event.ticket.number);
-          return pick === undefined ? { ticket: event.ticket.number, tier, model } : { ticket: event.ticket.number, ...pick };
-        }),
+    if (typeof saved === 'object' && saved !== null && !Array.isArray(saved)) {
+      for (const [key, value] of Object.entries(saved)) {
+        const split = key.lastIndexOf('#');
+        const repo = normalizeRepo(key.slice(0, Math.max(0, split)));
+        const mapNumber = Number(key.slice(split + 1));
+        if (repo === null || !Number.isSafeInteger(mapNumber) || mapNumber <= 0) continue;
+        const view = await this.deps.request('/api/auto-map/map', { repo, map: mapNumber, op: 'import', setting: parseAutoMapSetting(value) }).catch(() => null);
+        // Keep the browser's copy if the server did not answer, so the next load tries again.
+        if (view === null) return;
+        this.adopt(view);
+      }
+    }
+    storage.removeItem(LEGACY_AUTO_MAP_KEY);
+  }
+
+  private send(repo: string, mapNumber: number, change: Record<string, unknown>): void {
+    void this.deps
+      .request('/api/auto-map/map', { repo, map: mapNumber, ...change })
+      .then((view) => {
+        if (view !== null) this.adopt(view);
       })
-      .catch((error: unknown) => ({ ok: false, error: (error as Error).message }));
-    if (result.ok) {
-      this.deps.toast(`Auto map started ${events.map((event) => `#${String(event.ticket.number)}`).join(', ')}.`);
-      return;
-    }
-    this.deps.toast(result.error ?? 'Auto map could not start the ticket.');
-    for (const event of events) this.deps.fallback(event);
+      .catch(() => undefined);
   }
 
-  /**
-   * Turn off every auto map a usage limit stopped, and return those stops so the page can say so.
-   * The first usage-limit error stops the batch; the map stays off until someone turns it back on.
-   */
-  checkBatches(batches: readonly Batch[]): Batch[] {
-    const stops: Batch[] = [];
-    const seen = new Set<string>();
-    for (const batch of batches) {
-      const key = autoMapKey(batch.repo, batch.mapNumber);
-      if (!batch.auto || seen.has(key)) continue;
-      seen.add(key);
-      const stop = autoMapUsageStop(batches, batch.repo, batch.mapNumber, this.setting(batch.repo, batch.mapNumber));
-      if (stop === undefined) continue;
-      this.disable(stop.repo, stop.mapNumber);
-      stops.push(stop);
-    }
-    return stops;
+  private adopt(view: AutoMapView): void {
+    const before = this.settings;
+    this.settings = new Map(view.maps.map((map) => [autoMapKey(map.repo, map.mapNumber), parseAutoMapSetting(map)]));
+    const stops = view.maps.filter((map) => !map.enabled && map.stop !== null && before.get(autoMapKey(map.repo, map.mapNumber))?.enabled === true);
+    this.deps.notices(view.notices);
+    if (stops.length > 0) this.deps.turnedOff(stops);
+    if (JSON.stringify([...before]) !== JSON.stringify([...this.settings])) this.deps.changed();
   }
 }
 
@@ -236,7 +179,7 @@ export function autoMapSetupHtml(mapNumber: number, setUp: boolean, tier: AutoMa
       <li>${icon(icons.PLAY)}<span><b>Task and research tickets</b> start in T3 Code as soon as they become next.</span></li>
       <li>${icon(icons.PERSON)}<span><b>Grilling and prototype tickets</b> start too, then stop at the first question or design choice and wait for you. You get a “needs you” notification, and nothing goes on without your answer.</span></li>
       <li>${icon(icons.QUEUE)}<span>They count toward the <b>${String(cap)} running on this machine</b>. Over that, they queue.</span></li>
-      <li>${icon(icons.ALERT)}<span>It turns itself off on a <b>usage limit</b> until you turn it back on, and only runs while the app is open.</span></li>
+      <li>${icon(icons.ALERT)}<span>It turns itself off on a <b>usage limit</b> until you turn it back on. It keeps going while Wayfinder runs, even with no window open.</span></li>
     </ul>
     <div class="st-autoctl"><span class="st-lbl" id="am-tier-lbl">Tier</span><div class="segmented" role="group" aria-labelledby="am-tier-lbl">${seg}</div><span class="st-hint">${escapeHtml(autoMapTierHint(tier))}</span></div>
     <div class="start-foot"><span class="start-count"></span><button type="button" class="ghost" data-am-close>Cancel</button><button type="button" class="primary" data-am-on>${setUp ? 'Save' : `${icon(icons.BOLT)}Turn on auto map`}</button></div>`;
@@ -245,7 +188,7 @@ export function autoMapSetupHtml(mapNumber: number, setUp: boolean, tier: AutoMa
 /* ---------- dialog ---------- */
 
 export interface AutoMapDialogOptions {
-  starter: AutoMapStarter;
+  autoMaps: AutoMapClient;
   /** The map on screen, or null while the page loads. */
   context: () => { repo: string; mapNumber: number } | null;
   cap: () => number;
@@ -270,14 +213,14 @@ export function mountAutoMapDialog(options: AutoMapDialogOptions): AutoMapDialog
   const draw = (): void => {
     const context = options.context();
     if (context === null) return;
-    const setting = options.starter.setting(context.repo, context.mapNumber);
+    const setting = options.autoMaps.setting(context.repo, context.mapNumber);
     dialog.innerHTML = autoMapSetupHtml(context.mapNumber, setting.setUp, tier, options.cap());
   };
 
   const open = (): void => {
     const context = options.context();
     if (context === null) return;
-    tier = options.starter.setting(context.repo, context.mapNumber).tier;
+    tier = options.autoMaps.setting(context.repo, context.mapNumber).tier;
     draw();
     if (!dialog.open) dialog.showModal();
   };
@@ -285,10 +228,10 @@ export function mountAutoMapDialog(options: AutoMapDialogOptions): AutoMapDialog
   const confirm = (): void => {
     const context = options.context();
     if (context === null) return;
-    const setting = options.starter.setting(context.repo, context.mapNumber);
+    const setting = options.autoMaps.setting(context.repo, context.mapNumber);
     // Saving the tier of a map that is off leaves it off.
-    if (setting.setUp && !setting.enabled) options.starter.save(context.repo, context.mapNumber, { ...setting, tier });
-    else options.starter.enable(context.repo, context.mapNumber, tier);
+    if (setting.setUp && !setting.enabled) options.autoMaps.setTier(context.repo, context.mapNumber, tier);
+    else options.autoMaps.enable(context.repo, context.mapNumber, tier);
     dialog.close();
     options.onChange();
   };
@@ -320,12 +263,12 @@ export function mountAutoMapDialog(options: AutoMapDialogOptions): AutoMapDialog
     toggle() {
       const context = options.context();
       if (context === null) return;
-      const setting = options.starter.setting(context.repo, context.mapNumber);
+      const setting = options.autoMaps.setting(context.repo, context.mapNumber);
       if (setting.enabled) {
-        options.starter.disable(context.repo, context.mapNumber);
+        options.autoMaps.disable(context.repo, context.mapNumber);
         options.onChange();
       } else if (setting.setUp) {
-        options.starter.enable(context.repo, context.mapNumber);
+        options.autoMaps.enable(context.repo, context.mapNumber);
         options.onChange();
       } else {
         open();
