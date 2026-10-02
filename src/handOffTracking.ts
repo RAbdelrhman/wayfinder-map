@@ -17,6 +17,8 @@ const PULL_REQUEST_LOOKUP_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_CONCURRENT_PULL_REQUEST_LOOKUPS = 2;
 // T3 Code's PR snapshot is authoritative; GitHub fills in when T3 is offline or has no snapshot.
 const PULL_REQUEST_STATE_INTERVAL_MS = 60 * 1000;
+// A ticket closed on GitHub ends its hand-off, even when T3 Code's thread just sits idle (a grilling ticket has no PR).
+const TICKET_STATE_INTERVAL_MS = 60 * 1000;
 // A thread just created may not be in a snapshot read moments earlier, so an unseen hand-off gets this long to show up.
 const NEW_THREAD_GRACE_MS = 2 * 60 * 1000;
 const STORE_LOCK_RETRY_MS = 25;
@@ -79,6 +81,8 @@ export interface StoredHandOff {
   pendingApproval: boolean;
   pendingUserInput: boolean;
   pullRequests: PullRequestRef[];
+  /** When GitHub was first seen reporting the ticket closed. Absent while it is open or unchecked. */
+  ticketClosedAt?: string;
 }
 
 export interface RecordHandOffInput {
@@ -120,6 +124,8 @@ export interface HandOffStatusDto {
   pendingApproval: boolean;
   pendingUserInput: boolean;
   pullRequests: PullRequestRef[];
+  /** The ticket is closed on GitHub, so the hand-off is done whatever its thread says. */
+  ticketClosed?: boolean;
 }
 
 export interface T3HandOffSnapshot {
@@ -495,6 +501,21 @@ async function lookupGitHubPullRequestState(url: string): Promise<PullRequestSta
   }
 }
 
+async function lookupGitHubTicketClosed(repo: string, number: number): Promise<boolean | null> {
+  if (!/^[^/\s]+\/[^/\s]+$/.test(repo) || !Number.isSafeInteger(number) || number <= 0) return null;
+  try {
+    const state = text(record(JSON.parse(await gh(['api', `repos/${repo}/issues/${String(number)}`])) as unknown)?.['state']);
+    return state === null ? null : state.toLowerCase() === 'closed';
+  } catch {
+    return null;
+  }
+}
+
+/** Failed, or its pull request reported: nothing a closed ticket would change once the user has seen it. */
+function isSettledHandOff(item: StoredHandOff): boolean {
+  return item.status === 'failed' || item.status === 'interrupted' || item.pullRequests.some((ref) => ref.source === 't3');
+}
+
 /** A pull request whose state can still change: open, or not looked up yet. */
 function isOpenPullRequest(ref: PullRequestRef): boolean {
   const state = ref.state?.toUpperCase() ?? null;
@@ -611,6 +632,16 @@ export class HandOffStore {
     ref.state = update.state;
     ref.mergedAt = update.mergedAt;
     ref.syncedAt = this.now().toISOString();
+    await this.persist();
+  }
+
+  async setTicketClosed(id: string): Promise<void> {
+    await this.ensureLoaded();
+    const handOff = this.current().find((item) => item.id === id);
+    if (handOff === undefined || handOff.ticketClosedAt !== undefined) return;
+    const now = this.now().toISOString();
+    handOff.ticketClosedAt = now;
+    handOff.updatedAt = now;
     await this.persist();
   }
 
@@ -859,6 +890,7 @@ function isStoredHandOff(value: unknown): value is StoredHandOff {
     nullableString('lastError') &&
     typeof item['pendingApproval'] === 'boolean' &&
     typeof item['pendingUserInput'] === 'boolean' &&
+    (item['ticketClosedAt'] === undefined || typeof item['ticketClosedAt'] === 'string') &&
     ['starting', 'running', 'waiting', 'ready', 'finished', 'interrupted', 'failed', 'untracked'].includes(String(item['status'])) &&
     Array.isArray(item['pullRequests']) &&
     item['pullRequests'].every((ref) => {
@@ -912,6 +944,7 @@ export class HandOffTracker {
   private readonly pollIntervalMs: number;
   private readonly lookupPullRequests: (repo: string, branch: string) => Promise<PullRequestRef[]>;
   private readonly lookupPullRequestState: (url: string) => Promise<PullRequestState | null>;
+  private readonly lookupTicketClosed: (repo: string, number: number) => Promise<boolean | null>;
   private readonly pendingLookups = new Set<string>();
   private readonly pullRequestLookupAt = new Map<string, number>();
   private readonly threadListeners = new Set<(change: ThreadChange) => void>();
@@ -924,12 +957,14 @@ export class HandOffTracker {
       pollIntervalMs?: number;
       lookupPullRequests?: (repo: string, branch: string) => Promise<PullRequestRef[]>;
       lookupPullRequestState?: (url: string) => Promise<PullRequestState | null>;
+      lookupTicketClosed?: (repo: string, number: number) => Promise<boolean | null>;
     } = {},
   ) {
     this.now = options.now ?? (() => new Date());
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.lookupPullRequests = options.lookupPullRequests ?? lookupGitHubPullRequests;
     this.lookupPullRequestState = options.lookupPullRequestState ?? lookupGitHubPullRequestState;
+    this.lookupTicketClosed = options.lookupTicketClosed ?? lookupGitHubTicketClosed;
   }
 
   start(): void {
@@ -952,6 +987,7 @@ export class HandOffTracker {
     await this.refresh();
     const records = await this.store.list();
     this.syncPullRequestStates(records);
+    this.syncTicketStates(records);
     return {
       handOffs: representativeHandOffs(records.map((item) => this.toDto(item))),
       t3: { available: this.online, checkedAt: this.checkedAt },
@@ -1161,6 +1197,24 @@ export class HandOffTracker {
     }
   }
 
+  /** Asks GitHub whether the tickets of unseen hand-offs have closed, at most once a minute each. */
+  private syncTicketStates(records: readonly StoredHandOff[]): void {
+    for (const item of records) {
+      if (item.ticketNumber === null || item.threadId === null || item.ticketClosedAt !== undefined || (item.acknowledged && isSettledHandOff(item))) continue;
+      const key = `ticket:${item.id}`;
+      if (this.pendingLookups.has(key)) continue;
+      const lastLookup = this.pullRequestLookupAt.get(key);
+      if (lastLookup !== undefined && this.now().getTime() - lastLookup < TICKET_STATE_INTERVAL_MS) continue;
+      if (this.pendingLookups.size >= MAX_CONCURRENT_PULL_REQUEST_LOOKUPS) return;
+      this.pendingLookups.add(key);
+      this.pullRequestLookupAt.set(key, this.now().getTime());
+      void this.lookupTicketClosed(item.repo, item.ticketNumber)
+        .then((closed) => (closed === true ? this.store.setTicketClosed(item.id) : undefined))
+        .catch(() => undefined)
+        .finally(() => this.pendingLookups.delete(key));
+    }
+  }
+
   private toDto(item: StoredHandOff): HandOffStatusDto {
     const sameEnvironment = item.environmentId !== null && item.environmentId === this.environmentId;
     return {
@@ -1184,6 +1238,7 @@ export class HandOffTracker {
       pendingApproval: item.pendingApproval,
       pendingUserInput: item.pendingUserInput,
       pullRequests: item.pullRequests.map((ref) => ({ ...ref })),
+      ...(item.ticketClosedAt === undefined ? {} : { ticketClosed: true }),
     };
   }
 }

@@ -219,6 +219,15 @@ describe('finished hand-offs', () => {
     expect(cardShowsHandOff('done', merged)).toBe(false);
   });
 
+  it('shows Done once the ticket closes, instead of waiting on an idle thread', () => {
+    const closed = handOffPresentation(handOff({ status: 'ready', ticketClosed: true }));
+    expect(closed).toMatchObject({ state: 'done', label: 'Done', group: 'Done', needsYou: false, terminal: true });
+    expect(handOffPresentation(handOff({ status: 'finished', ticketClosed: true })).state).toBe('done');
+    expect(handOffPresentation(handOff({ status: 'failed', ticketClosed: true })).state).toBe('done');
+    expect(handOffTriggerLabel([handOff({ status: 'ready', ticketClosed: true })], true)).toBe('1 hand-off in T3 Code');
+    expect(handOffVisualSignature([handOff({ status: 'ready' })])).not.toBe(handOffVisualSignature([handOff({ status: 'ready', ticketClosed: true })]));
+  });
+
   it('shows Merged once every reported pull request has merged', () => {
     expect(handOffPresentation(handOff({ status: 'ready', pullRequests: [pullRequest(1, 'MERGED')] })).label).toBe('Merged');
     expect(handOffPresentation(handOff({ status: 'ready', pullRequests: [pullRequest(1, 'MERGED'), pullRequest(2, 'OPEN')] })).label).toBe('PR ready');

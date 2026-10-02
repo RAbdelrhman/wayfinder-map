@@ -14,6 +14,9 @@ import {
   type HandOffStatusDto,
 } from './handOffTracking.js';
 
+// Keep the tracker's default GitHub lookups off the network.
+vi.mock('./github.js', () => ({ gh: () => Promise.reject(new Error('GitHub is not available in tests.')) }));
+
 const input = {
   repo: 'octo/one',
   mapNumber: 5,
@@ -781,6 +784,53 @@ describe('HandOffTracker', () => {
       expect(lookupPullRequestState).toHaveBeenCalledWith(url);
     } finally {
       tracker.close();
+    }
+  });
+
+  it('marks a hand-off whose ticket closed on GitHub, even while its thread sits ready', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    await store.record({ ...input, ticketNumber: 12, threadId: 'thread-2' });
+    const lookupTicketClosed = vi.fn(async (_repo: string, number: number) => number === 11);
+    const ready = { projectId: 'project-1', session: { status: 'ready' }, latestTurn: { state: 'completed' } };
+    const tracker = new HandOffTracker(
+      store,
+      {
+        readHandOffSnapshot: async () => ({
+          environmentId: 'env-1',
+          origin: input.t3Origin ?? '',
+          snapshot: { snapshotSequence: 3, threads: [{ id: 'thread-1', ...ready }, { id: 'thread-2', ...ready }] },
+        }),
+      },
+      { lookupTicketClosed, lookupPullRequests: async () => [] },
+    );
+
+    try {
+      await tracker.snapshot();
+      await vi.waitFor(async () => {
+        const { handOffs } = await tracker.snapshot();
+        expect(handOffs.find((item) => item.ticketNumber === 11)).toMatchObject({ status: 'ready', ticketClosed: true });
+      });
+      const { handOffs } = await tracker.snapshot();
+      expect(handOffs.find((item) => item.ticketNumber === 12)).not.toHaveProperty('ticketClosed');
+      expect(lookupTicketClosed).toHaveBeenCalledWith('octo/one', 11);
+      // A closed ticket is not looked up again; an open one waits a minute.
+      expect(lookupTicketClosed).toHaveBeenCalledTimes(2);
+    } finally {
+      tracker.close();
+    }
+  });
+
+  it('keeps the closed ticket mark across a reload of the store', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'wayfinder-closed-ticket-'));
+    const filePath = join(dir, 'hand-offs.json');
+    try {
+      const store = new HandOffStore({ filePath });
+      const saved = await store.record(input);
+      await store.setTicketClosed(saved.id);
+      await expect(new HandOffStore({ filePath }).list()).resolves.toMatchObject([{ ticketClosedAt: expect.any(String) }]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 

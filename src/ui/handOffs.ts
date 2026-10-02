@@ -7,7 +7,7 @@ import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
 import { clickedOutside } from './outsideClick.js';
 
-export type HandOffUiState = 'starting' | 'working' | 'needs-you' | 'pr-ready' | 'merged' | 'failed';
+export type HandOffUiState = 'starting' | 'working' | 'needs-you' | 'pr-ready' | 'merged' | 'done' | 'failed';
 
 export interface HandOffPresentation {
   state: HandOffUiState;
@@ -65,6 +65,7 @@ export function handOffVisualSignature(handOffs: readonly HandOffStatusDto[]): s
         String(handOff.pendingUserInput),
         String(handOff.stale),
         String(handOff.acknowledged),
+        String(handOff.ticketClosed === true),
         handOff.repo,
         handOff.mapNumber ?? '',
         handOff.mapTitle ?? '',
@@ -80,8 +81,13 @@ export function handOffVisualSignature(handOffs: readonly HandOffStatusDto[]): s
 export function handOffPresentation(handOff: HandOffStatusDto): HandOffPresentation {
   let state: HandOffUiState;
   const reported = t3PullRequests(handOff);
-  if (handOff.threadId === null || handOff.status === 'failed' || handOff.status === 'interrupted') state = 'failed';
-  else if (reported.length > 0) state = reported.every((pullRequest) => pullRequest.state?.toUpperCase() === 'MERGED') ? 'merged' : 'pr-ready';
+  const merged = reported.length > 0 && reported.every((pullRequest) => pullRequest.state?.toUpperCase() === 'MERGED');
+  if (handOff.threadId === null) state = 'failed';
+  else if (merged) state = 'merged';
+  // A closed ticket is finished, whatever its idle thread still says.
+  else if (handOff.ticketClosed === true) state = 'done';
+  else if (handOff.status === 'failed' || handOff.status === 'interrupted') state = 'failed';
+  else if (reported.length > 0) state = 'pr-ready';
   else if (handOff.pendingApproval || handOff.pendingUserInput || handOff.status === 'waiting' || handOff.status === 'ready') state = 'needs-you';
   else if (handOff.status === 'starting') state = 'starting';
   else state = 'working';
@@ -94,6 +100,8 @@ export function handOffPresentation(handOff: HandOffStatusDto): HandOffPresentat
       : handOff.pendingUserInput || handOff.status === 'waiting'
         ? 'T3 Code is waiting for your input.'
         : 'T3 Code is ready for your next step.'
+    : state === 'done'
+      ? 'The ticket is closed.'
     : state === 'pr-ready' || state === 'merged'
       ? '' // The pill already says it, and the pull request links sit beside it.
       : state === 'failed'
@@ -105,16 +113,16 @@ export function handOffPresentation(handOff: HandOffStatusDto): HandOffPresentat
             : 'T3 Code is working.';
   const group = state === 'failed' || state === 'needs-you'
     ? 'Waiting on you'
-    : state === 'pr-ready' || state === 'merged'
+    : state === 'pr-ready' || state === 'merged' || state === 'done'
       ? 'Done'
       : 'In T3 Code';
   return {
     state,
-    label: state === 'needs-you' ? 'Needs you' : state === 'pr-ready' ? 'PR ready' : state === 'merged' ? 'Merged' : state === 'failed' ? handOff.threadId === null ? 'Needs attention' : 'Failed' : state === 'working' ? 'Working' : 'Starting',
+    label: state === 'needs-you' ? 'Needs you' : state === 'pr-ready' ? 'PR ready' : state === 'merged' ? 'Merged' : state === 'done' ? 'Done' : state === 'failed' ? handOff.threadId === null ? 'Needs attention' : 'Failed' : state === 'working' ? 'Working' : 'Starting',
     report,
     group,
     needsYou: state === 'failed' || state === 'needs-you',
-    terminal: state === 'failed' || state === 'pr-ready' || state === 'merged',
+    terminal: state === 'failed' || state === 'pr-ready' || state === 'merged' || state === 'done',
   };
 }
 
@@ -126,7 +134,7 @@ export function listedHandOffs(records: readonly HandOffStatusDto[]): HandOffSta
   return records
     .filter((handOff) => handOff.threadId !== null && !handOff.acknowledged)
     .sort((a, b) => {
-      const priority: Record<HandOffUiState, number> = { failed: 0, 'needs-you': 1, starting: 2, working: 3, 'pr-ready': 4, merged: 5 };
+      const priority: Record<HandOffUiState, number> = { failed: 0, 'needs-you': 1, starting: 2, working: 3, 'pr-ready': 4, merged: 5, done: 6 };
       const stateDifference = priority[handOffPresentation(a).state] - priority[handOffPresentation(b).state];
       if (stateDifference !== 0) return stateDifference;
       return Date.parse(a.createdAt) - Date.parse(b.createdAt);
@@ -192,7 +200,7 @@ function handOffIcon(state: HandOffUiState): string {
   if (state === 'starting') return '<span class="handoff-spinner" aria-hidden="true"></span>';
   if (state === 'working') return icon(icons.PLAY);
   if (state === 'needs-you') return icon(icons.PERSON);
-  if (state === 'pr-ready' || state === 'merged') return icon(icons.CHECK);
+  if (state === 'pr-ready' || state === 'merged' || state === 'done') return icon(icons.CHECK);
   return icon(icons.ALERT);
 }
 
