@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import {
@@ -13,8 +13,10 @@ import {
   handOffVisualSignature,
   homeHandOffHistoryHtml,
   listedHandOffs,
+  modelChangePromptHtml,
   recentHandOffs,
   restoreMapTicketFocus,
+  sendModelChangeReason,
 } from './handOffs.js';
 
 function handOff(overrides: Partial<HandOffStatusDto> = {}): HandOffStatusDto {
@@ -219,6 +221,15 @@ describe('finished hand-offs', () => {
     expect(cardShowsHandOff('done', merged)).toBe(false);
   });
 
+  it('shows Done once the ticket closes, instead of waiting on an idle thread', () => {
+    const closed = handOffPresentation(handOff({ status: 'ready', ticketClosed: true }));
+    expect(closed).toMatchObject({ state: 'done', label: 'Done', group: 'Done', needsYou: false, terminal: true });
+    expect(handOffPresentation(handOff({ status: 'finished', ticketClosed: true })).state).toBe('done');
+    expect(handOffPresentation(handOff({ status: 'failed', ticketClosed: true })).state).toBe('done');
+    expect(handOffTriggerLabel([handOff({ status: 'ready', ticketClosed: true })], true)).toBe('1 hand-off in T3 Code');
+    expect(handOffVisualSignature([handOff({ status: 'ready' })])).not.toBe(handOffVisualSignature([handOff({ status: 'ready', ticketClosed: true })]));
+  });
+
   it('shows Merged once every reported pull request has merged', () => {
     expect(handOffPresentation(handOff({ status: 'ready', pullRequests: [pullRequest(1, 'MERGED')] })).label).toBe('Merged');
     expect(handOffPresentation(handOff({ status: 'ready', pullRequests: [pullRequest(1, 'MERGED'), pullRequest(2, 'OPEN')] })).label).toBe('PR ready');
@@ -249,5 +260,49 @@ describe('finished hand-offs', () => {
     expect(row).toContain('Open ticket');
     expect(row).not.toContain('Open source');
     expect(row).toContain('<span class="handoff-row-prs"><a');
+  });
+});
+
+describe('model change prompt (#191)', () => {
+  const change = { at: '2026-09-30T12:20:00.000Z', from: 'fable-5', to: 'opus-4.8' };
+
+  it('asks once, on a card and nowhere when there is no change to ask about', () => {
+    expect(handOffCardHtml(handOff())).not.toContain('model-change-prompt');
+    expect(modelChangePromptHtml(handOff())).toBe('');
+    const card = handOffCardHtml(handOff({ modelChange: change }));
+    expect(card).toContain('The model changed from <b>fable-5</b> to <b>opus-4.8</b>. Why?');
+  });
+
+  it('offers every reason plus Not sure and Skip, and never picks one from the model names', () => {
+    const prompt = modelChangePromptHtml(handOff({ modelChange: { ...change, from: 'sonnet-5', to: 'fable-5' } }));
+    for (const label of ['Harder ticket', 'Provider limit', 'Provider problem', 'Preference', 'Not sure', 'Skip']) expect(prompt).toContain(`>${label}</button>`);
+    expect(prompt).toContain('data-model-change-reason="harder-ticket"');
+    expect(prompt).not.toMatch(/aria-pressed|checked|selected/);
+    // Not sure and Skip both say unknown.
+    expect(prompt.match(/data-model-change-reason="unknown"/g)).toHaveLength(2);
+    expect(prompt).toContain(`data-model-change-at="${change.at}"`);
+  });
+
+  it('escapes the model names it shows', () => {
+    expect(modelChangePromptHtml(handOff({ modelChange: { ...change, to: '<b>x</b>' } }))).not.toContain('<b>x</b>');
+  });
+
+  it('redraws the card when the change to ask about changes', () => {
+    expect(handOffVisualSignature([handOff({ modelChange: change })])).not.toBe(handOffVisualSignature([handOff()]));
+  });
+
+  it('posts the id, the change and the reason to the local server', async () => {
+    const fetcher = vi.fn(async () => new Response('{"confirmed":true}', { status: 200 }));
+    await sendModelChangeReason(fetcher as unknown as typeof fetch, { id: 'h1', at: change.at, reason: 'unknown' });
+    expect(fetcher).toHaveBeenCalledWith('/api/hand-offs/model-change', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'h1', at: change.at, reason: 'unknown' }),
+    });
+  });
+
+  it('reports a refusal instead of pretending the answer was saved', async () => {
+    const fetcher = vi.fn(async () => new Response('{"error":"No such model change."}', { status: 404 }));
+    await expect(sendModelChangeReason(fetcher as unknown as typeof fetch, { id: 'h1', at: change.at, reason: 'preference' })).rejects.toThrow('No such model change.');
   });
 });

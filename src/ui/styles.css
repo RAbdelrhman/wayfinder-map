@@ -3758,7 +3758,8 @@ textarea.input {
   background: var(--state-frontier);
 }
 
-.handoff-dots .is-merged {
+.handoff-dots .is-merged,
+.handoff-dots .is-done {
   background: var(--state-done);
 }
 
@@ -4112,7 +4113,8 @@ textarea.input {
   color: var(--handoff-pr-ready);
 }
 
-.handoff-pill.is-merged {
+.handoff-pill.is-merged,
+.handoff-pill.is-done {
   border-color: color-mix(in srgb, var(--state-done) 44%, var(--hairline));
   color: var(--text-secondary);
 }
@@ -4205,7 +4207,8 @@ textarea.input {
   background: color-mix(in srgb, var(--state-frontier) 5%, var(--surface-1));
 }
 
-.handoff-card.is-merged {
+.handoff-card.is-merged,
+.handoff-card.is-done {
   border-left-color: var(--state-done);
 }
 
@@ -4284,7 +4287,8 @@ textarea.input {
   color: var(--handoff-pr-ready);
 }
 
-.node-handoff-pill.is-merged {
+.node-handoff-pill.is-merged,
+.node-handoff-pill.is-done {
   color: var(--text-secondary);
 }
 
@@ -7504,4 +7508,40 @@ textarea.input {
   flex-basis: 100%;
   color: var(--text-muted);
   font-size: 12px;
+}
+
+.model-change-prompt {
+  display: grid;
+  gap: 4px;
+  padding-top: 7px;
+  border-top: 1px solid var(--hairline);
+  font-size: 12px;
+}
+
+.model-change-prompt p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.model-change-prompt b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.model-change-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.model-change-choices .ghost {
+  min-height: 44px;
+  padding: 7px;
+  font-size: 12px;
+}
+
+.model-change-skip {
+  margin-left: auto;
+  color: var(--text-secondary) !important;
 }

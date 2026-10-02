@@ -14,6 +14,9 @@ import {
   type HandOffStatusDto,
 } from './handOffTracking.js';
 
+// Keep the tracker's default GitHub lookups off the network.
+vi.mock('./github.js', () => ({ gh: () => Promise.reject(new Error('GitHub is not available in tests.')) }));
+
 const input = {
   repo: 'octo/one',
   mapNumber: 5,
@@ -491,6 +494,44 @@ describe('HandOffStore', () => {
         }
       });
 
+      it('asks about each model change once, in order, and not again after Not sure', async () => {
+        const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+        const filePath = join(directory, 'hand-offs.json');
+        let now = new Date('2026-09-30T12:10:00.000Z');
+        try {
+          const store = new HandOffStore({ filePath, now: () => now });
+          const { id } = await store.record({ ...input, auto: calibrated() });
+          const modelAt = async (sequence: number, model: string) => {
+            await store.applySnapshot('env-1', input.t3Origin ?? '', { snapshotSequence: sequence, threads: [{ id: 'thread-1', modelSelection: { instanceId: 'claudeAgent', model } }] });
+          };
+          await modelAt(1, 'fable-5');
+          now = new Date('2026-09-30T12:20:00.000Z');
+          await modelAt(2, 'opus-4.8');
+          now = new Date('2026-09-30T12:30:00.000Z');
+          await modelAt(3, 'sonnet-5');
+          const asked = async () => (await new HandOffStore({ filePath }).list())[0]?.auto?.modelChanges.map((change) => change.askedAt);
+
+          const tracker = new HandOffTracker(store, { readHandOffSnapshot: vi.fn(async () => { throw new Error('T3 Code is not running'); }) });
+          const prompted = async () => (await tracker.snapshot()).handOffs[0]?.modelChange;
+
+          await expect(asked()).resolves.toEqual([null, null]);
+          // Models only: the prompt carries no reason of its own.
+          await expect(prompted()).resolves.toEqual({ at: '2026-09-30T12:20:00.000Z', from: 'fable-5', to: 'opus-4.8' });
+          await store.confirmModelChange(id, '2026-09-30T12:20:00.000Z', 'unknown');
+          await expect(prompted()).resolves.toEqual({ at: '2026-09-30T12:30:00.000Z', from: 'opus-4.8', to: 'sonnet-5' });
+          await store.confirmModelChange(id, '2026-09-30T12:30:00.000Z', 'unknown');
+          await expect(prompted()).resolves.toBeUndefined();
+          tracker.close();
+          const [saved] = await new HandOffStore({ filePath }).list();
+          expect(saved?.auto?.modelChanges).toMatchObject([
+            { reason: 'unknown', confirmedAt: null, askedAt: '2026-09-30T12:30:00.000Z' },
+            { reason: 'unknown', confirmedAt: null, askedAt: '2026-09-30T12:30:00.000Z' },
+          ]);
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+      });
+
       it('confirms nothing on a hand-off Auto did not start', async () => {
         const store = new HandOffStore({ filePath: null });
         const { id } = await store.record(input);
@@ -525,7 +566,7 @@ describe('HandOffStore', () => {
       const store = new HandOffStore({ filePath: null });
       await store.record({ ...input, auto: auto() });
       const [first] = await store.list();
-      first?.auto?.modelChanges.push({ at: 'x', from: { provider: null, model: 'a', effort: null }, to: { provider: null, model: 'b', effort: null }, reason: 'unknown', confirmedAt: null });
+      first?.auto?.modelChanges.push({ at: 'x', from: { provider: null, model: 'a', effort: null }, to: { provider: null, model: 'b', effort: null }, reason: 'unknown', confirmedAt: null, askedAt: null });
       const [second] = await store.list();
       expect(second?.auto?.modelChanges).toEqual([]);
     });
@@ -882,6 +923,53 @@ describe('HandOffTracker', () => {
       expect(lookupPullRequestState).toHaveBeenCalledWith(url);
     } finally {
       tracker.close();
+    }
+  });
+
+  it('marks a hand-off whose ticket closed on GitHub, even while its thread sits ready', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    await store.record({ ...input, ticketNumber: 12, threadId: 'thread-2' });
+    const lookupTicketClosed = vi.fn(async (_repo: string, number: number) => number === 11);
+    const ready = { projectId: 'project-1', session: { status: 'ready' }, latestTurn: { state: 'completed' } };
+    const tracker = new HandOffTracker(
+      store,
+      {
+        readHandOffSnapshot: async () => ({
+          environmentId: 'env-1',
+          origin: input.t3Origin ?? '',
+          snapshot: { snapshotSequence: 3, threads: [{ id: 'thread-1', ...ready }, { id: 'thread-2', ...ready }] },
+        }),
+      },
+      { lookupTicketClosed, lookupPullRequests: async () => [] },
+    );
+
+    try {
+      await tracker.snapshot();
+      await vi.waitFor(async () => {
+        const { handOffs } = await tracker.snapshot();
+        expect(handOffs.find((item) => item.ticketNumber === 11)).toMatchObject({ status: 'ready', ticketClosed: true });
+      });
+      const { handOffs } = await tracker.snapshot();
+      expect(handOffs.find((item) => item.ticketNumber === 12)).not.toHaveProperty('ticketClosed');
+      expect(lookupTicketClosed).toHaveBeenCalledWith('octo/one', 11);
+      // A closed ticket is not looked up again; an open one waits a minute.
+      expect(lookupTicketClosed).toHaveBeenCalledTimes(2);
+    } finally {
+      tracker.close();
+    }
+  });
+
+  it('keeps the closed ticket mark across a reload of the store', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'wayfinder-closed-ticket-'));
+    const filePath = join(dir, 'hand-offs.json');
+    try {
+      const store = new HandOffStore({ filePath });
+      const saved = await store.record(input);
+      await store.setTicketClosed(saved.id);
+      await expect(new HandOffStore({ filePath }).list()).resolves.toMatchObject([{ ticketClosedAt: expect.any(String) }]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 

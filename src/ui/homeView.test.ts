@@ -104,6 +104,10 @@ describe('Home in-flight lanes', () => {
     ]);
   });
 
+  it('drops a hand-off from Needs you once its ticket closes', () => {
+    expect(buildHomeWorkItems([handOff({ status: 'ready', ticketClosed: true })], []).filter((item) => item.kind === 'handoff')).toEqual([]);
+  });
+
   it('clears acknowledged failures from the in-flight lanes', () => {
     expect(buildHomeWorkItems([handOff({ status: 'failed', acknowledged: true })], [])).toEqual([]);
   });

@@ -103,6 +103,7 @@ const TONE_OF: Record<HandOffUiState, BatchTone> = {
   'needs-you': 'needs-you',
   'pr-ready': 'done',
   merged: 'done',
+  done: 'done',
   failed: 'failed',
 };
 
