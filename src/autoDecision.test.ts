@@ -166,15 +166,22 @@ describe('model change reasons (#186)', () => {
   const at = '2026-09-30T12:05:00.000Z';
 
   it('leaves the reason unknown: a different, even stronger, model name does not say why', () => {
-    expect(changed().modelChanges[0]).toMatchObject({ reason: 'unknown', confirmedAt: null });
+    expect(changed().modelChanges[0]).toMatchObject({ reason: 'unknown', confirmedAt: null, askedAt: null });
   });
 
   it('records a reason the user confirmed, and can set it back to unknown', () => {
     const confirmed = confirmModelChange(changed(), at, 'harder-ticket', new Date('2026-09-30T13:00:00.000Z'));
-    expect(confirmed?.modelChanges[0]).toMatchObject({ reason: 'harder-ticket', confirmedAt: '2026-09-30T13:00:00.000Z' });
+    expect(confirmed?.modelChanges[0]).toMatchObject({ reason: 'harder-ticket', confirmedAt: '2026-09-30T13:00:00.000Z', askedAt: '2026-09-30T13:00:00.000Z' });
     expect(confirmed?.overrides).toEqual([]);
     const reset = confirmModelChange(confirmed ?? changed(), at, 'unknown', new Date('2026-09-30T13:05:00.000Z'));
     expect(reset?.modelChanges[0]).toMatchObject({ reason: 'unknown', confirmedAt: null });
+  });
+
+  it('counts Not sure as an answer: the reason stays unknown and the user is not asked again', () => {
+    const answered = confirmModelChange(changed(), at, 'unknown', new Date('2026-09-30T13:00:00.000Z'));
+    expect(answered?.modelChanges[0]).toMatchObject({ reason: 'unknown', confirmedAt: null, askedAt: '2026-09-30T13:00:00.000Z' });
+    const reread = parseStoredAutoDecision(JSON.parse(JSON.stringify(answered)));
+    expect(reread?.modelChanges[0]).toMatchObject({ reason: 'unknown', confirmedAt: null, askedAt: '2026-09-30T13:00:00.000Z' });
   });
 
   it('finds no change to confirm at a time it did not happen', () => {
@@ -205,6 +212,7 @@ describe('observeThread', () => {
         to: { provider: 'claude', model: 'opus', effort: null },
         reason: 'unknown',
         confirmedAt: null,
+        askedAt: null,
       },
     ]);
     expect(changed.current).toMatchObject({ model: 'opus' });

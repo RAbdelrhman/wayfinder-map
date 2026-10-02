@@ -7509,3 +7509,39 @@ textarea.input {
   color: var(--text-muted);
   font-size: 12px;
 }
+
+.model-change-prompt {
+  display: grid;
+  gap: 4px;
+  padding-top: 7px;
+  border-top: 1px solid var(--hairline);
+  font-size: 12px;
+}
+
+.model-change-prompt p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.model-change-prompt b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.model-change-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.model-change-choices .ghost {
+  min-height: 44px;
+  padding: 7px;
+  font-size: 12px;
+}
+
+.model-change-skip {
+  margin-left: auto;
+  color: var(--text-secondary) !important;
+}

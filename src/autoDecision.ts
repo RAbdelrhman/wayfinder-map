@@ -49,6 +49,8 @@ export interface ModelChange {
   reason: ModelChangeReason;
   /** When the user confirmed the reason. Null while it is unknown. */
   confirmedAt: string | null;
+  /** When the user answered the prompt, including "Not sure" or a skip, which leave the reason unknown. Null until they do. */
+  askedAt: string | null;
 }
 
 export interface UsageLimitError {
@@ -210,7 +212,7 @@ export function observeThread(decision: AutoDecision, observation: ThreadObserva
     if (decision.current === null) {
       next.current = seen;
     } else if (!sameModel(decision.current, seen)) {
-      next.modelChanges = [...next.modelChanges, { at: observation.at, from: decision.current, to: seen, reason: 'unknown' as const, confirmedAt: null }].slice(-MAX_EVENTS);
+      next.modelChanges = [...next.modelChanges, { at: observation.at, from: decision.current, to: seen, reason: 'unknown' as const, confirmedAt: null, askedAt: null }].slice(-MAX_EVENTS);
       next.current = seen;
     } else if (decision.current.effort === null && seen.effort !== null) {
       next.current = { ...decision.current, effort: seen.effort };
@@ -222,11 +224,12 @@ export function observeThread(decision: AutoDecision, observation: ThreadObserva
   return next;
 }
 
-/** Record the reason a user confirmed for the model change made at `at`. Null when the decision has no such change. */
+/** Record the answer a user gave for the model change made at `at`. `unknown` (Not sure, or a skip) is an answer too: it is not asked again. Null when the decision has no such change. */
 export function confirmModelChange(decision: AutoDecision, at: string, reason: ModelChangeReason, now: Date): AutoDecision | null {
   if (!decision.modelChanges.some((change) => change.at === at)) return null;
-  const confirmedAt = reason === 'unknown' ? null : now.toISOString();
-  return { ...decision, modelChanges: decision.modelChanges.map((change) => (change.at === at ? { ...change, reason, confirmedAt } : change)) };
+  const askedAt = now.toISOString();
+  const confirmedAt = reason === 'unknown' ? null : askedAt;
+  return { ...decision, modelChanges: decision.modelChanges.map((change) => (change.at === at ? { ...change, reason, confirmedAt, askedAt } : change)) };
 }
 
 /** A decision read back from disk, or null when it is not one. Anything unknown in it is dropped. */
@@ -262,7 +265,8 @@ export function parseStoredAutoDecision(value: unknown): AutoDecision | null {
       if (at === null || from === null || to === null) return null;
       // A change saved before reasons existed, or with a reason that is not one, stays unknown.
       const reason = oneOf(MODEL_CHANGE_REASONS, entry['reason']) ?? 'unknown';
-      return { at, from, to, reason, confirmedAt: reason === 'unknown' ? null : isoTime(entry['confirmedAt']) };
+      const confirmedAt = reason === 'unknown' ? null : isoTime(entry['confirmedAt']);
+      return { at, from, to, reason, confirmedAt, askedAt: isoTime(entry['askedAt']) ?? confirmedAt };
     }),
     usageLimitErrors: events(item?.['usageLimitErrors'], (entry) => {
       const at = isoTime(entry['at']);

@@ -126,6 +126,8 @@ export interface HandOffStatusDto {
   pullRequests: PullRequestRef[];
   /** The ticket is closed on GitHub, so the hand-off is done whatever its thread says. */
   ticketClosed?: boolean;
+  /** The oldest Auto model change the user has not been asked about, so the UI asks once. Model names only, never a guessed reason. */
+  modelChange?: { at: string; from: string; to: string };
 }
 
 export interface T3HandOffSnapshot {
@@ -380,6 +382,11 @@ function normalizeStoredHandOffs(value: unknown): StoredHandOff[] {
       hasSnapshot: ref.hasSnapshot === true,
     })),
   }));
+}
+
+function unaskedModelChange(item: StoredHandOff): { modelChange?: NonNullable<HandOffStatusDto['modelChange']> } {
+  const change = item.auto?.modelChanges.find((candidate) => candidate.askedAt === null);
+  return change === undefined ? {} : { modelChange: { at: change.at, from: change.from.model, to: change.to.model } };
 }
 
 function withAuto(value: unknown): { auto?: AutoDecision } {
@@ -1255,6 +1262,7 @@ export class HandOffTracker {
       pendingUserInput: item.pendingUserInput,
       pullRequests: item.pullRequests.map((ref) => ({ ...ref })),
       ...(item.ticketClosedAt === undefined ? {} : { ticketClosed: true }),
+      ...unaskedModelChange(item),
     };
   }
 }
