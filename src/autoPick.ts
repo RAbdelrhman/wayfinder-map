@@ -156,6 +156,8 @@ export interface AutoProposal {
   usage: ProviderUsage;
   /** Set when the tier's own provider was skipped for being not ready or at its limit. */
   substitution: Substitution | null;
+  /** Why the model picked cannot run now ("Codex is at its usage limit") when no other provider was usable. Null otherwise. */
+  blocked: string | null;
 }
 
 /**
@@ -165,7 +167,7 @@ export interface AutoProposal {
  */
 export function pickAuto(input: AutoPickInput): AutoProposal {
   const { rating, catalog, tierModels, usage } = input;
-  const base = { tier: rating.tier, rating, reason: rating.reason, substitution: null };
+  const base = { tier: rating.tier, rating, reason: rating.reason, substitution: null, blocked: null };
   if (catalog === null) return { ...base, choice: null, modelName: null, usage: UNKNOWN };
 
   const candidates = TIERS.slice(TIERS.indexOf(rating.tier)).flatMap((tier) => {
@@ -189,6 +191,7 @@ export function pickAuto(input: AutoPickInput): AutoProposal {
       modelName: named(first.choice),
       reason: `${rating.reason}; ${first.provider.name} ${firstWhy} and no other provider is set for this tier, so pick one`,
       usage: first.reading,
+      blocked: `${first.provider.name} ${firstWhy}`,
     };
   }
   const substitution: Substitution | null =
@@ -208,7 +211,7 @@ export function proposalLine(proposal: AutoProposal, tierLabel: string): string 
   return `${tierLabel} → ${proposal.modelName ?? 'T3 Code default'}: ${proposal.reason}`;
 }
 
-function pickOf(tier: Tier, choice: ModelChoice | null): { tier: Tier; provider: string | null; model: string | null; effort: string | null } {
+export function pickOf(tier: Tier, choice: ModelChoice | null): { tier: Tier; provider: string | null; model: string | null; effort: string | null } {
   return { tier, provider: choice?.instanceId ?? null, model: choice?.model ?? null, effort: choice?.effort?.value ?? null };
 }
 

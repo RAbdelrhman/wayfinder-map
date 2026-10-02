@@ -5,11 +5,13 @@ import type { AutoMapStartBody } from './autoMap.js';
 import { AutoMapService, parseAutoMapChange } from './autoMapService.js';
 import type { AutoMapServiceDeps } from './autoMapService.js';
 import { memoryAutoMapStore } from './autoMapStore.js';
+import { buildAutoDecision } from './autoDecision.js';
+import { autoDecisionBody, pickAuto } from './autoPick.js';
 import type { MapEvent } from './mapWatch.js';
 import type { ModelRatingResult } from './autoRater.js';
 import type { ModelCatalog, ModelChoice } from './models.js';
 import type { DesktopNotification } from './notifications.js';
-import type { Batch } from './startNextRunner.js';
+import type { Batch, BatchItem } from './startNextRunner.js';
 import type { Ticket, WayfinderMap } from './types.js';
 
 const NOW = new Date('2026-10-01T10:00:00.000Z');
@@ -538,5 +540,49 @@ describe('parseAutoMapChange', () => {
     });
     expect(parseAutoMapChange({ op: 'nope' })).toBeNull();
     expect(parseAutoMapChange(null)).toBeNull();
+  });
+});
+
+describe('AutoMapService.repick (#189)', () => {
+  const FABLE: ModelChoice = { instanceId: 'claudeAgent', model: 'fable-5' };
+  const both: ModelCatalog = {
+    providers: [
+      ...CATALOG.providers,
+      { instanceId: 'claudeAgent', name: 'Claude', ready: true, models: [{ slug: FABLE.model, name: FABLE.model, isDefault: false, effort: null }] },
+    ],
+  };
+  const limited = { codex: { state: 'limited' as const, observedAt: '2026-10-01T09:59:40.000Z' } };
+
+  function queued(): BatchItem {
+    const rating = { tier: 'mid' as const, reason: 'waits on 2 tickets', by: 'logic' as const, version: 'rules-1' };
+    const proposal = pickAuto({ rating, catalog: both, tierModels: { mid: SOL, hard: SOL }, usage: {} });
+    const auto = buildAutoDecision(autoDecisionBody(proposal, { tier: proposal.tier, choice: proposal.choice }), NOW);
+    return { ticketNumber: 11, title: 'Ticket 11', tier: 'mid', model: SOL, auto, status: 'queued', handOffId: null, reason: null };
+  }
+
+  it('changes nothing until Settings holds a tier mapping, and reads no usage for it', async () => {
+    const usage = vi.fn(async () => limited);
+    const h = harness({ catalog: async () => both, usage });
+    expect(await h.service.repick(queued())).toEqual({ kind: 'keep' });
+    expect(usage).not.toHaveBeenCalled();
+  });
+
+  it("re-picks from the saved tier mapping and a usage reading taken now, moving a limited provider's ticket", async () => {
+    const usage = vi.fn(async () => limited);
+    const h = harness({ catalog: async () => both, usage });
+    await h.service.updateSettings({ tierModels: { mid: SOL, hard: FABLE } });
+    const result = await h.service.repick(queued());
+    expect(usage).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ kind: 'switch', model: FABLE, auto: { overrides: [], substitution: { reason: 'usage-limit', toTier: 'hard' } } });
+  });
+
+  it('holds the ticket while no other provider is mapped, and keeps it when the provider reads available', async () => {
+    const h = harness({ catalog: async () => both, usage: async () => limited });
+    await h.service.updateSettings({ tierModels: { mid: SOL, hard: SOL } });
+    expect(await h.service.repick(queued())).toMatchObject({ kind: 'hold' });
+
+    const free = harness({ catalog: async () => both, usage: async () => ({ codex: { state: 'available' as const, observedAt: '2026-10-01T09:59:40.000Z' } }) });
+    await free.service.updateSettings({ tierModels: { mid: SOL, hard: FABLE } });
+    expect(await free.service.repick(queued())).toEqual({ kind: 'keep' });
   });
 });

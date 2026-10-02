@@ -97,7 +97,17 @@ Start next's confirm list has one choice per row: Auto (the default), Simple, Mi
 - **Which providers.** Readings are filed under T3 Code's default instance ids, `codex` and `claudeAgent`. A custom instance may be another account, so it stays `unknown` until it has a limit error.
 - **Privacy.** A reading is reduced to a state, a time and the reset time held in memory. Percentages, plan names and account IDs are dropped on receipt, so the API, the confirm list, the hand-off record and GitHub never see them.
 - **No near-limit state.** Still not inferred: #165 found the sample too small and the hand-off records (#172) hold no Auto outcomes yet. A provider is `limited` only when its own data says a window is used up.
-- **Not done.** A queued ticket that waits over 60 seconds keeps the model chosen at submit. Re-picking it when a limit appears is tracked as a follow-up.
+- **Queued tickets.** Re-picked since #189 (below).
+
+## Re-picking a queued ticket (#189)
+
+A queued Auto ticket keeps the model picked at confirm for its first minute. The Start next runner (`src/startNextRunner.ts`) then asks `AutoMapService.repick` about it each time a slot frees and the ticket is next to start; `repickQueued` (`src/autoRepick.ts`) decides.
+
+- **When.** Only a ticket Auto picked and the user left alone (`selection: auto`, no overrides) that has waited **over** 60 seconds since its batch was submitted. A ticket that starts at once, a plain tier and a row the user set are never asked about.
+- **Fresh reading.** The usage taken for the re-pick is the same one as `GET /api/provider-usage` (Codex reused if under 60 s old, Claude's latest status line), so it is never older than a reading's life. A failed read or a missing tier mapping in Settings keeps the model.
+- **Limited.** If the ticket's provider reads `limited`, `pickAuto` runs again with the rating saved on the decision: a harder tier's model on another provider, never an easier one. The change is recorded as a **dispatch substitution** on the decision: `substitution` names the tier's own model, the model used and why, and `proposed` and `final` both move to the new pick, so `overrides` stays empty and #186's counts treat it as provider state, not a user correction. `decidedAt` and `usage` are the re-pick's.
+- **No alternative.** The ticket stays queued with "Held: Codex is at its usage limit, and no other provider is set for this tier". It takes no slot, so tickets behind it still start, and it is re-checked on the next pass. Stopping the queue sends it back to next.
+- **Available or unknown.** Nothing changes. Wayfinder does not move a ticket on a guess.
 
 ## Calibration readiness audit (#173)
 

@@ -6,6 +6,8 @@ import type { RatingAnswer } from './autoShadow.js';
 import type { ModelRatingResult } from './autoRater.js';
 import { autoMapKey, autoMapUsageStop, autoStartTickets, AUTO_MAP_TIERS, parseAutoMapSetting, resolveAutoMapTier, turnedOff, turnedOn } from './autoMap.js';
 import type { AutoMapSetting, AutoMapStartBody, AutoMapTier } from './autoMap.js';
+import { repickQueued } from './autoRepick.js';
+import type { Repick } from './autoRepick.js';
 import { NOTICE_LIMIT } from './autoMapStore.js';
 import type { AutoMapEntry, AutoMapMachineSettings, AutoMapNotice, AutoMapStateStore } from './autoMapStore.js';
 import type { MapEvent } from './mapWatch.js';
@@ -14,7 +16,7 @@ import { liveChoice, parseAutoRater, parseCalibrationMode, parseTierModels } fro
 import type { ModelCatalog, ModelChoice } from './models.js';
 import type { DesktopNotification, NotificationKind } from './notifications.js';
 import { normalizeCap } from './startNext.js';
-import type { Batch, UsageLimit } from './startNextRunner.js';
+import type { Batch, BatchItem, UsageLimit } from './startNextRunner.js';
 import type { Ticket, WayfinderMap } from './types.js';
 
 /* The auto map's trigger, run in the server (#182): it keeps watching a map while no page is open, hands off what becomes next, and turns itself off on a usage limit. */
@@ -225,6 +227,17 @@ export class AutoMapService {
       ticketTitle: item.title,
       createdAt: this.now().toISOString(),
     });
+  }
+
+  /**
+   * A queued Auto ticket has waited past a usage reading's life: pick its model again from a fresh reading and the
+   * tier mapping in Settings (#189). Without the mapping, or when a reading cannot be taken, it keeps its model.
+   */
+  async repick(item: Readonly<BatchItem>): Promise<Repick> {
+    const tierModels = this.settings.tierModels;
+    if (tierModels === null) return { kind: 'keep' };
+    const [catalog, usage] = await Promise.all([this.deps.catalog().catch(() => null), this.deps.usage()]);
+    return repickQueued({ item, catalog, tierModels, usage, now: this.now() });
   }
 
   /** Hand off everything collected so far. */
