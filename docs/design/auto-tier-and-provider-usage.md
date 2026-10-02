@@ -86,3 +86,36 @@ Start next's confirm list has one choice per row: Auto (the default), Simple, Mi
 - **Model.** The rated tier resolves through the Settings tier mapping and the models T3 Code currently offers. A provider T3 Code reports as not ready, or one that hit a usage limit in the last 30 minutes, is skipped for a model Settings maps to a *harder* tier on another provider. Wayfinder never takes an easier tier's model, so a quota is not stretched by under-powering a ticket. With no alternative the tier's own model stays and the reason says to pick one.
 - **Usage signal.** Only what Wayfinder has seen: a usage-limit error on a batch start or on an Auto thread, kept as the provider instance and a time. Everything else is `unknown`; "near the limit" is not inferred (see above). Reading Codex's `account/rateLimits/read` and Claude's status-line limits would add `available` and a real near-limit state. That is left for a follow-up.
 - **Record.** Every row sends an `auto` block (proposal, final choice, usage state), including rows the user overrode, so #172's `overrides` fires on a changed tier or model.
+
+## Calibration readiness audit (#173)
+
+Checked on 2026-10-01 at 20:33 EDT, 2026-10-02 00:33 UTC, against repository commit `c54ecba` and the local version-2 `~/.wayfinder-map/hand-offs.json`. Both [#166](https://github.com/RAbdelrhman/wayfinder-map/issues/166#issuecomment-5930254050) and [#172](https://github.com/RAbdelrhman/wayfinder-map/issues/172#issuecomment-5924469378) are closed with merged implementations. This is a readiness audit, not the requested completed-hand-off experiment. #173 stays open until at least 30 eligible completions are available.
+
+The read-only disk snapshot contains 43 records for this repository, 26 attached to map #121. None has an `auto` block. Its stored statuses are 42 `ready` and one `running`; these are persisted observations, not a fresh T3 session read. There are zero recorded Auto outcomes, explicit Auto corrections, or Auto model-change events. The eligible sample is **0 of 30**. This describes this machine's retained store only. It makes no claim about other machines or records already removed by the store's 30-day terminal retention. No raw records or provider data are published.
+
+| Ticket type | Eligible completed Auto hand-offs | Paired predictions | Agreement with corrected choices | Rating cost | Rating latency |
+| --- | ---: | ---: | --- | --- | --- |
+| Task | 0 | 0 | Not measurable | Not measured | Not measured |
+| Research | 0 | 0 | Not measurable | Not measured | Not measured |
+
+Missing measurements are not zero cost or zero latency. The earlier 13-ticket experiment used a different rules baseline, included prototype and grilling tickets, and had no correction labels. It cannot fill this sample or establish accuracy for `rules-1`.
+
+### Inclusion and labels for the eventual comparison
+
+Count unique hand-off IDs for task or research tickets on this repository's map #121 with a valid saved Auto proposal/final choice and a recorded terminal outcome. Fix and timestamp the snapshot and report its retention window. Keep retries visible and report both hand-off and unique-ticket counts; do not treat repeated attempts on one ticket as independent corroboration. Exclude untracked starts, still-active sessions and prototype/grilling tickets. A `pull-request` outcome alone is not completion; verify a terminal session or merged PR and report which completion evidence was used. Keep failed/interrupted terminal attempts in a separate outcome breakdown so their exclusion cannot inflate success.
+
+For the 30-completion gate, count finished sessions and verified merged hand-offs. Exclude attempts with recorded usage-limit errors from difficulty labels and the labeled comparison, regardless of their terminal state. Report their count separately. A provider readiness/limit substitution is a dispatch constraint, not a user difficulty correction.
+
+The primary label is an explicit user tier correction made before dispatch, with its source and time. Compute exact agreement separately for rules and model against that corrected tier on the same labeled, paired records. Report numerator and denominator by task/research, a tier confusion table, and uncertainty intervals. Keeping a proposal without changing it is weaker evidence of acceptance and must be reported separately from explicit corrections. Report the active rater because showing its proposal can influence the user's choice.
+
+Treat an in-session change as upward only when the saved tier mapping and user evidence establish that it increased capability to address difficulty. Model identifiers and effort names alone do not establish an ordering. Separate confirmed difficulty changes from provider limits, readiness substitutions, user preference and unknown causes. A completed or merged result shows the chosen configuration worked; it does not label the minimum tier or prove an easier choice would have failed.
+
+For each ticket type, compare paired predictions made from the same input before dispatch. Report rating elapsed time with sample count, median and p95, including timeout/fallback counts. Separate rating latency from hand-off duration. Report attributable input/cached/output tokens and either actual charge or a dated price estimate; subscription cost without attribution remains unavailable. Do not substitute total session cost for the cost of rating. Even with 30 completions, too few explicit correction labels means no accuracy conclusion.
+
+### Tracking gaps and recommendation
+
+`AutoDecision` in [autoDecision.ts](../../src/autoDecision.ts) saves one scoring version/reason and one proposed/final choice. The active rater is selected in Settings. It does not save both predictions, rating tokens/cost/latency, ticket type at decision time, the tier mapping, or why an in-session model changed. [autoRater.ts](../../src/autoRater.ts) returns a tier/reason or an error and discards measurement provenance. A later rerating of edited issues cannot recover prospective paired predictions. `overrides` is a comparison of proposed/final configurations, so it needs dispatch context before it can serve as an explicit user correction label.
+
+[#186](https://github.com/RAbdelrhman/wayfinder-map/issues/186), a task sub-issue of map #121, tracks paired predictions and measurements with opt-in shadow calls and the existing local privacy/retention contract. It blocks the eventual comparison. No runtime behavior or collection is added by this audit.
+
+There is **no accuracy conclusion**. Keep logic as the default and preserve the user-selected model-rating option shipped in #166. Keep shadow ratings only as an explicit opt-in experiment once #186 records comparable predictions and measurements. There is no evidence here to promote model ratings to the default or remove them for poor accuracy. Revisit #173 after 30 eligible completions, and continue to withhold an accuracy recommendation if their labels remain weak.
