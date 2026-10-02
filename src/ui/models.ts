@@ -1,5 +1,5 @@
-import { findModel, liveChoice, parseAutoRater, TIERS } from '../models.js';
-import type { AutoRater, CatalogModel, ModelCatalog, ModelChoice, Tier } from '../models.js';
+import { findModel, liveChoice, parseAutoRater, parseCalibrationMode, TIERS } from '../models.js';
+import type { AutoRater, CalibrationMode, CatalogModel, ModelCatalog, ModelChoice, Tier } from '../models.js';
 import { pushServerSettings } from './serverSettings.js';
 
 /* The model picker: what T3 Code can run, a default per task tier, and a tier per ticket. */
@@ -47,6 +47,21 @@ export function autoRater(storage: Pick<Storage, 'getItem'> = localStorage): Aut
 export function saveAutoRater(rater: AutoRater, storage: Pick<Storage, 'setItem'> = localStorage): void {
   storage.setItem(AUTO_RATER_KEY, JSON.stringify(rater));
   pushServerSettings({ rater });
+}
+
+export const CALIBRATION_KEY = 'wayfinder-map:auto-calibration:v1';
+
+export function calibrationMode(storage: Pick<Storage, 'getItem'> = localStorage): CalibrationMode {
+  try {
+    return parseCalibrationMode(JSON.parse(storage.getItem(CALIBRATION_KEY) ?? 'null'));
+  } catch {
+    return { kind: 'off' };
+  }
+}
+
+export function saveCalibrationMode(mode: CalibrationMode, storage: Pick<Storage, 'setItem'> = localStorage): void {
+  storage.setItem(CALIBRATION_KEY, JSON.stringify(mode));
+  pushServerSettings({ calibration: mode });
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -163,4 +178,4 @@ export function readChoice(catalog: ModelCatalog, modelSelect: HTMLSelectElement
 }
 
 export { findModel, liveChoice, TIERS };
-export type { AutoRater, ModelChoice, Tier };
+export type { AutoRater, CalibrationMode, ModelChoice, Tier };

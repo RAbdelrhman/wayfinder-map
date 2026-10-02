@@ -1,5 +1,8 @@
-import { autoDecisionBody, pickAuto, rateByRules } from './autoPick.js';
+import type { Calibration } from './autoCalibration.js';
+import { autoDecisionBody, pickAuto, rateByRules, tierMappingOf } from './autoPick.js';
 import type { ProviderUsage, Rating } from './autoPick.js';
+import { buildCalibrations, rateByRulesTimed, shadowTickets, sharesRatingModel } from './autoShadow.js';
+import type { RatingAnswer } from './autoShadow.js';
 import type { ModelRatingResult } from './autoRater.js';
 import { autoMapKey, autoMapUsageStop, autoStartTickets, AUTO_MAP_TIERS, parseAutoMapSetting, resolveAutoMapTier, turnedOff, turnedOn } from './autoMap.js';
 import type { AutoMapSetting, AutoMapStartBody, AutoMapTier } from './autoMap.js';
@@ -7,7 +10,7 @@ import { NOTICE_LIMIT } from './autoMapStore.js';
 import type { AutoMapEntry, AutoMapMachineSettings, AutoMapNotice, AutoMapStateStore } from './autoMapStore.js';
 import type { MapEvent } from './mapWatch.js';
 import type { MapWatcher } from './mapWatcher.js';
-import { liveChoice, parseAutoRater, parseTierModels } from './models.js';
+import { liveChoice, parseAutoRater, parseCalibrationMode, parseTierModels } from './models.js';
 import type { ModelCatalog, ModelChoice } from './models.js';
 import type { DesktopNotification, NotificationKind } from './notifications.js';
 import { normalizeCap } from './startNext.js';
@@ -94,7 +97,7 @@ export class AutoMapService {
   /** Why each map's auto map last turned itself off. Kept in memory only: it is the provider's own words. */
   private readonly limits = new Map<string, UsageLimit>();
   private readonly pending = new Map<string, Pending>();
-  private settings: AutoMapMachineSettings = { cap: null, tierModels: null, rater: null };
+  private settings: AutoMapMachineSettings = { cap: null, tierModels: null, rater: null, calibration: null };
   private notices: AutoMapNotice[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
   private persistTail: Promise<void> = Promise.resolve();
@@ -175,6 +178,10 @@ export class AutoMapService {
     }
     if (typeof raw['rater'] === 'object' && raw['rater'] !== null) {
       next.rater = parseAutoRater(raw['rater']);
+      changed = true;
+    }
+    if (typeof raw['calibration'] === 'object' && raw['calibration'] !== null) {
+      next.calibration = parseCalibrationMode(raw['calibration']);
       changed = true;
     }
     if (!changed) return false;
@@ -297,34 +304,54 @@ export class AutoMapService {
     if (tierSetting !== 'auto' || map === null) return numbers.map(fixed);
     try {
       const wanted = map.tickets.filter((ticket) => numbers.includes(ticket.number));
-      const ratings = await this.rate(wanted);
+      const { ratings, calibrations } = await this.rate(wanted);
       const usage = await this.deps.usage().catch(() => ({}));
       const byNumber = new Map(wanted.map((ticket) => [ticket.number, ticket]));
+      const tierMapping = tierMappingOf(catalog, tierModels);
       return numbers.map((number) => {
         const ticket = byNumber.get(number);
         if (ticket === undefined) return fixed(number);
         const proposal = pickAuto({ rating: ratings.get(number) ?? rateByRules(ticket), catalog, tierModels, usage });
-        return { ticket: number, tier: proposal.tier, model: proposal.choice, auto: autoDecisionBody(proposal, { tier: proposal.tier, choice: proposal.choice }) };
+        const context = { selection: 'auto' as const, tierMapping, calibration: calibrations.get(number) ?? null };
+        return { ticket: number, tier: proposal.tier, model: proposal.choice, auto: autoDecisionBody(proposal, { tier: proposal.tier, choice: proposal.choice }, context) };
       });
     } catch {
       return numbers.map(fixed);
     }
   }
 
-  /** Each ticket's rating: by the rules, and by the user's model when Settings says so. A model that cannot rate leaves the rules' rating, and says so. */
-  private async rate(tickets: readonly Ticket[]): Promise<Map<number, Rating>> {
+  /**
+   * Each ticket's rating: by the rules, and by the user's model when Settings says so. A model that cannot rate leaves
+   * the rules' rating, and says so. In calibration mode a task or research ticket is also rated by the shadow model,
+   * and both predictions are paired for the record (#186); they never change the pick.
+   */
+  private async rate(tickets: readonly Ticket[]): Promise<{ ratings: Map<number, Rating>; calibrations: Map<number, Calibration> }> {
     const ratings = new Map<number, Rating>(tickets.map((ticket) => [ticket.number, rateByRules(ticket)]));
-    const rater = this.settings.rater;
-    if (rater?.kind !== 'model') return ratings;
-    await Promise.all(
-      tickets.slice(0, MAX_RATED).map(async (ticket) => {
-        const answer = await this.deps.rate(ticket, rater.choice);
-        const fallback = ratings.get(ticket.number);
-        if (answer.ok) ratings.set(ticket.number, answer.rating);
-        else if (fallback !== undefined) ratings.set(ticket.number, { ...fallback, reason: `${fallback.reason} (${answer.error}; logic rated it)` });
-      }),
-    );
-    return ratings;
+    const rater = this.settings.rater ?? { kind: 'logic' as const };
+    const mode = this.settings.calibration ?? { kind: 'off' as const };
+    const shadowed = mode.kind === 'shadow' ? shadowTickets(tickets) : [];
+    // A shadow model equal to the rating model needs no second call: its answer is both the proposal and the shadow.
+    const shared = mode.kind === 'shadow' && sharesRatingModel(rater, mode.choice);
+    const ask = async (choice: ModelChoice, wanted: readonly Ticket[]): Promise<RatingAnswer[]> =>
+      Promise.all(
+        wanted.slice(0, MAX_RATED).map(async (ticket): Promise<RatingAnswer> => {
+          const answer = await this.deps.rate(ticket, choice);
+          return answer.ok ? { ticket: ticket.number, ok: true, rating: answer.rating, prediction: answer.prediction } : { ticket: ticket.number, ok: false, error: answer.error, prediction: answer.prediction };
+        }),
+      );
+    const [answers, shadowAnswers, rulesRuns] = await Promise.all([
+      rater.kind === 'model' ? ask(rater.choice, tickets) : Promise.resolve(null),
+      mode.kind === 'shadow' && !shared ? ask(mode.choice, shadowed) : Promise.resolve(null),
+      Promise.all(shadowed.map(async (ticket) => [ticket.number, await rateByRulesTimed(ticket)] as const)),
+    ]);
+    for (const answer of answers ?? []) {
+      const fallback = ratings.get(answer.ticket);
+      if (fallback === undefined) continue;
+      if (answer.ok && answer.rating !== undefined) ratings.set(answer.ticket, answer.rating);
+      else ratings.set(answer.ticket, { ...fallback, reason: `${fallback.reason} (${answer.error ?? 'the model could not rate'}; logic rated it)` });
+    }
+    const calibrations = mode.kind === 'shadow' ? buildCalibrations({ shadow: mode.choice, rater, rules: new Map(rulesRuns), ratings, answers, shadowAnswers }) : new Map<number, Calibration>();
+    return { ratings, calibrations };
   }
 
   /** Put a notice where the page's inbox will find it, and show it as an OS notification in the desktop app. */

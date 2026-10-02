@@ -11,7 +11,7 @@ const SETTING = { enabled: true, tier: 'hard' as const, setUp: true, enabledAt: 
 const NOTICE = { id: 'automap:b1', kind: 'handOffError' as const, repo: 'octo/one', mapNumber: 5, mapTitle: 'Roadmap', ticketNumber: 11, ticketTitle: 'Ticket 11', createdAt: '2026-10-01T10:06:00.000Z' };
 const STATE: AutoMapState = {
   maps: [{ repo: 'octo/one', mapNumber: 5, setting: SETTING }],
-  settings: { cap: 6, tierModels: { hard: { instanceId: 'codex', model: 'gpt-5.6-sol' } }, rater: { kind: 'logic' } },
+  settings: { cap: 6, tierModels: { hard: { instanceId: 'codex', model: 'gpt-5.6-sol' } }, rater: { kind: 'logic' }, calibration: { kind: 'off' } },
   notices: [NOTICE],
 };
 
@@ -56,11 +56,11 @@ describe('parseAutoMapState', () => {
         { repo: 'octo/one', mapNumber: -1, setting: SETTING },
         { repo: 'octo/one', mapNumber: 7, setting: { enabled: true, tier: 'mid', setUp: true, enabledAt: null } },
       ],
-      settings: { cap: 0, tierModels: { mid: 'nope' }, rater: { kind: 'model' } },
+      settings: { cap: 0, tierModels: { mid: 'nope' }, rater: { kind: 'model' }, calibration: { kind: 'shadow' } },
       notices: [NOTICE, { ...NOTICE, id: 3 }, 'x'],
     });
     expect(parsed.maps.map((entry) => [entry.mapNumber, entry.setting.enabled, entry.setting.tier])).toEqual([[5, true, 'auto'], [7, false, 'mid']]);
-    expect(parsed.settings).toEqual({ cap: null, tierModels: {}, rater: { kind: 'logic' } });
+    expect(parsed.settings).toEqual({ cap: null, tierModels: {}, rater: { kind: 'logic' }, calibration: { kind: 'off' } });
     expect(parsed.notices).toEqual([NOTICE]);
   });
 

@@ -1171,6 +1171,48 @@ describe('local clone for a hand-off', () => {
       }
     });
 
+    it('saves the paired predictions for a task, the ticket type the server read, and none for a prototype (#186)', async () => {
+      const { server } = liveT3();
+      const store = new HandOffStore({ filePath: null });
+      const typed: WayfinderMap = { ...startMap, tickets: [ticketAt(11, { type: 'task' }), ticketAt(12, { type: 'prototype' })] };
+      const running = await serve({ startNextIntervalMs: 20, t3: server, handOffStore: store, fetcher: async () => ({ maps: [typed], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      const method = (patch: Record<string, unknown> = {}) => ({ tier: 'mid', version: 'rules-1', rubric: null, rater: null, inputId: 'in-1', elapsedMs: 0.5, status: 'ok', tokens: null, cost: { kind: 'actual', usd: 0 }, ...patch });
+      const pick = { tier: 'mid', provider: 'codex', model: 'gpt-5.6-terra', effort: null };
+      const auto = {
+        scoring: { version: 'rules-1', reason: 'touches 3 files' },
+        proposed: pick,
+        final: pick,
+        usage: { state: 'unknown', observedAt: null },
+        ticketType: 'research',
+        selection: 'user',
+        tierMapping: { mid: pick },
+        calibration: { rules: method(), shadow: method({ tier: 'hard', version: 'model-1:gpt-5.6-luna', rubric: 'rubric-1', rater: { provider: 'codex', model: 'gpt-5.6-luna', effort: 'low' } }), proposedBy: 'logic', fallback: false },
+      };
+      try {
+        await post(running.url, '/api/repos/octo/one/start-next', { map: 5, cap: 4, tickets: [{ ticket: 11, tier: 'mid', auto }, { ticket: 12, tier: 'mid', auto }] });
+        await settled(running.url, (items) => items.every((item) => item.status === 'started'));
+        const records = await store.list();
+        const byTicket = (number: number) => records.find((record) => record.ticketNumber === number)?.auto;
+        expect(byTicket(11)).toMatchObject({ ticketType: 'task', selection: 'user', tierMapping: { mid: { model: 'gpt-5.6-terra' } }, calibration: { shadow: { tier: 'hard', rater: { model: 'gpt-5.6-luna' } } } });
+        expect(byTicket(12)).toMatchObject({ ticketType: 'prototype', calibration: null });
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('confirms the reason for a model change, and refuses an unknown reason or change (#186)', async () => {
+      const { server } = liveT3();
+      const store = new HandOffStore({ filePath: null });
+      const running = await serve({ startNextIntervalMs: 20, t3: server, handOffStore: store, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      try {
+        expect((await post(running.url, '/api/hand-offs/model-change', { id: 'nope', at: '2026-10-01T00:00:00.000Z', reason: 'preference' })).status).toBe(404);
+        expect((await post(running.url, '/api/hand-offs/model-change', { id: 'nope', at: '2026-10-01T00:00:00.000Z', reason: 'because' })).status).toBe(400);
+        expect((await post(running.url, '/api/hand-offs/model-change', { id: 7, reason: 'preference' })).status).toBe(400);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
     it('reports a provider as limited after a batch hit its usage limit, so Auto can avoid it', async () => {
       const { server, sessions } = liveT3();
       const failing: ServerT3 = {
@@ -1325,8 +1367,8 @@ describe('local clone for a hand-off', () => {
           expect((await autoMap(running.url, { repo: 'octo/one', map: 0, op: 'enable' })).status).toBe(400);
           expect((await autoMap(running.url, { repo: 'octo/one', map: 5, op: 'explode' })).status).toBe(400);
 
-          expect((await post(running.url, '/api/auto-map/settings', { cap: 6, tierModels: { hard: { instanceId: 'codex', model: 'gpt-5.6-sol' } }, rater: { kind: 'logic' } })).status).toBe(200);
-          expect((await view(running.url)).settings).toEqual({ cap: 6, tierModels: { hard: { instanceId: 'codex', model: 'gpt-5.6-sol' } }, rater: { kind: 'logic' } });
+          expect((await post(running.url, '/api/auto-map/settings', { cap: 6, tierModels: { hard: { instanceId: 'codex', model: 'gpt-5.6-sol' } }, rater: { kind: 'logic' }, calibration: { kind: 'off' } })).status).toBe(200);
+          expect((await view(running.url)).settings).toEqual({ cap: 6, tierModels: { hard: { instanceId: 'codex', model: 'gpt-5.6-sol' } }, rater: { kind: 'logic' }, calibration: { kind: 'off' } });
           expect((await post(running.url, '/api/auto-map/settings', { cap: 99 })).status).toBe(400);
         } finally {
           await new Promise<void>((resolve) => running.server.close(() => resolve()));
@@ -1345,6 +1387,43 @@ describe('local clone for a hand-off', () => {
       });
     });
 
+    it('reports a fresh Codex reading and a Claude status-line reading, and leaves a missing one unknown', async () => {
+      const { server } = liveT3();
+      const reset = Math.floor(Date.now() / 1000) + 3600;
+      const codexLimits = vi.fn(async () => ({ accountId: 'acct-secret', rateLimits: { primary: { usedPercent: 100, resetsAt: reset }, secondary: { usedPercent: 12, resetsAt: reset } } }));
+      const running = await serve({ t3: server, codexLimits, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      try {
+        const read = async () => await (await fetch(`${running.url}/api/provider-usage`, { headers: { origin: running.url } })).text();
+        const first = JSON.parse(await read()) as { providers: Record<string, { state: string; observedAt: string | null }> };
+        expect(first.providers).toEqual({ codex: { state: 'limited', observedAt: expect.any(String) as string } });
+        expect(Math.abs(Date.now() - Date.parse(first.providers['codex']?.observedAt ?? ''))).toBeLessThan(10_000);
+        // A second read inside the freshness window reuses the reading.
+        await read();
+        expect(codexLimits).toHaveBeenCalledTimes(1);
+
+        const claude = (payload: unknown) => post(running.url, '/api/provider-usage/claude', payload);
+        await expect((await claude({ model: { display_name: 'Opus' } })).json()).resolves.toEqual({ recorded: false });
+        await expect((await claude({ rate_limits: { five_hour: { used_percentage: 20, resets_at: reset } } })).json()).resolves.toEqual({ recorded: true });
+        const body = await read();
+        expect(JSON.parse(body)).toMatchObject({ providers: { claudeAgent: { state: 'available' } } });
+        // Percentages and account IDs never reach the response.
+        expect(body).not.toMatch(/acct-secret|usedPercent|used_percentage/);
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('keeps a provider unknown when Codex cannot be read', async () => {
+      const { server } = liveT3();
+      const running = await serve({ t3: server, codexLimits: async () => { throw new Error('codex: not found'); }, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      try {
+        const response = await fetch(`${running.url}/api/provider-usage`, { headers: { origin: running.url } });
+        await expect(response.json()).resolves.toEqual({ providers: {} });
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
     it('rates tickets with the chosen model and says which could not be rated', async () => {
       const { server } = liveT3();
       const ratingRunner = vi.fn(async (_command: string, _args: readonly string[], input: string) => (input.includes('Title: Ticket 11') ? '{"tier":"hard","reason":"touches 6 files"}' : 'no idea'));
@@ -1353,10 +1432,10 @@ describe('local clone for a hand-off', () => {
         const rate = (body: unknown) => post(running.url, '/api/repos/octo/one/auto-rate', body);
         const response = await rate({ map: 5, tickets: [11, 12, 99], model: { instanceId: 'codex', model: 'gpt-5.6-luna' } });
         expect(response.status).toBe(200);
-        await expect(response.json()).resolves.toEqual({
+        await expect(response.json()).resolves.toMatchObject({
           ratings: [
-            { ticket: 11, ok: true, rating: { tier: 'hard', reason: 'touches 6 files', by: 'model', version: 'model-1:gpt-5.6-luna' } },
-            { ticket: 12, ok: false, error: 'gpt-5.6-luna did not answer with a tier' },
+            { ticket: 11, ok: true, rating: { tier: 'hard', reason: 'touches 6 files', by: 'model', version: 'model-1:gpt-5.6-luna' }, prediction: { tier: 'hard', status: 'ok', rubric: 'rubric-1' } },
+            { ticket: 12, ok: false, error: 'gpt-5.6-luna did not answer with a tier', prediction: { tier: null, status: 'unparseable' } },
           ],
         });
         expect((await rate({ map: 5, tickets: [11] })).status).toBe(400);

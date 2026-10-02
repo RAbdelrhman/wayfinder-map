@@ -1,7 +1,7 @@
 import type { AutoMapMachineSettings } from '../autoMapStore.js';
-import { parseAutoRater, parseTierModels } from '../models.js';
+import { parseAutoRater, parseCalibrationMode, parseTierModels } from '../models.js';
 import { normalizeCap } from '../startNext.js';
-import { AUTO_RATER_KEY, TIER_DEFAULTS_KEY } from './models.js';
+import { AUTO_RATER_KEY, CALIBRATION_KEY, TIER_DEFAULTS_KEY } from './models.js';
 import { pushServerSettings } from './serverSettings.js';
 import type { ServerSettingsPatch } from './serverSettings.js';
 import { CAP_KEY } from './startNext.js';
@@ -24,10 +24,12 @@ export function readLocalSettings(storage: Reader): AutoMapMachineSettings {
   const cap = saved(CAP_KEY);
   const tierModels = parseTierModels(saved(TIER_DEFAULTS_KEY));
   const rater = saved(AUTO_RATER_KEY);
+  const calibration = saved(CALIBRATION_KEY);
   return {
     cap: typeof cap === 'number' ? normalizeCap(cap) : null,
     tierModels: Object.keys(tierModels).length === 0 ? null : tierModels,
     rater: rater === null ? null : parseAutoRater(rater),
+    calibration: calibration === null ? null : parseCalibrationMode(calibration),
   };
 }
 
@@ -44,6 +46,8 @@ export function reconcileSettings(local: AutoMapMachineSettings, server: AutoMap
   else if (local.tierModels !== null) push.tierModels = local.tierModels;
   if (server.rater !== null) adopt.rater = server.rater;
   else if (local.rater !== null) push.rater = local.rater;
+  if (server.calibration !== null) adopt.calibration = server.calibration;
+  else if (local.calibration !== null) push.calibration = local.calibration;
   return { adopt, push };
 }
 
@@ -52,6 +56,7 @@ export function adoptSettings(storage: Writer, adopt: Partial<AutoMapMachineSett
   if (adopt.cap !== undefined && adopt.cap !== null) storage.setItem(CAP_KEY, String(adopt.cap));
   if (adopt.tierModels !== undefined && adopt.tierModels !== null) storage.setItem(TIER_DEFAULTS_KEY, JSON.stringify(adopt.tierModels));
   if (adopt.rater !== undefined && adopt.rater !== null) storage.setItem(AUTO_RATER_KEY, JSON.stringify(adopt.rater));
+  if (adopt.calibration !== undefined && adopt.calibration !== null) storage.setItem(CALIBRATION_KEY, JSON.stringify(adopt.calibration));
 }
 
 /** At page load: take the server's machine settings, and send up any this browser holds that the server does not. */

@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import type { MethodPrediction } from './autoCalibration.js';
 import type { AutoMapStartBody } from './autoMap.js';
 import { AutoMapService, parseAutoMapChange } from './autoMapService.js';
 import type { AutoMapServiceDeps } from './autoMapService.js';
 import { memoryAutoMapStore } from './autoMapStore.js';
 import type { MapEvent } from './mapWatch.js';
+import type { ModelRatingResult } from './autoRater.js';
 import type { ModelCatalog, ModelChoice } from './models.js';
 import type { DesktopNotification } from './notifications.js';
 import type { Batch } from './startNextRunner.js';
@@ -48,6 +50,10 @@ function ticket(number: number, extra: Partial<Ticket> = {}): Ticket {
 
 function mapOf(tickets: Ticket[]): WayfinderMap {
   return { number: 5, title: 'Roadmap v1', tickets } as WayfinderMap;
+}
+
+function prediction(tier: 'simple' | 'mid' | 'hard' | null, status: MethodPrediction['status'] = 'ok'): MethodPrediction {
+  return { tier, version: 'model-1:gpt-5.6-luna', rubric: 'rubric-1', rater: { provider: 'codex', model: 'gpt-5.6-luna', effort: 'low' }, inputId: 'abc', elapsedMs: 40, status, tokens: null, cost: { kind: 'unavailable' } };
 }
 
 function stopped(extra: Partial<Batch> = {}): Batch {
@@ -101,7 +107,7 @@ function harness(extra: Partial<AutoMapServiceDeps> = {}, tickets: Ticket[] = [t
     },
     catalog: async () => CATALOG,
     usage: async () => ({}),
-    rate: async () => ({ ok: false, error: 'no model' }),
+    rate: async () => ({ ok: false, error: 'no model', prediction: prediction(null, 'failed') }),
     notificationOn: async () => true,
     desktop: (notification) => desktop.push(notification),
     now: () => NOW,
@@ -283,8 +289,10 @@ describe('AutoMapService', () => {
     });
 
     it('rates with the chosen model, and falls back to the rules when it cannot, saying so', async () => {
-      const rate = vi.fn(async (forTicket: Ticket) =>
-        forTicket.number === 11 ? ({ ok: true, rating: { tier: 'hard', reason: 'touches 6 files', by: 'model', version: 'model-1:gpt-5.6-luna' } } as const) : ({ ok: false, error: 'gpt-5.6-luna did not answer with a tier' } as const),
+      const rate = vi.fn(async (forTicket: Ticket): Promise<ModelRatingResult> =>
+        forTicket.number === 11
+          ? { ok: true, rating: { tier: 'hard', reason: 'touches 6 files', by: 'model', version: 'model-1:gpt-5.6-luna' }, prediction: prediction('hard') }
+          : { ok: false, error: 'gpt-5.6-luna did not answer with a tier', prediction: prediction(null, 'unparseable') },
       );
       const h = harness({ rate });
       await h.service.updateSettings({ tierModels: { mid: LUNA, hard: SOL }, rater: { kind: 'model', choice: LUNA } });
@@ -297,6 +305,37 @@ describe('AutoMapService', () => {
       expect(rated).toMatchObject({ tier: 'hard', model: SOL, auto: { scoring: { version: 'model-1:gpt-5.6-luna', reason: 'touches 6 files' } } });
       expect(fallback).toMatchObject({ tier: 'mid', auto: { scoring: { version: 'rules-1' } } });
       expect(JSON.stringify(fallback)).toContain('logic rated it');
+    });
+
+    it('records the paired predictions in calibration mode, without letting the shadow change the pick', async () => {
+      const calls: string[] = [];
+      const rate = vi.fn(async (forTicket: Ticket, choice: ModelChoice): Promise<ModelRatingResult> => {
+        calls.push(`${choice.model}#${String(forTicket.number)}`);
+        // The shadow model says Hard, but Auto proposes from the rules (Mid).
+        return { ok: true, rating: { tier: 'hard', reason: 'shadow says hard', by: 'model', version: 'model-1:gpt-5.6-luna' }, prediction: prediction('hard') };
+      });
+      const h = harness({ rate }, [ticket(12), ticket(30, { type: 'grilling' })]);
+      await h.service.updateSettings({ tierModels: { mid: LUNA, hard: SOL }, calibration: { kind: 'shadow', choice: LUNA } });
+      await h.service.change('octo/one', 5, { op: 'enable', tier: 'auto' });
+      h.emit(next(12));
+      h.emit(next(30));
+      await h.service.flush();
+      // Only the task ticket is shadowed; a grilling ticket is not.
+      expect(calls).toEqual(['gpt-5.6-luna#12']);
+      const [task, grilling] = h.submits[0]?.body.tickets ?? [];
+      expect(task).toMatchObject({ ticket: 12, tier: 'mid', model: LUNA, auto: { selection: 'auto', calibration: { proposedBy: 'logic', fallback: false, shadow: { tier: 'hard' }, rules: { tier: 'mid' } }, tierMapping: { mid: { model: 'gpt-5.6-luna' } } } });
+      expect(grilling?.auto).not.toHaveProperty('calibration');
+    });
+
+    it('uses one call for both when the shadow model is the rating model', async () => {
+      const rate = vi.fn(async (): Promise<ModelRatingResult> => ({ ok: true, rating: { tier: 'hard', reason: 'r', by: 'model', version: 'model-1:gpt-5.6-luna' }, prediction: prediction('hard') }));
+      const h = harness({ rate }, [ticket(12)]);
+      await h.service.updateSettings({ tierModels: { mid: LUNA, hard: SOL }, rater: { kind: 'model', choice: LUNA }, calibration: { kind: 'shadow', choice: LUNA } });
+      await h.service.change('octo/one', 5, { op: 'enable', tier: 'auto' });
+      h.emit(next(12));
+      await h.service.flush();
+      expect(rate).toHaveBeenCalledTimes(1);
+      expect(h.submits[0]?.body.tickets[0]).toMatchObject({ tier: 'hard', model: SOL, auto: { calibration: { proposedBy: 'model', fallback: false } } });
     });
 
     it('moves an Auto ticket off a provider that just hit its usage limit', async () => {
@@ -470,9 +509,9 @@ describe('AutoMapService', () => {
 
     it('keeps the machine settings the trigger reads, and rejects a patch with nothing usable', async () => {
       const h = harness();
-      expect(h.service.view().settings).toEqual({ cap: null, tierModels: null, rater: null });
-      expect(await h.service.updateSettings({ cap: 6, tierModels: { hard: SOL, mid: 'nope', extra: SOL }, rater: { kind: 'model', choice: LUNA } })).toBe(true);
-      expect(h.service.view().settings).toEqual({ cap: 6, tierModels: { hard: SOL }, rater: { kind: 'model', choice: LUNA } });
+      expect(h.service.view().settings).toEqual({ cap: null, tierModels: null, rater: null, calibration: null });
+      expect(await h.service.updateSettings({ cap: 6, tierModels: { hard: SOL, mid: 'nope', extra: SOL }, rater: { kind: 'model', choice: LUNA }, calibration: { kind: 'shadow', choice: SOL } })).toBe(true);
+      expect(h.service.view().settings).toEqual({ cap: 6, tierModels: { hard: SOL }, rater: { kind: 'model', choice: LUNA }, calibration: { kind: 'shadow', choice: SOL } });
       expect(await h.service.updateSettings({ cap: 99 })).toBe(false);
       expect(await h.service.updateSettings({ cap: 'many' })).toBe(false);
       expect(await h.service.updateSettings(null)).toBe(false);

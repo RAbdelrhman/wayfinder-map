@@ -4,8 +4,8 @@ import { dirname, join } from 'node:path';
 
 import { autoMapKey, parseAutoMapSetting } from './autoMap.js';
 import type { AutoMapSetting } from './autoMap.js';
-import { parseAutoRater, parseTierModels } from './models.js';
-import type { AutoRater, ModelChoice, Tier } from './models.js';
+import { parseAutoRater, parseCalibrationMode, parseTierModels } from './models.js';
+import type { AutoRater, CalibrationMode, ModelChoice, Tier } from './models.js';
 import { normalizeRepo } from './repoRoutes.js';
 
 /* What the server keeps for the auto map (#182): each map's setting, the machine-wide settings the trigger reads, and the notices it left for the page's inbox. */
@@ -24,6 +24,8 @@ export interface AutoMapMachineSettings {
   tierModels: Partial<Record<Tier, ModelChoice>> | null;
   /** How Auto rates a ticket. */
   rater: AutoRater | null;
+  /** Whether Auto also rates with a shadow model, to record paired predictions (#186). */
+  calibration: CalibrationMode | null;
 }
 
 /** A notification the server raised while no page was there to put it in the inbox. */
@@ -44,7 +46,7 @@ export interface AutoMapState {
   notices: AutoMapNotice[];
 }
 
-export const EMPTY_AUTO_MAP_STATE: AutoMapState = { maps: [], settings: { cap: null, tierModels: null, rater: null }, notices: [] };
+export const EMPTY_AUTO_MAP_STATE: AutoMapState = { maps: [], settings: { cap: null, tierModels: null, rater: null, calibration: null }, notices: [] };
 
 export interface AutoMapStateStore {
   load(): Promise<AutoMapState>;
@@ -113,6 +115,7 @@ export function parseAutoMapState(value: unknown): AutoMapState {
       cap: typeof cap === 'number' && Number.isInteger(cap) && cap >= 1 ? cap : null,
       tierModels: settings?.['tierModels'] === undefined || settings['tierModels'] === null ? null : parseTierModels(settings['tierModels']),
       rater: settings?.['rater'] === undefined || settings['rater'] === null ? null : parseAutoRater(settings['rater']),
+      calibration: settings?.['calibration'] === undefined || settings['calibration'] === null ? null : parseCalibrationMode(settings['calibration']),
     },
     notices: (Array.isArray(raw['notices']) ? raw['notices'] : []).map(noticeOf).filter((notice): notice is AutoMapNotice => notice !== null).slice(0, NOTICE_LIMIT),
   };

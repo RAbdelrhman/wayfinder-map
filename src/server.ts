@@ -3,11 +3,12 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { buildAutoDecision } from './autoDecision.js';
+import { buildAutoDecision, MODEL_CHANGE_REASONS } from './autoDecision.js';
 import { AutoMapService, parseAutoMapChange } from './autoMapService.js';
 import { AutoMapFileStore, memoryAutoMapStore } from './autoMapStore.js';
 import type { AutoMapStateStore } from './autoMapStore.js';
-import { usageFromLimitEvents } from './autoPick.js';
+import { combineUsage, UsageReadings } from './providerUsage.js';
+import type { CodexLimitsReader } from './providerUsage.js';
 import { rateWithModel } from './autoRater.js';
 import type { CliRun } from './autoRater.js';
 import type { AutoDecision } from './autoDecision.js';
@@ -135,6 +136,8 @@ export interface ServeOptions {
   startNextIntervalMs?: number;
   /** Replaces the headless CLI that rates a ticket with a model (#166) in tests. */
   ratingRunner?: CliRun;
+  /** Replaces the Codex app-server read of its rate limits (#184). Off when tests inject a `fetcher`, so they never start Codex. */
+  codexLimits?: CodexLimitsReader;
   /**
    * Where the two stall settings live (#160). Defaults to `~/.wayfinder-map/stalls.json`, except
    * when tests inject a `fetcher`, where they stay in memory unless given.
@@ -266,6 +269,7 @@ export async function startServer({
   autoMapBatchMs,
   startNextIntervalMs,
   ratingRunner,
+  codexLimits,
   stallSettings: givenStallSettings,
   notificationSettings: givenNotificationSettings,
   onDesktopNotification,
@@ -368,6 +372,7 @@ export async function startServer({
   };
   // A thread change is often a PR, CI or review change, so its map is read now rather than in two minutes.
   handOffTracker.onThreadChange((change) => mapWatcher.nudge(change.repo, change.mapNumber));
+  const usageReadings = codexLimits !== undefined ? new UsageReadings(codexLimits) : fetcher === undefined ? new UsageReadings() : new UsageReadings(null);
   const stallSettings = givenStallSettings ?? (fetcher === undefined ? new StallSettingsStore() : memoryStallSettings());
   const notificationSettings =
     givenNotificationSettings ?? (fetcher === undefined ? new NotificationSettingsStore() : memoryNotificationSettings());
@@ -561,7 +566,7 @@ export async function startServer({
           title: ticket.title,
           tier,
           model: parseModelChoice(entry.model),
-          auto: buildAutoDecision(entry.auto, new Date()),
+          auto: buildAutoDecision(entry.auto, new Date(), ticket.type),
           ...(ticket.state === 'frontier' ? {} : { skip: `#${String(ticket.number)} is ${ticket.state}, not next.` }),
         },
       ];
@@ -580,7 +585,10 @@ export async function startServer({
       return { ok: reply.status === 202, error: typeof reply.body['error'] === 'string' ? reply.body['error'] : null };
     },
     catalog: async () => t3.models(await detectT3()),
-    usage: async () => usageFromLimitEvents([...startNext.usageLimits(), ...(await handOffTracker.usageLimitEvents())], new Date()),
+    usage: async () => {
+      await usageReadings.refresh();
+      return combineUsage([...startNext.usageLimits(), ...(await handOffTracker.usageLimitEvents())], usageReadings.snapshot(), new Date());
+    },
     rate: (ticket, choice) => rateWithModel(ticket, choice, ratingRunner),
     notificationOn: async (kind) => (await notificationSettings.get())[kind],
     ...(onDesktopNotification === undefined ? {} : { desktop: onDesktopNotification }),
@@ -644,7 +652,14 @@ export async function startServer({
 
       if (path === '/api/provider-usage' && request.method === 'GET') {
         const events = [...startNext.usageLimits(), ...(await handOffTracker.usageLimitEvents())];
-        json(response, 200, { providers: usageFromLimitEvents(events, new Date()) });
+        await usageReadings.refresh();
+        json(response, 200, { providers: combineUsage(events, usageReadings.snapshot(), new Date()) });
+        return;
+      }
+
+      // Claude Code's status-line script posts its payload here (see docs/design/auto-tier-and-provider-usage.md).
+      if (path === '/api/provider-usage/claude' && request.method === 'POST') {
+        json(response, 200, { recorded: usageReadings.recordClaudeStatusLine(await readBody(request)) });
         return;
       }
 
@@ -666,6 +681,21 @@ export async function startServer({
           return;
         }
         json(response, 200, { acknowledged: true });
+        return;
+      }
+
+      if (path === '/api/hand-offs/model-change' && request.method === 'POST') {
+        const body = (await readBody(request)) as { id?: unknown; at?: unknown; reason?: unknown };
+        const reason = MODEL_CHANGE_REASONS.find((candidate) => candidate === body.reason);
+        if (typeof body.id !== 'string' || typeof body.at !== 'string' || reason === undefined) {
+          json(response, 400, { error: 'Say which hand-off and model change, and one of the known reasons.' });
+          return;
+        }
+        if (!(await handOffTracker.confirmModelChange(body.id, body.at, reason))) {
+          json(response, 404, { error: 'No such model change.' });
+          return;
+        }
+        json(response, 200, { confirmed: true });
         return;
       }
 
@@ -1270,7 +1300,7 @@ export async function startServer({
           return;
         }
         const tier = typeof body.tier === 'string' && TIERS.includes(body.tier as Tier) ? (body.tier as Tier) : null;
-        const reply = await startTicketHandOff(requestedRepo, map, ticket, { model: parseModelChoice(body.model), tier, auto: buildAutoDecision(body.auto, new Date()), threadOnly: false });
+        const reply = await startTicketHandOff(requestedRepo, map, ticket, { model: parseModelChoice(body.model), tier, auto: buildAutoDecision(body.auto, new Date(), ticket.type), threadOnly: false });
         json(response, reply.status, reply.body);
         return;
       }

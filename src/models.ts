@@ -163,6 +163,18 @@ export function parseModelChoice(value: unknown): ModelChoice | null {
   return choice;
 }
 
+/**
+ * Calibration mode (#186): off by default. When on, Start next also rates each task and research ticket with this
+ * model, saves that prediction beside the rules' on the local hand-off record, and never lets it change the pick.
+ */
+export type CalibrationMode = { kind: 'off' } | { kind: 'shadow'; choice: ModelChoice };
+
+export function parseCalibrationMode(value: unknown): CalibrationMode {
+  const saved = typeof value === 'object' && value !== null ? (value as { kind?: unknown; choice?: unknown }) : null;
+  const choice = saved?.kind === 'shadow' ? parseModelChoice(saved.choice) : null;
+  return choice === null ? { kind: 'off' } : { kind: 'shadow', choice };
+}
+
 export function parseAutoRater(value: unknown): AutoRater {
   const saved = typeof value === 'object' && value !== null ? (value as { kind?: unknown; choice?: unknown }) : null;
   const choice = saved?.kind === 'model' ? parseModelChoice(saved.choice) : null;

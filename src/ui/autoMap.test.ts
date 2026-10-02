@@ -15,7 +15,7 @@ function next(ticket: number, extra: Partial<MapEvent> = {}): MapEvent {
 }
 
 function view(maps: AutoMapView['maps'] = [], notices: AutoMapNotice[] = []): AutoMapView {
-  return { maps, settings: { cap: null, tierModels: null, rater: null }, notices };
+  return { maps, settings: { cap: null, tierModels: null, rater: null, calibration: null }, notices };
 }
 
 function entry(extra: Partial<AutoMapView['maps'][number]> = {}): AutoMapView['maps'][number] {
