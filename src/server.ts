@@ -44,6 +44,7 @@ import { markStalls, memoryStallSettings, StallSettingsStore } from './stalled.j
 import type { StallSettingsSource } from './stalled.js';
 import { ProgressError, ProgressService, ProgressSettingsStore, readCompletedTickets } from './progress.js';
 import { normalizeCap } from './startNext.js';
+import type { Repick } from './autoRepick.js';
 import { StartNextRunner } from './startNextRunner.js';
 import type { BatchRequestItem } from './startNextRunner.js';
 import { SettleStore } from './settling.js';
@@ -526,6 +527,7 @@ export async function startServer({
     ...(startNextIntervalMs === undefined ? {} : { intervalMs: startNextIntervalMs }),
     running: () => handOffTracker.liveCount(),
     lastErrors: (ids) => handOffTracker.lastErrors(ids),
+    repick: (item): Promise<Repick> => autoMaps.repick(item),
     onUsageStop: (batch) => {
       if (batch.auto) void autoMaps.usageStopped(batch).catch(() => undefined);
     },

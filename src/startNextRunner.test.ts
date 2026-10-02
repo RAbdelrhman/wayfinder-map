@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { parseUsageLimit, StartNextRunner } from './startNextRunner.js';
-import type { Batch, BatchRequestItem, StartOutcome } from './startNextRunner.js';
+import type { Repick } from './autoRepick.js';
+import type { Batch, BatchItem, BatchRequestItem, StartOutcome } from './startNextRunner.js';
 
 function item(ticketNumber: number, extra: Partial<BatchRequestItem> = {}): BatchRequestItem {
   return { ticketNumber, title: `Ticket ${String(ticketNumber)}`, tier: 'mid', model: null, ...extra };
@@ -285,6 +286,139 @@ describe('StartNextRunner', () => {
     const batches = h.runner.snapshot();
     expect(batches).toHaveLength(5);
     expect(batches.map((batch) => batch.mapNumber)).toEqual([8, 7, 6, 5, 4]);
+  });
+});
+
+describe('re-picking a queued Auto ticket (#189)', () => {
+  const FIRST = { instanceId: 'codex', model: 'gpt-5.6-terra' };
+  const SECOND = { instanceId: 'claudeAgent', model: 'fable-5' };
+  const decision = (selection: 'auto' | 'user'): NonNullable<BatchRequestItem['auto']> => ({ selection }) as unknown as NonNullable<BatchRequestItem['auto']>;
+  const moved = { selection: 'auto', substitution: { reason: 'usage-limit' } } as unknown as NonNullable<BatchRequestItem['auto']>;
+  const autoItem = (ticketNumber: number): BatchRequestItem => item(ticketNumber, { model: FIRST, auto: decision('auto') });
+
+  function queueHarness(answer: (ticketNumber: number) => Repick | Error): {
+    runner: StartNextRunner;
+    clock: { at: number };
+    /** Hand-offs live on the machine, which a test moves to free a slot. */
+    live: { count: number };
+    asked: number[];
+    started: Array<{ ticket: number; model: unknown; auto: unknown }>;
+  } {
+    const live = { count: 0 };
+    const clock = { at: Date.parse('2026-10-01T12:00:00.000Z') };
+    const asked: number[] = [];
+    const started: Array<{ ticket: number; model: unknown; auto: unknown }> = [];
+    const runner = new StartNextRunner({
+      intervalMs: 1_000_000,
+      now: () => new Date(clock.at),
+      running: async () => live.count,
+      lastErrors: async () => new Map(),
+      repick: async (queued) => {
+        asked.push(queued.ticketNumber);
+        const reply = answer(queued.ticketNumber);
+        if (reply instanceof Error) throw reply;
+        return reply;
+      },
+      startTicket: async ({ item: requested }) => {
+        started.push({ ticket: requested.ticketNumber, model: requested.model, auto: requested.auto });
+        live.count += 1;
+        return { kind: 'started', handOffId: null };
+      },
+    });
+    runners.push(runner);
+    return { runner, clock, live, asked, started };
+  }
+  const second = (runner: StartNextRunner): BatchItem | undefined => runner.snapshot()[0]?.items[1];
+
+  it.each([
+    [60_000, []],
+    [60_001, [2]],
+  ])('after %i ms of waiting, asks about %j', async (waited, expected) => {
+    const q = queueHarness(() => ({ kind: 'keep' }));
+    q.runner.submit({ repo: 'o/r', mapNumber: 1, cap: 1, items: [autoItem(1), autoItem(2)] });
+    await q.runner.tick();
+    // Ticket 1 starts at once and is never asked about. Ticket 2 waits for its slot.
+    expect(q.asked).toEqual([]);
+    expect(q.started.map((entry) => entry.ticket)).toEqual([1]);
+    q.live.count = 0;
+    q.clock.at += waited;
+    await q.runner.tick();
+    expect(q.asked).toEqual(expected);
+    expect(q.started.map((entry) => entry.ticket)).toEqual([1, 2]);
+  });
+
+  it("starts a ticket on the model it is re-picked to, with the substitution on its decision", async () => {
+    const q = queueHarness(() => ({ kind: 'switch', model: SECOND, auto: moved, note: 'Moved to fable-5 while queued' }));
+    q.runner.submit({ repo: 'o/r', mapNumber: 1, cap: 4, items: [autoItem(1), autoItem(2)] });
+    q.clock.at += 61_000;
+    await q.runner.tick();
+    expect(q.started).toEqual([
+      { ticket: 1, model: SECOND, auto: moved },
+      { ticket: 2, model: SECOND, auto: moved },
+    ]);
+    expect(second(q.runner)).toMatchObject({ model: SECOND, auto: moved, reason: 'Moved to fable-5 while queued', status: 'started' });
+  });
+
+  it('starts a ticket as it was when its provider is not limited', async () => {
+    const q = queueHarness(() => ({ kind: 'keep' }));
+    q.runner.submit({ repo: 'o/r', mapNumber: 1, cap: 4, items: [autoItem(1)] });
+    q.clock.at += 61_000;
+    await q.runner.tick();
+    expect(q.started).toEqual([{ ticket: 1, model: FIRST, auto: decision('auto') }]);
+    expect(second(q.runner)).toBeUndefined();
+    expect(q.runner.snapshot()[0]?.items[0]?.reason).toBeNull();
+  });
+
+  it('keeps a ticket queued, without using a slot, while its provider is limited and none is set', async () => {
+    let limited = true;
+    const q = queueHarness((ticket) => (ticket === 1 && limited ? { kind: 'hold', note: 'Held: Codex is at its usage limit' } : { kind: 'keep' }));
+    q.runner.submit({ repo: 'o/r', mapNumber: 1, cap: 1, items: [autoItem(1), autoItem(2)] });
+    q.clock.at += 61_000;
+    await q.runner.tick();
+    expect(q.started.map((entry) => entry.ticket)).toEqual([2]);
+    expect(statuses({ runner: q.runner } as Harness)).toEqual(['1:queued', '2:started']);
+    expect(q.runner.snapshot()[0]).toMatchObject({ status: 'running', items: [{ reason: 'Held: Codex is at its usage limit' }, {}] });
+
+    // The limit lifted and ticket 2 finished, so ticket 1 has a slot and may go.
+    limited = false;
+    q.live.count = 0;
+    await q.runner.tick();
+    expect(q.started.map((entry) => entry.ticket)).toEqual([2, 1]);
+    expect(q.runner.snapshot()[0]).toMatchObject({ status: 'done', items: [{ status: 'started', reason: null }, {}] });
+  });
+
+  it('sends a held ticket back to next when the queue is stopped', async () => {
+    const q = queueHarness(() => ({ kind: 'hold', note: 'Held: Codex is at its usage limit' }));
+    const batch = q.runner.submit({ repo: 'o/r', mapNumber: 1, cap: 1, items: [autoItem(1)] });
+    q.clock.at += 61_000;
+    await q.runner.tick();
+    expect(q.started).toEqual([]);
+    q.runner.stop(batch.id);
+    expect(q.runner.snapshot()[0]?.items[0]).toMatchObject({ status: 'back-to-next', reason: 'Queue stopped' });
+  });
+
+  it("never asks about a ticket the user set the tier or model of, or one that is not Auto's", async () => {
+    const q = queueHarness(() => ({ kind: 'hold', note: 'Held' }));
+    q.runner.submit({ repo: 'o/r', mapNumber: 1, cap: 4, items: [item(1, { model: FIRST, auto: decision('user') }), item(2, { model: FIRST }), item(3, { tier: 'hard' })] });
+    q.clock.at += 61_000;
+    await q.runner.tick();
+    expect(q.asked).toEqual([]);
+    expect(q.started.map((entry) => entry.ticket)).toEqual([1, 2, 3]);
+  });
+
+  it('starts a ticket as it was when the re-pick cannot be made', async () => {
+    const q = queueHarness(() => new Error('usage unreadable'));
+    q.runner.submit({ repo: 'o/r', mapNumber: 1, cap: 4, items: [autoItem(1)] });
+    q.clock.at += 61_000;
+    await q.runner.tick();
+    expect(q.started).toEqual([{ ticket: 1, model: FIRST, auto: decision('auto') }]);
+  });
+
+  it('starts every ticket as chosen where nothing can re-pick', async () => {
+    const h = harness();
+    h.runner.submit({ repo: 'o/r', mapNumber: 1, cap: 4, items: [autoItem(1)] });
+    await h.runner.tick();
+    expect(h.started).toEqual([1]);
   });
 });
 

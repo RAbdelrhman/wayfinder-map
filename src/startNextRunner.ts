@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { isUsageLimitError } from './autoDecision.js';
 import type { AutoDecision } from './autoDecision.js';
 import type { ModelChoice, Tier } from './models.js';
+import { REPICK_AFTER_MS } from './autoRepick.js';
+import type { Repick } from './autoRepick.js';
 import { normalizeCap } from './startNext.js';
 
 const MAX_LIMITS = 50;
@@ -77,6 +79,11 @@ export interface RunnerDeps {
   lastErrors: (handOffIds: readonly string[]) => Promise<ReadonlyMap<string, string>>;
   /** Called once when a usage-limit error stops a batch. The batch is a copy. */
   onUsageStop?: (batch: Batch) => void;
+  /**
+   * A queued Auto ticket that has waited past a usage reading's life: re-pick its model against a fresh reading
+   * before it starts (#189). Absent where Wayfinder has no usage to read. A rejection keeps the ticket's model.
+   */
+  repick?: (item: Readonly<BatchItem>) => Promise<Repick>;
   intervalMs?: number;
   /** How many finished batches to keep for the page to read. */
   keep?: number;
@@ -226,13 +233,47 @@ export class StartNextRunner {
 
     if (batch.items.some((item) => item.status === 'queued')) {
       const free = batch.cap - (await this.deps.running());
-      // The batch may have been stopped while the count was read.
-      const next = batch.status === 'running' ? batch.items.filter((item) => item.status === 'queued').slice(0, Math.max(0, free)) : [];
+      const next = await this.readyToStart(batch, Math.max(0, free));
       for (const item of next) item.status = 'starting';
       await Promise.all(next.map((item) => this.startOne(batch, item)));
     }
 
     if (batch.status === 'running' && !batch.items.some((item) => item.status === 'queued' || item.status === 'starting')) batch.status = 'done';
+  }
+
+  /**
+   * The queued tickets to start in the free slots, in order. One that has waited over a minute is re-picked first:
+   * it may take another provider's model, or stay queued without using a slot, while its provider is limited (#189).
+   * The batch may have been stopped while the count or a reading was read, so it is checked again at the end.
+   */
+  private async readyToStart(batch: Batch, free: number): Promise<BatchItem[]> {
+    const ready: BatchItem[] = [];
+    for (const item of batch.items.filter((candidate) => candidate.status === 'queued')) {
+      if (ready.length >= free || batch.status !== 'running') break;
+      if (await this.settleQueued(batch, item)) ready.push(item);
+    }
+    return batch.status === 'running' ? ready.filter((item) => item.status === 'queued') : [];
+  }
+
+  /** Whether a queued ticket may start now. It may have changed model to do so. */
+  private async settleQueued(batch: Batch, item: BatchItem): Promise<boolean> {
+    const waited = this.now().getTime() - Date.parse(batch.createdAt);
+    if (this.deps.repick === undefined || item.auto?.selection !== 'auto' || waited <= REPICK_AFTER_MS) return true;
+    const repick: Repick = await this.deps.repick(item).catch((): Repick => ({ kind: 'keep' }));
+    // A stop during the read already sent it back to next.
+    if (item.status !== 'queued') return false;
+    if (repick.kind === 'hold') {
+      item.reason = repick.note;
+      return false;
+    }
+    if (repick.kind === 'switch') {
+      item.model = repick.model;
+      item.auto = repick.auto;
+      item.reason = repick.note;
+    } else {
+      item.reason = null;
+    }
+    return true;
   }
 
   private async startOne(batch: Batch, item: BatchItem): Promise<void> {
