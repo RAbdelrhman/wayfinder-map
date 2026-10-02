@@ -116,6 +116,50 @@ For each ticket type, compare paired predictions made from the same input before
 
 `AutoDecision` in [autoDecision.ts](../../src/autoDecision.ts) saves one scoring version/reason and one proposed/final choice. The active rater is selected in Settings. It does not save both predictions, rating tokens/cost/latency, ticket type at decision time, the tier mapping, or why an in-session model changed. [autoRater.ts](../../src/autoRater.ts) returns a tier/reason or an error and discards measurement provenance. A later rerating of edited issues cannot recover prospective paired predictions. `overrides` is a comparison of proposed/final configurations, so it needs dispatch context before it can serve as an explicit user correction label.
 
-[#186](https://github.com/RAbdelrhman/wayfinder-map/issues/186), a task sub-issue of map #121, tracks paired predictions and measurements with opt-in shadow calls and the existing local privacy/retention contract. It blocks the eventual comparison. No runtime behavior or collection is added by this audit.
+[#186](https://github.com/RAbdelrhman/wayfinder-map/issues/186), a task sub-issue of map #121, tracks paired predictions and measurements with opt-in shadow calls and the existing local privacy/retention contract. It blocks the eventual comparison. No runtime behavior or collection is added by this audit. #186 closes these gaps; see "Paired predictions and measurements (#186)" below.
 
 There is **no accuracy conclusion**. Keep logic as the default and preserve the user-selected model-rating option shipped in #166. Keep shadow ratings only as an explicit opt-in experiment once #186 records comparable predictions and measurements. There is no evidence here to promote model ratings to the default or remove them for poor accuracy. Revisit #173 after 30 eligible completions, and continue to withhold an accuracy recommendation if their labels remain weak.
+
+
+## Paired predictions and measurements (#186)
+
+Built so #173 can compare the rules with a model on the same tickets. Logic only stays the default, and nothing below runs unless the user opts in.
+
+**Opt-in.** Settings → Calibration is Off by default (browser storage `wayfinder-map:auto-calibration:v1`). Turning it on asks for a shadow model: any ready Codex or Claude model, defaulting to the model mapped to the Simple tier. For each task or research ticket Start next (and the auto map) then makes one extra model call, with the same headless CLI and rating prompt as #166, beside the rules rating. Prototype and grilling tickets get no call and no pair. When the shadow model is also the rating model chosen for Auto, its one answer serves as both and no second call is made. Start waits until the shadow answers so no record loses its pair.
+
+**The shadow never decides.** `pickAuto` reads only the active rating (rules, or the rating model with its fallback). The pair travels beside it in the request and is stored; it is not an input to the tier, model, or `overrides`. A test compares an entry built with and without a pair.
+
+**What the `auto` block adds**, all in `~/.wayfinder-map/hand-offs.json` under the 30-day retention after the hand-off ends:
+
+| Field | Meaning |
+| --- | --- |
+| `ticketType` | The type the server read for the ticket when it dispatched. A request cannot set it. |
+| `selection` | `auto`, or `user` when the row was set to a tier by hand, even one equal to the proposal. |
+| `tierMapping` | The model, provider instance and effort Settings mapped to each tier, limited to models T3 Code still offered. |
+| `substitution` | Set when readiness (`provider-not-ready`) or a recorded usage limit (`usage-limit`) moved the proposal off the rated tier's own model: `from`, `to`, and `toTier`, the harder tier whose model was used. |
+| `calibration` | `{ rules, shadow, proposedBy, fallback }`, present only for an opted-in task or research hand-off. `fallback` is true when the user's rating model was asked and could not rate, so the rules did. |
+
+`overrides` is unchanged: the proposal is saved after any substitution, so a provider-caused move is in `substitution` and `proposed`, and `overrides` lists only what the user then changed. `selection` separates an explicit choice from a kept proposal, which the audit asked to report apart.
+
+**Each prediction** (`calibration.rules`, `calibration.shadow`) holds `tier` (null when the method gave none), `version` (`rules-1` or `model-1:<slug>`), `rubric` (`rubric-1`, the prompt's criteria; null for the rules), `rater` (`provider`, `model`, `effort`; null for the rules), `inputId`, `elapsedMs`, `status`, `tokens` and `cost`.
+
+- **Same input.** `inputId` is the first 32 hex characters of SHA-256 over type, blocker count, title and body (`ratingInputId`). The rules compute theirs in the page; the server computes the shadow's from the ticket it rated. Two predictions are a pair only when both ids exist and match (`isPaired`), and no ticket text is kept. The model reads the first 6,000 characters of a body and the rules read all of it, so a pair on a longer body saw different amounts; exclude those if it matters.
+- **Elapsed time.** The rules' is the page's timing of `rateByRules` (a fraction of a millisecond). The model's is process-level CLI time, including start-up, and is also kept for a failed run: a timeout records about 60 seconds. Neither is hand-off duration.
+- **Status.** `ok`, `timeout`, `failed`, `unparseable` or `unsupported`. A request that never answered is an unmeasured `failed` with no `inputId`, so it can never count as a pair. The CLI's reply and error text are never stored.
+- **Tokens.** Only what the run reported. Codex prints one total on stderr, kept as `total` with `input`, `cachedInput` and `output` null. That total includes the CLI's own context, as the 13-ticket experiment found. Claude's plain-text mode reports none, so `tokens` is null.
+- **Cost.** `actual` (a charge the CLI reported, and `usd: 0` for the rules), `estimate` (token counts times a rate in `RATE_CARD`, with `pricedOn`), or `unavailable`. An estimate needs a known rate and a split input and output, so a Codex or Claude subscription run is `unavailable`, not zero. `RATE_CARD` holds only the one rate the research above cites, dated 2026-09-29.
+
+**Model-change reasons.** `modelChanges[]` gains `reason` and `confirmedAt`. It starts `unknown` and stays so: a different or stronger model name never implies a harder ticket. A user can confirm `harder-ticket`, `provider-limit`, `provider-problem` or `preference` with `POST /api/hand-offs/model-change` `{ id, at, reason }`, where `at` is the change's own `at`. A reason of `unknown` clears it. Nothing in the app asks the user yet; filed as a follow-up.
+
+**Privacy.** Every field is parsed one by one on the way in and again on the way out of the file. An account id, key, quota value or raw provider error in a request is dropped, and none of the block reaches `gh` or GitHub (`autoDecisionPrivacy.test.ts` covers the pair). No new model call is made by default.
+
+### Counting eligible completions for #173
+
+`summarizeCalibration(await new HandOffStore({ filePath: handOffStorePath() }).list(), { repo, mapNumber })` in `src/autoCalibrationSummary.ts` returns counts by `task` and `research`:
+
+- `eligible`: hand-offs with a pair on the same input, a terminal `finished` result or a `pull-request` result whose pull request state is `MERGED`, and no recorded usage-limit error. This is the audit's inclusion rule. `tickets` counts distinct tickets among them.
+- `bothPredicted`, `shadowFailed`, `fallback`, `tierCorrected` (`selection: user` and a changed tier) and `substituted`, so the labelled comparison, timeouts and provider-caused moves are reported separately.
+- `excluded`, each record in the first group that applies: `notPaired`, `active` (running or untracked), `failedOrInterrupted`, `usageLimited`, `unverifiedPullRequest`.
+- `earliestExpiresAt`: the oldest eligible hand-off's end plus 30 days. The store deletes a hand-off then, so #173 must take its counts and any per-type tables from the records before that time. The summary holds counts only, and Wayfinder keeps no archive past the retention.
+
+The 30-completion gate counts `eligible` across both types and reports each type's count. #173 can then report by ticket type from the same call: rating time (median and p95 with sample counts and timeout counts) from `calibration.*.elapsedMs` and `status`, tokens and cost from `tokens` and `cost`, and agreement from `tier` of each method against the user's explicit tier correction. Only the rater that proposed (`proposedBy`) could have influenced the user. When the rating model differs from the shadow, its own rating time and tokens are not kept; only the rules and the shadow are compared.

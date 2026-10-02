@@ -6,8 +6,8 @@ import { currentTheme, paintIcons, renderAccountMarkContent, setTheme, THEME_CHA
 import type { Theme } from './chrome.js';
 import { escapeHtml } from './markdown.js';
 import { supportsModelRating } from '../autoPick.js';
-import { autoRater, currentCatalog, defaultTier, loadCatalog, saveAutoRater, saveDefaultTier, TIER_HINT, TIER_LABEL, TIERS, tierDefaults } from './models.js';
-import type { AutoRater, CatalogState, Tier } from './models.js';
+import { autoRater, calibrationMode, currentCatalog, defaultTier, loadCatalog, saveAutoRater, saveCalibrationMode, saveDefaultTier, TIER_HINT, TIER_LABEL, TIERS, tierDefaults } from './models.js';
+import type { AutoRater, CalibrationMode, CatalogState, Tier } from './models.js';
 import { GOALS, PROGRESS_SETTINGS_EVENT } from './progress.js';
 import { handOffCap, HAND_OFF_CAPS, saveHandOffCap } from './startNext.js';
 import { DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_KINDS } from '../notificationTypes.js';
@@ -22,6 +22,8 @@ export interface SettingsView {
   tier: Tier;
   /** How Auto rates a ticket in Start next: by the rules alone, or by a model. */
   rater: AutoRater;
+  /** Whether a shadow model also rates tickets so the rules can be compared with it (#186). */
+  calibration: CalibrationMode;
   /** T3 Code's models, for choosing the rating model. */
   models: CatalogState;
   /** How many hand-offs may run at once on this machine before Start next queues the rest. */
@@ -110,6 +112,29 @@ export function autoRaterHtml(rater: AutoRater, models: CatalogState): string {
   return `${row}<div class="settings-row"><span class="grow">Rating model</span>${select}</div>`;
 }
 
+/** "Calibration": off by default; on, a shadow model also rates task and research tickets and both ratings are saved locally. */
+export function calibrationHtml(mode: CalibrationMode, models: CatalogState): string {
+  const kinds = segmented('Calibration mode', [seg('data-settings-calibration', 'off', 'Off', mode.kind === 'off'), seg('data-settings-calibration', 'shadow', 'On', mode.kind === 'shadow')].join(''));
+  const hint =
+    mode.kind === 'off'
+      ? 'No extra model call. Turn on to compare a cheap model with the rules.'
+      : 'A model also rates each task and research ticket you start with Auto, one call each. Both ratings are saved on this machine for 30 days and never change the pick or reach GitHub.';
+  const row = `<div class="settings-row"><span class="grow">Calibration<span class="hint">${escapeHtml(hint)}</span></span>${kinds}</div>`;
+  if (mode.kind === 'off') return row;
+  const options = ratingModels(models);
+  const picked = `${mode.choice.instanceId}${RATER_SEPARATOR}${mode.choice.model}`;
+  const select =
+    options.length === 0
+      ? `<span class="hint">${models.status === 'loading' ? 'Loading T3 Code models…' : 'No Codex or Claude model is ready to rate with.'}</span>`
+      : `<select data-settings-calibration-model aria-label="Shadow model">${options
+          .map((option) => {
+            const value = `${option.instanceId}${RATER_SEPARATOR}${option.slug}`;
+            return `<option value="${escapeHtml(value)}"${value === picked ? ' selected' : ''}>${escapeHtml(`${option.name} · ${option.provider}`)}</option>`;
+          })
+          .join('')}</select>`;
+  return `${row}<div class="settings-row"><span class="grow">Shadow model</span>${select}</div>`;
+}
+
 export function settingsBodyHtml(view: SettingsView): string {
   const themes = segmented('Theme', (['light', 'dark'] as const).map((theme) => seg('data-settings-theme', theme, THEME_LABEL[theme], theme === view.theme)).join(''));
   const tiers = segmented('Default model tier', TIERS.map((tier) => seg('data-settings-tier', tier, TIER_LABEL[tier], tier === view.tier)).join(''));
@@ -127,6 +152,7 @@ export function settingsBodyHtml(view: SettingsView): string {
       <div class="settings-row"><span class="grow">Theme</span>${themes}</div>
       <div class="settings-row"><span class="grow">Default model tier<span class="hint">${escapeHtml(TIER_HINT[view.tier])}. New tickets and maps start here.</span></span>${tiers}</div>
       ${autoRaterHtml(view.rater, view.models)}
+      ${calibrationHtml(view.calibration, view.models)}
       <div class="settings-row"><span class="grow">Hand-offs at once<span class="hint">Start next runs this many in T3 Code on this machine and queues the rest.</span></span>${caps}</div>
       <div class="settings-row"><span class="grow">Daily goal<span class="hint">${view.progress === null ? 'Sign in to set a goal.' : 'Tickets to clear each day on Home.'}</span></span>${goals}</div>
     </section>
@@ -187,7 +213,7 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
   trigger.setAttribute('aria-haspopup', 'dialog');
   trigger.setAttribute('aria-controls', dialog.id);
 
-  let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), rater: autoRater(), models: currentCatalog(), cap: handOffCap(), progress: null, stalls: null, notifications: null, busy: null };
+  let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), rater: autoRater(), calibration: calibrationMode(), models: currentCatalog(), cap: handOffCap(), progress: null, stalls: null, notifications: null, busy: null };
 
   const draw = (): void => {
     const focusKey = document.activeElement instanceof HTMLElement && body.contains(document.activeElement) ? focusKeyOf(document.activeElement) : null;
@@ -233,7 +259,7 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
   };
 
   trigger.addEventListener('click', () => {
-    view = { ...view, theme: currentTheme(), tier: defaultTier(), rater: autoRater(), models: currentCatalog(), cap: handOffCap() };
+    view = { ...view, theme: currentTheme(), tier: defaultTier(), rater: autoRater(), calibration: calibrationMode(), models: currentCatalog(), cap: handOffCap() };
     draw();
     dialog.showModal();
     void load();
@@ -250,10 +276,18 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
 
   dialog.addEventListener('change', (event) => {
     const select = event.target;
-    if (!(select instanceof HTMLSelectElement) || !select.hasAttribute('data-settings-rater-model')) return;
+    if (!(select instanceof HTMLSelectElement)) return;
+    const forCalibration = select.hasAttribute('data-settings-calibration-model');
+    if (!forCalibration && !select.hasAttribute('data-settings-rater-model')) return;
     const [instanceId = '', ...rest] = select.value.split(RATER_SEPARATOR);
     const model = rest.join(RATER_SEPARATOR);
     if (instanceId === '' || model === '') return;
+    if (forCalibration) {
+      const next: CalibrationMode = { kind: 'shadow', choice: { instanceId, model } };
+      saveCalibrationMode(next);
+      view = { ...view, calibration: next };
+      return;
+    }
     const next: AutoRater = { kind: 'model', choice: { instanceId, model } };
     saveAutoRater(next);
     view = { ...view, rater: next };
@@ -293,6 +327,22 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
       const next: AutoRater = rater === 'model' && first !== undefined ? { kind: 'model', choice: { instanceId: first.instanceId, model: first.slug } } : { kind: 'logic' };
       saveAutoRater(next);
       view = { ...view, rater: next };
+      draw();
+      return;
+    }
+    const calibration = target?.closest<HTMLElement>('[data-settings-calibration]')?.dataset['settingsCalibration'];
+    if (calibration === 'off' || calibration === 'shadow') {
+      // The cheapest tier's model is the default shadow, so turning this on never starts with a costly one.
+      const cheap = tierDefaults().simple;
+      const options = ratingModels(view.models);
+      const first = options.find((option) => option.instanceId === cheap?.instanceId && option.slug === cheap.model) ?? options[0];
+      if (calibration === 'shadow' && first === undefined) {
+        toast('No Codex or Claude model is ready to rate with. Calibration stays off.', 6000);
+        return;
+      }
+      const next: CalibrationMode = calibration === 'shadow' && first !== undefined ? { kind: 'shadow', choice: { instanceId: first.instanceId, model: first.slug } } : { kind: 'off' };
+      saveCalibrationMode(next);
+      view = { ...view, calibration: next };
       draw();
       return;
     }

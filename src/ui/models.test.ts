@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { autoRater, defaultTier, saveAutoRater, saveDefaultTier } from './models.js';
+import { autoRater, calibrationMode, defaultTier, saveAutoRater, saveCalibrationMode, saveDefaultTier } from './models.js';
 
 function memoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
   const values = new Map<string, string>();
@@ -22,6 +22,28 @@ describe('default model tier', () => {
     expect(defaultTier(storage)).toBe('mid');
 
     expect(defaultTier({ getItem: () => { throw new Error('blocked'); } })).toBe('mid');
+  });
+});
+
+describe('calibration mode setting (#186)', () => {
+  it('is off until the user opts in, then keeps the shadow model they chose', () => {
+    const storage = memoryStorage();
+    expect(calibrationMode(storage)).toEqual({ kind: 'off' });
+
+    saveCalibrationMode({ kind: 'shadow', choice: { instanceId: 'codex', model: 'gpt-5.6-luna' } }, storage);
+    expect(calibrationMode(storage)).toEqual({ kind: 'shadow', choice: { instanceId: 'codex', model: 'gpt-5.6-luna' } });
+
+    saveCalibrationMode({ kind: 'off' }, storage);
+    expect(calibrationMode(storage)).toEqual({ kind: 'off' });
+  });
+
+  it('stays off for a mode with no usable model, bad JSON or unreadable storage, so no extra call is made by accident', () => {
+    const storage = memoryStorage();
+    storage.setItem('wayfinder-map:auto-calibration:v1', JSON.stringify({ kind: 'shadow', choice: { model: 'no-provider' } }));
+    expect(calibrationMode(storage)).toEqual({ kind: 'off' });
+    storage.setItem('wayfinder-map:auto-calibration:v1', '{nope');
+    expect(calibrationMode(storage)).toEqual({ kind: 'off' });
+    expect(calibrationMode({ getItem: () => { throw new Error('blocked'); } })).toEqual({ kind: 'off' });
   });
 });
 

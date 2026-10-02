@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   autoResultOf,
   buildAutoDecision,
+  confirmModelChange,
   isUsageLimitError,
   observeModelSelection,
   observeThread,
@@ -43,7 +44,12 @@ describe('buildAutoDecision', () => {
       scoring: { version: 'rules-1', reason: 'Mid: touches the store and the tracker' },
       proposed: request.proposed,
       final: request.final,
+      ticketType: null,
+      selection: 'auto',
       overrides: [],
+      tierMapping: {},
+      substitution: null,
+      calibration: null,
       usage: { state: 'available', observedAt: '2026-09-30T11:59:30.000Z' },
       current: { provider: 'codex', model: 'gpt-5.6-terra', effort: 'medium' },
       modelChanges: [],
@@ -98,6 +104,97 @@ describe('buildAutoDecision', () => {
   });
 });
 
+const calibration = {
+  rules: { tier: 'mid', version: 'rules-1', rubric: null, rater: null, inputId: 'in-1', elapsedMs: 0.3, status: 'ok', tokens: null, cost: { kind: 'actual', usd: 0 } },
+  shadow: {
+    tier: 'hard',
+    version: 'model-1:gpt-5.6-luna',
+    rubric: 'rubric-1',
+    rater: { provider: 'codex', model: 'gpt-5.6-luna', effort: 'low' },
+    inputId: 'in-1',
+    elapsedMs: 6_970,
+    status: 'ok',
+    tokens: { input: null, cachedInput: null, output: null, total: 18_660 },
+    cost: { kind: 'unavailable' },
+  },
+  proposedBy: 'logic',
+  fallback: false,
+};
+
+describe('calibration fields (#186)', () => {
+  it('saves the paired predictions, the type and the dispatch context for a task', () => {
+    const built = buildAutoDecision(
+      { ...request, selection: 'user', tierMapping: { mid: request.final }, substitution: { reason: 'usage-limit', from: request.final, to: { ...request.final, model: 'fable-5' }, toTier: 'hard' }, calibration },
+      now,
+      'task',
+    );
+    expect(built).toMatchObject({ ticketType: 'task', selection: 'user', tierMapping: { mid: { model: 'gpt-5.6-terra' } }, substitution: { reason: 'usage-limit', toTier: 'hard' }, calibration });
+  });
+
+  it('takes the ticket type from the server, not the request', () => {
+    expect(buildAutoDecision({ ...request, ticketType: 'task', calibration }, now, 'research')?.ticketType).toBe('research');
+    expect(buildAutoDecision({ ...request, ticketType: 'task' }, now)?.ticketType).toBeNull();
+  });
+
+  it('drops the pair for a ticket that is not a task or research, so no shadow record exists for it', () => {
+    for (const type of ['prototype', 'grilling', null]) expect(buildAutoDecision({ ...request, calibration }, now, type)?.calibration).toBeNull();
+    expect(buildAutoDecision({ ...request, calibration }, now, 'research')?.calibration).not.toBeNull();
+  });
+
+  it('records no pair when calibration was off, and defaults a selection it was not told to Auto', () => {
+    expect(decision().calibration).toBeNull();
+    expect(decision({ selection: 'whatever' }).selection).toBe('auto');
+  });
+
+  it('saves a user-chosen tier equal to the proposal as a selection, not as an override', () => {
+    const explicit = decision({ selection: 'user' });
+    expect(explicit).toMatchObject({ selection: 'user', overrides: [] });
+  });
+
+  it('survives a round trip through the store, secrets and all unknown fields dropped', () => {
+    const stored = buildAutoDecision({ ...request, calibration, accountId: 'acct-1' }, now, 'task');
+    if (stored === null) throw new Error('expected a decision');
+    const reread = parseStoredAutoDecision(JSON.parse(JSON.stringify(stored)));
+    expect(reread).toEqual(stored);
+    expect(reread?.calibration?.shadow.rater).toEqual({ provider: 'codex', model: 'gpt-5.6-luna', effort: 'low' });
+    expect(JSON.stringify(reread)).not.toContain('acct-1');
+  });
+});
+
+describe('model change reasons (#186)', () => {
+  const changed = () => observeThread(decision(), observation({ model: { provider: 'claude', model: 'opus', effort: null } }));
+  const at = '2026-09-30T12:05:00.000Z';
+
+  it('leaves the reason unknown: a different, even stronger, model name does not say why', () => {
+    expect(changed().modelChanges[0]).toMatchObject({ reason: 'unknown', confirmedAt: null });
+  });
+
+  it('records a reason the user confirmed, and can set it back to unknown', () => {
+    const confirmed = confirmModelChange(changed(), at, 'harder-ticket', new Date('2026-09-30T13:00:00.000Z'));
+    expect(confirmed?.modelChanges[0]).toMatchObject({ reason: 'harder-ticket', confirmedAt: '2026-09-30T13:00:00.000Z' });
+    expect(confirmed?.overrides).toEqual([]);
+    const reset = confirmModelChange(confirmed ?? changed(), at, 'unknown', new Date('2026-09-30T13:05:00.000Z'));
+    expect(reset?.modelChanges[0]).toMatchObject({ reason: 'unknown', confirmedAt: null });
+  });
+
+  it('finds no change to confirm at a time it did not happen', () => {
+    expect(confirmModelChange(changed(), '2026-09-30T12:06:00.000Z', 'preference', now)).toBeNull();
+    expect(confirmModelChange(decision(), at, 'preference', now)).toBeNull();
+  });
+
+  it('keeps a confirmed reason across a read, and reads an old change with no reason as unknown', () => {
+    const confirmed = confirmModelChange(changed(), at, 'provider-limit', now);
+    if (confirmed === null) throw new Error('expected a change');
+    expect(parseStoredAutoDecision(JSON.parse(JSON.stringify(confirmed)))?.modelChanges[0]).toMatchObject({ reason: 'provider-limit', confirmedAt: now.toISOString() });
+    const old = JSON.parse(JSON.stringify(confirmed)) as { modelChanges: Array<Record<string, unknown>> };
+    delete old.modelChanges[0]?.['reason'];
+    delete old.modelChanges[0]?.['confirmedAt'];
+    expect(parseStoredAutoDecision(old)?.modelChanges[0]).toMatchObject({ reason: 'unknown', confirmedAt: null });
+    old.modelChanges[0] = { ...old.modelChanges[0], reason: 'because', confirmedAt: now.toISOString() };
+    expect(parseStoredAutoDecision(old)?.modelChanges[0]).toMatchObject({ reason: 'unknown', confirmedAt: null });
+  });
+});
+
 describe('observeThread', () => {
   it('records a model change from inside the session apart from the proposal', () => {
     const changed = observeThread(decision(), observation({ model: { provider: 'claude', model: 'opus', effort: null } }));
@@ -106,6 +203,8 @@ describe('observeThread', () => {
         at: '2026-09-30T12:05:00.000Z',
         from: { provider: 'codex', model: 'gpt-5.6-terra', effort: 'medium' },
         to: { provider: 'claude', model: 'opus', effort: null },
+        reason: 'unknown',
+        confirmedAt: null,
       },
     ]);
     expect(changed.current).toMatchObject({ model: 'opus' });
