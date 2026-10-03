@@ -143,6 +143,9 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
   const check = async (): Promise<UpdaterStatus> => {
     try {
       const result = await autoUpdater.checkForUpdates();
+      // Background download failures emit an error event and also reject this separate promise.
+      // The event reports the failure; consume the rejection so it cannot escape the check.
+      void result?.downloadPromise?.catch(() => undefined);
       if (result && result.updateInfo) {
         const latest = result.updateInfo.version;
         const current = autoUpdater.currentVersion?.version ?? '0.0.0';

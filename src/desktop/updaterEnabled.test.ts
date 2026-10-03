@@ -105,4 +105,17 @@ describe('enabled desktop updates', () => {
     });
     handle.stop();
   });
+
+  it('handles a rejected background download without an unhandled rejection', async () => {
+    mocks.updater.checkForUpdates.mockImplementation(async () => ({
+      isUpdateAvailable: true,
+      updateInfo: { version: '1.2.4' },
+      downloadPromise: Promise.reject(new Error('Download connection interrupted')),
+    }));
+    const handle = start();
+
+    await expect(handle.check()).resolves.toMatchObject({ status: 'available' });
+    await Promise.resolve();
+    handle.stop();
+  });
 });
