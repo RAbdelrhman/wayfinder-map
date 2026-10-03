@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
 import { isLiveHandOff } from './handOffLiveness.js';
+import { SettingsFileWriter } from './settingsFile.js';
 import type { HandOffStatus } from './handOffTracking.js';
 import { DEFAULT_STALL_SETTINGS, STALL_DAY_CHOICES } from './types.js';
 import type { MapSnapshot, Stall, StallKind, StallSettings, Ticket } from './types.js';
@@ -169,7 +170,11 @@ export function stallSettingsFile(): string {
 }
 
 export class StallSettingsStore implements StallSettingsSource {
-  constructor(private readonly path: string = stallSettingsFile()) {}
+  private readonly writer: SettingsFileWriter;
+
+  constructor(private readonly path: string = stallSettingsFile()) {
+    this.writer = new SettingsFileWriter(path);
+  }
 
   async get(): Promise<StallSettings> {
     try {
@@ -180,11 +185,12 @@ export class StallSettingsStore implements StallSettingsSource {
   }
 
   async update(patch: unknown): Promise<StallSettings | null> {
-    const next = applyStallSettings(await this.get(), patch);
-    if (next === null) return null;
-    await mkdir(dirname(this.path), { recursive: true });
-    await writeFile(this.path, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
-    return next;
+    return this.writer.update(async () => {
+      const next = applyStallSettings(await this.get(), patch);
+      if (next === null) return null;
+      await this.writer.write(next);
+      return next;
+    });
   }
 }
 

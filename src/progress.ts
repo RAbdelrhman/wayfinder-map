@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
 import { gh, ghProblem } from './github.js';
+import { SettingsFileWriter } from './settingsFile.js';
 
 /** How Home draws the day's cleared fog (#43): A's trail, B's hexes, or C's bar. */
 export const PROGRESS_STYLES = ['trail', 'hex', 'bar'] as const;
@@ -64,19 +65,24 @@ export function progressFile(): string {
 
 /** Settings per GitHub login, so each account on the machine keeps its own. */
 export class ProgressSettingsStore {
-  constructor(private readonly path: string = progressFile()) {}
+  private readonly writer: SettingsFileWriter;
+
+  constructor(private readonly path: string = progressFile()) {
+    this.writer = new SettingsFileWriter(path);
+  }
 
   async get(login: string): Promise<ProgressSettings> {
     return readSettings((await this.readAll())[login.toLowerCase()]);
   }
 
   async update(login: string, patch: unknown): Promise<ProgressSettings | null> {
-    const all = await this.readAll();
-    const next = applySettings(readSettings(all[login.toLowerCase()]), patch);
-    if (next === null) return null;
-    await mkdir(dirname(this.path), { recursive: true });
-    await writeFile(this.path, `${JSON.stringify({ ...all, [login.toLowerCase()]: next }, null, 2)}\n`, 'utf8');
-    return next;
+    return this.writer.update(async () => {
+      const all = await this.readAll();
+      const next = applySettings(readSettings(all[login.toLowerCase()]), patch);
+      if (next === null) return null;
+      await this.writer.write({ ...all, [login.toLowerCase()]: next });
+      return next;
+    });
   }
 
   private async readAll(): Promise<Record<string, unknown>> {
