@@ -207,11 +207,14 @@ function handOffIcon(state: HandOffUiState): string {
 }
 
 /**
- * A map card shows one status. An open ticket's hand-off says more than its state, so it stands in.
- * Every closed ticket reads "done", handed off or not; the panel still shows the merged pull request.
+ * A map card shows one status. An open ticket's hand-off says more than its state, so it stands in
+ * until it is over. Once its pull request merged, an open ticket (one kept open on purpose, say)
+ * reads its own state again. Every closed ticket reads "done"; the panel still shows the merged PR.
  */
 export function cardShowsHandOff(ticketState: TicketState, handOff: HandOffStatusDto | undefined): handOff is HandOffStatusDto {
-  return handOff !== undefined && ticketState !== 'done';
+  if (handOff === undefined || ticketState === 'done') return false;
+  const state = handOffPresentation(handOff).state;
+  return state !== 'merged' && state !== 'done';
 }
 
 /** The hand-off's status. Compact, on a map card, it is plain text like the state chip it stands in for. */
