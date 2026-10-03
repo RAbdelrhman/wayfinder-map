@@ -17,18 +17,6 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      # Release Please creates the tag and GitHub release before the Windows job runs.
-      # Gate it here so missing signing secrets cannot publish another empty release.
-      - name: Require Windows signing credentials
-        env:
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: |
-          if [ -z "$WIN_CSC_LINK" ] || [ -z "$WIN_CSC_KEY_PASSWORD" ]; then
-            echo '::error::Set WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD before creating a release.'
-            exit 1
-          fi
-
       - id: release
         uses: googleapis/release-please-action@v4
         with:
@@ -59,7 +47,7 @@ jobs:
             }
 
       # A tag pushed with GITHUB_TOKEN never starts another workflow, but a dispatch
-      # does. Running it on the tag keeps github.ref a tag, so the signing gate holds.
+      # does. Running it on the tag keeps github.ref a tag, so the build counts as a stable release.
       - name: Build the release
         if: steps.release.outputs.release_created == 'true'
         env:

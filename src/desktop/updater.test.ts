@@ -26,7 +26,7 @@ describe('desktop update policy', () => {
     expect(updateChannel('arm64')).toBe('latest-arm64');
   });
 
-  it('enables updates only for packaged, signed, stable builds', () => {
+  it('enables updates only for packaged stable release builds', () => {
     expect(shouldEnableUpdates(true, '1.2.3', true)).toBe(true);
     expect(shouldEnableUpdates(false, '1.2.3', true)).toBe(false);
     expect(shouldEnableUpdates(true, '1.2.3-beta.1', true)).toBe(false);

@@ -1,6 +1,6 @@
 const arch = process.env.WAYFINDER_BUILD_ARCH === 'arm64' ? 'arm64' : 'x64';
-const signedRelease = process.env.WAYFINDER_SIGNED_RELEASE === '1';
-const artifactSuffix = signedRelease ? 'Setup' : 'Test-Setup';
+const stableRelease = process.env.WAYFINDER_STABLE_RELEASE === '1';
+const artifactSuffix = stableRelease ? 'Setup' : 'Test-Setup';
 
 module.exports = {
   appId: 'com.rabdelrhman.wayfinder',
@@ -19,7 +19,9 @@ module.exports = {
     icon: '.generated/Wayfinder.ico',
     target: [{ target: 'nsis', arch: [arch] }],
     artifactName: `Wayfinder-\${version}-${arch}-${artifactSuffix}.\${ext}`,
-    verifyUpdateCodeSignature: signedRelease,
+    // Releases are not code-signed, so updates are trusted on GitHub's HTTPS and the
+    // sha512 that latest-*.yml records for each installer, not on a publisher signature.
+    verifyUpdateCodeSignature: false,
   },
   nsis: {
     oneClick: false,

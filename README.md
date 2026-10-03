@@ -42,8 +42,9 @@ Closing its window keeps Wayfinder in the system tray. The tray can reopen the
 current page, go Home, start a new map, or quit. Quit stops the loopback server
 and revokes the in-memory T3 Code session.
 
-The first public release targets Windows 10 and Windows 11. Stable installers must
-be signed and support x64 and ARM64. `gh` remains an explicit prerequisite; if it
+The first public release targets Windows 10 and Windows 11 on x64 and ARM64. Installers
+are not code-signed, so Windows SmartScreen may warn on first install: choose **More info**
+then **Run anyway**. Stable releases then update themselves in the background. `gh` remains an explicit prerequisite; if it
 is missing or signed out, Home stays available and shows the diagnostic with a link
 to install or sign in to GitHub CLI. Architecture-specific installed-flow gates are documented in
 [`docs/release-windows.md`](docs/release-windows.md).
@@ -80,7 +81,7 @@ node dist/cli.js --repo owner/name   # the terminal command
 bun run desktop                      # the desktop shell
 ```
 
-Unsigned owner-test installers can be built for Windows x64 or ARM64. They are named
+Owner-test installers can be built for Windows x64 or ARM64. They are named
 `Test-Setup.exe` and are not public stable releases:
 
 ```powershell

@@ -3,16 +3,17 @@
 Wayfinder targets Windows 10 and Windows 11 on x64 and ARM64. Each architecture
 gets its own NSIS installer and update channel from the same version and source tag.
 
-## Local unsigned test package
+## Local test package
 
 ```powershell
 bun install --ignore-scripts
 bun run package:win -- x64
 ```
 
-The output is under `release/x64/`. It is intentionally unsigned and may trigger a
-Windows warning. The installer is named `Wayfinder-<version>-x64-Test-Setup.exe` so
-it cannot be mistaken for a signed public installer. Use the ARM64 argument to
+The output is under `release/x64/`. Without signing credentials it is unsigned and may
+trigger a Windows warning.
+The installer is named `Wayfinder-<version>-x64-Test-Setup.exe` so it cannot be
+mistaken for a public release, and it never updates itself. Use the ARM64 argument to
 cross-package that architecture; an ARM64 artifact is not considered verified until
 it has been installed and exercised on a real Windows ARM64 machine.
 
@@ -45,8 +46,7 @@ The Windows workflow can also run from a tag you push yourself, as long as the t
 exactly matches the root package version, such as `v0.1.0`. It builds x64 and ARM64,
 writes SHA-256 checksum files, and attaches the installers and update metadata to the
 GitHub release. A tag containing a prerelease suffix, such as `v0.1.0-beta.1`, is
-published as an explicitly marked unsigned test release; stable tags fail closed until
-signing credentials are present.
+published as a GitHub prerelease whose builds do not update themselves.
 
 The same release carries the CLI as `wayfinder-map-<version>.tgz`, an `npm pack` of
 the same tag with its own `SHA256SUMS-cli.txt`. It has no runtime dependencies and
@@ -55,26 +55,33 @@ suite first, including the smoke test that installs a packed tarball and runs it
 against a fake `gh`. The package is not on the npm registry: the name is free, but
 publishing needs an npm account and token the repository does not have.
 
-Stable tags fail closed unless these repository secrets exist:
+## Code signing
 
-- `WIN_CSC_LINK`: the PFX/P12 file, HTTPS URL, or base64 certificate accepted by
-  electron-builder.
-- `WIN_CSC_KEY_PASSWORD`: the certificate password.
+Without signing credentials, releases are not code-signed and Windows SmartScreen may
+warn on the first install. Either way, the updater does not check a publisher signature (`verifyUpdateCodeSignature: false`).
+Updates are trusted on GitHub's HTTPS and the sha512 that `latest-*.yml` records for
+each installer, so anyone who can publish a release on this repository can ship an
+update.
 
-Azure Artifact Signing Basic remains the preferred future signing route if the release
-owner is eligible. The workflow does not create Azure resources or weaken the stable
-signing gate while those external credentials are unavailable.
+Signing stays optional. If the `WIN_CSC_LINK` (PFX/P12 file, HTTPS URL, or base64
+certificate) and `WIN_CSC_KEY_PASSWORD` secrets exist, electron-builder signs the
+build. Turning the signature check back on would also need `publisherName` set, and
+every installed version must be signed before it can verify the next one.
 
-Signed stable builds check the architecture-specific GitHub Releases channel at launch
-and every 24 hours. They download in the background and ask before restart. Unsigned
-local builds and prerelease versions do not check for updates.
+## Updates
+
+Stable builds check the architecture-specific GitHub Releases channel at launch and
+every 24 hours. They download in the background and ask before restart. Local builds
+and prerelease versions do not check for updates. Every build released before
+this change was a prerelease or had no installer, so updates were switched off in all
+of them: they need one manual install of a stable release.
 
 ## Release gates
 
 Source and unsigned packaging do not prove the public support matrix. Before a
 stable release is announced, record all of the following:
 
-- Authenticode signature and publisher verification.
+- If a previous stable release exists, an update from it to this one.
 - Windows 10 install, launch, tray, update, and uninstall.
 - Windows 11 install, launch, tray, update, and uninstall.
 - Real Windows ARM64 install, launch, tray, update, T3 hand-off or copy fallback,

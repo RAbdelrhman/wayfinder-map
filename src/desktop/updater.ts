@@ -51,7 +51,7 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
     constructor asks Electron for the running app's version. Reading it at module scope
     therefore kills the main process before it has an app: the window never opens and the
     launch looks like a silent crash. Read it here, past the enabled check, so a dev or
-    unsigned build never touches it at all.
+    test build never touches it at all.
   */
   const { autoUpdater } = electronUpdater;
 
@@ -63,6 +63,8 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
   };
 
   autoUpdater.channel = updateChannel(process.arch);
+  // Setting the channel enables downgrades in electron-updater unless reset afterward.
+  autoUpdater.allowDowngrade = false;
   autoUpdater.allowPrerelease = false;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = false;
@@ -95,7 +97,7 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
     void dialog.showMessageBox(window, {
       type: 'info',
       title: 'Wayfinder update ready',
-      message: 'A signed Wayfinder update is ready.',
+      message: 'A Wayfinder update is ready.',
       detail: 'Restart now to install it, or keep working and restart later.',
       buttons: ['Restart and install', 'Later'],
       defaultId: 1,
@@ -141,10 +143,13 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
   const check = async (): Promise<UpdaterStatus> => {
     try {
       const result = await autoUpdater.checkForUpdates();
+      // Background download failures emit an error event and also reject this separate promise.
+      // The event reports the failure; consume the rejection so it cannot escape the check.
+      void result?.downloadPromise?.catch(() => undefined);
       if (result && result.updateInfo) {
         const latest = result.updateInfo.version;
         const current = autoUpdater.currentVersion?.version ?? '0.0.0';
-        if (latest && current && latest !== current) {
+        if (result.isUpdateAvailable) {
           currentStatus = {
             status: currentStatus.status === 'ready' ? 'ready' : 'available',
             currentVersion: current,

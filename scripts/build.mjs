@@ -9,11 +9,11 @@ const dist = join(root, 'dist');
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 /*
   The version and the auto-update switch are stamped in at build time: a packaged app has
-  no package.json to read, and updates only ever run against a signed release.
+  no package.json to read, and updates only ever run against a stable release.
 */
 const define = {
   __WAYFINDER_VERSION__: JSON.stringify(packageJson.version),
-  __WAYFINDER_AUTO_UPDATE__: JSON.stringify(process.env.WAYFINDER_SIGNED_RELEASE === '1'),
+  __WAYFINDER_AUTO_UPDATE__: JSON.stringify(process.env.WAYFINDER_STABLE_RELEASE === '1'),
 };
 
 await rm(dist, { recursive: true, force: true });
