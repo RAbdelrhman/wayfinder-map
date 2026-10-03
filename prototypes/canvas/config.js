@@ -383,6 +383,8 @@ window.CANVAS = {
                 pros: ['Sits quietly next to Synced', 'Lines up with Start next', 'Keeps the Inbox label'],
                 cons: ['The green count stays 3.3:1 in light, short of 4.5:1 for 11 px text'],
                 basedOn: ['R3-quiet', 'R3-ghost'],
+                disposition: 'keep',
+                feedback: 'User (3 Oct 2026): "Perfect". Picked as the answer to #196: one Inbox (bell icon, Inbox label, one count) with the D timeline panel, quiet look in the ghost shape.',
               },
             },
             {
