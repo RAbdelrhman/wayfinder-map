@@ -18,7 +18,7 @@ import { copyToClipboard } from './clipboard.js';
 import { DEFAULT_TEMPLATE, buildNewMapPrompt, buildPrompt, ticketBranch } from './prompt.js';
 import { PROTOTYPE_SHOTS_DIR, parsePrototypeFilePath, parsePrototypeShotPath } from './prototypes.js';
 import { detectT3, handOff } from './t3.js';
-import type { T3HandOff } from './t3.js';
+import type { T3HandOff, T3Runtime } from './t3.js';
 import type { Config } from './config.js';
 import type { MapSnapshot, Prototype, Ticket, WayfinderMap } from './types.js';
 import { markPullRequests } from './mapWatch.js';
@@ -91,7 +91,11 @@ export const PAGE_CSP =
 export type ServerT3 =
   Pick<T3HandOff, 'models' | 'steps' | 'projects'> &
   Partial<Pick<T3HandOff, 'focus'>> &
-  Partial<Pick<T3HandOff, 'readHandOffSnapshot' | 'subscribeShell'>> & { close?: () => void };
+  Partial<Pick<T3HandOff, 'readHandOffSnapshot' | 'subscribeShell'>> & {
+    close?: () => void;
+    /** Finds the running T3 Code. Tests pass a fixed one so they never read this machine's T3 Code. */
+    detect?: () => Promise<T3Runtime>;
+  };
 
 export interface ServeOptions {
   config: Config;
@@ -278,6 +282,7 @@ export async function startServer({
   settling,
   following,
 }: ServeOptions): Promise<RunningServer> {
+  const detect = t3.detect ?? detectT3;
   const defaultUpdater: UpdaterService = {
     async check(): Promise<UpdaterStatus> {
       const currentVersion = WAYFINDER_VERSION;
@@ -408,7 +413,7 @@ export async function startServer({
     workspaces ??
     new WorkspaceResolver(
       {
-        knownProjects: async () => t3.projects(await detectT3()),
+        knownProjects: async () => t3.projects(await detect()),
         verify: verifyCheckout,
         ...fileStore(clonesFile()),
       },
@@ -463,7 +468,7 @@ export async function startServer({
     try {
       const live = await handOffTracker.liveTicketHandOff(requestedRepo, ticket.number);
       if (live !== undefined) return { status: 409, body: { error: alreadyRunning, handOffId: live.id } };
-      const runtime = await detectT3();
+      const runtime = await detect();
       const requestedBranch = ticketBranch(ticket);
       const steps = t3.steps(runtime);
       const result = await handOff(
@@ -586,7 +591,7 @@ export async function startServer({
       const reply = await startNextBatch(forRepo, request);
       return { ok: reply.status === 202, error: typeof reply.body['error'] === 'string' ? reply.body['error'] : null };
     },
-    catalog: async () => t3.models(await detectT3()),
+    catalog: async () => t3.models(await detect()),
     usage: async () => {
       await usageReadings.refresh();
       return combineUsage([...startNext.usageLimits(), ...(await handOffTracker.usageLimitEvents())], usageReadings.snapshot(), new Date());
@@ -926,7 +931,7 @@ export async function startServer({
 
       if (path === '/api/models') {
         try {
-          json(response, 200, await t3.models(await detectT3()));
+          json(response, 200, await t3.models(await detect()));
         } catch (error) {
           json(response, 503, { error: `T3 Code models unavailable: ${(error as Error).message}` });
         }
@@ -1213,7 +1218,7 @@ export async function startServer({
           json(response, 409, { error: `Choose a local clone of ${requestedRepo} before starting in T3 Code.`, prompt });
           return;
         }
-        const runtime = await detectT3();
+        const runtime = await detect();
         const tier = typeof body.tier === 'string' && TIERS.includes(body.tier as Tier) ? (body.tier as Tier) : null;
         const result = await handOff(
           {
