@@ -236,7 +236,7 @@ function originAllowed(request: IncomingMessage, port: number): boolean {
 
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
-/** A Host header naming this machine, so a rebound DNS name cannot read repo files through the page. */
+/** A Host header naming this machine, so a rebound DNS name cannot read authenticated app data. */
 function hostAllowed(request: IncomingMessage): boolean {
   try {
     return LOOPBACK.has(new URL(`http://${request.headers.host ?? ''}`).hostname);
@@ -619,6 +619,11 @@ export async function startServer({
   });
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    if (!hostAllowed(request)) {
+      json(response, 403, { error: 'Only loopback hosts are accepted.' });
+      return;
+    }
+
     const requestUrl = new URL(request.url ?? '/', url);
     const path = requestUrl.pathname;
 
