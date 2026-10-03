@@ -35,6 +35,29 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      # GITHUB_TOKEN-created PRs do not emit downstream pull_request workflow runs.
+      # Dispatch trusted default-branch review code with the PR's current head.
+      - name: Review release pull requests
+        if: steps.release.outputs.prs_created == 'true'
+        uses: actions/github-script@v7
+        env:
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        with:
+          script: |
+            const prs = JSON.parse(process.env.RELEASE_PRS || '[]');
+            for (const candidate of prs) {
+              const { data: pr } = await github.rest.pulls.get({
+                ...context.repo,
+                pull_number: candidate.number,
+              });
+              await github.rest.actions.createWorkflowDispatch({
+                ...context.repo,
+                workflow_id: 'claude-review.yml',
+                ref: context.payload.repository.default_branch,
+                inputs: { pr_number: String(pr.number), head_sha: pr.head.sha },
+              });
+            }
+
       # A tag pushed with GITHUB_TOKEN never starts another workflow, but a dispatch
       # does. Running it on the tag keeps github.ref a tag, so the signing gate holds.
       - name: Build the release
