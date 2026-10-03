@@ -3,8 +3,8 @@ name: Claude review
 # Reviews the latest push to each PR. Runs on the owner's Claude subscription through
 # the CLAUDE_CODE_OAUTH_TOKEN secret (from `claude setup-token`) and needs the Claude
 # GitHub App installed on the repository. A newer push cancels the review in flight, so
-# only the latest commit gets a summary. Fork PRs are skipped: GitHub withholds secrets
-# from them, and pull_request_target would hand the token to untrusted code.
+# only the latest commit gets a summary. Fork and Dependabot PRs are skipped: GitHub
+# withholds secrets from them, and pull_request_target would hand the token to untrusted code.
 
 on:
   pull_request:
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   review:
-    if: ${{ !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
