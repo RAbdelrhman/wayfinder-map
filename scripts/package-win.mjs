@@ -26,12 +26,12 @@ function run(command, args, env = process.env) {
 }
 
 await run(process.execPath, ['scripts/create-icons.mjs']);
-// Local packages and prerelease builds are deliberately unsigned test artifacts. The
-// stable release workflow sets this flag only after its certificate gate passes.
-const signedRelease = process.env.WAYFINDER_SIGNED_RELEASE === '1';
+// Local packages and prerelease builds are test artifacts that never update themselves.
+// Only the release workflow sets this flag, and only for a stable tag.
+const stableRelease = process.env.WAYFINDER_STABLE_RELEASE === '1';
 await run(process.execPath, ['scripts/build.mjs'], {
   ...process.env,
-  WAYFINDER_SIGNED_RELEASE: signedRelease ? '1' : '0',
+  WAYFINDER_STABLE_RELEASE: stableRelease ? '1' : '0',
 });
 const builder = join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'electron-builder.exe' : 'electron-builder');
 await run(builder, ['--config', 'electron-builder.config.cjs', '--win', 'nsis', `--${requested}`, '--publish', 'never'], {

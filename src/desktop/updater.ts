@@ -51,7 +51,7 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
     constructor asks Electron for the running app's version. Reading it at module scope
     therefore kills the main process before it has an app: the window never opens and the
     launch looks like a silent crash. Read it here, past the enabled check, so a dev or
-    unsigned build never touches it at all.
+    test build never touches it at all.
   */
   const { autoUpdater } = electronUpdater;
 
@@ -95,7 +95,7 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
     void dialog.showMessageBox(window, {
       type: 'info',
       title: 'Wayfinder update ready',
-      message: 'A signed Wayfinder update is ready.',
+      message: 'A Wayfinder update is ready.',
       detail: 'Restart now to install it, or keep working and restart later.',
       buttons: ['Restart and install', 'Later'],
       defaultId: 1,

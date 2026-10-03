@@ -29,7 +29,8 @@ describe('Windows packaging contract', () => {
     expect(builder).toContain('createStartMenuShortcut: true');
     expect(builder).toContain("shortcutName: 'Wayfinder'");
     expect(builder).toContain("uninstallDisplayName: 'Wayfinder'");
-    expect(builder).toContain('verifyUpdateCodeSignature: signedRelease');
+    expect(builder).toContain('verifyUpdateCodeSignature: false');
+    expect(builder).toContain("process.env.WAYFINDER_STABLE_RELEASE === '1'");
     expect(builder).toContain('artifactSuffix');
   });
 
@@ -56,10 +57,12 @@ describe('Windows packaging contract', () => {
     expect(smoke).toContain("await run(join(installDir, 'Uninstall Wayfinder.exe'), ['/S', '/currentuser'])");
   });
 
-  it('checks signing credentials before Release Please can publish a tag', async () => {
-    const workflow = await read('.github/workflows/release-please.yml');
-    expect(workflow.indexOf('Require Windows signing credentials')).toBeLessThan(workflow.indexOf('googleapis/release-please-action@v4'));
-    expect(workflow).toContain('secrets.WIN_CSC_LINK');
-    expect(workflow).toContain('secrets.WIN_CSC_KEY_PASSWORD');
+  it('releases stable tags without requiring a signing certificate', async () => {
+    const please = await read('.github/workflows/release-please.yml');
+    const windows = await read('.github/workflows/release-windows.yml');
+    expect(please).not.toContain('WIN_CSC_LINK');
+    expect(windows).not.toContain('Require signing credentials');
+    expect(windows).not.toContain('WAYFINDER_SIGNED_RELEASE');
+    expect(windows).toContain("WAYFINDER_STABLE_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') && '1' || '0' }}");
   });
 });
