@@ -89,6 +89,8 @@ window.CANVAS = {
                   'Icon only: "while you were away" history hides behind a symbol that says "alerts"',
                   'A dot for activity is easy to miss',
                 ],
+                disposition: 'combine',
+                feedback: 'User (3 Oct 2026): "ok could we do D with the Bell for mobile size. Keep it called inbox change Icon." Read as: the one timeline from D, with the bell icon from B replacing the inbox icon; still labelled Inbox; bell + count only at phone width. Built as Round 2, D+B.',
               },
             },
           ],
@@ -129,6 +131,8 @@ window.CANVAS = {
                   'Needs-you items sink below newer activity unless you filter',
                   'The count no longer says whether anything needs you',
                 ],
+                disposition: 'combine',
+                feedback: 'User (3 Oct 2026): "ok could we do D with the Bell for mobile size. Keep it called inbox change Icon." Read as: the one timeline from D, with the bell icon from B replacing the inbox icon; still labelled Inbox; bell + count only at phone width. Built as Round 2, D+B.',
               },
             },
             {
@@ -208,6 +212,54 @@ window.CANVAS = {
                 'Checked: light and dark; empty, activity-only and full states; open/closed; hover; keyboard (Tab, Esc returns focus to the button, arrow keys on C\'s tabs); aria-expanded, dialog labels, button names carrying counts ("Inbox, 4 need you, 7 new"); 390 px width.\n\n' +
                 'Findings: (1) Today\'s bell panel uses --surface-0, --hairline-strong and --shadow-float, which styles.css never defines, so it renders transparent with no shadow. Any option that keeps the bell\'s styles must fix this. (2) The amber needs-you count uses --handoff-needs-you on --surface-1: 6.7:1 light (#7a5200 on #fcfcfb) and 10.7:1 dark (#f6c453 on #1a1a19). (3) Today\'s green Inbox count (--state-frontier #0ca30c with --surface-1 text) is 3.3:1 in light (5.2:1 dark), short of 4.5:1 for 11 px text. D keeps it; the other options use amber or grey. (4) "Ready to start" (unblocked) is in today\'s bell but is not a needs-you event in #124 point 6; the options treat it as activity.\n\n' +
                 'Not checked: screen-reader output in NVDA/VoiceOver; Windows high-contrast mode; desktop tray badge and OS notifications (out of scope here); 200% zoom.',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title: 'Round 2: timeline with the bell',
+      round: 2,
+      question: 'The one timeline from D, with the bell icon, still called Inbox. Does this combination work?',
+      sections: [
+        {
+          title: 'D + B',
+          note: 'Desktop shows the bell icon and the Inbox label. At phone width the label goes and only the bell and its count stay.',
+          items: [
+            {
+              id: 'DB',
+              name: 'Timeline, bell icon, called Inbox',
+              src: 'variants/inbox.html?v=D2',
+              ...FRAME,
+              note: {
+                idea: 'The panel from D, unchanged: one list newest first, needs-you rows with an amber bar and kind line, an "All / Needs you" filter, and "Clear activity" that leaves needs-you rows in place. The button takes the bell icon from B in place of the inbox tray, but keeps the "Inbox" label and the single count of everything unread from D.',
+                pros: [
+                  'One control, one list, one count',
+                  'The bell says "something wants you"; the label says it also holds history',
+                  'At phone width it is as narrow as B (bell + count)',
+                ],
+                cons: [
+                  'The count still mixes needs-you and activity, as in D',
+                  'Keeps the green count used today,3.3:1 in light (short of 4.5:1 for 11 px text)',
+                ],
+                basedOn: ['D', 'B'],
+              },
+            },
+            {
+              id: 'DB-narrow',
+              name: 'D + B at 390 px',
+              src: 'variants/inbox.html?v=D2',
+              ...NARROW,
+              boardWidth: 300,
+              note: { idea: 'Phone width: bell + count only, the panel spans the screen.', pros: ['As narrow as B'], cons: ['No label at this width'], basedOn: ['D', 'B'] },
+            },
+            {
+              id: 'DB-closed',
+              name: 'D + B closed, needs you filter',
+              src: 'variants/inbox.html?v=D2&open=0',
+              width: 1280,
+              height: 200,
+              note: { idea: 'The topbar with the panel closed, as you see it most of the time.', pros: ['Bell + "Inbox" + one count'], cons: ['Same width as A'], basedOn: ['D', 'B'] },
             },
           ],
         },

@@ -121,11 +121,11 @@
     }
     let badge = '';
     if (v === 'A' || v === 'C') badge = n ? `<span class="ib-count-need">${n}</span>` : a ? `<span class="ib-count-quiet">${a}</span>` : '';
-    if (v === 'D') badge = n + a ? `<span class="map-inbox-count">${n + a}</span>` : '';
+    if (v === 'D' || v === 'D2') badge = n + a ? `<span class="map-inbox-count">${n + a}</span>` : '';
     if (v === 'E') badge = n ? `<span class="ib-count-need">${n}</span>` : '';
     if (v === 'F') badge = `${n ? `<span class="ib-count-need">${n}</span>` : ''}${a ? `<span class="ib-count-quiet">${a} new</span>` : ''}`;
     const label = v === 'E' ? `Inbox, ${n ? `${n} need you` : 'nothing needs you'}` : `Inbox, ${triggerLabel()}`;
-    return `<div class="ib-anchor"><button type="button" class="map-inbox-trigger${focus}" data-act="toggle" ${exp} aria-label="${label}">${icon('inbox')}<span class="map-inbox-label">Inbox</span>${badge}</button>`;
+    return `<div class="ib-anchor"><button type="button" class="map-inbox-trigger${focus}" data-act="toggle" ${exp} aria-label="${label}">${icon(v === 'D2' ? 'bell' : 'inbox')}<span class="map-inbox-label">Inbox</span>${badge}</button>`;
   }
 
   /* ---------- panels ---------- */
@@ -162,7 +162,7 @@
         <div class="ib-tabs" role="tablist" aria-label="Inbox">${tab('needs', 'Needs you', state.needs.length, true)}${tab('activity', 'Activity', unreadActivity(), false)}</div>
         <div class="map-inbox-body" role="tabpanel" id="ib-tabpanel" aria-labelledby="ib-tab-${state.tab}">${panel}</div>`;
     }
-    if (v === 'D') {
+    if (v === 'D' || v === 'D2') {
       const rows = [
         ...(state.filter === 'all' ? state.activity.map((a) => ({ t: a.t, html: actRow(a) })) : []),
         ...state.needs.map((n) => ({ t: n.t, html: needRow(n) })),
@@ -240,6 +240,7 @@
       ['D', 'D · One timeline'],
       ['E', 'E · Needs you first'],
       ['F', 'F · By map'],
+      ['D2', 'D+B · Timeline, bell icon'],
     ];
     state.open = false;
     let cells = `<div class="h">Option</div>${STATES.map(([s]) => `<div class="h">${s}</div>`).join('')}`;
