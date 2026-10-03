@@ -29,6 +29,7 @@ const config: Config = {
 };
 
 const t3: ServerT3 = {
+  detect: async () => ({ origin: 'http://127.0.0.1:3773', pid: null, stateDir: '' }),
   models: async () => ({ providers: [] }),
   projects: async () => [],
   steps: () => ({
