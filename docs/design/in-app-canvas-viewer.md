@@ -28,7 +28,7 @@ A throwaway Electron app ran the desktop window's `webPreferences`. Its page mou
 | Parent reads `iframe.contentWindow.location` | `SecurityError`. The viewer cannot read the hash, so it needs a bridge. |
 | Frame → parent `postMessage` | Arrives with `event.origin === "null"`; `event.source === iframe.contentWindow` is `true` |
 | Parent → frame `postMessage(msg, '*')` | Arrives, with the parent's real origin as `event.origin` |
-| Frame `fetch('/api/x')` | Reaches the server with `Origin: null`. Wayfinder's `originAllowed` (`src/server.ts:221`) returns 403 for that, and CORS blocks the read anyway (`TypeError: Failed to fetch`). |
+| Frame `fetch('/api/x')` | Reaches the server with `Origin: null`. Wayfinder's `originAllowed` (`src/server.ts:225`) returns 403 for that, and CORS blocks the read anyway (`TypeError: Failed to fetch`). |
 | Frame `localStorage` | Throws |
 | Initial `src` with `#p/B` | The frame sees `location.hash === "#p/B"`, so the viewer can open a canvas straight to a page and option |
 | Process | The sandboxed frame ran in a different OS process (pid 15732) from the page (pid 28572), so a heavy canvas cannot block the viewer's own UI |
