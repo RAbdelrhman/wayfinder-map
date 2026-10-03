@@ -1,18 +1,21 @@
 /*
-  Wayfinder's canvas for ticket #125: how the map shows what's next, what's in the way, and what has stalled.
+  Wayfinder's canvas for ticket #196: one topbar inbox for needs-you alerts and map activity.
   Paths are relative to index.html. Check with: node prototypes/canvas/tools/check.mjs
 */
 
+const FRAME = { width: 1280, height: 760 };
+const NARROW = { width: 390, height: 760 };
+
 window.CANVAS = {
-  ticket: 125,
-  title: "What's next, what's in the way, what has stalled",
+  ticket: 196,
+  title: 'One topbar inbox',
   question:
-    'How should the map show the critical path, PR and CI state, stalled tickets, and where Start next and the "just unblocked" notice land, without redesigning the canvas or adding a fifth state colour?',
+    'The map topbar has two controls for one job: the bell (needs-you alerts, #128) and the Inbox (map activity and "while you were away", #167). #124 decided on one topbar inbox. What should that one control look like, and how do needs-you alerts and plain map activity sit inside it?',
   sampleState:
-    'Fake map #300 "Offline drafts". A 7-ticket blocker chain is the critical path (6 left) and a dead hand-off (#213) holds it up. Three open PRs: #204 passing and approved, #210 failing with changes requested, #211 running with review requested. #212 was claimed 6 days ago and not touched since. #203 just closed, which unblocked #214 and #216. Click any card to open it in the panel. The Prototype bar (bottom right) replays the notice or jumps to a ticket.',
+    'Fake map #300 "Offline drafts", plus map #121. 4 things need you: a T3 Code thread waiting (#214), failing CI (#210), a PR ready for review (#204) and a prototype ready (#196). 7 map changes are new, 3 of them from while you were away. Click the topbar control to open or close it; click a row to mark it read; Clear empties map activity. Needs-you rows never clear by hand: they leave once handled (#124 point 6).',
 
   base: {
-    stylesheets: ['../../src/ui/styles.css', 'variants/next.css'],
+    stylesheets: ['../../src/ui/styles.css', 'variants/inbox.css'],
     bodyClass: 'viz-root',
     surfaces: {
       plane: 'var(--plane)',
@@ -25,120 +28,173 @@ window.CANVAS = {
 
   pages: [
     {
-      title: 'Directions',
-      round: 1,
+      title: 'Options',
+      round: 'Baseline',
       sections: [
         {
-          title: 'A · On the card',
-          note: 'Each signal goes on the card it belongs to. Start next goes in the topbar. The notice is a snackbar over the canvas.',
+          title: 'Today',
+          note: 'What ships now, for comparison. Not an option: #124 already chose one control.',
+          items: [
+            {
+              id: 'T',
+              name: 'Today: bell + Inbox',
+              src: 'variants/inbox.html?v=today',
+              ...FRAME,
+              note: {
+                idea: 'Two controls side by side. The bell (icon only, blue count) lists needs-you alerts plus "Ready to start". The Inbox (icon, label, green count) lists every map change. Some events (a PR ready for review, failing CI) land in both.',
+                pros: ['Already built and tested'],
+                cons: [
+                  'Two counts for one job; the same event can show twice',
+                  'Two panels, opened separately',
+                  'The bell panel uses three CSS tokens that do not exist (--surface-0, --hairline-strong, --shadow-float), so it draws with no background or shadow',
+                ],
+              },
+            },
+          ],
+        },
+        {
+          title: 'Fold one into the other',
+          note: 'Keep one of today\'s two controls and move the other\'s items into it.',
           items: [
             {
               id: 'A',
-              name: 'Map with the notice',
-              src: 'variants/next-a.html?ticket=210',
+              name: 'Inbox takes the bell in',
+              src: 'variants/inbox.html?v=A',
+              ...FRAME,
               note: {
-                idea:
-                  'The critical path is its chain of edges drawn solid and darker in the text colour. The selection lineage keeps its dashed flow. "6 left on the critical path" sits after the view tabs, and clicking it dims everything off the path. A PR takes over the card\'s meta line: "#232 · failing · changes requested", with a CI icon and a review icon. A stalled card gets a dashed frame and says "Stalled · …" on its meta line. The topbar button becomes "Start next 2". When a ticket closes, a snackbar says "#203 closed. #214 and #216 are ready." with Start both, and the new cards pulse once.',
+                idea: 'The Inbox button stays (icon + "Inbox" label); the bell goes. Its count is the needs-you count in amber. With nothing needing you, a grey count shows new activity. One panel: a "Needs you" section pinned on top, then "Map activity" with its own Clear.',
                 pros: [
-                  'Smallest change: every signal sits where you already look',
-                  'The meta line is free on claimed cards, so PR state costs no new space',
-                  'Start next is where Next: #N already lives',
+                  'Smallest change: the control people already open, plus one section',
+                  'Amber reuses the hand-off "needs you" colour, so it means the same thing everywhere',
+                  'Needs you can never scroll away under activity',
                 ],
                 cons: [
-                  'The @assignee disappears from cards with a PR',
-                  'A snackbar is gone once dismissed, so there is no record of what moved',
-                  'Nothing adds up what is in the way: you scan the canvas for dashed frames and red icons',
+                  'The label costs about 90 px of topbar width',
+                  'With many needs-you items, activity is pushed far down',
                 ],
-                disposition: 'keep',
-                feedback:
-                  'User (27 Sep 2026): "I only like A." B and C are not taken forward. Agreed details: the PR line replaces @assignee on cards with a PR. Stalled is two settings, untouched claim and dead hand-off, 7 days each by default. The snackbar stays until dismissed or started, merges events, and lists but never starts grilling/prototype tickets. Start next hands off every startable (unblocked, unclaimed, task or research) ticket up to the #123 cap, shows "Start next 4 of 6" when capped, falls back to "Next: #N" when only HITL tickets are ready, and does not ask to confirm.',
               },
             },
-            {
-              id: 'A-stalled',
-              name: 'Stalled ticket, path focused',
-              src: 'variants/next-a.html?ticket=213&path=1&notice=0',
-              note: {
-                idea:
-                  'Path focus is on, so everything off the chain dims. The panel shows #213 with a neutral "Stalled" banner in place of the state banner, above the failed hand-off card.',
-                pros: ['Path focus reuses the canvas\'s existing dim treatment'],
-                cons: ['Two ways to dim the canvas (selection and path focus) can fight'],
-                disposition: 'keep',
-                feedback: 'Part of direction A, which the user chose ("I only like A").',
-              },
-            },
-          ],
-        },
-        {
-          title: 'B · Path lane and a moving strip',
-          note: 'One strip under the filters says what just moved and what is in the way. The critical path is a lane with numbered steps.',
-          items: [
             {
               id: 'B',
-              name: 'Map with the strip',
-              src: 'variants/next-b.html?ticket=210',
+              name: 'Bell takes the Inbox in',
+              src: 'variants/inbox.html?v=B',
+              ...FRAME,
               note: {
-                idea:
-                  'A soft lane runs under the critical path and its open cards carry step numbers 1–6. The topbar has a meter with one pip per path ticket, coloured by state, hatched if stalled, then "6 left". A strip under the filters shows the notice ("#203 closed 2 min ago · #214 and #216 unblocked · Start next · 2") and an "In the way" list sorted by urgency: stalled on the path, failing CI, needs you, then stalled elsewhere. Cards get a small PR · CI · review icon strip in the corner. Stalled cards are hatched. The panel adds a Pull request section with checks and review.',
+                idea: 'The bell stays (icon only); the Inbox button goes. Amber count for needs-you; a small green dot when only activity is new. Same two-section panel as A, titled "Notifications".',
                 pros: [
-                  'Answers "what\'s in the way" in one row, sorted, without scanning',
-                  'The path reads even when it runs off screen: the meter and step numbers count it',
-                  'Start next sits right next to the news that made it possible',
+                  'Narrowest topbar: 34 px instead of about 120 px',
+                  'A bell is the common pattern for "something wants you"',
                 ],
                 cons: [
-                  'One more full-width bar pushes the canvas down about 45 px',
-                  'The icon-only strip on cards needs hover or the panel to read',
-                  'Hatching and a lane are new visual ideas on the canvas',
+                  'Icon only: "while you were away" history hides behind a symbol that says "alerts"',
+                  'A dot for activity is easy to miss',
                 ],
-              },
-            },
-            {
-              id: 'B-stalled',
-              name: 'Stalled ticket, notice dismissed',
-              src: 'variants/next-b.html?ticket=212&notice=0',
-              note: {
-                idea:
-                  'With the notice dismissed, the strip keeps a quiet "Start next · 2" and the In the way list. #212 is open: a neutral "Stalled for 6 days" banner.',
-                pros: ['The strip stays useful after the news is read'],
-                cons: ['An empty-ish strip on a quiet map is wasted height unless it hides'],
               },
             },
           ],
         },
         {
-          title: 'C · A Next tab in the panel',
-          note: 'The canvas barely changes. The panel gets a Next tab that lists what just unblocked, the path, PRs and stalled tickets.',
+          title: 'One new control',
+          note: 'Same "Inbox" button as A in every case. What changes is how the panel sorts the two kinds and what the count means.',
           items: [
             {
               id: 'C',
-              name: 'Next tab open',
-              src: 'variants/next-c.html',
+              name: 'Two tabs',
+              src: 'variants/inbox.html?v=C',
+              ...FRAME,
               note: {
-                idea:
-                  'A new Next tab, before Brief, with a count badge. It opens on a green "Just now" card: "#203 closed. #214 and #216 are ready." with the two tickets and Start next · 2. It also says why #215 (grilling) is left out. Then the Critical path listed in order ("6 left", with #213 flagged "Holding up the path"), Pull requests with CI and review, and Stalled. On the canvas, path cards get a "1/6" badge, PR cards get a CI glyph after the pill, and stalled cards get a clock. The topbar says "6 left on the critical path" and the primary button says "3 ready", and both open the tab.',
+                idea: 'One panel with two tabs, "Needs you 4" and "Activity 7". It opens on Needs you, or on Activity when nothing needs you. Clear sits only on Activity. Arrow keys switch tabs.',
                 pros: [
-                  'The canvas stays almost untouched',
-                  'The fullest answer: order, reasons and actions in one list',
-                  'The notice has a home that lasts, and the badge shows there is news',
+                  'Each kind gets the full panel height',
+                  'Each tab carries its own count',
                 ],
                 cons: [
-                  'Takes the panel away from the ticket you were reading',
-                  'Signals on the canvas are small; you rely on the tab',
-                  'A third tab makes the panel busier',
+                  'One extra click to see activity',
+                  'Hides one list at a time, so you never see the whole picture at once',
                 ],
               },
             },
             {
-              id: 'C-ticket',
-              name: 'Ticket panel with a PR',
-              src: 'variants/next-c.html?tab=ticket&ticket=211&notice=0',
+              id: 'D',
+              name: 'One timeline',
+              src: 'variants/inbox.html?v=D',
+              ...FRAME,
               note: {
-                idea: 'The ticket tab for #211: one line under the hand-off pill reads "PR #233 · Checks running · Review requested".',
-                pros: ['One compact line, next to the pill'],
-                cons: ['No check counts or reviewer without opening the PR'],
+                idea: 'Everything in one list, newest first. Needs-you rows have an amber bar and kind line; activity rows look like today\'s Inbox. An "All / Needs you" chip filters. The count is everything unread, in today\'s green. "Clear activity" leaves needs-you rows in place.',
+                pros: [
+                  'Shows what happened in order: CI failed, then the PR was reviewed',
+                  'Simplest model: one list, one count',
+                ],
+                cons: [
+                  'Needs-you items sink below newer activity unless you filter',
+                  'The count no longer says whether anything needs you',
+                ],
+              },
+            },
+            {
+              id: 'E',
+              name: 'Needs you first',
+              src: 'variants/inbox.html?v=E',
+              ...FRAME,
+              note: {
+                idea: 'The panel is a "Needs you" list. Map activity is one row at the bottom ("Map activity · 7 new ›") that swaps the panel to the activity list, with a back row. The count is needs-you only; activity never adds to it.',
+                pros: [
+                  'The count only moves when you are actually needed',
+                  'Activity is still one click away, never gone',
+                ],
+                cons: [
+                  'New activity has no signal on the button at all',
+                  'Two levels inside one popover',
+                ],
+              },
+            },
+            {
+              id: 'F',
+              name: 'By map',
+              src: 'variants/inbox.html?v=F',
+              ...FRAME,
+              note: {
+                idea: 'One list grouped by map. Each map has a sticky header ("Map #300 Offline drafts · 3 need you · 5 new"), its needs-you rows first, then its activity. The button shows two counts: amber needs-you and grey "7 new".',
+                pros: [
+                  'Fits the watcher covering every open map (#124 point 5)',
+                  'Both counts visible without opening',
+                ],
+                cons: [
+                  'Widest button',
+                  'A needs-you item on a second map sits below the first map\'s activity',
+                ],
               },
             },
           ],
+        },
+        {
+          title: 'The button in every state',
+          items: [
+            {
+              id: 'S',
+              name: 'Triggers side by side',
+              src: 'variants/inbox.html?sheet=1',
+              width: 1280,
+              height: 700,
+              note: {
+                idea: 'Every option\'s topbar control with nothing new, activity only, needs-you plus activity, and keyboard focus.',
+                pros: ['Compare the closed state, which is what you see most of the time'],
+                cons: ['Static: open each option above to try it'],
+              },
+            },
+          ],
+        },
+        {
+          title: 'Narrow (390 px)',
+          note: 'The label and "Synced" text drop; the panel spans the width.',
+          items: ['T', 'A', 'B', 'C', 'D', 'E', 'F'].map((v) => ({
+            id: `${v}-narrow`,
+            name: `${v === 'T' ? 'Today' : v} at 390 px`,
+            src: `variants/inbox.html?v=${v === 'T' ? 'today' : v}`,
+            ...NARROW,
+            boardWidth: 300,
+            note: `Option ${v === 'T' ? 'Today' : v} on a phone-width page.`,
+          })),
         },
         {
           title: 'Review',
@@ -147,14 +203,11 @@ window.CANVAS = {
               id: 'R',
               kind: 'note',
               name: 'Design review',
-              text: [
-                'Sources: src/ui/styles.css (tokens --state-*, --handoff-*, --state-failed; .node, .chip, .edges, .handoff-pill/card, .banner, .facts, .fchip, .map-start), src/ui/app.ts (nodeHtml, ticketHtml, edges), src/ui/handOffs.ts (handOffPill, handOffCard), src/ui/index.html. The chrome was copied from the live map page (Wayfinder on localhost, map #121).',
-                'No new colour: CI and review reuse --handoff-pr-ready (pass/approved), --state-failed (fail/changes) and --text-muted (running/requested). Each also has its own icon shape and word. Stalled uses neutral grey plus a pattern (dashed, hatched or a clock), never a hue.',
-                'Checked: light and dark in all three pages (Chromium, 1440×900). Selected, dimmed (path focus), done and just-unblocked card states. Keyboard: every new control is a native button; focus is restored after each repaint, and path focus toggles aria-pressed. Cards\' aria-label adds path, PR/CI/review and stalled text. Notices are role="status" aria-live="polite". The pulse respects prefers-reduced-motion.',
-                'Contrast (computed): new text uses --text-secondary/--text-muted on --surface-1 (≥ 4.5:1 in both themes). CI red #b42318 / #ff8782 and green #087008 / #58d66a pass 4.5:1 on their surfaces.',
-                'Findings: in B, extra filter chips wrapped the toolbar to two rows at 1440 px, so they were dropped. The prototype bar covers the panel\'s bottom-right corner (padding added).',
-                'Not checked: screen reader walk-through, Windows High Contrast / forced-colors, widths under 1100 px (panel stacks), the table view, and zoom above 100%.',
-              ].join('\n\n'),
+              text:
+                'Sources: src/ui/styles.css (tokens; .map-inbox-*, .notification-*, .topbar, .synced, .handoff-close), src/ui/index.html topbar, src/ui/mapEventInbox.ts (activity row markup and summaries), src/ui/notifications.ts (KIND_LABEL, bell rows), src/ui/icons.ts.\n\n' +
+                'Checked: light and dark; empty, activity-only and full states; open/closed; hover; keyboard (Tab, Esc returns focus to the button, arrow keys on C\'s tabs); aria-expanded, dialog labels, button names carrying counts ("Inbox, 4 need you, 7 new"); 390 px width.\n\n' +
+                'Findings: (1) Today\'s bell panel uses --surface-0, --hairline-strong and --shadow-float, which styles.css never defines, so it renders transparent with no shadow. Any option that keeps the bell\'s styles must fix this. (2) The amber needs-you count uses --handoff-needs-you on --surface-1: 6.7:1 light (#7a5200 on #fcfcfb) and 10.7:1 dark (#f6c453 on #1a1a19). (3) Today\'s green Inbox count (--state-frontier #0ca30c with --surface-1 text) is 3.3:1 in light (5.2:1 dark), short of 4.5:1 for 11 px text. D keeps it; the other options use amber or grey. (4) "Ready to start" (unblocked) is in today\'s bell but is not a needs-you event in #124 point 6; the options treat it as activity.\n\n' +
+                'Not checked: screen-reader output in NVDA/VoiceOver; Windows high-contrast mode; desktop tray badge and OS notifications (out of scope here); 200% zoom.',
             },
           ],
         },

@@ -1,0 +1,474 @@
+/* PROTOTYPE (#196): one topbar inbox for needs-you alerts and map activity. Uses src/ui/styles.css tokens and classes. */
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body.viz-root {
+  background: var(--plane);
+  color: var(--text-primary);
+  font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.ib-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+}
+
+/* ---------- topbar ---------- */
+.ib-crumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.ib-crumb b {
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+}
+.ib-crumb .i {
+  color: var(--text-muted);
+}
+
+.ib-anchor {
+  position: relative;
+  z-index: 43;
+  flex: none;
+}
+
+/* Needs-you count: the amber the app already uses for hand-offs that need you. */
+.ib-count-need {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--handoff-needs-you);
+  color: var(--surface-1);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.ib-count-quiet {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--wash);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.ib-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--state-frontier);
+}
+.notification-trigger .ib-count-need {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 2px solid var(--surface-1);
+  font-size: 10px;
+}
+.notification-trigger .ib-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  border: 2px solid var(--surface-1);
+}
+.notification-trigger:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+
+/* ---------- panel ---------- */
+.ib-panel {
+  width: min(440px, calc(100vw - 24px));
+}
+.ib-panel .map-inbox-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.ib-section-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 12px 4px 14px;
+  border-top: 1px solid var(--hairline);
+  background: var(--surface-1);
+}
+.ib-section-head:first-child {
+  border-top: 0;
+}
+.ib-section-head h3 {
+  flex: 1;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.ib-section-head .hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.ib-section-head .map-inbox-clear {
+  min-height: 28px;
+}
+
+/* A needs-you row: amber kind line and an amber bar so it reads as "act on this", not news. */
+.ib-need {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--hairline);
+  color: inherit;
+  text-decoration: none;
+}
+.ib-need::before {
+  content: '';
+  position: absolute;
+  inset: 8px auto 8px 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--handoff-needs-you);
+}
+.ib-need.is-read::before {
+  opacity: 0.35;
+}
+.ib-need:hover {
+  background: var(--wash);
+}
+.ib-need:focus-visible,
+.ib-tab:focus-visible,
+.ib-chip:focus-visible,
+.ib-more:focus-visible,
+.ib-back:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: -2px;
+}
+.ib-need > .i {
+  grid-row: 1 / span 3;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: var(--handoff-needs-you);
+}
+.ib-need-kind,
+.ib-need-title,
+.ib-need-scope {
+  grid-column: 2;
+}
+.ib-need-kind {
+  color: var(--handoff-needs-you);
+  font-size: 11px;
+  font-weight: 700;
+}
+.ib-need-title {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ib-need.is-read .ib-need-title {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.ib-need-scope {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.ib-need time {
+  grid-column: 3;
+  grid-row: 1;
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* Activity rows reuse .map-inbox-item; read ones go quiet. */
+.map-inbox-item.is-read .map-inbox-event-title {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.map-inbox-item .ib-act-kind {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.ib-empty {
+  margin: 0;
+  padding: 18px 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* C: tabs */
+.ib-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 10px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.ib-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ib-tab[aria-selected='true'] {
+  border-bottom-color: var(--text-primary);
+  color: var(--text-primary);
+}
+.ib-tab:hover {
+  color: var(--text-primary);
+}
+
+/* D: filter chips */
+.ib-chips {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+.ib-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ib-chip[aria-pressed='true'] {
+  border-color: var(--text-primary);
+  background: var(--wash);
+  color: var(--text-primary);
+}
+
+/* E: footer link to activity, and back */
+.ib-more,
+.ib-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  background: var(--plane);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.ib-more span:first-of-type {
+  flex: 1;
+}
+.ib-more:hover,
+.ib-back:hover {
+  background: var(--wash);
+}
+.ib-back {
+  border-top: 0;
+  border-bottom: 1px solid var(--hairline);
+  background: none;
+  color: var(--text-secondary);
+}
+.ib-more .i,
+.ib-back .i {
+  color: var(--text-muted);
+}
+
+/* F: map groups */
+.ib-map-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 14px 7px;
+  border-top: 1px solid var(--hairline);
+  background: var(--plane);
+}
+.ib-map-head:first-child {
+  border-top: 0;
+}
+.ib-map-head h3 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ib-map-head .ib-need-kind {
+  grid-column: auto;
+  white-space: nowrap;
+}
+.ib-map-head .hint {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* ---------- canvas behind ---------- */
+.ib-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background-image: radial-gradient(var(--gridline) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.ib-ghost {
+  position: absolute;
+  width: 190px;
+  height: 64px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-preview);
+}
+.ib-ghost::before,
+.ib-ghost::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--wash);
+}
+.ib-ghost::before {
+  top: 16px;
+  width: 120px;
+}
+.ib-ghost::after {
+  top: 36px;
+  width: 70px;
+}
+
+/* ---------- trigger sheet ---------- */
+.ib-sheet {
+  padding: 24px 28px;
+  overflow: auto;
+}
+.ib-sheet h1 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.ib-sheet > p {
+  margin: 0 0 18px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.ib-grid {
+  display: grid;
+  grid-template-columns: 200px repeat(4, minmax(150px, 1fr));
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-1);
+}
+.ib-grid > div {
+  display: flex;
+  align-items: center;
+  min-height: 64px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--hairline);
+}
+.ib-grid > .h {
+  min-height: 40px;
+  border-top: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+.ib-grid > .rowname {
+  font-size: 13px;
+  font-weight: 600;
+}
+.ib-grid .ib-pair {
+  display: flex;
+  gap: 6px;
+}
+.ib-forced-focus {
+  outline: 2px solid var(--state-claimed) !important;
+  outline-offset: 2px;
+}
+
+/* Narrow: the label goes, the icon and count stay. */
+@media (max-width: 560px) {
+  .topbar {
+    padding-left: 12px;
+  }
+  .ib-hide-narrow,
+  .map-inbox-label,
+  .synced-label {
+    display: none;
+  }
+  .ib-crumb .ib-map-name {
+    max-width: 120px;
+  }
+  .map-start .topbar-action-label {
+    display: none;
+  }
+  .ib-anchor {
+    position: static;
+  }
+  .ib-panel,
+  .notification-panel {
+    right: 12px;
+    left: 12px;
+    width: auto;
+    top: 64px;
+  }
+}
