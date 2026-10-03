@@ -1555,6 +1555,21 @@ tbody tr.is-selected {
   background: color-mix(in srgb, var(--state-claimed) 10%, transparent);
 }
 
+.table-ticket {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.table-ticket:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 3px;
+}
+
 .cellchip,
 .typecell {
   display: inline-flex;
