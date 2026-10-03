@@ -18,6 +18,8 @@ What the ticket says:
 
 {{worktreeSteps}}
 {{typeSteps}}
+{{mapRules}}
+
 Never run \`git stash\` in a shared checkout. If you need to check whether a
 failure predates your changes, create a throwaway worktree from HEAD and test
 there.
@@ -66,6 +68,10 @@ come out in the format below.
 2. Draft the map and its tickets and show them to the user before creating
    anything. Tickets are research, prototype, grilling, or task, each one small
    enough to close on its own, with the tickets that block it named.
+   The user sees every UI before it is chosen, so a ticket that adds or
+   changes UI needs a prototype ticket that shows that UI. Tickets that change
+   the same part of the app (the same screen, control or code) need one
+   another in a chain, so only one of them is ever next.
 3. Once the user agrees, create the GitHub issues with \`gh\`, creating any
    missing labels first:
    - one map issue labeled \`{{mapLabel}}\` whose body has \`## Destination\`,
@@ -130,10 +136,48 @@ your recommended answer, and wait for their reply before going on. Never treat
 this session as unattended, and never answer, close or record a decision the
 user hasn't agreed to. If you can't reach the user, stop and say so.`;
 
+/**
+ * Rules every ticket on a map gets: the user sees UI before it is chosen, tickets that change the same
+ * part of the app take turns through Needs, and an independent verifier checks the work before it merges.
+ */
+const MAP_RULES = `Rules for every ticket on a map:
+- The user sees every UI before it is chosen. Build only UI that a prototype
+  the user picked shows. If this ticket needs a control, screen, layout or
+  copy that no chosen prototype shows, or would add a second control for
+  something the app already has, don't build it. Stop, tell the user, file a
+  prototype ticket that this one needs, and leave this ticket open.
+- Tickets that change the same part of the app (the same screen, control or
+  code) take turns through Needs, GitHub's blocked-by link. Before you start,
+  read the map's other open tickets. If one changes the same part as this one
+  and neither needs the other, the lower-numbered ticket goes first: add the
+  blocked-by link so the higher-numbered one needs the lower-numbered one. If
+  that leaves this ticket blocked, unassign yourself, tell the user, and stop.
+  A follow-up ticket you file needs every open ticket that changes the same
+  part of the app.
+- Before you merge, have an independent verifier check the work: a fresh agent
+  that didn't write it, on another model when you can (Codex for a Claude
+  session, Claude for a Codex session). Give it the ticket's Done when items
+  word for word, the decisions and the chosen prototype the ticket relies on,
+  and the diff against the base branch. It marks each Done when item Pass,
+  with evidence (a test, a command's output, a screenshot), or Fail, or Not
+  verified. It also answers three questions: Does the diff add or change UI
+  that no chosen prototype shows? Does it add a control for something the app
+  already has one for? Does it change a part of the app that another open
+  ticket on the map also changes, when neither needs the other? Merge only
+  when every item passes and every answer is no. Otherwise fix the work, or
+  keep the ticket open and report what failed. Put the verifier's report in
+  the closing comment.`;
+
 /** Extra instructions for ticket types that need the user, keyed by type. */
 const TYPE_STEPS: Partial<Record<TicketType, string>> = {
-  grilling: HUMAN_IN_THE_LOOP_STEPS,
+  grilling: `${HUMAN_IN_THE_LOOP_STEPS}
+A grilling ticket decides what the app does, not what it looks like. If the
+answer needs new or changed UI, record what that UI must do and file a
+prototype ticket that shows the options. Never record a layout, a placement or
+a control as decided here.`,
   prototype: `${HUMAN_IN_THE_LOOP_STEPS}
+Show the user every option, including any you would drop. Never pick, drop or
+merge options for them: only what they pick here may be built.
 Show the canvas and collect feedback on one option at a time. For each option,
 ask whether they want to Keep, Change, or Combine it. Have them select and copy
 the generated feedback line into the thread, then record their agreed choice
@@ -254,6 +298,7 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
     worktreeSteps: renderTemplate(worktree ? PREPARED_WORKTREE_STEPS : WORKTREE_STEPS, worktreeValues),
     prototypeBranch: prototypeBranch(ticket),
     typeSteps: typeSteps ? `\n${renderTemplate(typeSteps, { prototypeBranch: prototypeBranch(ticket) })}\n` : '',
+    mapRules: MAP_RULES,
     blockedLine,
   }).trim();
 }
