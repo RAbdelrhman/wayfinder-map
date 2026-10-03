@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Config } from './config.js';
+import { branchesByMap } from './github.js';
+import { HandOffStore } from './handOffTracking.js';
+import { prototypeTicketNumber } from './prototypes.js';
 import { startServer } from './server.js';
 import type { ServerT3 } from './server.js';
 import type { Prototype, WayfinderMap } from './types.js';
@@ -22,27 +25,32 @@ const fetchPrototypes = vi.fn(
 );
 const fetchAllPrototypes = vi.fn(
   async (repo: string, maps: readonly WayfinderMap[]): Promise<Prototype[]> =>
-    maps.map((map) => ({
-      branch: `prototype/${String(map.number)}-x`,
-      ticketNumber: map.number,
-      mapNumber: map.number,
-      url: `https://github.com/${repo}/tree/prototype/${String(map.number)}-x`,
-      updatedAt: null,
-      files: ['index.html'],
-      openable: ['index.html'],
-      preview: 'index.html',
-      verdict: null,
-    })),
+    branchesByMap(['refs/heads/prototype/70-x', 'refs/heads/prototype/80-x', 'refs/heads/prototype/90-x'], maps)
+      .flatMap(({ map, branches }) => branches.map((branch) => ({
+        branch,
+        ticketNumber: prototypeTicketNumber(branch)!,
+        mapNumber: map.number,
+        url: `https://github.com/${repo}/tree/${branch}`,
+        updatedAt: null,
+        files: ['index.html'],
+        openable: ['index.html'],
+        preview: 'index.html',
+        verdict: null,
+      }))),
 );
+const fetchMapDetails = vi.fn(async (_options: unknown, unread: readonly WayfinderMap[]) => ({
+  maps: unread.map((candidate) => ({ ...candidate, tickets: map(candidate.number).tickets, ticketsLoaded: true })), warnings: [],
+}));
 const fetchBranchFile = vi.fn(async (repo: string, _branch: string, _file: string) => Buffer.from(`<h1>${repo}</h1>`));
 
-vi.mock('./github.js', () => ({
+vi.mock('./github.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./github.js')>(),
   fetchPrototypes: (repo: string, map: WayfinderMap) => fetchPrototypes(repo, map),
   fetchAllPrototypes: (repo: string, maps: readonly WayfinderMap[]) => fetchAllPrototypes(repo, maps),
   fetchBranchFile: (repo: string, branch: string, file: string) => fetchBranchFile(repo, branch, file),
   fetchMaps: async () => ({ maps: [], warnings: [] }),
   haveMapTicketsChanged: async () => false,
-  fetchMapDetails: async () => ({ maps: [], warnings: [] }),
+  fetchMapDetails: (options: unknown, unread: readonly WayfinderMap[]) => fetchMapDetails(options, unread),
   gh: async () => '',
 }));
 
@@ -77,7 +85,7 @@ function map(number: number): WayfinderMap {
     author: 'octocat',
     visibility: 'private',
     sections: { destination: '', fog: '', decisions: '', notes: '', outOfScope: '' },
-    tickets: [],
+    tickets: [{ number: number * 10, title: 'Prototype ticket', url: '', body: '', type: 'task', labels: [], open: true, assignee: null, blockedBy: [], openBlockers: [], state: 'frontier', updatedAt: null }],
     outside: [],
     criticalPath: { tickets: [], remaining: 0 },
     stalled: [],
@@ -87,14 +95,16 @@ function map(number: number): WayfinderMap {
   };
 }
 
-async function serve(): Promise<Awaited<ReturnType<typeof startServer>>> {
+async function serve(maps?: WayfinderMap[]): Promise<Awaited<ReturnType<typeof startServer>>> {
   return startServer({
     config,
     repo: null,
     template: 'prompt',
     workspaceRoot: null,
     t3,
-    fetcher: async ({ repo }) => ({ maps: [map(repo === 'octo/two' ? 9 : 7)], warnings: [] }),
+    handOffStore: new HandOffStore(),
+    mapWatchStore: { load: async () => null, save: async () => undefined },
+    fetcher: async ({ repo }) => ({ maps: maps ?? [map(repo === 'octo/two' ? 9 : 7)], warnings: [] }),
     homeLoader: async () => {
       throw new Error('not used');
     },
@@ -126,8 +136,34 @@ describe('prototypes on a repository-scoped server', () => {
 
     try {
       const all = await fetch(`${running.url}/api/repos/octo/one/prototypes`).then((response) => response.json());
-      expect(all).toMatchObject([{ branch: 'prototype/7-x', mapNumber: 7 }]);
+      expect(all).toMatchObject([{ branch: 'prototype/70-x', ticketNumber: 70, mapNumber: 7 }]);
       expect(fetchAllPrototypes).toHaveBeenCalledTimes(1);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('includes prototype branches on unread settled maps in the repository gallery', async () => {
+    fetchMapDetails.mockClear();
+    fetchAllPrototypes.mockClear();
+    const settled = { ...map(8), settled: { reason: 'closed' as const, since: '2026-08-01T00:00:00.000Z' }, tickets: [], ticketsLoaded: false };
+    const running = await serve([map(7), settled]);
+
+    try {
+      await fetch(`${running.url}/api/repos/octo/one/snapshot`);
+      expect(fetchMapDetails).not.toHaveBeenCalled();
+      const all = await fetch(`${running.url}/api/repos/octo/one/prototypes`).then((response) => response.json());
+      expect(all).toMatchObject([
+        { branch: 'prototype/70-x', ticketNumber: 70, mapNumber: 7 },
+        { branch: 'prototype/80-x', ticketNumber: 80, mapNumber: 8 },
+      ]);
+      expect(fetchMapDetails).toHaveBeenCalledTimes(1);
+      expect(fetchMapDetails.mock.calls[0]?.[1].map((candidate) => candidate.number)).toEqual([8]);
+      expect(fetchAllPrototypes.mock.calls[0]?.[1].find((candidate) => candidate.number === 8)?.settled).toEqual(settled.settled);
+      const again = await fetch(`${running.url}/api/repos/octo/one/prototypes`).then((response) => response.json());
+      expect(again).toEqual(all);
+      expect(fetchAllPrototypes).toHaveBeenCalledTimes(1);
+      expect(fetchMapDetails).toHaveBeenCalledTimes(1);
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }

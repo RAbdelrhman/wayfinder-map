@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RepositoryStore } from './repositoryStore.js';
 import type { MapDetailFetcher, RepositoryFetcher } from './repositoryStore.js';
 import type { SettleChoices } from './settling.js';
+import type { FetchResult } from './github.js';
 import type { MapSettlement, WayfinderMap } from './types.js';
 
 function store(fetcher: RepositoryFetcher, limit = 10, changeChecker?: (repo: string, mapNumbers: readonly number[]) => Promise<boolean>): RepositoryStore {
@@ -104,6 +105,12 @@ function map(number: number, settled: MapSettlement | null, ticketsLoaded: boole
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 describe('RepositoryStore settling', () => {
   const closed: MapSettlement = { reason: 'closed', since: '2026-08-01T00:00:00.000Z' };
 
@@ -195,5 +202,70 @@ describe('RepositoryStore settling', () => {
   it('has nothing to settle before a repository is read', async () => {
     const { cache } = settlingStore([]);
     expect(await cache.settle('owner/repo', 1, null)).toBeNull();
+  });
+
+  it.each([null, { reason: 'manual', since: '2026-09-27T00:00:00.000Z' } satisfies MapSettlement])(
+    'keeps a newer settle choice when delayed ticket details return: %j',
+    async (settled) => {
+      const details = deferred<FetchResult>();
+      const detailer = vi.fn<MapDetailFetcher>(() => details.promise);
+      const cache = new RepositoryStore({
+        mapLabel: 'wayfinder:map',
+        typePrefix: 'wayfinder:',
+        fetcher: async () => ({ maps: [map(2, closed, false)], warnings: [] }),
+        detailer,
+      });
+      await cache.snapshot('owner/repo');
+      const opened = cache.snapshot('owner/repo', false, [2]);
+      await vi.waitFor(() => expect(detailer).toHaveBeenCalledTimes(1));
+      const choice = cache.settle('owner/repo', 2, settled);
+      details.resolve({ maps: [map(2, closed, true)], warnings: ['detail warning'] });
+
+      await choice;
+      expect((await opened).maps[0]).toMatchObject({ settled, ticketsLoaded: true });
+      expect(cache.cached('owner/repo')?.maps[0]).toMatchObject({ settled, ticketsLoaded: true });
+      expect(cache.cached('owner/repo')?.warnings).toContain('detail warning');
+    },
+  );
+
+  it('loads each caller\'s opened maps after sharing an initial repository load', async () => {
+    const listing = deferred<FetchResult>();
+    const detailer = vi.fn<MapDetailFetcher>(async (_options, unread) => ({
+      maps: unread.map((candidate) => map(candidate.number, candidate.settled, true)), warnings: [],
+    }));
+    const cache = new RepositoryStore({
+      mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher: () => listing.promise, detailer,
+    });
+    const first = cache.snapshot('owner/repo', false, [2]);
+    const second = cache.refreshIfChanged('owner/repo', [3]);
+    listing.resolve({ maps: [map(2, closed, false), map(3, closed, false)], warnings: [] });
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+    expect(firstResult.maps.find((candidate) => candidate.number === 2)?.ticketsLoaded).toBe(true);
+    expect(secondResult.maps.find((candidate) => candidate.number === 3)?.ticketsLoaded).toBe(true);
+    expect(cache.cached('owner/repo')?.maps.every((candidate) => candidate.ticketsLoaded)).toBe(true);
+  });
+
+  it('loads each caller\'s opened maps after sharing a pending change check', async () => {
+    const changed = deferred<boolean>();
+    const changeChecker = vi.fn(() => changed.promise);
+    const detailer = vi.fn<MapDetailFetcher>(async (_options, unread) => ({
+      maps: unread.map((candidate) => map(candidate.number, candidate.settled, true)), warnings: [],
+    }));
+    const fetcher = vi.fn<RepositoryFetcher>(async () => ({ maps: [map(2, closed, false), map(3, closed, false)], warnings: [] }));
+    const cache = new RepositoryStore({
+      mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher, detailer, changeChecker,
+    });
+    await cache.snapshot('owner/repo');
+    const first = cache.refreshIfChanged('owner/repo', [2]);
+    const second = cache.refreshIfChanged('owner/repo', [3]);
+    changed.resolve(true);
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+    expect(firstResult.maps.find((candidate) => candidate.number === 2)?.ticketsLoaded).toBe(true);
+    expect(secondResult.maps.find((candidate) => candidate.number === 3)?.ticketsLoaded).toBe(true);
+    expect(cache.cached('owner/repo')?.maps.every((candidate) => candidate.ticketsLoaded)).toBe(true);
+    expect(changeChecker).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

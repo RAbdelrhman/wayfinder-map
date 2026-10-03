@@ -96,8 +96,8 @@ export class RepositoryStore {
     if (normalized === null) throw new Error(`Invalid repository: ${repo}`);
 
     const entry = this.touch(normalized);
-    if (entry.inFlight !== null) return entry.inFlight;
-    if (entry.refreshInFlight !== null) return entry.refreshInFlight;
+    if (entry.inFlight !== null) return this.withTickets(normalized, await entry.inFlight, open);
+    if (entry.refreshInFlight !== null) return this.withTickets(normalized, await entry.refreshInFlight, open);
     if (entry.snapshot === null) return this.snapshot(normalized, false, open);
 
     const snapshot = entry.snapshot;
@@ -153,7 +153,13 @@ export class RepositoryStore {
     const current = entry.snapshot ?? snapshot;
     const next = {
       ...current,
-      maps: current.maps.map((map) => read.get(map.number) ?? map),
+      maps: current.maps.map((map) => {
+        const details = read.get(map.number);
+        if (details === undefined || map.ticketsLoaded) return map;
+        // A settle choice can arrive while tickets are being read.
+        // Only merge ticket details, leaving the current map issue and settlement intact.
+        return { ...map, tickets: details.tickets, outside: details.outside, criticalPath: details.criticalPath, ticketsLoaded: details.ticketsLoaded };
+      }),
       warnings: [...current.warnings, ...warnings],
     };
     entry.snapshot = next;
