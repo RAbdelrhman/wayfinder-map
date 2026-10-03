@@ -63,6 +63,8 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
   };
 
   autoUpdater.channel = updateChannel(process.arch);
+  // Setting the channel enables downgrades in electron-updater unless reset afterward.
+  autoUpdater.allowDowngrade = false;
   autoUpdater.allowPrerelease = false;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = false;
@@ -144,7 +146,7 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
       if (result && result.updateInfo) {
         const latest = result.updateInfo.version;
         const current = autoUpdater.currentVersion?.version ?? '0.0.0';
-        if (latest && current && latest !== current) {
+        if (result.isUpdateAvailable) {
           currentStatus = {
             status: currentStatus.status === 'ready' ? 'ready' : 'available',
             currentVersion: current,
