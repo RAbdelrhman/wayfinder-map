@@ -306,6 +306,8 @@ window.CANVAS = {
                 pros: ['Lightest: reads as part of the topbar, not a box', 'Matches the control right next to it'],
                 cons: ['Easy to overlook when nothing is new; the count carries the signal'],
                 basedOn: ['DB'],
+                disposition: 'combine',
+                feedback: 'User (3 Oct 2026): "I like quite just change the shape to the shape of ghost." The quiet look (no border or fill until hover/open, secondary text) is kept; the pill shape is replaced. Built as Round 4.',
               },
             },
             {
@@ -326,6 +328,8 @@ window.CANVAS = {
                 pros: ['Same height as Start next, so the right side of the topbar lines up', 'Still clearly a button'],
                 cons: ['A third outline style next to Hand-offs (filled) and Synced (none)'],
                 basedOn: ['DB'],
+                disposition: 'combine',
+                feedback: 'User (3 Oct 2026): "I like quite just change the shape to the shape of ghost." Only the shape (34 px tall, 8 px corners) is taken; the border and look are not. Built as Round 4.',
               },
             },
             {
@@ -355,6 +359,47 @@ window.CANVAS = {
               width: 1280,
               height: 120,
               note: { idea: 'The topbar with the panel closed.', pros: ['What you see most of the time'], cons: ['Static'], basedOn: ['DB'] },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title: 'Round 4: quiet look, ghost shape',
+      round: 4,
+      question: 'The D + B inbox with the quiet button look in the ghost shape. Is this the one?',
+      sections: [
+        {
+          title: 'Quiet + Ghost',
+          note: 'Panel and behaviour as agreed in Round 2.',
+          items: [
+            {
+              id: 'R4',
+              name: 'Quiet look, ghost shape',
+              src: 'variants/inbox.html?v=D2&handoffs=1&btn=quietbox',
+              ...FRAME,
+              note: {
+                idea: 'Bell icon, "Inbox" label and one count of everything unread. No border or fill at rest, secondary text, like Synced. 34 px tall with 8 px corners, like the ghost button and level with Start next. A hairline border and surface fill on hover and while open. At phone width: bell and count only. Panel: one timeline with an All / Needs you filter.',
+                pros: ['Sits quietly next to Synced', 'Lines up with Start next', 'Keeps the Inbox label'],
+                cons: ['The green count stays 3.3:1 in light, short of 4.5:1 for 11 px text'],
+                basedOn: ['R3-quiet', 'R3-ghost'],
+              },
+            },
+            {
+              id: 'R4-closed',
+              name: 'Quiet look, ghost shape, closed',
+              src: 'variants/inbox.html?v=D2&handoffs=1&open=0&btn=quietbox',
+              width: 1280,
+              height: 120,
+              note: { idea: 'The topbar with the panel closed.', pros: ['What you see most of the time'], cons: ['Static'], basedOn: ['R3-quiet', 'R3-ghost'] },
+            },
+            {
+              id: 'R4-narrow',
+              name: 'Quiet look, ghost shape at 390 px',
+              src: 'variants/inbox.html?v=D2&btn=quietbox',
+              ...NARROW,
+              boardWidth: 300,
+              note: { idea: 'Phone width: bell and count only.', pros: ['Narrow'], cons: ['No label at this width'], basedOn: ['R3-quiet', 'R3-ghost'] },
             },
           ],
         },

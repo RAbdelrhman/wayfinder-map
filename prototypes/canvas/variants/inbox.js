@@ -54,7 +54,7 @@
   const params = new URLSearchParams(location.search);
   const V = (params.get('v') || 'A').toUpperCase() === 'TODAY' ? 'today' : (params.get('v') || 'A').toUpperCase();
   const DATA = params.get('data') || 'full';
-  const BTN = ['quiet', 'ghost', 'icon'].includes(params.get('btn')) ? params.get('btn') : '';
+  const BTN = ['quiet', 'ghost', 'icon', 'quietbox'].includes(params.get('btn')) ? params.get('btn') : '';
 
   const state = {
     open: params.get('open') !== '0',
@@ -126,7 +126,7 @@
     if (v === 'E') badge = n ? `<span class="ib-count-need">${n}</span>` : '';
     if (v === 'F') badge = `${n ? `<span class="ib-count-need">${n}</span>` : ''}${a ? `<span class="ib-count-quiet">${a} new</span>` : ''}`;
     const label = v === 'E' ? `Inbox, ${n ? `${n} need you` : 'nothing needs you'}` : `Inbox, ${triggerLabel()}`;
-    const btn = v === 'D2' && BTN ? ` ib-btn-${BTN}` : '';
+    const btn = v === 'D2' && BTN ? (BTN === 'quietbox' ? ' ib-btn-quiet ib-btn-box' : ` ib-btn-${BTN}`) : '';
     return `<div class="ib-anchor"><button type="button" class="map-inbox-trigger${btn}${focus}" title="Inbox" data-act="toggle" ${exp} aria-label="${label}">${icon(v === 'D2' ? 'bell' : 'inbox')}<span class="map-inbox-label">Inbox</span>${badge}</button>`;
   }
 

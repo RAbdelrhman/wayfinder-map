@@ -544,3 +544,9 @@ body.viz-root {
   background: var(--wash);
   color: var(--text-primary);
 }
+
+/* Round 4: the quiet look in the ghost shape. */
+.map-inbox-trigger.ib-btn-quiet.ib-btn-box {
+  height: 34px;
+  border-radius: 8px;
+}
