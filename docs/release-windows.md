@@ -10,7 +10,8 @@ bun install --ignore-scripts
 bun run package:win -- x64
 ```
 
-The output is under `release/x64/`. It is unsigned and may trigger a Windows warning.
+The output is under `release/x64/`. Without signing credentials it is unsigned and may
+trigger a Windows warning.
 The installer is named `Wayfinder-<version>-x64-Test-Setup.exe` so it cannot be
 mistaken for a public release, and it never updates itself. Use the ARM64 argument to
 cross-package that architecture; an ARM64 artifact is not considered verified until
@@ -56,8 +57,8 @@ publishing needs an npm account and token the repository does not have.
 
 ## Code signing
 
-Releases are not code-signed. Windows SmartScreen warns on the first install, and the
-updater does not check a publisher signature (`verifyUpdateCodeSignature: false`).
+Without signing credentials, releases are not code-signed and Windows SmartScreen may
+warn on the first install. Either way, the updater does not check a publisher signature (`verifyUpdateCodeSignature: false`).
 Updates are trusted on GitHub's HTTPS and the sha512 that `latest-*.yml` records for
 each installer, so anyone who can publish a release on this repository can ship an
 update.
@@ -80,7 +81,7 @@ of them: they need one manual install of a stable release.
 Source and unsigned packaging do not prove the public support matrix. Before a
 stable release is announced, record all of the following:
 
-- An update from the previous stable release to this one.
+- If a previous stable release exists, an update from it to this one.
 - Windows 10 install, launch, tray, update, and uninstall.
 - Windows 11 install, launch, tray, update, and uninstall.
 - Real Windows ARM64 install, launch, tray, update, T3 hand-off or copy fallback,

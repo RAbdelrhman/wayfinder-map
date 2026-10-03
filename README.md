@@ -43,7 +43,7 @@ current page, go Home, start a new map, or quit. Quit stops the loopback server
 and revokes the in-memory T3 Code session.
 
 The first public release targets Windows 10 and Windows 11 on x64 and ARM64. Installers
-are not code-signed, so Windows SmartScreen warns on first install: choose **More info**
+are not code-signed, so Windows SmartScreen may warn on first install: choose **More info**
 then **Run anyway**. Stable releases then update themselves in the background. `gh` remains an explicit prerequisite; if it
 is missing or signed out, Home stays available and shows the diagnostic with a link
 to install or sign in to GitHub CLI. Architecture-specific installed-flow gates are documented in
