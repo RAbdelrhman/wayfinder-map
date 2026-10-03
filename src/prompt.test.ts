@@ -67,6 +67,25 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('File any follow-up\ntickets as sub-issues of map #4');
   });
 
+  it('gives every map ticket the UI, Needs and verifier rules, before the close-out', () => {
+    for (const type of ['task', 'research', 'grilling', 'prototype'] as const) {
+      const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type } });
+      expect(prompt).toContain('The user sees every UI before it is chosen.');
+      expect(prompt).toContain('take turns through Needs');
+      expect(prompt).toContain('the lower-numbered ticket goes first');
+      expect(prompt).toContain('have an independent verifier check the work');
+      expect(prompt).toContain('Merge only\n  when every item passes');
+      expect(prompt).not.toContain('{{mapRules}}');
+      expect(prompt.indexOf('Rules for every ticket')).toBeLessThan(prompt.indexOf('Close it the way'));
+    }
+  });
+
+  it('keeps layout decisions out of grilling and every option in front of the user on prototypes', () => {
+    expect(buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'grilling' } })).toContain('decides what the app does, not what it looks like');
+    const prototype = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
+    expect(prototype).toContain('Show the user every option, including any you would drop.');
+  });
+
   it('sends prototype tickets to their prototype/<n>-<slug> branch', () => {
     const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
     expect(prompt).toContain('commit it to the branch prototype/11-retire-api-agents-once-nothing-needs-it');
@@ -227,6 +246,11 @@ describe('buildNewMapPrompt', () => {
     expect(prompt).toContain('labeled `wayfinder:<type>`');
     expect(prompt).toContain('sub-issue');
     expect(prompt).toContain("Use the user's goal as the map issue title, normalizing whitespace only.");
+  });
+
+  it('puts UI behind a prototype and chains tickets that change the same part of the app', () => {
+    expect(prompt).toContain('needs a prototype ticket that shows that UI');
+    expect(prompt).toContain('need one\n   another in a chain');
   });
 
   it('uses the configured labels', () => {
