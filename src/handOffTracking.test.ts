@@ -161,6 +161,165 @@ describe('representativeHandOffs', () => {
 });
 
 describe('HandOffStore', () => {
+  it('preserves acknowledgements and ticket closure when a stale store writes a new ticket', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    try {
+      const first = new HandOffStore({ filePath });
+      const saved = await first.record(input);
+      const stale = new HandOffStore({ filePath });
+      await stale.list();
+      await first.acknowledge(saved.id);
+      await first.setTicketClosed(saved.id);
+
+      const added = await stale.record({ ...input, ticketNumber: 12, threadId: 'thread-2' });
+
+      const persisted = await new HandOffStore({ filePath }).list();
+      expect(persisted).toHaveLength(2);
+      expect(persisted.find((item) => item.id === saved.id)).toMatchObject({ acknowledged: true, ticketClosedAt: expect.any(String) });
+      expect(persisted.find((item) => item.id === added.id)).toBeDefined();
+      await expect(stale.list()).resolves.toEqual(persisted);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves same-record acknowledgements and model-change reasons during stale tracking refreshes', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    const now = () => new Date('2026-10-03T12:00:00.000Z');
+    try {
+      const first = new HandOffStore({ filePath, now });
+      const auto = buildAutoDecision({
+        scoring: { version: 'rules-1', reason: 'Test tracking' },
+        proposed: { tier: 'mid', provider: 'codex', model: 'original', effort: 'high' },
+        final: { tier: 'mid', provider: 'codex', model: 'original', effort: 'high' },
+      }, now());
+      const saved = await first.record({ ...input, auto });
+      const snapshot = (sequence: number, model: string, status = 'running') => ({
+        snapshotSequence: sequence,
+        threads: [{ id: input.threadId, session: { status }, modelSelection: { instanceId: 'codex', model } }],
+      });
+      await first.applySnapshot('env-1', input.t3Origin, snapshot(1, 'changed'));
+      const stale = new HandOffStore({ filePath, now });
+      await stale.list();
+      await first.acknowledge(saved.id);
+      await first.confirmModelChange(saved.id, now().toISOString(), 'preference');
+      await first.setTicketClosed(saved.id);
+
+      await stale.applySnapshot('env-1', input.t3Origin, snapshot(2, 'next', 'ready'));
+
+      const [persisted] = await new HandOffStore({ filePath }).list();
+      expect(persisted).toMatchObject({
+        acknowledged: true, ticketClosedAt: now().toISOString(), status: 'ready', sequence: 2,
+        auto: { current: { model: 'next' }, modelChanges: [
+          { to: { model: 'changed' }, reason: 'preference', askedAt: now().toISOString() },
+          { to: { model: 'next' }, reason: 'unknown' },
+        ] },
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('checks sequence freshness against the latest persisted tracking state', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    try {
+      const first = new HandOffStore({ filePath });
+      await first.record(input);
+      const stale = new HandOffStore({ filePath });
+      await stale.list();
+      await first.applySnapshot('env-1', input.t3Origin, {
+        snapshotSequence: 20, threads: [{ id: input.threadId, session: { status: 'running' } }],
+      });
+      await stale.applySnapshot('env-1', input.t3Origin, {
+        snapshotSequence: 10, threads: [{ id: input.threadId, session: { status: 'error', lastError: 'Old failure' } }],
+      });
+      await expect(new HandOffStore({ filePath }).list()).resolves.toMatchObject([{ status: 'running', sequence: 20, lastError: null }]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('updates the latest PR refs without overwriting newer tracking fields', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    const url = 'https://github.com/octo/one/pull/23';
+    try {
+      const first = new HandOffStore({ filePath });
+      const saved = await first.record(input);
+      const stale = new HandOffStore({ filePath });
+      await stale.list();
+      await first.applySnapshot('env-1', input.t3Origin, {
+        snapshotSequence: 20,
+        threads: [{ id: input.threadId, session: { status: 'running' }, pullRequests: [{ url, state: 'OPEN' }] }],
+      });
+
+      await stale.setPullRequestState(saved.id, url, { state: 'MERGED', mergedAt: '2026-10-03T12:00:00.000Z' });
+      await stale.acknowledge(saved.id);
+
+      await expect(new HandOffStore({ filePath }).list()).resolves.toMatchObject([{
+        status: 'running', sequence: 20, acknowledged: true,
+        pullRequests: [{ url, state: 'MERGED', mergedAt: '2026-10-03T12:00:00.000Z' }],
+      }]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('continues using the latest file after a failed operation', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    try {
+      const store = new HandOffStore({ filePath });
+      const saved = await store.record(input);
+      const contents = await readFile(filePath, 'utf8');
+      await writeFile(filePath, 'invalid json', 'utf8');
+      await expect(store.acknowledge(saved.id)).rejects.toThrow();
+      await expect(readFile(`${filePath}.lock`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+
+      await writeFile(filePath, contents, 'utf8');
+      await expect(store.acknowledge(saved.id)).resolves.toBe(true);
+      await expect(new HandOffStore({ filePath }).list()).resolves.toMatchObject([{ acknowledged: true }]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('does not restore a removed thread when a stale store writes another ticket', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    try {
+      const first = new HandOffStore({ filePath });
+      await first.record({ ...input, environmentId: 'env-1' });
+      const stale = new HandOffStore({ filePath });
+      await stale.list();
+      await first.applyEvent('env-1', input.t3Origin, { kind: 'thread-removed', threadId: input.threadId });
+      const added = await stale.record({ ...input, ticketNumber: 12, threadId: 'thread-2' });
+      await expect(new HandOffStore({ filePath }).list()).resolves.toMatchObject([{ id: added.id }]);
+      await expect(stale.list()).resolves.toHaveLength(1);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['snapshot', 'synchronized'])('applies a %s event inside one store transaction', async (kind) => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    try {
+      const store = new HandOffStore({ filePath });
+      await store.record(input);
+      await store.applyEvent('env-1', input.t3Origin, {
+        kind, sequence: 7,
+        snapshot: { threads: [{ id: input.threadId, session: { status: 'running' } }] },
+      });
+      await expect(new HandOffStore({ filePath }).list()).resolves.toMatchObject([{ status: 'running', sequence: 7 }]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('keeps records written concurrently by separate store instances', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
     const filePath = join(directory, 'hand-offs.json');
