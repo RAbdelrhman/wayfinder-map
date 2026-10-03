@@ -219,6 +219,9 @@ describe('finished hand-offs', () => {
     expect(cardShowsHandOff('claimed', handOff())).toBe(true);
     expect(cardShowsHandOff('done', handOff({ status: 'failed' }))).toBe(false);
     expect(cardShowsHandOff('done', merged)).toBe(false);
+    // #173: its PR merged, but the ticket stays open and claimed, so the card says claimed, not Merged.
+    expect(cardShowsHandOff('claimed', merged)).toBe(false);
+    expect(cardShowsHandOff('claimed', handOff({ status: 'ready', ticketClosed: true }))).toBe(false);
   });
 
   it('shows Done once the ticket closes, instead of waiting on an idle thread', () => {

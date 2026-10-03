@@ -98,15 +98,21 @@ describe('combineUsage', () => {
 
 describe('UsageReadings', () => {
   it('refreshes Codex only when the reading is stale, sharing one read between callers', async () => {
-    const read = vi.fn(async () => codexResult(10, 10));
-    const readings = new UsageReadings(read);
-    await Promise.all([readings.refresh(now), readings.refresh(now)]);
-    expect(read).toHaveBeenCalledTimes(1);
-    expect(readings.snapshot()[CODEX_INSTANCE]?.state).toBe('available');
-    await readings.refresh(new Date());
-    expect(read).toHaveBeenCalledTimes(1);
-    await readings.refresh(later(USAGE_FRESH_MS * 2 + Date.now() - now.getTime()));
-    expect(read).toHaveBeenCalledTimes(2);
+    // A reading is stamped with the clock, so pin it to the windows' day.
+    vi.useFakeTimers({ toFake: ['Date'], now });
+    try {
+      const read = vi.fn(async () => codexResult(10, 10));
+      const readings = new UsageReadings(read);
+      await Promise.all([readings.refresh(now), readings.refresh(now)]);
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(readings.snapshot()[CODEX_INSTANCE]?.state).toBe('available');
+      await readings.refresh(new Date());
+      expect(read).toHaveBeenCalledTimes(1);
+      await readings.refresh(later(USAGE_FRESH_MS * 2));
+      expect(read).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('stays unknown when Codex cannot be read', async () => {
