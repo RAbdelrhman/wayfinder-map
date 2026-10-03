@@ -14,7 +14,7 @@ Research for [#206](https://github.com/RAbdelrhman/wayfinder-map/issues/206) on 
 
 - The tile's **Canvas** button and every variant tile are `target="_blank"` links (`src/ui/prototypeBoard.ts:213`, `:223`; `src/ui/prototypeTile.ts:63`, `:71`). On desktop, `setWindowOpenHandler` sends them to `shell.openExternal` (`src/desktop/main.ts:128`).
 - Previews are already sandboxed twice: `PROTOTYPE_CSP` on the response (`src/server.ts:81`) and `sandbox="allow-scripts"` on the iframe (`src/ui/prototypeBoard.ts:178`, `src/ui/prototypeTile.ts:64`). The effective sandbox is the intersection of the two, so forms, popups, modals and downloads are blocked in the preview.
-- Every `/proto/…` file is one `gh api …/contents/…?ref=<branch>` call (`src/github.ts:1025`), served with `cache-control: no-store` (`src/server.ts:1352`). Nothing is cached, so every open is cold.
+- Every `/proto/…` file is one `gh api …/contents/…?ref=<branch>` call (`src/github.ts:1025`), served with `cache-control: no-store` (`src/server.ts:1357`). Nothing is cached, so every open is cold.
 - The canvas engine (`prototypes/canvas/canvas.js`) keeps its page and presented item in `location.hash` (`#page/B`, lines 508, 588, 666). It tags each option frame with `data-frame="<id>"` (line 356), zooms with CSS `zoom` on `#stage` (line 429), and pans by scrolling `#board` (lines 449–458). It already uses `postMessage`, but only between its own option frames and the board (`canvasHeight`, lines 136 and 401).
 
 ## What was measured
