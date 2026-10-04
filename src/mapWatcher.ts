@@ -420,7 +420,7 @@ export function createGithubMapWatchReader(runApi: (args: string[]) => Promise<s
       let changed = previous === undefined;
       let rateLimit: RateLimit | null = null;
       let pollIntervalSeconds: number | null = null;
-      const read = async (route: string, cached?: CachedWatchResource, page?: number): Promise<CachedWatchResource> => {
+      const read = async (route: string, cached?: CachedWatchResource, page?: number, bodyMember = false): Promise<CachedWatchResource> => {
         const args = ['api', '-i', '-X', 'GET'];
         if (cached?.etag !== null && cached?.etag !== undefined) args.push('-H', `If-None-Match: ${cached.etag}`);
         if (page !== undefined) args.push('-F', 'per_page=100', '-F', `page=${String(page)}`);
@@ -431,11 +431,11 @@ export function createGithubMapWatchReader(runApi: (args: string[]) => Promise<s
         const interval = Number(response.headers['x-poll-interval']);
         if (Number.isFinite(interval) && interval > 0) pollIntervalSeconds = Math.max(pollIntervalSeconds ?? 0, interval);
         if (response.status === 304 && cached !== undefined) return cached;
-        // A missing native endpoint still permits body membership, as the visible map loader does.
-        if (response.status === 404 && page !== undefined && rateLimit?.remaining !== 0) {
+        // Missing membership resources do not hide readable children; a missing parent still fails.
+        if (response.status === 404 && (page !== undefined || bodyMember) && rateLimit?.remaining !== 0) {
           if (cached?.unavailable === true) return cached;
           changed = true;
-          return { value: [], etag: null, next: false, unavailable: true };
+          return { value: bodyMember ? {} : [], etag: null, next: false, unavailable: true };
         }
         if (response.status !== 200) throw new Error(rateLimit?.remaining === 0 ? RATE_LIMIT_WARNING : `GitHub answered ${String(response.status)} for map #${String(mapNumber)}.`);
         changed = true;
@@ -462,7 +462,7 @@ export function createGithubMapWatchReader(runApi: (args: string[]) => Promise<s
       const bodyIssues = new Map<number, CachedWatchResource>();
       for (const number of parseChildNumbers(typeof body === 'string' ? body : '', repo)) {
         if (number === mapNumber || attached.has(number)) continue;
-        bodyIssues.set(number, await read(`repos/${repo}/issues/${String(number)}`, previous?.bodyIssues.get(number)));
+        bodyIssues.set(number, await read(`repos/${repo}/issues/${String(number)}`, previous?.bodyIssues.get(number), undefined, true));
       }
       const token = JSON.stringify([parent.etag, [...pages].map(([page, resource]) => [page, resource.etag]), [...bodyIssues].map(([number, resource]) => [number, resource.etag])]);
       cachedMaps.delete(id);

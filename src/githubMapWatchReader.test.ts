@@ -14,6 +14,50 @@ const response = (body: unknown, etag: string, link = '') => `HTTP/2.0 200 OK\r\
 beforeEach(() => { mocks.read.mockReset(); });
 
 describe('production GitHub map watcher membership', () => {
+  it('keeps native and readable body members while skipping missing body members across polls', async () => {
+    const reader = createGithubMapWatchReader(mocks.read);
+    const missing = new Set([13]);
+    mocks.read.mockImplementation(async (args) => {
+      const route = args.find((arg) => arg.startsWith('repos/')) ?? '';
+      if (route.endsWith('/sub_issues')) return args.includes('If-None-Match: "native"') ? 'HTTP/2.0 304 Not Modified\r\n\r\n' : response([issue(11)], '"native"');
+      const number = Number(route.split('/').at(-1));
+      if (missing.has(number)) return 'HTTP/2.0 404 Not Found\r\n\r\n{}';
+      const etag = `"issue-${String(number)}"`;
+      if (args.includes(`If-None-Match: ${etag}`)) return 'HTTP/2.0 304 Not Modified\r\n\r\n';
+      return response(number === 5 ? { body: '- [ ] #12\n- [ ] #13' } : issue(number), etag);
+    });
+    const first = await reader.readMap('body/missing', 5, null);
+    if (first.status !== 'changed') throw new Error('Expected baseline');
+    expect(first.tickets.map((ticket) => ticket.number)).toEqual([11, 12]);
+    expect((await reader.readMap('body/missing', 5, first.etag)).status).toBe('unchanged');
+
+    missing.add(12);
+    const removed = await reader.readMap('body/missing', 5, first.etag);
+    if (removed.status !== 'changed') throw new Error('Expected disappeared member');
+    expect(removed.tickets.map((ticket) => ticket.number)).toEqual([11]);
+    expect((await reader.readMap('body/missing', 5, removed.etag)).status).toBe('unchanged');
+
+    missing.delete(13);
+    const restored = await reader.readMap('body/missing', 5, removed.etag);
+    if (restored.status !== 'changed') throw new Error('Expected restored member');
+    expect(restored.tickets.map((ticket) => ticket.number)).toEqual([11, 13]);
+  });
+
+  it.each([
+    ['parent', 'HTTP/2.0 404 Not Found\r\n\r\n{}', 'GitHub answered 404'],
+    ['body', 'HTTP/2.0 403 Forbidden\r\n\r\n{}', 'GitHub answered 403'],
+    ['body', 'HTTP/2.0 404 Not Found\r\nx-ratelimit-limit: 5000\r\nx-ratelimit-remaining: 0\r\nx-ratelimit-reset: 2000000000\r\n\r\n{}', 'rate limit'],
+  ])('keeps %s failure visible instead of treating it as missing membership', async (kind, failure, message) => {
+    const reader = createGithubMapWatchReader(mocks.read);
+    mocks.read.mockImplementation(async (args) => {
+      const route = args.find((arg) => arg.startsWith('repos/')) ?? '';
+      if (route.endsWith('/5')) return kind === 'parent' ? failure : response({ body: '- [ ] #12' }, '"map"');
+      if (route.endsWith('/sub_issues')) return response([issue(11)], '"native"');
+      return failure;
+    });
+    await expect(reader.readMap('body/failure', 5, null)).rejects.toThrow(message);
+  });
+
   it('does not watch a map as its own child when its body links back to itself', async () => {
     const reader = createGithubMapWatchReader(mocks.read);
     mocks.read.mockImplementation(async (args) => {
