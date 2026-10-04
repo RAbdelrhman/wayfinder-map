@@ -161,6 +161,47 @@ describe('representativeHandOffs', () => {
 });
 
 describe('HandOffStore', () => {
+  it.each(['recovered', 'another usage error', 'removed'])('discards a cached raw error after another store reports %s', async (change) => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    const now = () => new Date('2026-10-03T12:00:00.000Z');
+    const message = 'You have hit your usage limit. Resets in 2h.';
+    try {
+      const first = new HandOffStore({ filePath, now });
+      const { id } = await first.record(input);
+      await first.applySnapshot('env-1', input.t3Origin, {
+        snapshotSequence: 1,
+        threads: [{ id: input.threadId, session: { status: 'error', lastError: message } }],
+      });
+      const other = new HandOffStore({ filePath, now });
+
+      // User metadata and repeated reads do not change the tracking generation.
+      await other.acknowledge(id);
+      await first.list();
+      await first.list();
+      expect(first.rawError(id)).toBe(message);
+
+      if (change === 'removed') {
+        await other.applyEvent('env-1', input.t3Origin, { kind: 'thread-removed', threadId: input.threadId });
+      } else {
+        await other.applySnapshot('env-1', input.t3Origin, {
+          snapshotSequence: 2,
+          threads: [{ id: input.threadId, session: change === 'recovered'
+            ? { status: 'running' }
+            : { status: 'error', lastError: 'You have hit your usage limit. Resets in 7 days.' } }],
+        });
+      }
+
+      const records = await first.list();
+      expect(first.rawError(id)).toBeUndefined();
+      if (change === 'removed') expect(records).toEqual([]);
+      else expect(records[0]?.sequence).toBe(2);
+      expect(await readFile(filePath, 'utf8')).not.toContain('Resets in');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('preserves acknowledgements and ticket closure when a stale store writes a new ticket', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
     const filePath = join(directory, 'hand-offs.json');

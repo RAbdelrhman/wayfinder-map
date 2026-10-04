@@ -825,6 +825,7 @@ export class HandOffStore {
 
   private drop(handOffs: ReadonlySet<StoredHandOff>): boolean {
     if (handOffs.size === 0) return false;
+    for (const handOff of handOffs) this.rawErrors.delete(handOff.id);
     this.records = this.current().filter((item) => !handOffs.has(item));
     return true;
   }
@@ -862,7 +863,24 @@ export class HandOffStore {
       await mkdir(dirname(filePath), { recursive: true, mode: 0o700 });
       const release = await acquireStoreLock(`${filePath}.lock`);
       try {
-        this.records = await readStoredHandOffs(filePath);
+        const next = await readStoredHandOffs(filePath);
+        const previousById = new Map(this.records?.map((handOff) => [handOff.id, handOff]));
+        const nextById = new Map(next.map((handOff) => [handOff.id, handOff]));
+        const trackingFields = [
+          'environmentId', 'threadId', 'sequence', 'lastSeenAt', 'status',
+          'rawSessionStatus', 'rawTurnState', 'lastError',
+        ] as const;
+        // Raw messages belong to the locally observed tracking generation, not
+        // to acknowledgements or other metadata written by another process.
+        for (const id of this.rawErrors.keys()) {
+          const previous = previousById.get(id);
+          const current = nextById.get(id);
+          if (previous === undefined || current === undefined
+            || trackingFields.some((field) => previous[field] !== current[field])) {
+            this.rawErrors.delete(id);
+          }
+        }
+        this.records = next;
         if (this.prune()) await this.persist();
         return await operation();
       } finally {
