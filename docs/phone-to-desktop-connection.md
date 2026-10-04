@@ -13,9 +13,10 @@ servers from anywhere.
 
 **Wayfinder** listens on `127.0.0.1:4478` (`src/config.ts`). It has no login. What
 keeps other machines out is the loopback bind itself. On top of that, `src/server.ts`
-rejects `/api/*` calls whose Origin is not its own loopback page (`originAllowed`), and
-prototype files whose Host is not loopback (`hostAllowed`), so other websites in the
-browser cannot drive it. That is the right shape for a local page and the wrong one for
+rejects `/api/*` calls that carry an Origin other than its own loopback page
+(`originAllowed`; a request with no Origin passes), and prototype files and screenshots
+whose Host is not loopback (`hostAllowed`), so other websites in the browser cannot
+drive it. That is the right shape for a local page and the wrong one for
 a phone. The same server also answers
 `/api/shutdown`, `/api/auth/*` (the user's GitHub login) and `/api/updater/install`, so
 it cannot simply be opened to the network as it is.
@@ -101,13 +102,13 @@ a public hostname that forwards to a loopback port
 - **Security.** No inbound ports, real TLS. But the hostname is on the public internet:
   "accessible to anyone on the internet" until an Access application is put in front of
   it ([create a tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-remote-tunnel/)).
-  A native app cannot do Access's browser login, so the usual fit is a service token
-  sent as `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. The token
+  Access's default login is an interactive browser page, which a native app does not
+  handle well, so a simple fit is a service token sent as `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. The token
   expires after the lifetime chosen when it is created
   ([service tokens](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/)).
   Cloudflare terminates TLS, so it sees the traffic in clear.
 - **Setup.** A domain added to Cloudflare, a named tunnel, a published route, an Access
-  application and policy, and a service token copied to the phone. Quick Tunnels skip
+  application and policy, and a credential for the phone (for example a service token). Quick Tunnels skip
   the domain but get a new random hostname each time, have no uptime guarantee, cap
   in-flight requests at 200, and do not support Server-Sent Events
   ([Quick Tunnels](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)),
@@ -153,7 +154,7 @@ Code offers.
 - **Setup.** Already done for LAN on this machine. T3 Connect is a sign-in plus a toggle
   in **Settings → Connections**.
 - **Cost.** No price is published in T3 Code's docs. Its relay pays Cloudflare per
-  tunnel and reclaims idle ones, and has a per-account `environment_link_limit_exceeded`
+  tunnel, has code to reclaim idle ones, and has a per-account `environment_link_limit_exceeded`
   limit ([remote access](https://github.com/pingdotgg/t3code/blob/main/docs/user/remote-access.md#t3-connect-troubleshooting)).
 - **Offline and moving.** T3 Connect works from any network with no VPN on the phone.
   When the host sleeps it goes offline. If the relay's idle cleanup is on, it removes
