@@ -241,6 +241,7 @@ export class T3HandOff {
     const origin = runtime.origin;
     const pid = runtime.pid;
     const key = `${origin}#${String(pid)}`;
+    if (this.api?.key === key) return { api: this.api.api, command: this.api.command, origin };
     if (this.api?.key !== key) {
       this.api?.api.revoke();
       this.api = null;

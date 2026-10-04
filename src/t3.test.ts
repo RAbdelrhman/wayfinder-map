@@ -9,6 +9,7 @@ const t3Mocks = vi.hoisted(() => ({
   serverCommand: vi.fn<(pid: number) => Promise<{ exe: string; script: string } | null>>(),
   apiCreated: vi.fn<() => void>(),
   issueSession: vi.fn<() => void>(),
+  revokeSession: vi.fn<() => void>(),
 }));
 
 vi.mock('./t3Api.js', async (importOriginal) => {
@@ -21,7 +22,7 @@ vi.mock('./t3Api.js', async (importOriginal) => {
       t3Mocks.apiCreated();
     }
 
-    revoke(): void {}
+    revoke(): void { t3Mocks.revokeSession(); }
 
     snapshot(): Promise<{ projects: never[] }> {
       this.session ??= Promise.resolve().then(t3Mocks.issueSession);
@@ -38,6 +39,7 @@ beforeEach(() => {
   t3Mocks.serverCommand.mockReset();
   t3Mocks.apiCreated.mockReset();
   t3Mocks.issueSession.mockReset();
+  t3Mocks.revokeSession.mockReset();
 });
 
 const input = (workspaceRoot: string | null): HandOffInput => ({
@@ -116,6 +118,35 @@ describe('worktreePathFor', () => {
 });
 
 describe('T3HandOff connection', () => {
+  it('reuses an established connection across sequential calls and revokes it on close', async () => {
+    t3Mocks.serverCommand.mockResolvedValue({ exe: 't3', script: 'server.mjs' });
+    const handOff = new T3HandOff();
+    await expect(handOff.projects(runtime)).resolves.toEqual([]);
+    await expect(handOff.projects(runtime)).resolves.toEqual([]);
+    await expect(handOff.projects(runtime)).resolves.toEqual([]);
+    expect(t3Mocks.serverCommand).toHaveBeenCalledTimes(1);
+    expect(t3Mocks.apiCreated).toHaveBeenCalledTimes(1);
+    expect(t3Mocks.issueSession).toHaveBeenCalledTimes(1);
+    expect(t3Mocks.revokeSession).not.toHaveBeenCalled();
+    handOff.close();
+    expect(t3Mocks.revokeSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces the cached connection when the runtime changes and revokes each session', async () => {
+    t3Mocks.serverCommand.mockResolvedValue({ exe: 't3', script: 'server.mjs' });
+    const handOff = new T3HandOff();
+    await handOff.projects(runtime);
+    const restarted = { ...runtime, origin: 'http://127.0.0.1:3774', pid: 43 };
+    await handOff.projects(restarted);
+    await handOff.projects(restarted);
+    expect(t3Mocks.apiCreated).toHaveBeenCalledTimes(2);
+    expect(t3Mocks.issueSession).toHaveBeenCalledTimes(2);
+    expect(t3Mocks.serverCommand.mock.calls).toEqual([[42], [43]]);
+    expect(t3Mocks.revokeSession).toHaveBeenCalledTimes(1);
+    handOff.close();
+    expect(t3Mocks.revokeSession).toHaveBeenCalledTimes(2);
+  });
+
   it('shares one cold connection and session across concurrent callers', async () => {
     let resolveCommand!: (command: { exe: string; script: string } | null) => void;
     const command = new Promise<{ exe: string; script: string } | null>((resolve) => {
