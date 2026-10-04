@@ -174,7 +174,7 @@ describe('AutoMapService', () => {
   });
 
   describe('starting what becomes next', () => {
-    it.each(['disable', 'restart', 'close'] as const)('invalidates a prepared start after %s while catalog loading waits', async (change) => {
+    it.each(['disable', 'restart', 'tier', 'close'] as const)('invalidates a prepared start after %s while catalog loading waits', async (change) => {
       let release!: () => void;
       let entered!: () => void;
       const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -185,6 +185,7 @@ describe('AutoMapService', () => {
       const flushing = h.service.flush();
       await reading;
       if (change === 'close') h.service.close();
+      else if (change === 'tier') await h.service.change('octo/one', 5, { op: 'tier', tier: 'hard' });
       else {
         await h.service.change('octo/one', 5, { op: 'disable' });
         if (change === 'restart') await h.service.change('octo/one', 5, { op: 'enable' });
@@ -192,6 +193,35 @@ describe('AutoMapService', () => {
       release();
       await flushing;
       expect(h.submits).toEqual([]);
+      expect(h.service.view().notices.map((notice) => [notice.kind, notice.ticketNumber]))
+        .toEqual(change === 'close' ? [] : [['unblocked', 11]]);
+      h.service.close();
+    });
+
+    it.each(['tier', 'restart'] as const)('preserves every pending event when %s precedes another ticket becoming next', async (change) => {
+      const h = harness({ batchMs: 400 });
+      await h.service.change('octo/one', 5, { op: 'enable', tier: 'mid' });
+      h.emit(next(11));
+      if (change === 'tier') await h.service.change('octo/one', 5, { op: 'tier', tier: 'hard' });
+      else {
+        await h.service.change('octo/one', 5, { op: 'disable' });
+        await h.service.change('octo/one', 5, { op: 'enable' });
+      }
+      h.emit(next(12));
+      await h.service.flush();
+      const accounted = [
+        ...h.submits.flatMap((submit) => submit.body.tickets.map((entry) => entry.ticket)),
+        ...h.service.view().notices.map((notice) => notice.ticketNumber),
+      ].sort();
+      expect(accounted).toEqual([11, 12]);
+      expect(h.submits).toEqual([]);
+      expect(h.service.view().notices.map((notice) => notice.ticketNumber).sort()).toEqual([11, 12]);
+      await h.service.flush();
+      expect(h.service.view().notices).toHaveLength(2);
+      h.emit(next(13));
+      await h.service.flush();
+      expect(h.submits).toHaveLength(1);
+      expect(h.submits[0]?.body.tickets).toEqual([{ ticket: 13, tier: change === 'tier' ? 'hard' : 'mid', model: null }]);
       h.service.close();
     });
 
