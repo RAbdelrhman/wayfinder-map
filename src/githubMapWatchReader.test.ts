@@ -43,6 +43,38 @@ describe('production GitHub map watcher membership', () => {
     expect(read.tickets.map((ticket) => ticket.number)).toEqual([12]);
   });
 
+  it('treats a repeated unavailable native endpoint as unchanged after conditional body reads', async () => {
+    const reader = createGithubMapWatchReader(mocks.read);
+    let native = false;
+    let failure: string | null = null;
+    mocks.read.mockImplementation(async (args) => {
+      const route = args.find((arg) => arg.startsWith('repos/')) ?? '';
+      if (route.endsWith('/sub_issues')) return failure ?? (native ? response([issue(11)], '"native"') : 'HTTP/2.0 404 Not Found\r\n\r\n{}');
+      const etag = route.endsWith('/5') ? '"map"' : '"child"';
+      if (args.includes(`If-None-Match: ${etag}`)) return 'HTTP/2.0 304 Not Modified\r\n\r\n';
+      return response(route.endsWith('/5') ? { body: '- [ ] #12' } : issue(12), etag);
+    });
+    const first = await reader.readMap('repeat/fallback', 5, null);
+    if (first.status !== 'changed') throw new Error('Expected baseline');
+    expect(first.tickets.map((ticket) => ticket.number)).toEqual([12]);
+    expect((await reader.readMap('repeat/fallback', 5, first.etag)).status).toBe('unchanged');
+
+    native = true;
+    const restored = await reader.readMap('repeat/fallback', 5, first.etag);
+    if (restored.status !== 'changed') throw new Error('Expected restored native membership');
+    expect(restored.tickets.map((ticket) => ticket.number)).toEqual([11, 12]);
+    native = false;
+    const removed = await reader.readMap('repeat/fallback', 5, restored.etag);
+    if (removed.status !== 'changed') throw new Error('Expected removed native membership');
+    expect(removed.tickets.map((ticket) => ticket.number)).toEqual([12]);
+    expect((await reader.readMap('repeat/fallback', 5, removed.etag)).status).toBe('unchanged');
+
+    failure = 'HTTP/2.0 403 Forbidden\r\n\r\n{}';
+    await expect(reader.readMap('repeat/fallback', 5, removed.etag)).rejects.toThrow('GitHub answered 403');
+    failure = 'HTTP/2.0 404 Not Found\r\nx-ratelimit-limit: 5000\r\nx-ratelimit-remaining: 0\r\nx-ratelimit-reset: 2000000000\r\n\r\n{}';
+    await expect(reader.readMap('repeat/fallback', 5, removed.etag)).rejects.toThrow('rate limit');
+  });
+
   it.each([
     ['HTTP/2.0 403 Forbidden\r\n\r\n{}', 'GitHub answered 403'],
     ['HTTP/2.0 404 Not Found\r\nx-ratelimit-limit: 5000\r\nx-ratelimit-remaining: 0\r\nx-ratelimit-reset: 2000000000\r\n\r\n{}', 'rate limit'],
