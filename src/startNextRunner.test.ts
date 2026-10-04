@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { parseUsageLimit, StartNextRunner } from './startNextRunner.js';
 import type { Repick } from './autoRepick.js';
@@ -60,6 +60,62 @@ afterEach(() => {
 const statuses = (h: Harness, index = 0): string[] => h.runner.snapshot()[index]?.items.map((entry) => `${String(entry.ticketNumber)}:${entry.status}`) ?? [];
 
 describe('StartNextRunner', () => {
+  it('observes drained Auto queues after history is trimmed, reports once, and releases terminal observations', async () => {
+    vi.useFakeTimers();
+    const active = new Set(['h1']);
+    const errors = new Map<string, string>();
+    const lastErrors = vi.fn(async () => errors);
+    const stopped: Batch[] = [];
+    const runner = new StartNextRunner({
+      keep: 0,
+      intervalMs: 100,
+      startTicket: async () => ({ kind: 'started', handOffId: 'h1' }),
+      running: async () => active.size,
+      lastErrors,
+      activeHandOffIds: async () => active,
+      onUsageStop: (batch) => stopped.push(batch),
+    });
+    try {
+      runner.submit({ repo: 'o/r', mapNumber: 1, cap: 4, auto: true, items: [item(1)] });
+      await runner.tick();
+      expect(runner.snapshot()).toEqual([]);
+      errors.set('h1', 'Usage limit reached');
+      active.clear();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(stopped).toHaveLength(1);
+      expect(stopped[0]).toMatchObject({ status: 'stopped', stop: { kind: 'usage-limit', ticketNumber: 1 } });
+      expect(vi.getTimerCount()).toBe(0);
+      const reads = lastErrors.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(lastErrors).toHaveBeenCalledTimes(reads);
+      expect(stopped).toHaveLength(1);
+    } finally {
+      runner.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops observing completed Auto hand-offs without keeping their batch history', async () => {
+    vi.useFakeTimers();
+    const active = new Set(['h1']);
+    const lastErrors = vi.fn(async () => new Map<string, string>());
+    const runner = new StartNextRunner({ keep: 0, intervalMs: 100, startTicket: async () => ({ kind: 'started', handOffId: 'h1' }), running: async () => 0, lastErrors, activeHandOffIds: async () => active });
+    try {
+      runner.submit({ repo: 'o/r', mapNumber: 1, cap: 4, auto: true, items: [item(1)] });
+      await runner.tick();
+      active.clear();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(runner.snapshot()).toEqual([]);
+      expect(vi.getTimerCount()).toBe(0);
+      const reads = lastErrors.mock.calls.length;
+      await runner.tick();
+      expect(lastErrors).toHaveBeenCalledTimes(reads);
+    } finally {
+      runner.close();
+      vi.useRealTimers();
+    }
+  });
+
   it('hands off a batch of 3 as 3 separate starts, each ticket once', async () => {
     const h = harness();
     h.runner.submit({ repo: 'o/r', mapNumber: 1, cap: 4, items: [item(10), item(11), item(12)] });

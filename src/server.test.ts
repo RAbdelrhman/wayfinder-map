@@ -1317,7 +1317,7 @@ describe('local clone for a hand-off', () => {
         }
       });
 
-      it('turns the map off on the first usage-limit error and leaves a notice, in the inbox and on the desktop', async () => {
+      it.each([1, 4])('turns the map off on a later usage-limit error with cap %i, including a drained queue', async (cap) => {
         const { server, sessions } = liveT3();
         const limited: ServerT3 = {
           ...server,
@@ -1331,13 +1331,12 @@ describe('local clone for a hand-off', () => {
         const { readMap, mapWatcher } = watcherWhere([11, 12]);
         const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, onDesktopNotification: desktop, t3: limited, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
         try {
-          // A cap of one queues the second ticket, which keeps the batch running for the error to be seen.
-          expect((await post(running.url, '/api/auto-map/settings', { cap: 1 })).status).toBe(200);
+          expect((await post(running.url, '/api/auto-map/settings', { cap })).status).toBe(200);
           await autoMap(running.url);
-          await settled(running.url, (items) => items.some((item) => item.status === 'started'));
+          await settledBatch(running.url, (current) => cap === 4 ? current.status === 'done' : current.items.some((item) => item.status === 'started'));
           sessions.set('thread-1', 'error');
           const stopped = await settledBatch(running.url, (current) => current.status === 'stopped');
-          expect(stopped.items.map((item) => item.status)).toEqual(['started', 'back-to-next']);
+          expect(stopped.items.map((item) => item.status)).toEqual(cap === 4 ? ['started', 'started'] : ['started', 'back-to-next']);
 
           await vi.waitFor(async () => expect((await view(running.url)).maps[0]?.enabled).toBe(false));
           const after = await view(running.url);

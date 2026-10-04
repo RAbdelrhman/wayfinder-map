@@ -174,6 +174,27 @@ describe('AutoMapService', () => {
   });
 
   describe('starting what becomes next', () => {
+    it.each(['disable', 'restart', 'close'] as const)('invalidates a prepared start after %s while catalog loading waits', async (change) => {
+      let release!: () => void;
+      let entered!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const reading = new Promise<void>((resolve) => { entered = resolve; });
+      const h = harness({ catalog: async () => { entered(); await gate; return CATALOG; } });
+      await h.service.change('octo/one', 5, { op: 'enable', tier: 'mid' });
+      h.emit(next(11));
+      const flushing = h.service.flush();
+      await reading;
+      if (change === 'close') h.service.close();
+      else {
+        await h.service.change('octo/one', 5, { op: 'disable' });
+        if (change === 'restart') await h.service.change('octo/one', 5, { op: 'enable' });
+      }
+      release();
+      await flushing;
+      expect(h.submits).toEqual([]);
+      h.service.close();
+    });
+
     it('hands off the tickets that became next as one batch, with the cap, once the events settle', async () => {
       const h = harness({ batchMs: 5 });
       await h.service.updateSettings({ cap: 2 });

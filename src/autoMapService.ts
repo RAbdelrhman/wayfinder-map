@@ -73,6 +73,7 @@ export function parseAutoMapChange(value: unknown): AutoMapChange | null {
 interface Pending {
   repo: string;
   mapNumber: number;
+  setting: AutoMapSetting;
   events: Map<number, MapEvent>;
 }
 
@@ -272,7 +273,9 @@ export class AutoMapService {
   private take(event: MapEvent): void {
     if (event.type !== 'ticket-next' || autoStartTickets([event], this.setting(event.repo, event.mapNumber)).length === 0) return;
     const id = autoMapKey(event.repo, event.mapNumber);
-    const batch = this.pending.get(id) ?? { repo: event.repo, mapNumber: event.mapNumber, events: new Map<number, MapEvent>() };
+    const setting = this.setting(event.repo, event.mapNumber);
+    const existing = this.pending.get(id);
+    const batch = existing?.setting === setting ? existing : { repo: event.repo, mapNumber: event.mapNumber, setting, events: new Map<number, MapEvent>() };
     batch.events.set(event.ticket.number, event);
     this.pending.set(id, batch);
     if (this.timer === null) {
@@ -282,17 +285,21 @@ export class AutoMapService {
   }
 
   private async start(batch: Pending): Promise<void> {
+    if (this.closed) return;
     const events = [...batch.events.values()].sort((a, b) => a.ticket.number - b.ticket.number);
     // It may have been turned off while the tickets waited to be batched.
     const setting = this.setting(batch.repo, batch.mapNumber);
     const map = await this.deps.loadMap(batch.repo, batch.mapNumber).catch(() => null);
-    if (setting.enabled) {
+    if (setting.enabled && batch.setting === setting && !this.closed && this.setting(batch.repo, batch.mapNumber) === setting) {
       const tickets = await this.entriesFor(setting.tier, map, events.map((event) => event.ticket.number));
+      // A change replaces the setting object even if a disable/re-enable has the same timestamp.
+      if (this.closed || this.setting(batch.repo, batch.mapNumber) !== setting) return;
       const result = await this.deps
         .submit(batch.repo, { map: batch.mapNumber, cap: normalizeCap(this.settings.cap), auto: true, tickets })
         .catch((error: unknown) => ({ ok: false, error: (error as Error).message }));
       if (result.ok) return;
     }
+    if (this.closed) return;
     // The ticket goes back to the ordinary "ready" notification, so a start that failed is not silent.
     for (const event of events) {
       await this.publish({

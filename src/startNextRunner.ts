@@ -77,6 +77,8 @@ export interface RunnerDeps {
   running: () => Promise<number>;
   /** The last error of each given hand-off that has one. */
   lastErrors: (handOffIds: readonly string[]) => Promise<ReadonlyMap<string, string>>;
+  /** Which dispatched hand-offs still exist and are live after lastErrors refreshed tracking. */
+  activeHandOffIds?: (handOffIds: readonly string[]) => Promise<ReadonlySet<string>>;
   /** Called once when a usage-limit error stops a batch. The batch is a copy. */
   onUsageStop?: (batch: Batch) => void;
   /**
@@ -105,6 +107,8 @@ export function parseUsageLimit(message: string): UsageLimit {
 export class StartNextRunner {
   private readonly batches: Batch[] = [];
   private readonly limits: UsageLimitSeen[] = [];
+  /** Completed Auto queues still need usage-error observation until their dispatched threads end. */
+  private readonly observing = new Map<string, Batch>();
   private readonly intervalMs: number;
   private readonly keep: number;
   private readonly now: () => Date;
@@ -191,6 +195,7 @@ export class StartNextRunner {
     this.backToNext(batch, 'Queue stopped');
     batch.status = 'stopped';
     batch.stop = { kind: 'user' };
+    this.observing.delete(batch.id);
     return true;
   }
 
@@ -204,17 +209,19 @@ export class StartNextRunner {
       do {
         this.again = false;
         for (const batch of this.batches) if (batch.status === 'running') await this.advance(batch);
+        await this.observeCompleted();
       } while (this.again && !this.closed);
     })().finally(() => {
       this.ticking = null;
       this.trim();
-      if (!this.batches.some((batch) => batch.status === 'running')) this.clearTimer();
+      if (!this.batches.some((batch) => batch.status === 'running') && this.observing.size === 0) this.clearTimer();
     });
     return this.ticking;
   }
 
   close(): void {
     this.closed = true;
+    this.observing.clear();
     this.clearTimer();
   }
 
@@ -238,7 +245,25 @@ export class StartNextRunner {
       await Promise.all(next.map((item) => this.startOne(batch, item)));
     }
 
-    if (batch.status === 'running' && !batch.items.some((item) => item.status === 'queued' || item.status === 'starting')) batch.status = 'done';
+    if (batch.status === 'running' && !batch.items.some((item) => item.status === 'queued' || item.status === 'starting')) {
+      batch.status = 'done';
+      if (!this.closed && batch.auto && this.deps.activeHandOffIds !== undefined && batch.items.some((item) => item.handOffId !== null)) this.observing.set(batch.id, batch);
+    }
+  }
+
+  private async observeCompleted(): Promise<void> {
+    const activeHandOffIds = this.deps.activeHandOffIds;
+    if (activeHandOffIds === undefined || this.observing.size === 0 || this.closed) return;
+    const batches = [...this.observing.values()];
+    const ids = batches.flatMap((batch) => batch.items.flatMap((item) => item.handOffId === null ? [] : [item.handOffId]));
+    const errors = await this.deps.lastErrors(ids);
+    const active = await activeHandOffIds(ids);
+    if (this.closed) return;
+    for (const batch of batches) {
+      const limited = batch.items.find((item) => item.handOffId !== null && isUsageLimitError(errors.get(item.handOffId) ?? ''));
+      if (limited !== undefined && batch.status !== 'stopped') this.stopForUsageLimit(batch, limited, parseUsageLimit(errors.get(limited.handOffId ?? '') ?? ''));
+      if (batch.status === 'stopped' || !batch.items.some((item) => item.handOffId !== null && active.has(item.handOffId))) this.observing.delete(batch.id);
+    }
   }
 
   /**
