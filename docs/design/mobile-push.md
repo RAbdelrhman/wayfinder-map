@@ -2,28 +2,7 @@
 
 Research for [#219](https://github.com/RAbdelrhman/wayfinder-map/issues/219) on map [#217](https://github.com/RAbdelrhman/wayfinder-map/issues/217). Sources were read on 2026-10-03.
 
-## Recommendation
-
-Send pushes through the **Expo Push Service**, and have the **desktop** send them. Don't build a hosted GitHub-webhook service for v1.
-
-- Expo Push gives one token format and one HTTPS call for both iOS and Android, costs nothing, and still uses APNs and FCM underneath. That means the Apple and Google credentials are needed either way. Going straight to FCM and APNs adds two auth schemes and a token store on our side and saves nothing.
-- The desktop is the only place that can see the most important needs-you alert. `threadWaiting` ("T3 Code needs you") and `handOffError` come from T3 Code's local thread state. GitHub never sees them, so a webhook service could never send them.
-- While the PC is asleep, T3 Code isn't running, so no session can start waiting on you. The alerts a sleeping PC misses are the GitHub-side ones: CI finishing, a review landing, a blocker closed from another device. The desktop catches these up on wake (`MapWatcher.catchUp`) and sends them as late pushes. A webhook service would deliver them on time, but it costs hosting, a webhook per repository, a stored GitHub token and a second copy of the alert logic. That can be a later ticket if late pushes turn out to hurt.
-
-### What it needs
-
-| Need | For | Notes |
-| --- | --- | --- |
-| Apple Developer Program membership (paid) | iOS push at all | Free accounts don't get the Push Notifications capability. Already on the map's fog ("Setting up the Apple developer account"). |
-| APNs auth key (`.p8`) | iOS | EAS generates and stores it during the first iOS development build. |
-| Firebase project (free) + `google-services.json` | Android | Referenced from `app.json` via `googleServicesFile`. |
-| FCM V1 service account key (JSON) | Android | Uploaded to EAS, not shipped to the desktop. |
-| Expo account + EAS project ID | Both | `getExpoPushTokenAsync({ projectId })` ties tokens to the project. |
-| Expo access token with "enhanced security for push" turned on | Desktop sender | Without it, anyone holding a phone's push token can push to it. The desktop keeps the token next to its other secrets and sends it as `Authorization: Bearer …`. |
-| A development build (EAS Build), not Expo Go | Testing | Expo's setup guide builds with EAS. Personal builds are already planned (#233). |
-| Hosting | None | The desktop calls `exp.host` directly. |
-
-The phone sends its Expo push token to the desktop during pairing. Pairing is #218 and #230; this ticket assumes that channel exists.
+Short answer: Expo Push, sent by the desktop. See [Recommendation](#recommendation) at the end.
 
 ## Push services
 
@@ -47,10 +26,10 @@ The phone sends its Expo push token to the desktop during pairing. Pairing is #2
 
 Neither service drops an alert because the phone is off. Both have limits:
 
-- FCM keeps a message for an offline device until it reconnects. The default and maximum lifetime is 4 weeks (2,419,200 s). ([Set the lifespan of a message](https://firebase.google.com/docs/cloud-messaging/customize-messages/setting-message-lifespan))
+- FCM keeps a message for an offline device until it reconnects, then discards it once its lifetime runs out. The default and maximum lifetime is 4 weeks (2,419,200 s); a `ttl` of 0 is never stored. ([Set the lifespan of a message](https://firebase.google.com/docs/cloud-messaging/customize-messages/setting-message-lifespan))
 - APNs "may store the notification for 30 days or less, depending on the date you specify in the `apns-expiration` header". It "stores only one notification per bundle ID", usually the latest. ([Sending notification requests to APNs](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns))
 
-So an iPhone that was off for a while gets **only the newest** alert. The app has to rebuild the full list from its own inbox and GitHub when it opens. It can't treat pushes as the record.
+So an iPhone that was off for a while gets **at most one** stored alert, usually the newest, and an expired one may never arrive. The app has to rebuild the full list from its own inbox and GitHub when it opens. It can't treat pushes as the record.
 
 ## Who sends: the trigger options
 
@@ -76,8 +55,8 @@ The desktop already derives every alert kind and already shows a native notifica
 
 Today's code has two gaps the push task (#234) must close:
 
-1. **Alerts are derived in the page.** `publishNotification` (`src/ui/app.ts`) runs in the renderer, and `MapWatcher` polls a map only while a page has it open (`watch` needs a listener). The Electron window hides rather than closes (`src/desktop/main.ts`), so this mostly holds while the app runs. But a map the user never opened isn't watched, and maps outside the open repository aren't either. Pushes that should arrive "while you're away from the desk" need the derivation and the watching to run in the server or main process.
-2. **Deduplication.** Inbox IDs (`map:…`, `handoff:…:waiting:…`) are already stable. Send each ID once, and use it as Expo's `collapseId`/`tag` so a re-send replaces the earlier copy instead of stacking.
+1. **Most alerts are derived in the page.** `publishNotification` (`src/ui/app.ts`) runs in the renderer, so `threadWaiting`, `failingCi`, `reviewReady`, `prototypeReady` and `stalled` reach the user only while a Wayfinder page is loaded. The Electron window hides rather than closes (`src/desktop/main.ts`), so this mostly holds while the app runs. `MapWatcher` polls a map only while it has a listener. A page is one listener; `AutoMapService` is the other, and it watches maps with Auto on without a page (`src/autoMapService.ts`, `init` and `watch`). Maps with neither aren't watched. Pushes need the derivation, and a listener for every map the user wants alerts from, in the server or main process.
+2. **Deduplication.** With one sender, send each inbox ID (`map:…`, `handoff:…:waiting:…`) once. Don't pass the raw ID as Expo's `collapseId`: APNs caps `apns-collapse-id` at 64 bytes, and `handoff:` and `prototype:` IDs can be longer. Use a short hash of the ID instead.
 
 Cost: no hosting, no new GitHub token, and the alert logic stays in one place.
 
@@ -91,12 +70,12 @@ And it still can't send `threadWaiting` or `handOffError`, the alerts the user m
 
 ### Option C: both
 
-The desktop sends T3 Code alerts, and the service sends GitHub alerts. This is the only option with on-time GitHub alerts while the PC is off. It also adds two senders that both see GitHub events, so they need a shared dedupe key (the inbox ID) and some rule for which one sends. Worth doing only if Option A's late GitHub alerts become a real problem.
+The desktop sends T3 Code alerts, and the service sends GitHub alerts. Like B, it sends GitHub alerts on time while the PC is off, and unlike B it keeps the T3 Code alerts. If both senders can see GitHub events, they need a dedupe key both can compute from the event itself. Today's map inbox IDs won't do: they contain the watcher's own event number and the time it noticed the change. The simpler rule is that GitHub alerts come only from the service. Worth doing only if Option A's late GitHub alerts become a real problem.
 
 ## While the PC is asleep or off
 
 - On Modern Standby PCs, "Desktop apps are stopped by the Desktop Activity Moderator (DAM)" while the system sleeps. Only Store-app background tasks keep running. ([Modern Standby vs S3](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/modern-standby-vs-s3)) S3 sleep and shutdown stop everything. Wayfinder and T3 Code are both desktop apps, so neither polls nor runs sessions while the PC sleeps.
-- Electron emits `powerMonitor` `suspend` and `resume` on all platforms ([powerMonitor](https://www.electronjs.org/docs/latest/api/power-monitor)). The desktop can use `resume` to run the existing `catchUp` read straight away and push what changed, marked "while you were away" as the watcher already does (`whileYouWereAway` in `src/mapWatcher.ts`).
+- Electron emits `powerMonitor` `suspend` and `resume` on all platforms ([powerMonitor](https://www.electronjs.org/docs/latest/api/power-monitor)). Nothing in `src/` listens for them yet. The existing `MapWatcher.catchUp` won't help as is: it only reads maps restored from disk (`needsCatchUp`), not maps that were running when the PC slept. Without a hook, the watcher's normal timers pick changes up after wake, up to one interval (2 min) late. A `resume` hook that reads every watched map at once is a small addition for #234.
 
 What that means for each option:
 
@@ -114,3 +93,26 @@ Following maps on the phone still works with the PC off, because the phone reads
 - Where the Expo access token lives on the desktop (OS keychain vs. Wayfinder's settings file).
 - Whether to keep watching every open map in the background (GitHub budget per #122: about 0 points an hour when nothing changes) or only maps with live hand-offs.
 - Whether the desktop should push while the user is at the desk, or only after its window has been hidden or idle for a while.
+
+## Recommendation
+
+Send pushes through the **Expo Push Service**, and have the **desktop** send them. Don't build a hosted GitHub-webhook service for v1.
+
+- Expo Push gives one token format and one HTTPS call for both iOS and Android, costs nothing, and still uses APNs and FCM underneath. That means the Apple and Google credentials are needed either way. Going straight to FCM and APNs adds two auth schemes and a token store on our side and saves nothing.
+- The desktop is the only place that can see the most important needs-you alert. `threadWaiting` ("T3 Code needs you") and `handOffError` come from T3 Code's local thread state. GitHub never sees them, so a webhook service could never send them.
+- While the PC is asleep, T3 Code isn't running, so no session can start waiting on you. The alerts a sleeping PC misses are the GitHub-side ones: CI finishing, a review landing, a blocker closed from another device. The desktop can catch these up on wake and send them as late pushes. That needs a `powerMonitor` `resume` hook, which doesn't exist yet (see [While the PC is asleep or off](#while-the-pc-is-asleep-or-off)). A webhook service would deliver them on time, but it costs hosting, a webhook per repository, a stored GitHub token and a second copy of the alert logic. That can be a later ticket if late pushes turn out to hurt.
+
+### What it needs
+
+| Need | For | Notes |
+| --- | --- | --- |
+| Apple Developer Program membership (paid) | iOS push at all | Free accounts don't get the Push Notifications capability. Already on the map's fog ("Setting up the Apple developer account"). |
+| APNs auth key (`.p8`) | iOS | EAS generates and stores it during the first iOS development build. |
+| Firebase project (free) + `google-services.json` | Android | Referenced from `app.json` via `googleServicesFile`. |
+| FCM V1 service account key (JSON) | Android | Uploaded to EAS, not shipped to the desktop. |
+| Expo account + EAS project ID | Both | `getExpoPushTokenAsync({ projectId })` ties tokens to the project. |
+| Expo access token with "enhanced security for push" turned on | Desktop sender | Without it, anyone holding a phone's push token can push to it. The desktop keeps the token next to its other secrets and sends it as `Authorization: Bearer …`. |
+| A development build (EAS Build), not Expo Go | Testing | Expo's setup guide builds with EAS. Personal builds are already planned (#233). |
+| Hosting | None | The desktop calls `exp.host` directly. |
+
+The phone sends its Expo push token to the desktop during pairing. Pairing is #218 and #230; this ticket assumes that channel exists.
