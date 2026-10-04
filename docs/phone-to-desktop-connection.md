@@ -90,8 +90,8 @@ address such as `https://pc.tailnet.ts.net` in front of a loopback port.
   The address stays the same. PC asleep means unreachable. The phone must keep the
   Tailscale VPN switched on, and iOS and Android run only one VPN at a time
   ([other VPNs](https://tailscale.com/kb/1105/other-vpns)).
-- **Verdict.** Secure, free, and reachable from anywhere. One stable HTTPS address can
-  front both Wayfinder and T3 Code.
+- **Verdict.** Secure, free, and reachable from anywhere. One stable tailnet name can
+  front both Wayfinder and T3 Code, each on its own `tailscale serve` HTTPS port.
 
 ### 3. Cloudflare Tunnel with Cloudflare Access
 
@@ -132,8 +132,9 @@ Cloudflare Worker), and the phone talks to the relay.
   credentials, replay guards, signed responses, and an explicit note that a compromised
   relay signing key is not harmless
   ([T3 Connect](https://github.com/pingdotgg/t3code/blob/main/docs/internals/t3-connect.md)).
-- **Setup.** For the user, the smoothest of all: sign in and scan once. For us, a
-  hosted service to build, secure and run.
+- **Setup.** For the user, the smoothest of all: sign in and scan once, with
+  the desktop side built into Wayfinder (it keeps the outbound connection open and
+  reconnects after sleep). For us, a hosted service to build, secure and run.
 - **Cost.** Hosting is small, but it is a service with uptime and an account system to
   maintain. That runs against the map's choice to keep tickets on the desktop and
   build personal builds.
@@ -181,7 +182,7 @@ Code offers.
 | Works away from home | No | Yes | Yes | Yes | Yes (T3 Connect) |
 | Transport | HTTP on LAN | HTTPS, tailnet only | HTTPS, public hostname | Ours to design | HTTPS, scoped sessions |
 | Phone setup | Scan QR | Tailscale app, VPN on | Paste service token | Sign in, scan | Scan QR or sign in |
-| Desktop setup | None | Tailscale, one command | Domain, tunnel, Access | None for the user | Toggle in T3 Code |
+| Desktop setup | None | Tailscale, one command | Domain, tunnel, Access | Built into Wayfinder | Toggle in T3 Code |
 | Cost | Free | Free (Personal) | Free + domain | Hosting + upkeep | Unpublished |
 | PC asleep | Unreachable | Unreachable | Errors from Cloudflare | Relay says offline | Tunnel rebuilt on wake |
 | Network change | Breaks | Stays connected | Stays connected | Stays connected | Stays connected |
@@ -203,8 +204,8 @@ so on this machine both are desktop apps.
    address and a one-time secret. The secret is swapped for a per-device token the
    desktop can list and revoke. Wayfinder also checks the `Tailscale-User-Login` header
    against the desktop's own tailnet login, so a token alone is not enough.
-3. For T3 Code, the phone uses T3 Code's own Tailscale HTTPS pairing. The same tailnet
-   carries both, with one app on the phone to set up.
+3. For T3 Code, the phone uses T3 Code's own Tailscale HTTPS pairing, on a separate
+   `tailscale serve` port from Wayfinder's. The same tailnet carries both, with one app on the phone to set up.
 4. Keep T3 Connect in reserve. It is the only route with background push and the
    cleanest sleep and wake behaviour, but it covers T3 Code alone. Whether pushes come
    from it is [#219](https://github.com/RAbdelrhman/wayfinder-map/issues/219)'s
