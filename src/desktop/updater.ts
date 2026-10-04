@@ -109,12 +109,19 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
     cancelDownload = undefined;
     // Missing channel metadata or installer assets are broken updates, not proof of being current.
     if (error instanceof Error && 'code' in error && error.code === 'ERR_UPDATER_NO_PUBLISHED_VERSIONS') {
-      currentStatus = { status: 'up-to-date', ...versionStatus() };
+      setReleaseStatus(false, autoUpdater.currentVersion.version);
       return;
     }
     errorRevision += 1;
     const message = error instanceof Error ? error.message : String(error);
-    currentStatus = { status: 'error', ...versionStatus(), error: message };
+    // BaseUpdater uses this uncoded error when its cached installer no longer exists.
+    if (message === "No update filepath provided, can't quit and install") downloadedVersion = undefined;
+    currentStatus = {
+      status: downloadedVersion ? 'ready' : 'error',
+      ...versionStatus(),
+      ...(downloadedVersion ? { latestVersion: downloadedVersion } : {}),
+      error: message,
+    };
     if (errorShown || window.isDestroyed()) return;
     errorShown = true;
     void (async () => {
@@ -136,8 +143,10 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
     if (stopped || window.isDestroyed() || !downloadedVersion) {
       return Promise.reject(new Error('No update is ready to install.'));
     }
+    const readyVersion = downloadedVersion;
     installation = (async () => {
       try {
+        setReleaseStatus(true, readyVersion);
         await prepareForRestart();
         if (stopped || window.isDestroyed()) return;
         const revision = errorRevision;

@@ -42,6 +42,9 @@ vi.mock('electron', () => ({
 }));
 
 import { startAutoUpdates } from './updater.js';
+import { DEFAULTS } from '../config.js';
+import { DEFAULT_TEMPLATE, startServer } from '../server.js';
+import { bindUpdater } from '../ui/chrome.js';
 
 describe('enabled desktop updates', () => {
   let destroyed: boolean;
@@ -154,7 +157,7 @@ describe('enabled desktop updates', () => {
     handle.stop();
   });
 
-  it('rejects a real NSIS refusal without stopping update handling or losing retries', async () => {
+  it('clears stale readiness when real NSIS has lost its cached installer', async () => {
     const { NsisUpdater } = await vi.importActual<typeof import('electron-updater')>('electron-updater');
     const realUpdater = new NsisUpdater(null, {
       version: '1.2.3',
@@ -184,8 +187,8 @@ describe('enabled desktop updates', () => {
       await expect(handle.install()).rejects.toThrow('No update filepath provided');
       expect(handle.status()).toMatchObject({ status: 'error' });
       expect(realUpdater.listenerCount('error')).toBe(2);
-      await expect(handle.install()).rejects.toThrow('No update filepath provided');
-      expect(prepareForRestart).toHaveBeenCalledTimes(2);
+      await expect(handle.install()).rejects.toThrow('No update is ready');
+      expect(prepareForRestart).toHaveBeenCalledTimes(1);
       expect(realUpdater.listenerCount('update-downloaded')).toBe(1);
     } finally {
       handle.stop();
@@ -308,7 +311,7 @@ describe('enabled desktop updates', () => {
     updater.emit('update-downloaded', { version: '1.2.4' });
     await vi.waitFor(() =>
       expect(handle.status()).toMatchObject({
-        status: 'error',
+        status: 'ready',
         error: 'Runtime close failed',
       }),
     );
@@ -345,7 +348,7 @@ describe('enabled desktop updates', () => {
     prepareForRestart.mockRejectedValueOnce(new Error('Could not stop the runtime'));
     await expect(handle.install()).rejects.toThrow('Could not stop the runtime');
     expect(handle.status()).toMatchObject({
-      status: 'error',
+      status: 'ready',
       error: 'Could not stop the runtime',
     });
     expect(mocks.quitAndInstall).not.toHaveBeenCalled();
@@ -365,6 +368,92 @@ describe('enabled desktop updates', () => {
     await expect(handle.check()).resolves.toMatchObject({ status: 'error' });
     handle.stop();
   });
+
+  it.each(['preparation', 'installer', 'check', 'not-ready'] as const)(
+    'shows %s failures from the UI through HTTP and retries valid downloads',
+    async (failure) => {
+      vi.useRealTimers();
+      const handle = start();
+      await handle.check();
+      updater.emit('update-downloaded', { version: '1.2.4' });
+      const message = `${failure} failed`;
+      if (failure === 'preparation') prepareForRestart.mockRejectedValueOnce(new Error(message));
+      if (failure === 'installer') {
+        mocks.quitAndInstall.mockImplementationOnce(() => updater.emit('error', new Error(message)));
+      }
+      if (failure === 'check') mocks.checkForUpdates.mockRejectedValueOnce(new Error(message));
+      const running = await startServer({
+        config: { ...DEFAULTS, repo: null, cwd: process.cwd(), port: 0, open: false },
+        repo: null,
+        template: DEFAULT_TEMPLATE,
+        workspaceRoot: null,
+        t3: {
+          detect: async () => ({ origin: 'http://127.0.0.1:3773', pid: null, stateDir: '' }),
+          models: async () => ({ providers: [] }),
+          projects: async () => [],
+          steps: () => ({
+            startThread: async () => ({ threadId: 'unused', prompt: '' }),
+            openApp: async () => undefined,
+            copy: async () => undefined,
+          }),
+        },
+        updater: handle,
+      });
+      const nativeFetch = globalThis.fetch;
+      const apiFetch: typeof fetch = (input, init) => nativeFetch(new URL(String(input), running.url), {
+        ...init,
+        headers: { origin: running.url, ...init?.headers },
+      });
+      try {
+        if (failure === 'check') {
+          const response = await apiFetch('/api/updater/check', { method: 'POST' });
+          expect(response.status).toBe(200);
+        }
+        const classes = new Set<string>();
+        let click: (() => void) | undefined;
+        const button = {
+          title: '',
+          classList: {
+            add: (...names: string[]) => names.forEach((name) => classes.add(name)),
+            remove: (...names: string[]) => names.forEach((name) => classes.delete(name)),
+          },
+          setAttribute: vi.fn(),
+          addEventListener: (_event: string, listener: () => void) => { click = listener; },
+        };
+        vi.stubGlobal('fetch', apiFetch);
+        bindUpdater(button as unknown as HTMLElement, vi.fn());
+        await vi.waitFor(() => expect(classes.has('is-ready')).toBe(true));
+        if (failure === 'not-ready') {
+          updater.emit('update-available', { version: '1.2.5' });
+          click?.();
+          await vi.waitFor(() => expect(button.title).toContain('No update is ready'));
+          expect(classes.has('is-error')).toBe(true);
+          expect(classes.has('is-downloading')).toBe(false);
+          expect(classes.has('is-ready')).toBe(false);
+          expect(prepareForRestart).not.toHaveBeenCalled();
+          return;
+        }
+        if (failure !== 'check') {
+          click?.();
+        }
+        await vi.waitFor(() => expect(button.title).toContain(message));
+        expect(classes.has('is-ready')).toBe(true);
+        expect(classes.has('is-error')).toBe(true);
+        expect(classes.has('is-downloading')).toBe(false);
+        expect(button.title).toContain('Click to retry');
+        const status = await apiFetch('/api/updater');
+        await expect(status.json()).resolves.toMatchObject({ status: 'ready', latestVersion: '1.2.4', error: message });
+        const attemptsBeforeRetry = mocks.quitAndInstall.mock.calls.length;
+        click?.();
+        await vi.waitFor(() => expect(mocks.quitAndInstall).toHaveBeenCalledTimes(attemptsBeforeRetry + 1));
+        await vi.waitFor(() => expect(classes.has('is-downloading')).toBe(false), { timeout: 4000 });
+      } finally {
+        vi.unstubAllGlobals();
+        handle.stop();
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    },
+  );
 
   it('handles truly absent releases without an error', async () => {
     mocks.checkForUpdates.mockRejectedValue(

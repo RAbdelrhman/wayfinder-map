@@ -897,7 +897,8 @@ export async function startServer({
           json(response, 400, { error: 'Direct installation is only available in the desktop application.' });
           return;
         }
-        if (service.status?.().status !== 'ready') {
+        // Legacy install-only owners validate readiness themselves, as before status was exposed.
+        if (service.status && service.status().status !== 'ready') {
           json(response, 409, { error: 'No update is ready to install.' });
           return;
         }

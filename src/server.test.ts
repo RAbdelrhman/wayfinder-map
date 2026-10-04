@@ -625,6 +625,23 @@ describe('repository-scoped server', () => {
     },
   );
 
+  it('retains owner-validated installation for legacy services without a status callback', async () => {
+    const install = vi.fn(async () => undefined);
+    const running = await startServer({
+      config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3,
+      updater: { check: async () => ({ status: 'ready', currentVersion: '0.2.12' }), install },
+    });
+    try {
+      const response = await fetch(`${running.url}/api/updater/install`, {
+        method: 'POST', headers: { origin: running.url },
+      });
+      expect(response.status).toBe(200);
+      await vi.waitFor(() => expect(install).toHaveBeenCalledTimes(1));
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
   it('consumes an asynchronous installation failure and keeps serving requests', async () => {
     const install = vi.fn(async () => {
       throw new Error('Restart preparation failed');
