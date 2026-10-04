@@ -214,10 +214,12 @@ export class AutoMapService {
     this.entries.set(id, { ...entry, setting: turnedOff(entry.setting) });
     this.limits.set(id, { message: stop.message, resetsAt: stop.resetsAt });
     this.unwatch(id);
-    await this.persist();
+    await this.persistUsageStop();
+    if (this.closed) return;
     const item = batch.items.find((candidate) => candidate.ticketNumber === stop.ticketNumber) ?? batch.items[0];
     if (item === undefined) return;
     const map = await this.deps.loadMap(batch.repo, batch.mapNumber).catch(() => null);
+    if (this.closed) return;
     await this.publish({
       id: `automap:${batch.id}`,
       kind: 'handOffError',
@@ -385,6 +387,19 @@ export class AutoMapService {
   private fresh(notices: readonly AutoMapNotice[]): AutoMapNotice[] {
     const oldest = this.now().getTime() - NOTICE_MAX_AGE_MS;
     return notices.filter((notice) => Date.parse(notice.createdAt) >= oldest).slice(0, NOTICE_LIMIT);
+  }
+
+  /** A transient failed save must not leave Auto enabled on disk after a usage stop. */
+  private async persistUsageStop(): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        // Capture current state on every attempt, preserving a concurrent settings change.
+        await this.persist();
+        return;
+      } catch (error) {
+        if (this.closed || attempt === 2) throw error;
+      }
+    }
   }
 
   private persist(): Promise<void> {

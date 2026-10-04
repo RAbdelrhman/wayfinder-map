@@ -428,6 +428,88 @@ describe('AutoMapService', () => {
   });
 
   describe('usage limit', () => {
+    it('persists a usage-limit disable after a transient save failure, so restart keeps it off', async () => {
+      const store = memoryAutoMapStore();
+      const save = vi.spyOn(store, 'save');
+      const h = harness({ store });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      save.mockRejectedValueOnce(new Error('Temporary file contention'));
+      await h.service.usageStopped(stopped());
+      expect(h.service.setting('octo/one', 5).enabled).toBe(false);
+      expect((await store.load()).maps[0]?.setting.enabled).toBe(false);
+      const restarted = harness({ store });
+      await restarted.service.init();
+      expect(restarted.service.setting('octo/one', 5).enabled).toBe(false);
+      expect(restarted.watching.size).toBe(0);
+      expect(h.desktop).toHaveLength(1);
+      h.service.close();
+      restarted.service.close();
+    });
+
+    it('bounds usage-stop save retries and leaves the map unwatched after persistent failure', async () => {
+      const store = memoryAutoMapStore();
+      const save = vi.spyOn(store, 'save');
+      const h = harness({ store });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      save.mockClear();
+      save.mockRejectedValue(new Error('Storage unavailable'));
+      await expect(h.service.usageStopped(stopped())).rejects.toThrow('Storage unavailable');
+      expect(save).toHaveBeenCalledTimes(3);
+      expect(h.service.setting('octo/one', 5).enabled).toBe(false);
+      expect(h.watching.size).toBe(0);
+      h.service.close();
+    });
+
+    it('retains a settings change queued during a failed usage-stop save', async () => {
+      const store = memoryAutoMapStore();
+      const save = vi.spyOn(store, 'save');
+      const h = harness({ store });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      let settingsChange: Promise<boolean> | undefined;
+      save.mockImplementationOnce(async () => {
+        settingsChange = h.service.updateSettings({ cap: 2 });
+        throw new Error('Temporary file contention');
+      });
+      await h.service.usageStopped(stopped());
+      await settingsChange;
+      const saved = await store.load();
+      expect(saved.settings.cap).toBe(2);
+      expect(saved.maps[0]?.setting.enabled).toBe(false);
+      h.service.close();
+    });
+
+    it('does not retry a failed usage-stop save after the service closes', async () => {
+      const store = memoryAutoMapStore();
+      const save = vi.spyOn(store, 'save');
+      const h = harness({ store });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      save.mockClear();
+      save.mockImplementationOnce(async () => {
+        h.service.close();
+        throw new Error('Closed during save');
+      });
+      await expect(h.service.usageStopped(stopped())).rejects.toThrow('Closed during save');
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(h.desktop).toEqual([]);
+    });
+
+    it('does not publish a usage-stop notice after closing during its map lookup', async () => {
+      let release!: () => void;
+      let entered!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const reading = new Promise<void>((resolve) => { entered = resolve; });
+      const h = harness({ loadMap: async () => { entered(); await gate; return mapOf([ticket(11)]); } });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      const stopping = h.service.usageStopped(stopped());
+      await reading;
+      h.service.close();
+      release();
+      await stopping;
+      expect(h.desktop).toEqual([]);
+      expect(h.service.view().notices).toEqual([]);
+      expect((await h.store.load()).maps[0]?.setting.enabled).toBe(false);
+    });
+
     it('turns the map off on the first usage-limit stop, stops watching it and tells the user', async () => {
       const h = harness();
       await h.service.change('octo/one', 5, { op: 'enable' });
