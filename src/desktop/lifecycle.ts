@@ -10,7 +10,10 @@ export class DesktopLifecycle {
   }
 
   quit(closeRuntime: () => Promise<void>): Promise<void> {
-    this.quitPromise ??= closeRuntime();
+    this.quitPromise ??= Promise.resolve().then(closeRuntime).catch((error: unknown) => {
+      this.quitPromise = null;
+      throw error;
+    });
     return this.quitPromise;
   }
 }

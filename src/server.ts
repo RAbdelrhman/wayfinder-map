@@ -897,8 +897,13 @@ export async function startServer({
           json(response, 400, { error: 'Direct installation is only available in the desktop application.' });
           return;
         }
+        if (service.status?.().status !== 'ready') {
+          json(response, 409, { error: 'No update is ready to install.' });
+          return;
+        }
         json(response, 200, { installing: true });
-        void service.install();
+        // Installation closes this server, so acknowledge first and consume async failures.
+        void Promise.resolve().then(() => service.install?.()).catch(() => undefined);
         return;
       }
 

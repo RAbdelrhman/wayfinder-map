@@ -227,7 +227,6 @@ async function startRuntime(): Promise<void> {
         window: mainWindow,
         enabled: shouldEnableUpdates(app.isPackaged, app.getVersion(), AUTO_UPDATE_ENABLED),
         prepareForRestart: async () => {
-          updaterHandle?.stop();
           await lifecycle.quit(async () => runtime?.close());
           tray?.destroy();
           tray = null;

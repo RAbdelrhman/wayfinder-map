@@ -3,6 +3,22 @@ import { describe, expect, it, vi } from 'vitest';
 import { DESKTOP_PORT, DesktopLifecycle, isInternalUrl, isSafeExternalUrl, startOnStablePort } from './lifecycle.js';
 
 describe('DesktopLifecycle', () => {
+  it('keeps window-close behavior and permits retry when quit preparation fails', async () => {
+    const lifecycle = new DesktopLifecycle();
+    const closeRuntime = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error('Runtime close failed'))
+      .mockResolvedValue(undefined);
+    await expect(lifecycle.quit(closeRuntime)).rejects.toThrow(
+      'Runtime close failed',
+    );
+    expect(lifecycle.isQuitting).toBe(false);
+    expect(lifecycle.shouldHideOnWindowClose()).toBe(true);
+    await lifecycle.quit(closeRuntime);
+    expect(closeRuntime).toHaveBeenCalledTimes(2);
+    expect(lifecycle.isQuitting).toBe(true);
+  });
+
   it('hides ordinary window closes and lets a requested quit close the window', async () => {
     const lifecycle = new DesktopLifecycle();
     const closeRuntime = vi.fn(async () => undefined);
