@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sample canvas</title>
+    <!--
+      PROTOTYPE (#207): a stand-in for a prototype branch's design canvas, as the viewer would load it.
+      It looks like the design-canvas board and speaks the #206 bridge (ready / state / key out, go in),
+      the way the server-injected wrapper would. Query: ?proto=211|206, ?thumb=1 (a tile preview),
+      ?bridge=0 (no wrapper: the viewer falls back to view-only), ?delay=ms (a cold open), ?theme=.
+      The hash is changed with location.replace, so it never adds history entries.
+    -->
+    <style>
+      :root {
+        color-scheme: light;
+        --plane: #ececea;
+        --dot: rgba(0, 0, 0, 0.09);
+        --surface: #ffffff;
+        --line: rgba(0, 0, 0, 0.12);
+        --text: #161615;
+        --muted: #5f5e59;
+        --ink: #2a78d6;
+        --warn: #b45309;
+        --ok: #087008;
+        --fill: #e4e3dd;
+      }
+      :root[data-theme='dark'] {
+        color-scheme: dark;
+        --plane: #111110;
+        --dot: rgba(255, 255, 255, 0.08);
+        --surface: #1c1c1b;
+        --line: rgba(255, 255, 255, 0.12);
+        --text: #f3f2ee;
+        --muted: #a9a79f;
+        --ink: #5b9cf0;
+        --warn: #f6c453;
+        --ok: #58d66a;
+        --fill: #2b2b29;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          color-scheme: dark;
+          --plane: #111110;
+          --dot: rgba(255, 255, 255, 0.08);
+          --surface: #1c1c1b;
+          --line: rgba(255, 255, 255, 0.12);
+          --text: #f3f2ee;
+          --muted: #a9a79f;
+          --ink: #5b9cf0;
+          --warn: #f6c453;
+          --ok: #58d66a;
+          --fill: #2b2b29;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: var(--plane) radial-gradient(var(--dot) 1px, transparent 1px) 0 0 / 18px 18px;
+        color: var(--text);
+        font: 13px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif;
+        overflow: hidden;
+      }
+      body.is-cold {
+        background: var(--plane);
+      }
+      .bar {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface);
+        font-size: 12px;
+        color: var(--muted);
+        z-index: 2;
+      }
+      .bar b {
+        color: var(--text);
+      }
+      .board {
+        position: absolute;
+        inset: 56px 0 0;
+        overflow: auto;
+        cursor: grab;
+      }
+      .stage {
+        display: flex;
+        gap: 36px;
+        padding: 20px 40px 60px;
+        width: max-content;
+      }
+      .frame {
+        display: grid;
+        gap: 8px;
+        border: 0;
+        padding: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .frame .lbl {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .frame .lbl b {
+        display: inline-grid;
+        place-items: center;
+        min-width: 20px;
+        height: 20px;
+        margin-right: 6px;
+        border-radius: 5px;
+        background: var(--text);
+        color: var(--surface);
+        font-size: 11px;
+      }
+      .art {
+        width: 420px;
+        height: 280px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        overflow: hidden;
+        box-shadow: 0 10px 30px -18px rgba(0, 0, 0, 0.35);
+      }
+      .frame:hover .art,
+      .frame:focus-visible .art {
+        outline: 2px solid var(--ink);
+        outline-offset: 2px;
+      }
+      .present {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        background: var(--plane);
+        z-index: 3;
+      }
+      .present[hidden] {
+        display: none;
+      }
+      .present-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .present-head b {
+        color: var(--text);
+      }
+      .present-body {
+        display: grid;
+        place-items: center;
+        padding: 0 24px 24px;
+        min-height: 0;
+      }
+      .present-body .art {
+        width: min(100%, 1100px, calc((100vh - 70px) * 1.5));
+        height: auto;
+        aspect-ratio: 3 / 2;
+      }
+      /* the drawings: a small fake app screen with a sync conflict */
+      .scr {
+        display: grid;
+        grid-template-rows: 26px 1fr;
+        height: 100%;
+        font-size: 11px;
+      }
+      .scr-top {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 10px;
+        border-bottom: 1px solid var(--line);
+        color: var(--muted);
+      }
+      .scr-top i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--fill);
+      }
+      .scr-body {
+        position: relative;
+        padding: 12px;
+        display: grid;
+        gap: 8px;
+        align-content: start;
+      }
+      .ln {
+        height: 8px;
+        border-radius: 4px;
+        background: var(--fill);
+      }
+      .callout {
+        padding: 8px 10px;
+        border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+        border-radius: 7px;
+        background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+        color: var(--text);
+      }
+      .callout em {
+        font-style: normal;
+        color: var(--warn);
+        font-weight: 600;
+      }
+      .cols {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .col {
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        display: grid;
+        gap: 6px;
+      }
+      .col h4 {
+        margin: 0;
+        font-size: 10px;
+        color: var(--muted);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .btns {
+        display: flex;
+        gap: 6px;
+      }
+      .btns span {
+        padding: 3px 8px;
+        border-radius: 5px;
+        border: 1px solid var(--line);
+      }
+      .btns span.on {
+        background: var(--ink);
+        border-color: var(--ink);
+        color: #fff;
+      }
+      .steps {
+        display: flex;
+        gap: 4px;
+      }
+      .steps i {
+        flex: 1;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--fill);
+      }
+      .steps i.on {
+        background: var(--ink);
+      }
+      .ok {
+        color: var(--ok);
+        font-weight: 600;
+      }
+      .snap {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        grid-template-columns: 200px 1fr;
+        background: var(--surface);
+      }
+      .snap aside {
+        border-right: 1px solid var(--line);
+        padding: 16px;
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+      .snap main {
+        padding: 24px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+      }
+      .badge {
+        padding: 1px 7px;
+        border-radius: 999px;
+        border: 1px dashed var(--warn);
+        color: var(--warn);
+        font-size: 11px;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      (() => {
+        const params = new URLSearchParams(location.search);
+        const theme = params.get('theme');
+        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+        const proto = params.get('proto') ?? '211';
+        const thumb = params.get('thumb') === '1';
+        const bridge = params.get('bridge') !== '0' && !thumb;
+        const delay = Number(params.get('delay') ?? 0);
+        const root = document.getElementById('root');
+
+        const shot = (inner) => `<div class="scr"><div class="scr-top"><i></i><i></i><i></i><span>Offline drafts</span></div><div class="scr-body">${inner}</div></div>`;
+        const lines = (n) => Array.from({ length: n }, (_, i) => `<div class="ln" style="width:${90 - ((i * 17) % 40)}%"></div>`).join('');
+        const DRAW = {
+          A: shot(`<div class="callout"><em>Conflict.</em> Someone changed #214 while you were offline. <u>Review</u></div>${lines(5)}`),
+          B: shot(`<div class="cols"><div class="col"><h4>Yours</h4>${lines(3)}</div><div class="col"><h4>On GitHub</h4>${lines(3)}</div></div><div class="btns"><span class="on">Keep yours</span><span>Keep theirs</span><span>Merge</span></div>`),
+          C: shot(`<div class="steps"><i class="on"></i><i class="on"></i><i></i></div><b>Step 2 of 3 · Title</b>${lines(2)}<div class="btns"><span>Back</span><span class="on">Next</span></div>`),
+          S1: shot(`<div class="callout"><em>Offline.</em> 3 edits are queued and will sync when GitHub is back.</div>${lines(4)}`),
+          S2: shot(`<span class="ok">✓ Conflict resolved</span> Your title was kept, their labels were added.${lines(4)}`),
+        };
+        const PAGES = [
+          { id: 'directions', title: 'Directions', options: [
+            { id: 'A', name: 'Inline banner' },
+            { id: 'B', name: 'Side by side' },
+            { id: 'C', name: 'Step through' },
+          ] },
+          { id: 'states', title: 'States', options: [
+            { id: 'S1', name: 'Offline, 3 queued' },
+            { id: 'S2', name: 'Conflict resolved' },
+          ] },
+        ];
+
+        const post = (msg) => {
+          if (bridge) parent.postMessage({ wf: 1, ...msg }, '*');
+        };
+
+        function parseHash() {
+          const [page, option] = decodeURIComponent(location.hash.slice(1)).split('/');
+          const p = PAGES.find((x) => x.id === page) ?? PAGES[0];
+          const o = p.options.find((x) => x.id === option) ?? null;
+          return { page: p, option: o };
+        }
+
+        function render() {
+          if (proto === '206') {
+            // A snapshot: one plain page, no canvas engine. The wrapper can only report the page.
+            root.innerHTML = `<div class="snap"><aside>${lines(6)}</aside><main><b style="font-size:15px">Draft badge, direction B</b>
+              <div class="card"><span class="badge">Draft</span> Queue edits made while offline</div>
+              <div class="card"><span class="badge">Draft</span> Notice when GitHub is reachable again</div>
+              <div class="card">Save drafts to IndexedDB</div>${lines(4)}</main></div>`;
+            return;
+          }
+          const { page, option } = parseHash();
+          const frames = page.options
+            .map((o) => `<button type="button" class="frame" data-option="${o.id}" ${thumb ? 'tabindex="-1"' : ''}><span class="lbl"><b>${o.id}</b>${o.name}</span><span class="art">${DRAW[o.id]}</span></button>`)
+            .join('');
+          const i = option ? page.options.indexOf(option) : -1;
+          root.innerHTML = `<div class="bar"><b>#211 How should a sync conflict look?</b><span>·</span><span>${page.title}</span><span>·</span><span>${page.options.length} options</span></div>
+            <div class="board" id="board"><div class="stage">${frames}</div></div>
+            <section class="present" ${option ? '' : 'hidden'} aria-label="Presenting ${option ? option.id : ''}">${option ? `<div class="present-head"><b>${option.id} · ${option.name}</b><span>${i + 1} of ${page.options.length}</span><span style="margin-left:auto">← → switch · Esc back to the board</span></div><div class="present-body"><div class="art">${DRAW[option.id]}</div></div>` : ''}</section>`;
+        }
+
+        function report() {
+          if (proto === '206') {
+            post({ type: 'state', page: null, option: null, presenting: false, zoom: null });
+            return;
+          }
+          const { page, option } = parseHash();
+          post({ type: 'state', page: page.id, option: option ? option.id : null, presenting: option !== null, zoom: 1 });
+        }
+
+        // Never push history: the viewer's Back must close the viewer, not step through options.
+        const go = (page, option) => location.replace(`#${page}${option ? `/${option}` : ''}`);
+
+        function boot() {
+          document.body.classList.remove('is-cold');
+          render();
+          if (proto === '206') post({ type: 'ready', source: 'page', pages: [], options: [] });
+          else post({ type: 'ready', source: 'engine', pages: PAGES.map((p) => ({ id: p.id, title: p.title, options: p.options })), options: PAGES.flatMap((p) => p.options) });
+          report();
+        }
+
+        window.addEventListener('hashchange', () => {
+          render();
+          report();
+        });
+        window.addEventListener('message', (event) => {
+          if (event.source !== parent || event.data?.wf !== 1) return;
+          if (event.data.type === 'go') go(event.data.page, event.data.option);
+        });
+        document.addEventListener('click', (event) => {
+          const frame = event.target.closest('[data-option]');
+          if (frame && !thumb) go(parseHash().page.id, frame.dataset.option);
+        });
+        document.addEventListener('keydown', (event) => {
+          if (thumb || proto === '206') {
+            if (event.key === 'Escape') post({ type: 'key', key: 'Escape' });
+            return;
+          }
+          const { page, option } = parseHash();
+          if (event.key === 'Escape') {
+            // The canvas gets Esc first: it leaves present mode, and only an unused Esc goes to the viewer.
+            if (option) go(page.id, null);
+            else post({ type: 'key', key: 'Escape' });
+          } else if (option && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+            const i = page.options.indexOf(option) + (event.key === 'ArrowRight' ? 1 : -1);
+            go(page.id, page.options[(i + page.options.length) % page.options.length].id);
+          }
+        });
+
+        // Drag empty board space to pan, like the canvas engine.
+        let drag = null;
+        document.addEventListener('pointerdown', (event) => {
+          const board = event.target.closest('#board');
+          if (!board || event.target.closest('.frame')) return;
+          drag = { board, x: event.clientX, y: event.clientY, l: board.scrollLeft, t: board.scrollTop };
+        });
+        document.addEventListener('pointermove', (event) => {
+          if (!drag) return;
+          drag.board.scrollLeft = drag.l - (event.clientX - drag.x);
+          drag.board.scrollTop = drag.t - (event.clientY - drag.y);
+        });
+        document.addEventListener('pointerup', () => (drag = null));
+
+        if (delay > 0) {
+          document.body.classList.add('is-cold');
+          setTimeout(boot, delay);
+        } else boot();
+      })();
+    </script>
+  </body>
+</html>

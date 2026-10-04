@@ -1,18 +1,18 @@
 /*
-  Wayfinder's canvas for ticket #125: how the map shows what's next, what's in the way, and what has stalled.
+  Wayfinder's canvas for ticket #207: the in-app canvas viewer shell.
   Paths are relative to index.html. Check with: node prototypes/canvas/tools/check.mjs
 */
 
 window.CANVAS = {
-  ticket: 125,
-  title: "What's next, what's in the way, what has stalled",
+  ticket: 207,
+  title: 'The in-app canvas viewer shell',
   question:
-    'How should the map show the critical path, PR and CI state, stalled tickets, and where Start next and the "just unblocked" notice land, without redesigning the canvas or adding a fifth state colour?',
+    'What should opening a canvas inside Wayfinder look like: an overlay, a route, or a pane; how it opens from the tile and closes back; what the toolbar holds; and how Esc or Back returns you to the exact place on the map?',
   sampleState:
-    'Fake map #300 "Offline drafts". A 7-ticket blocker chain is the critical path (6 left) and a dead hand-off (#213) holds it up. Three open PRs: #204 passing and approved, #210 failing with changes requested, #211 running with review requested. #212 was claimed 6 days ago and not touched since. #203 just closed, which unblocked #214 and #216. Click any card to open it in the panel. The Prototype bar (bottom right) replays the notice or jumps to a ticket.',
+    'Fake map #300 "Offline drafts". #211 is a design canvas waiting on a pick in #218, with two pages (Directions A/B/C, States S1/S2). #206 is an old snapshot that was decided. Every frame is live: open a canvas from the Prototypes board (the Canvas button or a variant tile) or from the ticket panel\'s tile on the Map view (select #211 or #206). The canvas inside is a stand-in that speaks the #206 bridge. The dashed Prototype bar switches the window between the desktop app and a localhost browser tab, slows the open down to show the poster, and turns the bridge off to show the view-only fallback. In the browser frame, the arrows by the address bar are the browser\'s Back and Forward; Alt+← and Alt+→ work in both frames.',
 
   base: {
-    stylesheets: ['../../src/ui/styles.css', 'variants/next.css'],
+    stylesheets: ['../../src/ui/styles.css'],
     bodyClass: 'viz-root',
     surfaces: {
       plane: 'var(--plane)',
@@ -29,132 +29,167 @@ window.CANVAS = {
       round: 1,
       sections: [
         {
-          title: 'A · On the card',
-          note: 'Each signal goes on the card it belongs to. Start next goes in the topbar. The notice is a snackbar over the canvas.',
+          title: 'A · Overlay',
+          note: 'The canvas grows out of the tile and covers the whole window, rail and top bar included. The app stays mounted underneath, inert.',
           items: [
             {
               id: 'A',
-              name: 'Map with the notice',
-              src: 'variants/next-a.html?ticket=210',
+              name: 'Overlay, desktop app, from the board',
+              src: 'variants/viewer-a.html?frame=desktop&view=prototypes',
               note: {
                 idea:
-                  'The critical path is its chain of edges drawn solid and darker in the text colour. The selection lineage keeps its dashed flow. "6 left on the critical path" sits after the view tabs, and clicking it dims everything off the path. A PR takes over the card\'s meta line: "#232 · failing · changes requested", with a CI icon and a review icon. A stalled card gets a dashed frame and says "Stalled · …" on its meta line. The topbar button becomes "Start next 2". When a ticket closes, a snackbar says "#203 closed. #214 and #216 are ready." with Start both, and the new cards pulse once.',
+                  'Click the Canvas button or a variant tile and its picture grows to fill the window. The tile\'s picture is the poster, so there is no blank frame. The canvas fades in over it when the bridge says ready. One toolbar across the top: Close (Esc), the title, the canvas page menu, Board · A · B · C (an option opens full size), ← → while one is open, and the branch on GitHub. Close or Esc shrinks it back into the tile it came from and puts focus back on that tile. Opening adds one history entry (?canvas=211), so Back closes it too. Switching options or pages only replaces the hash: Back never steps through options.',
                 pros: [
-                  'Smallest change: every signal sits where you already look',
-                  'The meta line is free on claimed cards, so PR state costs no new space',
-                  'Start next is where Next: #N already lives',
+                  'Exact return for free: the map or board never unmounts, so scroll, pan, zoom and selection cannot drift',
+                  'The biggest canvas: only one 52 px bar of chrome',
+                  'The grow-from-tile transition reads clearly, because the target is the whole window',
+                  'Keeping the iframe mounted after close is natural: the overlay is just hidden',
                 ],
                 cons: [
-                  'The @assignee disappears from cards with a PR',
-                  'A snackbar is gone once dismissed, so there is no record of what moved',
-                  'Nothing adds up what is in the way: you scan the canvas for dashed frames and red icons',
+                  'Hides the app: hand-offs, Next and the map are out of sight while a canvas is open',
+                  'A modal: it needs a focus trap, inert app and aria-modal, and the rail can\'t be used to jump elsewhere without closing first',
+                  'Feels like a lightbox rather than a place in the app; a deep link opens an overlay over a page you have not seen yet',
                 ],
-                disposition: 'keep',
-                feedback:
-                  'User (27 Sep 2026): "I only like A." B and C are not taken forward. Agreed details: the PR line replaces @assignee on cards with a PR. Stalled is two settings, untouched claim and dead hand-off, 7 days each by default. The snackbar stays until dismissed or started, merges events, and lists but never starts grilling/prototype tickets. Start next hands off every startable (unblocked, unclaimed, task or research) ticket up to the #123 cap, shows "Start next 4 of 6" when capped, falls back to "Next: #N" when only HITL tickets are ready, and does not ask to confirm.',
               },
             },
             {
-              id: 'A-stalled',
-              name: 'Stalled ticket, path focused',
-              src: 'variants/next-a.html?ticket=213&path=1&notice=0',
+              id: 'A-browser',
+              name: 'Overlay, localhost browser, from the ticket panel',
+              src: 'variants/viewer-a.html?frame=browser&view=map',
               note: {
                 idea:
-                  'Path focus is on, so everything off the chain dims. The panel shows #213 with a neutral "Stalled" banner in place of the state banner, above the failed hand-off card.',
-                pros: ['Path focus reuses the canvas\'s existing dim treatment'],
-                cons: ['Two ways to dim the canvas (selection and path focus) can fight'],
-                disposition: 'keep',
-                feedback: 'Part of direction A, which the user chose ("I only like A").',
+                  'The same overlay on the localhost page. Select #211 on the map and click its tile in the ticket panel. The address bar shows ?ticket=211&canvas=211#directions/B; the browser\'s Back closes the overlay and leaves the map exactly as it was.',
+                pros: ['Back is the browser\'s own button, and a copied URL reopens the same canvas and option'],
+                cons: ['The browser tab\'s own chrome plus the overlay bar: two rows of controls above the canvas'],
               },
             },
           ],
         },
         {
-          title: 'B · Path lane and a moving strip',
-          note: 'One strip under the filters says what just moved and what is in the way. The critical path is a lane with numbered steps.',
+          title: 'B · Canvas route',
+          note: 'The canvas is a page in the app. The rail stays; the top bar becomes the viewer\'s toolbar. The map view is unmounted and restored from saved state.',
           items: [
             {
               id: 'B',
-              name: 'Map with the strip',
-              src: 'variants/next-b.html?ticket=210',
+              name: 'Route, desktop app, from the board',
+              src: 'variants/viewer-b.html?frame=desktop&view=prototypes',
               note: {
                 idea:
-                  'A soft lane runs under the critical path and its open cards carry step numbers 1–6. The topbar has a meter with one pip per path ticket, coloured by state, hatched if stalled, then "6 left". A strip under the filters shows the notice ("#203 closed 2 min ago · #214 and #216 unblocked · Start next · 2") and an "In the way" list sorted by urgency: stalled on the path, failing CI, needs you, then stalled elsewhere. Cards get a small PR · CI · review icon strip in the corner. Stalled cards are hatched. The panel adds a Pull request section with checks and review.',
+                  'The tile grows into the content area, beside the rail. The top bar turns into the viewer\'s bar: ← Prototypes (or ← Map, wherever you came from), the map name, the title, the page menu, Board · A · B · C, and GitHub. It is a real route, /repos/…/maps/300/canvas/211#directions/B, so Back, a reload and a shared link all land on the canvas. Leaving restores the view\'s scroll, pan, zoom and selection from what was saved on the way in.',
                 pros: [
-                  'Answers "what\'s in the way" in one row, sorted, without scanning',
-                  'The path reads even when it runs off screen: the meter and step numbers count it',
-                  'Start next sits right next to the news that made it possible',
+                  'Feels like a place in the app: the rail stays, so Home, Jump to and other maps are one click away',
+                  'Deep links and reloads behave like every other Wayfinder page',
+                  'One bar of chrome, because the toolbar replaces the top bar rather than stacking under it',
                 ],
                 cons: [
-                  'One more full-width bar pushes the canvas down about 45 px',
-                  'The icon-only strip on cards needs hover or the panel to read',
-                  'Hatching and a lane are new visual ideas on the canvas',
+                  'Exact return depends on saving and restoring state: map pan, zoom and selection have to be captured on the way in, and anything missed drifts',
+                  'The map unmounts, so its own redraw costs time on the way back',
+                  'The top bar\'s usual controls (hand-offs, Synced, Next) disappear while you look at a canvas',
+                  'Needs a new route and its routing tests',
                 ],
               },
             },
             {
-              id: 'B-stalled',
-              name: 'Stalled ticket, notice dismissed',
-              src: 'variants/next-b.html?ticket=212&notice=0',
+              id: 'B-browser',
+              name: 'Route, localhost browser, from the ticket panel',
+              src: 'variants/viewer-b.html?frame=browser&view=map',
               note: {
                 idea:
-                  'With the notice dismissed, the strip keeps a quiet "Start next · 2" and the In the way list. #212 is open: a neutral "Stalled for 6 days" banner.',
-                pros: ['The strip stays useful after the news is read'],
-                cons: ['An empty-ish strip on a quiet map is wasted height unless it hides'],
+                  'The same route on the localhost page, opened from #211\'s tile in the ticket panel. The address bar shows the canvas path. Back returns to /maps/300?ticket=211 with the map where you left it; Forward reopens the canvas instantly, because the frame stayed mounted.',
+                pros: ['The URL is the clearest of the three: the canvas has its own path'],
+                cons: ['A reload on the canvas route has to fetch the map too before ← Map can restore anything'],
               },
             },
           ],
         },
         {
-          title: 'C · A Next tab in the panel',
-          note: 'The canvas barely changes. The panel gets a Next tab that lists what just unblocked, the path, PRs and stalled tickets.',
+          title: 'C · Side pane',
+          note: 'The canvas opens in a wide pane beside the map or board. Expand fills the app the way B does.',
           items: [
             {
               id: 'C',
-              name: 'Next tab open',
-              src: 'variants/next-c.html',
+              name: 'Pane, desktop app, from the map',
+              src: 'variants/viewer-c.html?frame=desktop&view=map',
               note: {
                 idea:
-                  'A new Next tab, before Brief, with a count badge. It opens on a green "Just now" card: "#203 closed. #214 and #216 are ready." with the two tickets and Start next · 2. It also says why #215 (grilling) is left out. Then the Critical path listed in order ("6 left", with #213 flagged "Holding up the path"), Pull requests with CI and review, and Stalled. On the canvas, path cards get a "1/6" badge, PR cards get a CI glyph after the pill, and stalled cards get a clock. The topbar says "6 left on the critical path" and the primary button says "3 ready", and both open the tab.',
+                  'The tile slides out into a pane on the right (60% of the window, up to 820 px), under the top bar, replacing the ticket panel. The map stays live on the left: you can pan it, and the ticket you came from stays selected. The pane has two rows: the title with GitHub, Expand and Close, then the page menu and Board · A · B · C. Expand grows it to the whole content area. Close or Esc slides it back into the tile.',
                 pros: [
-                  'The canvas stays almost untouched',
-                  'The fullest answer: order, reasons and actions in one list',
-                  'The notice has a home that lasts, and the badge shows there is news',
+                  'Keeps context: the map, its ticket and the pick ticket stay in view while you compare options',
+                  'Exact return for free in pane mode: the map never unmounts',
+                  'Expand gives a full-size canvas when you need it, so one direction covers both needs',
                 ],
                 cons: [
-                  'Takes the panel away from the ticket you were reading',
-                  'Signals on the canvas are small; you rely on the tab',
-                  'A third tab makes the panel busier',
+                  'Cramped at the default size: on a 1320 px window the canvas gets about 790 px, and at the 900 px minimum about 540 px',
+                  'Two sizes and two layouts to build, test and polish (pane and expanded)',
+                  'Two scrolling surfaces side by side, the map and the canvas, so wheel and drag can go to the wrong one',
+                  'It takes the ticket panel\'s place, so the selected ticket\'s details are hidden while it is open',
                 ],
               },
             },
             {
-              id: 'C-ticket',
-              name: 'Ticket panel with a PR',
-              src: 'variants/next-c.html?tab=ticket&ticket=211&notice=0',
+              id: 'C-browser',
+              name: 'Pane, localhost browser, from the board',
+              src: 'variants/viewer-c.html?frame=browser&view=prototypes',
               note: {
-                idea: 'The ticket tab for #211: one line under the hand-off pill reads "PR #233 · Checks running · Review requested".',
-                pros: ['One compact line, next to the pill'],
-                cons: ['No check counts or reviewer without opening the PR'],
+                idea:
+                  'The same pane on the localhost page, opened from the Prototypes board. The board keeps the left side, so the other prototype cards stay in view. Opening adds ?canvas=211 to the URL; Back closes the pane.',
+                pros: ['You can open another card\'s canvas from the left without closing first'],
+                cons: ['The board\'s variant strip squeezes into the narrow left side'],
               },
             },
           ],
         },
+      ],
+    },
+    {
+      title: 'Shared states',
+      round: 1,
+      question: 'States every direction has to handle, shown in one direction each. Every frame\'s Prototype bar can switch them on in any direction.',
+      sections: [
         {
-          title: 'Review',
+          title: 'Loading, fallback and snapshots',
           items: [
             {
-              id: 'R',
+              id: 'S1',
+              name: 'Cold open: poster, then the canvas',
+              src: 'variants/viewer-c.html?frame=desktop&view=prototypes&cold=1',
+              note: {
+                idea:
+                  'With the branch not cached yet (here, a 1.2 s delay), the pane shows the tile\'s picture as a poster and "Loading the canvas…" in the toolbar. The canvas fades in when the wrapper says ready. Click Canvas on #211 to see it; open it a second time and it is instant, because the frame stayed mounted.',
+                pros: ['Never a blank white frame, warm or cold'],
+                cons: ['The poster is the tile\'s picture, so a canvas opened on page 2 briefly shows page 1'],
+              },
+            },
+            {
+              id: 'S2',
+              name: 'No bridge: view only',
+              src: 'variants/viewer-a.html?frame=desktop&view=prototypes&bridge=0',
+              note: {
+                idea:
+                  'When the wrapper never answers (the research\'s fourth fallback), the canvas still opens in-app, after a short wait. The page menu and Board · A · B · C are replaced by a "View only" chip whose tooltip says why. The canvas still works inside the frame.',
+                pros: ['Nothing breaks: the user still sees the canvas inside Wayfinder'],
+                cons: [
+                  'Esc pressed while focus is inside the canvas cannot reach Wayfinder without the bridge; only the toolbar, Back or Alt+← close it',
+                ],
+              },
+            },
+            {
+              id: 'S3',
+              name: 'A snapshot (#206)',
+              src: 'variants/viewer-b.html?frame=desktop&view=prototypes',
+              note: {
+                idea:
+                  'Click Canvas on #206. A snapshot is one page without a canvas engine, so the wrapper reports source "page". The toolbar shows a Snapshot chip and no page menu or options.',
+                pros: ['Old prototypes (#8, #17) open in-app the same way as canvases'],
+                cons: ['The variant strip\'s option letters can\'t be switched inside a snapshot'],
+              },
+            },
+            {
+              id: 'review',
               kind: 'note',
               name: 'Design review',
-              text: [
-                'Sources: src/ui/styles.css (tokens --state-*, --handoff-*, --state-failed; .node, .chip, .edges, .handoff-pill/card, .banner, .facts, .fchip, .map-start), src/ui/app.ts (nodeHtml, ticketHtml, edges), src/ui/handOffs.ts (handOffPill, handOffCard), src/ui/index.html. The chrome was copied from the live map page (Wayfinder on localhost, map #121).',
-                'No new colour: CI and review reuse --handoff-pr-ready (pass/approved), --state-failed (fail/changes) and --text-muted (running/requested). Each also has its own icon shape and word. Stalled uses neutral grey plus a pattern (dashed, hatched or a clock), never a hue.',
-                'Checked: light and dark in all three pages (Chromium, 1440×900). Selected, dimmed (path focus), done and just-unblocked card states. Keyboard: every new control is a native button; focus is restored after each repaint, and path focus toggles aria-pressed. Cards\' aria-label adds path, PR/CI/review and stalled text. Notices are role="status" aria-live="polite". The pulse respects prefers-reduced-motion.',
-                'Contrast (computed): new text uses --text-secondary/--text-muted on --surface-1 (≥ 4.5:1 in both themes). CI red #b42318 / #ff8782 and green #087008 / #58d66a pass 4.5:1 on their surfaces.',
-                'Findings: in B, extra filter chips wrapped the toolbar to two rows at 1440 px, so they were dropped. The prototype bar covers the panel\'s bottom-right corner (padding added).',
-                'Not checked: screen reader walk-through, Windows High Contrast / forced-colors, widths under 1100 px (panel stacks), the table view, and zoom above 100%.',
-              ].join('\n\n'),
+              text:
+                'Sources inspected: src/ui/styles.css (tokens, .wf-proto, .wf-strip, .proto-tile, .topbar, .segmented, .ghost, .iconbtn, .chip), src/ui/prototypeBoard.ts and prototypeTile.ts (the board and tile markup copied here), src/ui/app.ts (routing via ?view= and pushState), src/desktop/main.ts (window 1320×860, minimum 900×620, setWindowOpenHandler), src/repoRoutes.ts, and docs/design/in-app-canvas-viewer.md (#206). The app chrome uses the real stylesheet and classes; the viewer adds only viewer.css, which uses existing tokens.\n\nChecked: dark (system) and light (?theme=light). In A, B and C: open from the tile, Esc to close, Alt+← to close and Alt+→ to reopen, with focus returning to the tile that opened the canvas (keys sent as scripted keydown events, not a physical keyboard). The browser frame’s Back and Forward buttons in B. Map scroll and selection after closing: B restored 120,60 with #211 selected; C kept 90,40 through Expand and Esc. The view-only fallback (bridge off) and a snapshot (#206). Layout at 1280×800 and at the desktop minimum of 900×620, where the toolbar drops its labels to icons and still fits. Contrast of the new colours, computed: address-bar host 4.92:1 (light) and 6.74:1 (dark), the sample canvas’s muted text 5.49:1 and 7.84:1, its warning text 5.02:1 and 10.51:1, the kbd hint 5.28:1. Semantics by reading the markup: A is role=dialog with aria-modal and an inert app behind it; B and C are labelled regions; the page menu is a menu of menuitemradio items; option buttons use aria-pressed; icon-only buttons have labels.\n\nFindings: in every direction the toolbar’s option letters rely on a title tooltip for the option name (the presented option’s name shows beside the arrows). The engine on today’s canvas branches sets location.hash itself when you click a frame, which pushes history entries; inside the viewer that would make Back step through options before closing. The stand-in canvas here uses location.replace. The build has to stop that in the wrapper or accept it (open question).\n\nNot checked: screen reader output (no NVDA or VoiceOver run); Tab trapping in A and arrow keys in the page menu (written, not exercised); real Electron framing and the mouse back button in Electron; real timing against the 300 ms warm-open bar; 60 fps of the transition on a real board; Windows High Contrast; touch.',
             },
           ],
         },
