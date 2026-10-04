@@ -11,10 +11,12 @@ servers from anywhere.
 
 ## What sits on the desktop today
 
-**Wayfinder** listens on `127.0.0.1:4478` (`src/config.ts`). It has no login. Its only
-guard is that requests must come from this machine: `hostAllowed` and `originAllowed`
-in `src/server.ts` reject any Host or Origin that is not loopback. That is the right
-shape for a local page and the wrong one for a phone. The same server also answers
+**Wayfinder** listens on `127.0.0.1:4478` (`src/config.ts`). It has no login. What
+keeps other machines out is the loopback bind itself. On top of that, `src/server.ts`
+rejects `/api/*` calls whose Origin is not its own loopback page (`originAllowed`), and
+prototype files whose Host is not loopback (`hostAllowed`), so other websites in the
+browser cannot drive it. That is the right shape for a local page and the wrong one for
+a phone. The same server also answers
 `/api/shutdown`, `/api/auth/*` (the user's GitHub login) and `/api/updater/install`, so
 it cannot simply be opened to the network as it is.
 
@@ -54,7 +56,7 @@ works this way.
   and iOS needs App Transport Security exceptions plus the local-network permission.
   T3 Code's app turns on `NSAllowsArbitraryLoads`, `NSLocalNetworkUsageDescription`
   and an Android cleartext plugin to make this work (`apps/mobile/app.config.ts`).
-  Anyone on the same Wi-Fi can see the traffic.
+  Anyone who can intercept traffic on that network can read the token and commands.
 - **Setup.** Scan one QR code. Nothing to install.
 - **Cost.** Free.
 - **Offline and moving.** Works only while the phone is on the same network. It stops
@@ -99,9 +101,10 @@ a public hostname that forwards to a loopback port
 - **Security.** No inbound ports, real TLS. But the hostname is on the public internet:
   "accessible to anyone on the internet" until an Access application is put in front of
   it ([create a tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-remote-tunnel/)).
-  A native app has to send a service token in `CF-Access-Client-Id` and
-  `CF-Access-Client-Secret` headers, and the token expires after its set lifetime,
-  one year by default ([service tokens](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/)).
+  A native app cannot do Access's browser login, so the usual fit is a service token
+  sent as `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. The token
+  expires after the lifetime chosen when it is created
+  ([service tokens](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/)).
   Cloudflare terminates TLS, so it sees the traffic in clear.
 - **Setup.** A domain added to Cloudflare, a named tunnel, a published route, an Access
   application and policy, and a service token copied to the phone. Quick Tunnels skip
@@ -123,8 +126,8 @@ The desktop opens an outbound WebSocket to a small cloud relay (for example a
 Cloudflare Worker), and the phone talks to the relay.
 
 - **Security.** Only as good as what we build: the relay must not be able to read or
-  forge commands, so it needs end-to-end encryption or signed requests between paired
-  keys. T3 Code's own relay docs show how much care this takes: DPoP-bound bootstrap
+  forge commands, so it needs end-to-end encryption between paired keys. Signing alone
+  stops forgery but not reading. T3 Code's own relay docs show how much care this takes: DPoP-bound bootstrap
   credentials, replay guards, signed responses, and an explicit note that a compromised
   relay signing key is not harmless
   ([T3 Connect](https://github.com/pingdotgg/t3code/blob/main/docs/internals/t3-connect.md)).
@@ -153,8 +156,10 @@ Code offers.
   tunnel and reclaims idle ones, and has a per-account `environment_link_limit_exceeded`
   limit ([remote access](https://github.com/pingdotgg/t3code/blob/main/docs/user/remote-access.md#t3-connect-troubleshooting)).
 - **Offline and moving.** T3 Connect works from any network with no VPN on the phone.
-  When the host sleeps, the relay removes the tunnel after five to ten minutes and
-  rebuilds it on wake with the same address, so no re-pairing. It is also the only route
+  When the host sleeps it goes offline. If the relay's idle cleanup is on, it removes
+  the tunnel after five to ten minutes; either way the host gets a tunnel back on wake
+  at the same address, so no re-pairing. Cleanup is off by default in the relay code
+  and its live setting is not published. It is also the only route
   that gives background push: "a direct or Tailscale connection alone does not enable
   push notifications"
   ([mobile notifications](https://github.com/pingdotgg/t3code/blob/main/docs/user/mobile-notifications.md)).
