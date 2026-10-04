@@ -1,13 +1,16 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import * as filesystem from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { NotificationSettingsStore } from './notifications.js';
 import { ProgressSettingsStore } from './progress.js';
 import { SettingsFileWriter } from './settingsFile.js';
 import { StallSettingsStore } from './stalled.js';
+
+vi.mock('node:fs/promises', { spy: true });
 
 const directories: string[] = [];
 
@@ -22,7 +25,7 @@ afterEach(async () => {
 });
 
 describe('SettingsFileWriter', () => {
-  it('keeps the complete previous or next JSON readable while replacing the file', async () => {
+  it('keeps the previous JSON readable while its replacement is incomplete', async () => {
     const directory = await temporaryDirectory();
     const path = join(directory, 'settings.json');
     const previous = { version: 'previous', data: 'a'.repeat(512_000) };
@@ -30,12 +33,35 @@ describe('SettingsFileWriter', () => {
     await writeFile(path, JSON.stringify(previous), 'utf8');
     const writer = new SettingsFileWriter(path);
 
+    const originalWrite = (await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')).writeFile;
+    let resume: () => void = () => undefined;
+    let notifyPartial: () => void = () => undefined;
+    const paused = new Promise<void>((resolve) => { resume = resolve; });
+    const partialWritten = new Promise<void>((resolve) => { notifyPartial = resolve; });
+    const write = vi.mocked(filesystem.writeFile).mockImplementation(async (file, data, options) => {
+      // Pause the real filesystem write with incomplete JSON. A direct destination
+      // write would expose this partial content; a temporary file must not.
+      await originalWrite(file, '{', options);
+      notifyPartial();
+      await paused;
+      // The first write already created the file exclusively.
+      await originalWrite(file, data, { encoding: 'utf8', flag: 'w' });
+    });
     const saving = writer.write(next);
-    await Promise.all(Array.from({ length: 20 }, async () => {
-      const parsed: unknown = JSON.parse(await readFile(path, 'utf8'));
-      expect([previous, next]).toContainEqual(parsed);
-    }));
-    await saving;
+    try {
+      await partialWritten;
+      expect(JSON.parse(await readFile(path, 'utf8'))).toEqual(previous);
+      const temporary = (await readdir(directory)).find((file) => file.endsWith('.tmp'));
+      expect(temporary).toBeDefined();
+      expect(await readFile(join(directory, temporary ?? ''), 'utf8')).toBe('{');
+    } finally {
+      resume();
+      try {
+        await saving;
+      } finally {
+        write.mockImplementation(originalWrite);
+      }
+    }
 
     expect(JSON.parse(await readFile(path, 'utf8'))).toEqual(next);
     expect(await readdir(directory)).toEqual(['settings.json']);
