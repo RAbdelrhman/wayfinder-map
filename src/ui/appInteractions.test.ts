@@ -160,6 +160,41 @@ describe('focus through the production redraw paths', () => {
 });
 
 describe('table ticket keyboard entry', () => {
+  it.each([true, false])('keeps table ticket focus only while its map exists (%s)', (mapExists) => {
+    vi.stubGlobal('HTMLElement', ElementFixture);
+    const document = { activeElement: null as ElementFixture | null };
+    class TableFixture extends ElementFixture {
+      override set innerHTML(html: string) {
+        for (const child of this.children) child.isConnected = false;
+        if (document.activeElement?.isConnected === false) document.activeElement = null;
+        this.children = [...html.matchAll(/<button[^>]*data-table-ticket="(\d+)"[^>]*>/g)]
+          .map((match) => new ElementFixture(document, { 'data-table-ticket': match[1] ?? '' }));
+      }
+    }
+    const tableWrap = new TableFixture(document);
+    const original = new ElementFixture(document, { 'data-table-ticket': '11' });
+    tableWrap.children = [original];
+    original.focus();
+    const context: Record<string, unknown> = {
+      els: { tableWrap, canvasWrap: { hidden: false }, protoWrap: { hidden: true } },
+      currentMap: () => mapExists ? {} : null,
+      allTickets: () => [{ number: 11, title: 'Keyboard ticket', state: 'frontier', type: 'task', assignee: null, blockedBy: [] }],
+      STATE_STYLE, pullRequestOf: () => undefined, stallOf: () => undefined, onCriticalPath: () => false,
+      typeStyle: () => ({ label: 'Task', icon: '' }), icon: () => '', escapeHtml,
+      hideCard: () => undefined, syncHighlights: () => undefined, rememberControlFocus,
+    };
+    bindings(context, ['renderTable']);
+    (context['renderTable'] as () => void)();
+    if (mapExists) {
+      expect(document.activeElement).toBe(tableWrap.children[0]);
+      expect(document.activeElement).not.toBe(original);
+      expect(document.activeElement?.focusOptions).toEqual({ preventScroll: true });
+    } else {
+      expect(tableWrap.children).toEqual([]);
+      expect(document.activeElement).toBeNull();
+    }
+  });
+
   it('renders a native ticket button and selects it through the production table listener', () => {
     let listener: ((event: { target: { closest(selector: string): unknown } }) => void) | undefined;
     let selected: number | null = null;
@@ -170,7 +205,7 @@ describe('table ticket keyboard entry', () => {
       currentMap: () => ({}), allTickets: () => [ticket], STATE_STYLE, pullRequestOf: () => ({ url: 'https://github.com/owner/repo/pull/2' }),
       pullRequestText: () => 'PR #2', stallOf: () => undefined, onCriticalPath: () => false,
       typeStyle: () => ({ label: 'Task', icon: '' }), icon: () => '', escapeHtml, hideCard: () => undefined, syncHighlights: () => undefined,
-      select: (number: number) => { selected = number; },
+      select: (number: number) => { selected = number; }, rememberControlFocus: () => () => undefined,
     };
     bindings(context, ['renderTable'], ['els.tableWrap:click']);
     (context['renderTable'] as () => void)();

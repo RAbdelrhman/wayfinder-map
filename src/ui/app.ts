@@ -859,6 +859,7 @@ function renderGraph(): void {
 }
 
 function renderTable(): void {
+  const restoreFocus = rememberControlFocus(els.tableWrap);
   els.canvasWrap.hidden = true;
   els.tableWrap.hidden = false;
   els.protoWrap.hidden = true;
@@ -867,6 +868,7 @@ function renderTable(): void {
   const map = currentMap();
   if (map === null) {
     els.tableWrap.innerHTML = '';
+    restoreFocus();
     return;
   }
 
@@ -900,6 +902,7 @@ function renderTable(): void {
   </table>`;
 
   syncHighlights();
+  restoreFocus();
 }
 
 /* ---------- prototypes: fetched per map on demand, since each one costs GitHub calls ---------- */

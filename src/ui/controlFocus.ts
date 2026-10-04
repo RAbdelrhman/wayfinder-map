@@ -1,4 +1,4 @@
-const CONTROL_ATTRIBUTES = ['id', 'data-number', 'data-panel', 'data-section', 'data-filter', 'data-tier', 'data-jump'] as const;
+const CONTROL_ATTRIBUTES = ['id', 'data-number', 'data-table-ticket', 'data-panel', 'data-section', 'data-filter', 'data-tier', 'data-jump'] as const;
 
 /** Restore the same control after its container replaces it, without moving the viewport. */
 export function rememberControlFocus(root: HTMLElement): () => void {
