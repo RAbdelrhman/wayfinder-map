@@ -24,7 +24,7 @@ Short answer: Expo Push, sent by the desktop. See [Recommendation](#recommendati
 
 ### Phone offline or asleep
 
-Neither service drops an alert because the phone is off. Both have limits:
+Both services may hold an alert for a phone that is off, subject to expiry and replacement:
 
 - FCM keeps a message for an offline device until it reconnects, then discards it once its lifetime runs out. The default and maximum lifetime is 4 weeks (2,419,200 s); a `ttl` of 0 is never stored. ([Set the lifespan of a message](https://firebase.google.com/docs/cloud-messaging/customize-messages/setting-message-lifespan))
 - APNs "may store the notification for 30 days or less, depending on the date you specify in the `apns-expiration` header". It "stores only one notification per bundle ID", usually the latest. ([Sending notification requests to APNs](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns))
@@ -45,7 +45,7 @@ The desktop's alert kinds (`src/notificationTypes.ts`) and where their facts liv
 | `failingCi` | PR checks | Yes: `check_suite` / `check_run` `completed`, `workflow_run` |
 | `reviewReady` | PR state + checks + review | Yes, by combining `pull_request`, `pull_request_review` and check events, which means keeping PR state on the server |
 | `prototypeReady` | Prototype branch push or hand-off branch | Partly: `push` to a prototype branch |
-| `stalled` | Time since last branch commit | No. It needs a scheduled job, not an event. |
+| `stalled` | N days with no commit, PR, issue activity or live hand-off on a claimed ticket, or a failed hand-off with no retry (`src/stalled.ts`) | No. It's the absence of events, so it needs a scheduled job, and dead hand-offs are desktop state. |
 
 Webhook facts: `issue_dependencies` (`blocked_by_added`, `blocked_by_removed`, …) and `sub_issues` events exist. Repository webhooks get only `completed` for check suites and `created`/`completed` for check runs. ([Webhook events and payloads](https://docs.github.com/en/webhooks/webhook-events-and-payloads)) Deliveries are signed with `X-Hub-Signature-256` ([Validating deliveries](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries)). "GitHub does not automatically redeliver failed webhook deliveries", and a reply slower than 10 seconds counts as a failure ([Handling failed deliveries](https://docs.github.com/en/webhooks/using-webhooks/handling-failed-webhook-deliveries)). Recent deliveries can be redelivered for 3 days in the UI ([Redelivering webhooks](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks)).
 
@@ -75,7 +75,7 @@ The desktop sends T3 Code alerts, and the service sends GitHub alerts. Like B, i
 ## While the PC is asleep or off
 
 - On Modern Standby PCs, "Desktop apps are stopped by the Desktop Activity Moderator (DAM)" while the system sleeps. Only Store-app background tasks keep running. ([Modern Standby vs S3](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/modern-standby-vs-s3)) S3 sleep and shutdown stop everything. Wayfinder and T3 Code are both desktop apps, so neither polls nor runs sessions while the PC sleeps.
-- Electron emits `powerMonitor` `suspend` and `resume` on all platforms ([powerMonitor](https://www.electronjs.org/docs/latest/api/power-monitor)). Nothing in `src/` listens for them yet. The existing `MapWatcher.catchUp` won't help as is: it only reads maps restored from disk (`needsCatchUp`), not maps that were running when the PC slept. Without a hook, the watcher's normal timers pick changes up after wake, up to one interval (2 min) late. A `resume` hook that reads every watched map at once is a small addition for #234.
+- Electron emits `powerMonitor` `suspend` and `resume` on all platforms ([powerMonitor](https://www.electronjs.org/docs/latest/api/power-monitor)). Nothing in `src/` listens for them yet. The existing `MapWatcher.catchUp` won't help as is: it only reads maps restored from disk (`needsCatchUp`), not maps that were running when the PC slept. Without a hook, the watcher's normal timers pick changes up after wake, normally within one interval (2 min), longer when it is backing off after failures or rate limits. A `resume` hook that reads every watched map at once is a small addition for #234.
 
 What that means for each option:
 
@@ -84,7 +84,7 @@ What that means for each option:
 | T3 Code needs you / hand-off failed | Can't happen: sessions are paused too | Can't happen, and B could never send it anyway |
 | CI failed, review ready, prototype pushed | Sent late, on wake | Sent on time |
 | Ticket unblocked by a close made elsewhere | Sent late, on wake | Sent on time, if the service reads dependencies |
-| Stalled | Not meaningful: the session that would stall is paused | Needs a scheduled job |
+| Stalled | Can cross its N-day threshold while the PC sleeps; sent late, on wake | Needs a scheduled job, and can't see dead hand-offs |
 
 Following maps on the phone still works with the PC off, because the phone reads GitHub directly (map #217 decision). The user can open the app and see current state even when no push came.
 
