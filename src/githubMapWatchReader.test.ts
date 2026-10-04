@@ -14,6 +14,44 @@ const response = (body: unknown, etag: string, link = '') => `HTTP/2.0 200 OK\r\
 beforeEach(() => { mocks.read.mockReset(); });
 
 describe('production GitHub map watcher membership', () => {
+  it('does not watch a map as its own child when its body links back to itself', async () => {
+    const reader = createGithubMapWatchReader(mocks.read);
+    mocks.read.mockImplementation(async (args) => {
+      const route = args.find((arg) => arg.startsWith('repos/')) ?? '';
+      if (route.endsWith('/sub_issues')) return response([issue(11)], '"native"');
+      if (route === 'repos/self/map/issues/5') return response({ ...issue(5), body: '- [ ] #5\n- [ ] #12\nhttps://github.com/self/map/issues/5' }, '"map"');
+      if (route === 'repos/self/map/issues/12') return response(issue(12), '"child"');
+      throw new Error(`Unexpected request ${args.join(' ')}`);
+    });
+    const read = await reader.readMap('self/map', 5, null);
+    if (read.status !== 'changed') throw new Error('Expected baseline');
+    expect(read.tickets.map((ticket) => ticket.number)).toEqual([11, 12]);
+    expect(mocks.read).toHaveBeenCalledTimes(3);
+  });
+
+  it('falls back to body members when GitHub has no native sub-issues endpoint', async () => {
+    const reader = createGithubMapWatchReader(mocks.read);
+    mocks.read.mockImplementation(async (args) => {
+      const route = args.find((arg) => arg.startsWith('repos/')) ?? '';
+      if (route.endsWith('/sub_issues')) return 'HTTP/2.0 404 Not Found\r\n\r\n{"message":"Not Found"}';
+      if (route === 'repos/fallback/map/issues/5') return response({ body: '- [ ] #12' }, '"map"');
+      if (route === 'repos/fallback/map/issues/12') return response(issue(12), '"child"');
+      throw new Error(`Unexpected request ${args.join(' ')}`);
+    });
+    const read = await reader.readMap('fallback/map', 5, null);
+    if (read.status !== 'changed') throw new Error('Expected baseline');
+    expect(read.tickets.map((ticket) => ticket.number)).toEqual([12]);
+  });
+
+  it.each([
+    ['HTTP/2.0 403 Forbidden\r\n\r\n{}', 'GitHub answered 403'],
+    ['HTTP/2.0 404 Not Found\r\nx-ratelimit-limit: 5000\r\nx-ratelimit-remaining: 0\r\nx-ratelimit-reset: 2000000000\r\n\r\n{}', 'rate limit'],
+  ])('keeps endpoint errors visible when the response is %s', async (failure, message) => {
+    const reader = createGithubMapWatchReader(mocks.read);
+    mocks.read.mockImplementation(async (args) => (args.some((arg) => arg.endsWith('/sub_issues')) ? failure : response({ body: '- [ ] #12' }, '"map"')));
+    await expect(reader.readMap('fallback/error', 5, null)).rejects.toThrow(message);
+  });
+
   it('conditionally reads every page and body member, noticing an independent change behind 304 responses', async () => {
     const reader = createGithubMapWatchReader(mocks.read);
     const resources = new Map([

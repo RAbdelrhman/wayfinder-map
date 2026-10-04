@@ -430,6 +430,11 @@ export function createGithubMapWatchReader(runApi: (args: string[]) => Promise<s
         const interval = Number(response.headers['x-poll-interval']);
         if (Number.isFinite(interval) && interval > 0) pollIntervalSeconds = Math.max(pollIntervalSeconds ?? 0, interval);
         if (response.status === 304 && cached !== undefined) return cached;
+        // A missing native endpoint still permits body membership, as the visible map loader does.
+        if (response.status === 404 && page !== undefined && rateLimit?.remaining !== 0) {
+          changed = true;
+          return { value: [], etag: null, next: false };
+        }
         if (response.status !== 200) throw new Error(rateLimit?.remaining === 0 ? RATE_LIMIT_WARNING : `GitHub answered ${String(response.status)} for map #${String(mapNumber)}.`);
         changed = true;
         const value: unknown = JSON.parse(response.body);
@@ -454,7 +459,7 @@ export function createGithubMapWatchReader(runApi: (args: string[]) => Promise<s
       const body = (parent.value as Record<string, unknown>)['body'];
       const bodyIssues = new Map<number, CachedWatchResource>();
       for (const number of parseChildNumbers(typeof body === 'string' ? body : '', repo)) {
-        if (attached.has(number)) continue;
+        if (number === mapNumber || attached.has(number)) continue;
         bodyIssues.set(number, await read(`repos/${repo}/issues/${String(number)}`, previous?.bodyIssues.get(number)));
       }
       const token = JSON.stringify([parent.etag, [...pages].map(([page, resource]) => [page, resource.etag]), [...bodyIssues].map(([number, resource]) => [number, resource.etag])]);
