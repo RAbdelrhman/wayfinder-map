@@ -140,7 +140,12 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
       try {
         await prepareForRestart();
         if (stopped || window.isDestroyed()) return;
+        const revision = errorRevision;
         autoUpdater.quitAndInstall(false, true);
+        // NSIS reports a refused installer through a synchronous error event, not a return value.
+        if (revision !== errorRevision) {
+          throw new Error(currentStatus.error ?? 'Could not start the update installer.');
+        }
         stop();
       } catch (error) {
         reportError(error);

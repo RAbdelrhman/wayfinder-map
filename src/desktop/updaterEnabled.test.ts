@@ -154,6 +154,44 @@ describe('enabled desktop updates', () => {
     handle.stop();
   });
 
+  it('rejects a real NSIS refusal without stopping update handling or losing retries', async () => {
+    const { NsisUpdater } = await vi.importActual<typeof import('electron-updater')>('electron-updater');
+    const realUpdater = new NsisUpdater(null, {
+      version: '1.2.3',
+      name: 'Wayfinder',
+      isPackaged: false,
+      appUpdateConfigPath: '',
+      userDataPath: '',
+      baseCachePath: '',
+      whenReady: async () => undefined,
+      relaunch: () => undefined,
+      quit: () => undefined,
+      onQuit: () => undefined,
+    });
+    actualUpdater = realUpdater;
+    const handle = start();
+    try {
+      await handle.check();
+      // Simulate readiness becoming stale: the library has no installer in its download cache.
+      realUpdater.emit('update-downloaded', {
+        version: '1.2.4',
+        downloadedFile: '/fixture/Wayfinder.exe',
+        files: [{ url: 'Wayfinder.exe', sha512: 'fixture' }],
+        path: 'Wayfinder.exe',
+        sha512: 'fixture',
+        releaseDate: '2026-10-03T00:00:00.000Z',
+      });
+      await expect(handle.install()).rejects.toThrow('No update filepath provided');
+      expect(handle.status()).toMatchObject({ status: 'error' });
+      expect(realUpdater.listenerCount('error')).toBe(2);
+      await expect(handle.install()).rejects.toThrow('No update filepath provided');
+      expect(prepareForRestart).toHaveBeenCalledTimes(2);
+      expect(realUpdater.listenerCount('update-downloaded')).toBe(1);
+    } finally {
+      handle.stop();
+    }
+  });
+
   it('preserves downloaded readiness across another check and installs once', async () => {
     const handle = start();
     await handle.check();
