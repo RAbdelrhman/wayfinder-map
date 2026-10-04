@@ -43,7 +43,7 @@ function cloneFixture() {
   const sync = vi.fn();
   const announceClone = vi.fn();
   const context: Record<string, unknown> = {
-    repo: 'owner/a', workspace: { status: 'choose', candidates: [], canChoose: true }, cloneOpen: true, cloneRequest: 0,
+    repo: 'owner/a', workspace: { status: 'choose', candidates: [], canChoose: true }, cloneOpen: true, cloneRequest: 0, repositoryGeneration: 0,
     cloneActivity, sync, announceClone, scopedApiPath: (repo: string, api: string) => `${repo}/${api}`,
     fetch: vi.fn(() => pending.promise),
   };
@@ -123,6 +123,68 @@ describe('clone completion after changing repository', () => {
     await checking;
     expect(app.context['workspace']).toEqual(ready);
     expect(app.context['cloneOpen']).toBe(false);
+  });
+});
+
+describe('clone completion after leaving and returning to the same repository', () => {
+  it.each(['setClone', 'cloneRepository'] as const)('%s leaves the returning repository lookup valid', async (name) => {
+    const app = cloneFixture();
+    const freshLookup = deferred<unknown>();
+    const cloneStarted = deferred<void>();
+    app.context['fetch'] = vi.fn((path: string) => {
+      if (name === 'cloneRepository' && path.endsWith('/workspace')) return Promise.resolve(reply({ target: 'C:/clones/a' }));
+      cloneStarted.resolve();
+      return app.pending.promise;
+    });
+    app.context['context'] = {
+      setCurrentRepo: vi.fn(), remember: vi.fn(),
+      getJson: (path: string) => path.startsWith('owner/a/') ? freshLookup.promise : Promise.resolve(ready),
+    };
+    Object.assign(app.context, { normalizeRepo, knownRepos: [], closeMenu: vi.fn(), goal: { focus: vi.fn() }, mapNotice: null });
+    bindings(app.context, ['selectRepository']);
+    const operation = (app.context[name] as (body?: unknown) => Promise<void>)({ path: 'C:/clones/a' });
+    await cloneStarted.promise;
+    const select = app.context['selectRepository'] as (repo: string) => void;
+    select('owner/b');
+    select('owner/a');
+    const request = app.context['cloneRequest'];
+    app.announceClone.mockClear();
+    app.pending.resolve(reply(ready));
+    await operation;
+    expect(app.cloneActivity.has('owner/a')).toBe(false);
+    expect(app.context['workspace']).toBe('loading');
+    expect(app.context['cloneRequest']).toBe(request);
+    expect(app.announceClone).not.toHaveBeenCalled();
+    const freshWorkspace = { ...ready, path: 'C:/clones/fresh-a' };
+    freshLookup.resolve(freshWorkspace);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(app.context['workspace']).toBe(freshWorkspace);
+  });
+
+  it.each(['setClone', 'cloneRepository'] as const)('%s cannot replace the returning repository workspace', async (name) => {
+    const app = cloneFixture();
+    const cloneStarted = deferred<void>();
+    app.context['fetch'] = vi.fn((path: string) => {
+      if (name === 'cloneRepository' && path.endsWith('/workspace')) return Promise.resolve(reply({ target: 'C:/clones/a' }));
+      cloneStarted.resolve();
+      return app.pending.promise;
+    });
+    const freshWorkspace = { ...ready, path: 'C:/clones/fresh-a' };
+    app.context['context'] = { setCurrentRepo: vi.fn(), remember: vi.fn(), getJson: async () => freshWorkspace };
+    Object.assign(app.context, { normalizeRepo, knownRepos: [], closeMenu: vi.fn(), goal: { focus: vi.fn() }, mapNotice: null });
+    bindings(app.context, ['selectRepository']);
+    const operation = (app.context[name] as (body?: unknown) => Promise<void>)({ path: 'C:/clones/a' });
+    await cloneStarted.promise;
+    const select = app.context['selectRepository'] as (repo: string) => void;
+    select('owner/b');
+    select('owner/a');
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    app.announceClone.mockClear();
+    app.pending.resolve(reply(ready));
+    await operation;
+    expect(app.cloneActivity.has('owner/a')).toBe(false);
+    expect(app.context['workspace']).toBe(freshWorkspace);
+    expect(app.announceClone).not.toHaveBeenCalled();
   });
 });
 

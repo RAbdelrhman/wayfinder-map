@@ -76,6 +76,8 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
   let workspace: WorkspaceView | 'loading' | null = repo === null ? null : 'loading';
   let cloneOpen = false;
   let cloneRequest = 0;
+  // Returning to the same repo still makes operations from its previous selection stale.
+  let repositoryGeneration = 0;
   let busy = false;
   let openMenu: 'repository' | 'model' | null = null;
   let mapNotice: string | null = null;
@@ -312,6 +314,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
       return;
     }
     repo = next;
+    repositoryGeneration += 1;
     context.setCurrentRepo(next);
     if (next !== null && !knownRepos.some((candidate) => candidate.toLowerCase() === next.toLowerCase())) knownRepos.unshift(next);
     mapNotice = null;
@@ -352,6 +355,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
   async function setClone(body: { choose: true } | { path: string }): Promise<void> {
     const requestedRepo = repo;
     if (requestedRepo === null || cloneActivity.get(requestedRepo)?.busy) return;
+    const generation = repositoryGeneration;
     cloneActivity.set(requestedRepo, { text: 'choose' in body ? 'Choose a local clone…' : 'Checking the selected clone…', busy: true, error: false });
     sync();
     try {
@@ -361,7 +365,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
         body: JSON.stringify(body),
       });
       const result = (await response.json()) as Partial<WorkspaceView> & { error?: string; cancelled?: boolean };
-      const current = requestedRepo === repo;
+      const current = requestedRepo === repo && generation === repositoryGeneration;
       if (current && result.status !== undefined) {
         cloneRequest += 1;
         workspace = result as WorkspaceView;
@@ -390,7 +394,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
     } catch {
       const message = 'Could not select that clone. Check Wayfinder and try again.';
       cloneActivity.set(requestedRepo, { text: message, busy: false, error: true });
-      if (repo === requestedRepo) announceClone(message);
+      if (repo === requestedRepo && generation === repositoryGeneration) announceClone(message);
     }
     if (repo === requestedRepo) sync();
   }
@@ -398,6 +402,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
   async function cloneRepository(): Promise<void> {
     const requestedRepo = repo;
     if (requestedRepo === null || cloneActivity.get(requestedRepo)?.busy) return;
+    const generation = repositoryGeneration;
     cloneActivity.set(requestedRepo, { text: 'Choose an empty folder for the clone…', busy: true, error: false });
     sync();
     try {
@@ -423,20 +428,21 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
         body: JSON.stringify({ target: folder.target }),
       });
       const result = (await response.json()) as Partial<WorkspaceView> & { error?: string };
-      if (repo === requestedRepo && result.status !== undefined) {
+      const current = repo === requestedRepo && generation === repositoryGeneration;
+      if (current && result.status !== undefined) {
         cloneRequest += 1;
         workspace = result as WorkspaceView;
       }
       if (!response.ok || result.error !== undefined) throw new Error(result.error ?? `Could not clone ${requestedRepo}. Try again.`);
       cloneActivity.delete(requestedRepo);
-      if (repo === requestedRepo) {
+      if (current) {
         cloneOpen = false;
         announceClone('The repository clone is ready for T3 Code.');
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not finish the clone. Check Wayfinder and try again.';
       cloneActivity.set(requestedRepo, { text: message, busy: false, error: true });
-      if (repo === requestedRepo) announceClone(message);
+      if (repo === requestedRepo && generation === repositoryGeneration) announceClone(message);
     }
     if (repo === requestedRepo) sync();
   }
