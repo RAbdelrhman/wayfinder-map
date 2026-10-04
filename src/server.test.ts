@@ -126,7 +126,16 @@ describe('repository-scoped server', () => {
     }
   });
 
-  it.each(['localhost', '127.0.0.1'])('accepts the loopback Host %s while preserving the Origin check', async (host) => {
+  it.each(['attacker.example@localhost', 'localhost#attacker.example', 'localhost/path', 'localhost?query', 'localhost:abc', 'localhost:99999'])('rejects malformed authority %s', async (host) => {
+    const running = await startServer({ config, repo: 'octo/one', template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, fetcher: async () => ({ maps: [], warnings: [] }) });
+    try {
+      expect((await getWithHeaders(`${running.url}/api/home`, { host })).status).toBe(403);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it.each(['localhost', '127.0.0.1', '[::1]'])('accepts the loopback Host %s while preserving the Origin check', async (host) => {
     const running = await startServer({
       config,
       repo: 'octo/one',
