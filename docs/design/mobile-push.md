@@ -13,7 +13,7 @@ Short answer: Expo Push, sent by the desktop. See [Recommendation](#recommendati
 - `ttl` defaults to "each provider's own default - 4 weeks". `collapseId`, `tag` and `threadId` control coalescing, replacement and grouping. `priority: 'high'` maps to APNs priority 10. ([Sending notifications](https://docs.expo.dev/push-notifications/sending-notifications/))
 - Enhanced security: "You can require any push requests to be sent with a valid access token". Requests without it get `UNAUTHORIZED`. ([Sending notifications](https://docs.expo.dev/push-notifications/sending-notifications/))
 - "There is no cost associated with sending notifications through Expo push notification service." Expo "doesn't store the contents of push notifications any longer than it takes to deliver them." ([FAQ](https://docs.expo.dev/push-notifications/faq/))
-- Tokens stay the same across app upgrades, and on iOS across reinstall. On Android a reinstall may change the token, so the app re-registers its token on every launch. `getDevicePushTokenAsync` returns the native token if we ever leave Expo's service. ([FAQ](https://docs.expo.dev/push-notifications/faq/))
+- Tokens stay the same across app upgrades, and on iOS across reinstall. On Android a reinstall may change the token, so the app should re-register its token on every launch. `getDevicePushTokenAsync` returns the native token if we ever leave Expo's service. ([FAQ](https://docs.expo.dev/push-notifications/faq/))
 - Setup needs a paid Apple Developer account for iOS credentials, FCM V1 credentials for Android, and `projectId` for the token. ([Setup](https://docs.expo.dev/push-notifications/push-notifications-setup/), [FCM credentials](https://docs.expo.dev/push-notifications/fcm-credentials/))
 
 ### FCM and APNs directly
@@ -27,7 +27,7 @@ Short answer: Expo Push, sent by the desktop. See [Recommendation](#recommendati
 Both services may hold an alert for a phone that is off, subject to expiry and replacement:
 
 - FCM keeps a message for an offline device until it reconnects, then discards it once its lifetime runs out. The default and maximum lifetime is 4 weeks (2,419,200 s); a `ttl` of 0 is never stored. ([Set the lifespan of a message](https://firebase.google.com/docs/cloud-messaging/customize-messages/setting-message-lifespan))
-- APNs "may store the notification for 30 days or less, depending on the date you specify in the `apns-expiration` header". It "stores only one notification per bundle ID" for each device, usually the latest. ([Sending notification requests to APNs](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns))
+- APNs "may store the notification for 30 days or less, depending on the date you specify in the `apns-expiration` header". It "stores only one notification per bundle ID" on each device, usually the latest. ([Sending notification requests to APNs](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns))
 
 So an iPhone that was off for a while gets **at most one** stored alert, usually the newest, and an expired one may never arrive. The app has to rebuild the full list from its own inbox and GitHub when it opens. It can't treat pushes as the record.
 
@@ -47,7 +47,7 @@ The desktop's alert kinds (`src/notificationTypes.ts`) and where their facts liv
 | `prototypeReady` | Prototype branch push or hand-off branch | Partly: `push` to a prototype branch |
 | `stalled` | N days with no commit, PR, issue activity or live hand-off on a claimed ticket, or a failed hand-off with no retry (`src/stalled.ts`) | No. It's the absence of events, so it needs a scheduled job, and dead hand-offs are desktop state. |
 
-Webhook facts: `issue_dependencies` (`blocked_by_added`, `blocked_by_removed`, â€¦) and `sub_issues` events exist. Repository webhooks get only `completed` for check suites and `created`/`completed` for check runs. ([Webhook events and payloads](https://docs.github.com/en/webhooks/webhook-events-and-payloads)) Deliveries are signed with `X-Hub-Signature-256` ([Validating deliveries](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries)). "GitHub does not automatically redeliver failed webhook deliveries", and a reply slower than 10 seconds counts as a failure ([Handling failed deliveries](https://docs.github.com/en/webhooks/using-webhooks/handling-failed-webhook-deliveries)). Recent deliveries can be redelivered for 3 days in the UI ([Redelivering webhooks](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks)).
+Webhook facts: `issue_dependencies` (`blocked_by_added`, `blocked_by_removed`, …) and `sub_issues` events exist. Repository webhooks get only `completed` for check suites and `created`/`completed` for check runs. ([Webhook events and payloads](https://docs.github.com/en/webhooks/webhook-events-and-payloads)) Deliveries are signed with `X-Hub-Signature-256` ([Validating deliveries](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries)). "GitHub does not automatically redeliver failed webhook deliveries", and a reply slower than 10 seconds counts as a failure ([Handling failed deliveries](https://docs.github.com/en/webhooks/using-webhooks/handling-failed-webhook-deliveries)). Recent deliveries can be redelivered for 3 days in the UI ([Redelivering webhooks](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks)).
 
 ### Option A: the desktop sends (recommended)
 
@@ -56,7 +56,7 @@ The desktop already derives every alert kind and already shows a native notifica
 Today's code has two gaps the push task (#234) must close:
 
 1. **Most alerts are derived in the page.** `publishNotification` (`src/ui/app.ts`) runs in the renderer, so `threadWaiting`, `failingCi`, `reviewReady`, `prototypeReady` and `stalled` reach the user only while a Wayfinder page is loaded. The Electron window hides rather than closes (`src/desktop/main.ts`), so this mostly holds while the app runs. `MapWatcher` polls a map only while it has a listener. A page is one listener; `AutoMapService` is the other, and it watches maps with Auto on without a page (`src/autoMapService.ts`, `init` and `watch`). Maps with neither aren't watched. Pushes need the derivation, and a listener for every map the user wants alerts from, in the server or main process.
-2. **Deduplication.** With one sender, send each inbox ID (`map:â€¦`, `handoff:â€¦:waiting:â€¦`) once. Don't pass the raw ID as Expo's `collapseId`: APNs caps `apns-collapse-id` at 64 bytes, and `handoff:` and `prototype:` IDs can be longer. Use a short hash of the ID instead.
+2. **Deduplication.** With one sender, send each inbox ID (`map:…`, `handoff:…:waiting:…`) once. Don't pass the raw ID as Expo's `collapseId`: APNs caps `apns-collapse-id` at 64 bytes, and `handoff:` and `prototype:` IDs can be longer. Use a short hash of the ID instead.
 
 Cost: no hosting, no new GitHub token, and the alert logic stays in one place.
 
@@ -111,7 +111,7 @@ Send pushes through the **Expo Push Service**, and have the **desktop** send the
 | Firebase project (free) + `google-services.json` | Android | Referenced from `app.json` via `googleServicesFile`. |
 | FCM V1 service account key (JSON) | Android | Uploaded to EAS, not shipped to the desktop. |
 | Expo account + EAS project ID | Both | `getExpoPushTokenAsync({ projectId })` ties tokens to the project. |
-| Expo access token with "enhanced security for push" turned on | Desktop sender | Without it, anyone holding a phone's push token can push to it. The desktop keeps the token next to its other secrets and sends it as `Authorization: Bearer â€¦`. |
+| Expo access token with "enhanced security for push" turned on | Desktop sender | Without it, anyone holding a phone's push token can push to it. The desktop keeps the token next to its other secrets and sends it as `Authorization: Bearer …`. |
 | A development build (EAS Build), not Expo Go | Testing | Expo's setup guide builds with EAS. Personal builds are already planned (#233). |
 | Hosting | None | The desktop calls `exp.host` directly. |
 
