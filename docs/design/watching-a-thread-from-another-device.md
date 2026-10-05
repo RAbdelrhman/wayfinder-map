@@ -73,10 +73,10 @@ From [environment-auth.md](https://github.com/pingdotgg/t3code/blob/v0.0.45-nigh
 
 ## What Wayfinder's desktop already tracks
 
-- `src/handOffTracking.ts` keeps one record per ticket started from Wayfinder in `~/.wayfinder-map/hand-offs.json` (`handOffStorePath`, line 361). Each record holds `repo`, `mapNumber`, `ticketNumber`, `environmentId`, `t3Origin`, `projectId`, `threadId`, `branch`, `worktreePath`, a mapped `status` (`starting | running | waiting | ready | finished | interrupted | failed | untracked`), `pendingApproval`, `pendingUserInput`, `lastError` and the PRs (lines 53-86).
+- `src/handOffTracking.ts` keeps a record for each start of a ticket from Wayfinder (retries included) in `~/.wayfinder-map/hand-offs.json` (`handOffStorePath`, line 361). Each record holds `repo`, `mapNumber`, `ticketNumber`, `environmentId`, `t3Origin`, `projectId`, `threadId`, `branch`, `worktreePath`, a mapped `status` (`starting | running | waiting | ready | finished | interrupted | failed | untracked`), `pendingApproval`, `pendingUserInput`, `lastError` and the PRs (lines 53-86).
 - `HandOffTracker` reads the shell every 30 s and holds a `subscribeShell` stream open between reads (lines 1099-1170). `mapT3Status` (line 269) turns the summary row into that status. Thread changes nudge the map watcher (`onThreadChange`, line 1084).
 - `src/handOffLiveness.ts` defines a live hand-off as one with a `threadId` whose status is not finished, failed, interrupted or untracked.
-- `GET /api/hand-offs` returns the status DTOs (`HandOffStatusDto`, line 106), but Wayfinder's server accepts only loopback `Host` and `Origin` headers (`src/server.ts:220-243`), so no other device can read it today.
+- `GET /api/hand-offs` returns the status DTOs (`HandOffStatusDto`, line 106), but Wayfinder's server accepts only a loopback `Host` and a loopback or absent `Origin` (`src/server.ts:220-243`), so no other device can read it today.
 - The desktop **never subscribes to a thread's events**. It knows that a ticket is running, waiting or done. It does not know what the agent is saying or doing.
 
 ## What the desktop would have to relay
