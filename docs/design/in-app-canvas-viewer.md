@@ -12,6 +12,20 @@ Research for [#206](https://github.com/RAbdelrhman/wayfinder-map/issues/206) on 
 
 ## Where things stand
 
+### Implementation in #209
+
+The approved #207 round 4 ACF4 shell is implemented by `src/ui/canvasViewer.ts`, shared by the desktop and localhost UI. Tiles, board Canvas links, variants and the existing ticket panel pass entry metadata to that viewer. Settings stores the opening size on the same origin as the app. Full window keeps the app mounted and inert; the side pane keeps the map live; the floating window retains its session geometry and resizes from all four corners.
+
+The viewer owns one history entry. Size and page/option switches add none. The server adapts copied engines when serving `canvas.js`: hash assignments use `location.replace`, and presentation-frame navigation uses replacement navigation too. Generated presentation documents retain their relative asset base and opaque sandbox origin. This addresses the nested iframe's joint history as well as the engine hash. Repository prototype files are not edited.
+
+The wrapper announces readiness at DOM readiness, rather than waiting for every nested option's load. It supports implicit page IDs, one-page shorthand configs and expanded style comparisons in old copied engines. The viewer checks the sending iframe and validates message shapes; commands only select known pages/options. Pin, note and pick commands are not implemented here.
+
+Files use `/proto/<owner>/<repo>/<branch>/<sha>/viewer-1/<path>`. The rendition segment versions the injected wrapper and engine adaptation as well as the SHA-addressed repo bytes. Bump `PROTOTYPE_HOST_VERSION` when either adaptation changes. Versioned SHA responses keep the original CSP and have immutable caching; legacy branch and unversioned SHA URLs remain uncached. The server keeps a 50 MB LRU of raw commit bytes and coalesces reads. Prototype lists queue up to 64 relevant files per unseen SHA with three reads at once. The last viewer iframe stays mounted after close.
+
+The sandbox headers and `sandbox="allow-scripts"` iframe are unchanged. The wrapper provides no API proxy. Installed-app validation, provider hand-offs, performance measurements for #214, annotations/picking and release work remain separate.
+
+The observations below describe the pre-implementation baseline measured for #206.
+
 - The tile's **Canvas** button and every variant tile are `target="_blank"` links (`src/ui/prototypeBoard.ts:213`, `:223`; `src/ui/prototypeTile.ts:63`, `:71`). On desktop, `setWindowOpenHandler` sends them to `shell.openExternal` (`src/desktop/main.ts:128`).
 - Previews are already sandboxed twice: `PROTOTYPE_CSP` on the response (`src/server.ts:81`) and `sandbox="allow-scripts"` on the iframe (`src/ui/prototypeBoard.ts:178`, `src/ui/prototypeTile.ts:64`). The effective sandbox is the intersection of the two, so forms, popups, modals and downloads are blocked in the preview.
 - Every `/proto/…` file is one `gh api …/contents/…?ref=<branch>` call (`src/github.ts:1025`), served with `cache-control: no-store` (`src/server.ts:1357`). Nothing is cached, so every open is cold.

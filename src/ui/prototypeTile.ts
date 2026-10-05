@@ -1,6 +1,7 @@
 import { prototypeFileUrl } from '../prototypes.js';
 import type { Prototype } from '../types.js';
 import { escapeHtml } from './markdown.js';
+import { canvasEntryAttrs } from './canvasEntry.js';
 
 /** The width a preview is laid out at before it is scaled down into its tile. */
 const PREVIEW_WIDTH = 1280;
@@ -45,12 +46,12 @@ function dateLabel(iso: string | null): string {
 
 /** Where the prototype opens full size, or null when nothing on its branch can run on its own. */
 export function previewUrl(repo: string, prototype: Prototype): string | null {
-  return prototype.preview === null ? null : prototypeFileUrl(repo, prototype.branch, prototype.preview);
+  return prototype.preview === null ? null : prototypeFileUrl(repo, prototype.branch, prototype.preview, prototype.sha);
 }
 
 /**
  * One prototype as a tile: a live, scaled-down copy of the page on top, what it is below.
- * Clicking the picture or the title opens the prototype full size in a new tab, running.
+ * Clicking the picture or the title opens the shared in-app canvas viewer.
  */
 export function prototypeTileHtml(repo: string, prototype: Prototype, text: TileText): string {
   const url = previewUrl(repo, prototype);
@@ -60,7 +61,7 @@ export function prototypeTileHtml(repo: string, prototype: Prototype, text: Tile
   const picture =
     url === null
       ? `<div class="proto-thumb is-empty"><span>No preview saved for this prototype</span></div>`
-      : `<a class="proto-thumb" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" aria-label="Open ${escapeHtml(text.title)}">
+      : `<a class="proto-thumb" href="${escapeHtml(url)}" ${canvasEntryAttrs(repo, prototype, text.title)} aria-label="Open ${escapeHtml(text.title)}">
           <iframe src="${escapeHtml(url)}" sandbox="allow-scripts" loading="lazy" tabindex="-1" aria-hidden="true" title=""
             width="${String(PREVIEW_WIDTH)}" height="${String(PREVIEW_HEIGHT)}"></iframe>
           <span class="proto-open">Open ↗</span>
@@ -68,7 +69,7 @@ export function prototypeTileHtml(repo: string, prototype: Prototype, text: Tile
   const title =
     url === null
       ? escapeHtml(text.title)
-      : `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(text.title)}</a>`;
+      : `<a href="${escapeHtml(url)}" ${canvasEntryAttrs(repo, prototype, text.title)}>${escapeHtml(text.title)}</a>`;
   const footer = [date === '' ? '' : `<span>${escapeHtml(date)}</span>`, text.links ?? ''].filter((part) => part !== '').join('');
 
   return `<article class="proto-tile">

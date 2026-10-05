@@ -839,6 +839,7 @@ async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fal
 
 interface RawRef {
   ref: string;
+  object?: { sha?: string };
 }
 
 interface RawCompare {
@@ -923,6 +924,8 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): 
   ]);
 
   const prototypes = await pool(work, 6, async ({ map, branch }): Promise<Prototype> => {
+    const sha = refs.find((ref) => ref.ref === `refs/heads/${branch}`)?.object?.sha;
+    const revision = sha ?? branch;
     const ticketNumber = prototypeTicketNumber(branch) ?? 0;
     const ticket = map.tickets.find((candidate) => candidate.number === ticketNumber);
     const [compare, comments] = await Promise.all([
@@ -936,9 +939,10 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): 
         ? null
         : await ghJson<RawCommit>(['api', `repos/${repo}/commits/${encodeURIComponent(branch)}`]).catch(() => null);
     const { updatedAt, files } = branchFacts(compare, tip);
-    const preview = await previewOf(repo, branch, files);
+    const preview = await previewOf(repo, revision, files);
     return {
       branch,
+      ...(sha ? { sha } : {}),
       ticketNumber,
       mapNumber: map.number,
       url: `https://github.com/${repo}/tree/${branch}`,
@@ -946,7 +950,7 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): 
       files,
       ...preview,
       verdict: verdictComment(comments.map((comment) => comment.body)),
-      variants: await variantsOf(repo, branch, ticketNumber, files, preview, shots),
+      variants: await variantsOf(repo, revision, ticketNumber, files, preview, shots),
     };
   });
 

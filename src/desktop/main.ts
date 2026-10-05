@@ -126,7 +126,7 @@ function installNavigationBoundary(window: BrowserWindow): void {
     if (isSafeExternalUrl(target)) void shell.openExternal(target);
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (isSafeExternalUrl(url)) void shell.openExternal(url);
+    if (!isInternalUrl(url, runtimeOrigin) && isSafeExternalUrl(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
 }

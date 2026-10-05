@@ -42,6 +42,7 @@ import { nextTabIndex, tabAttrs, tabPanelAttrs } from './tabs.js';
 import { rememberControlFocus } from './controlFocus.js';
 import type { NavigationController, NavigationView } from './navigation.js';
 import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
+import { mountCanvasViewer } from './canvasViewer.js';
 import { recordMapOpened } from './homeRecency.js';
 import {
   SIGNAL_KEY_ROWS,
@@ -183,6 +184,34 @@ let briefSection: keyof MapSections = 'destination';
 
 let query = '';
 let navigation: NavigationController | null = null;
+const canvasViewer = mountCanvasViewer(els.app, () => {
+  const saved = { selected, inspectorTab, zoom, view, filter, pathFocus, query };
+  return () => {
+    zoom = saved.zoom;
+    els.canvas.style.zoom = String(zoom);
+    els.zoomReset.textContent = `${String(Math.round(zoom * 100))}%`;
+    const viewChanged = view !== saved.view;
+    const highlightsChanged = filter !== saved.filter || pathFocus !== saved.pathFocus || query !== saved.query;
+    view = saved.view;
+    filter = saved.filter;
+    pathFocus = saved.pathFocus;
+    query = saved.query;
+    els.search.value = query;
+    if (viewChanged) {
+      selected = saved.selected;
+      inspectorTab = saved.inspectorTab;
+      navigation?.setActiveView(view);
+      render();
+    } else if (selected !== saved.selected || inspectorTab !== saved.inspectorTab || highlightsChanged) {
+      selected = saved.selected;
+      inspectorTab = saved.inspectorTab;
+      renderFilters();
+      renderCriticalPath();
+      syncHighlights();
+      renderInspector();
+    }
+  };
+});
 const handOffSurface = mountHandOffs();
 const notificationInbox = mountNotificationInbox();
 const unblockedNotice = mountUnblockedNotice(need('unblocked-notice'), (ticketNumber) => select(ticketNumber), startUnblockedBatch);
@@ -1750,7 +1779,7 @@ els.modelsDialog.addEventListener('close', refreshTicketPicker);
 need('models').addEventListener('click', openModels);
 
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || els.modelsDialog.open) return;
+  if (event.key !== 'Escape' || els.modelsDialog.open || canvasViewer.isOpen()) return;
   if (MENUS.some((entry) => !entry.menu.hidden)) {
     closeMenus();
     return;
@@ -1789,7 +1818,7 @@ function setView(next: NavigationView): void {
     const url = new URL(window.location.href);
     url.searchParams.set('view', next);
     url.searchParams.delete('ticket');
-    history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    if (!canvasViewer.isOpen()) history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`);
   }
   render();
 }

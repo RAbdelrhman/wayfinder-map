@@ -12,6 +12,7 @@ import { GOALS, PROGRESS_SETTINGS_EVENT } from './progress.js';
 import { handOffCap, HAND_OFF_CAPS, saveHandOffCap } from './startNext.js';
 import { DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_KINDS } from '../notificationTypes.js';
 import type { NotificationKind, NotificationSettings } from '../notificationTypes.js';
+import { canvasSize, isCanvasSize, saveCanvasSize } from './canvasPreference.js';
 
 /* Settings (#40, #104): the GitHub account and the preferences that belong to no one page. */
 
@@ -150,6 +151,7 @@ export function settingsBodyHtml(view: SettingsView): string {
     <section class="settings-section" aria-labelledby="settings-prefs-title">
       <h3 id="settings-prefs-title">Preferences</h3>
       <div class="settings-row"><span class="grow">Theme</span>${themes}</div>
+      <div class="settings-row"><span class="grow">Open canvases</span>${segmented('Open canvases', (['full', 'pane', 'float'] as const).map((size) => seg('data-settings-canvas', size, { full: 'Full window', pane: 'Side pane', float: 'Floating' }[size], size === canvasSize())).join(''))}</div>
       <div class="settings-row"><span class="grow">Default model tier<span class="hint">${escapeHtml(TIER_HINT[view.tier])}. New tickets and maps start here.</span></span>${tiers}</div>
       ${autoRaterHtml(view.rater, view.models)}
       ${calibrationHtml(view.calibration, view.models)}
@@ -304,6 +306,8 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
       return;
     }
     const theme = target?.closest<HTMLElement>('[data-settings-theme]')?.dataset['settingsTheme'];
+    const canvas = target?.closest<HTMLElement>('[data-settings-canvas]')?.dataset['settingsCanvas'];
+    if (isCanvasSize(canvas)) { saveCanvasSize(canvas); draw(); return; }
     if (theme === 'light' || theme === 'dark') {
       setTheme(theme);
       return;
@@ -429,7 +433,7 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
 
 /** A selector that finds the same control after a redraw, so keyboard focus stays put. */
 export function focusKeyOf(element: Element): string | null {
-  for (const attribute of ['data-settings-theme', 'data-settings-tier', 'data-settings-rater', 'data-settings-cap', 'data-settings-goal', 'data-settings-claim-days', 'data-settings-hand-off-days', 'data-settings-notification', 'data-settings-switch']) {
+  for (const attribute of ['data-settings-theme', 'data-settings-canvas', 'data-settings-tier', 'data-settings-rater', 'data-settings-cap', 'data-settings-goal', 'data-settings-claim-days', 'data-settings-hand-off-days', 'data-settings-notification', 'data-settings-switch']) {
     const value = element.getAttribute(attribute);
     if (value !== null) return `[${attribute}="${value}"]`;
   }

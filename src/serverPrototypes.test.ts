@@ -188,7 +188,9 @@ describe('prototypes on a repository-scoped server', () => {
       const response = await fetch(`${running.url}/proto/octo/two/prototype%2F9-x/index.html`);
       expect(response.status).toBe(200);
       expect(response.headers.get('content-security-policy')).toContain('sandbox');
-      await expect(response.text()).resolves.toBe('<h1>octo/two</h1>');
+      const html = await response.text();
+      expect(html).toContain('<h1>octo/two</h1>');
+      expect(html).toContain('wf: 1');
       expect(fetchBranchFile).toHaveBeenCalledWith('octo/two', 'prototype/9-x', 'index.html');
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));

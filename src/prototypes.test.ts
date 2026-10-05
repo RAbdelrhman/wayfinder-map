@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import { PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, parsePrototypeFilePath, pickPreview, prototypeFileUrl, prototypeTicketNumber, unlistedCanvasBoards } from './prototypes.js';
 
+it('addresses cached files by SHA and viewer rendition, keeping relative assets in that prefix', () => {
+  const sha = 'a'.repeat(40);
+  const url = prototypeFileUrl('octo/one', 'prototype/207', 'prototypes/canvas/index.html', sha);
+  expect(url).toContain(`/${sha}/viewer-1/`);
+  const asset = new URL('canvas.js', 'http://localhost' + url).pathname;
+  expect(parsePrototypeFilePath(asset)).toEqual({ repo: 'octo/one', branch: 'prototype/207', sha, renderVersion: 'viewer-1', file: 'prototypes/canvas/canvas.js' });
+  expect(parsePrototypeFilePath(url.replace('/viewer-1/', '/'))).toEqual({ repo: 'octo/one', branch: 'prototype/207', sha, file: 'prototypes/canvas/index.html' });
+});
+
 describe('prototypeTicketNumber', () => {
   it('reads the ticket number off a conventional branch', () => {
     expect(prototypeTicketNumber('prototype/8-home-page')).toBe(8);

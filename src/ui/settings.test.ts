@@ -21,6 +21,13 @@ function view(patch: Partial<SettingsView> = {}): SettingsView {
 }
 
 describe('Settings dialog', () => {
+  it('offers exactly the approved opening-size preference beside Theme', () => {
+    const html = settingsBodyHtml(view());
+    expect(html.match(/data-settings-canvas=/g)).toHaveLength(3);
+    expect(html).toContain('data-settings-canvas="full" aria-pressed="true"');
+    expect(html).toContain('data-settings-canvas="pane"');
+    expect(html).toContain('data-settings-canvas="float"');
+  });
   it('holds the signed-in account with sign out and a switch to every other gh account', () => {
     const html = settingsBodyHtml(view());
 

@@ -1,6 +1,7 @@
 import type { Prototype, Ticket, WayfinderMap } from '../types.js';
 import { prototypeFileUrl, prototypeShotUrl } from '../prototypes.js';
 import { escapeHtml } from './markdown.js';
+import { canvasEntryAttrs } from './canvasEntry.js';
 import { bone, boneButton } from './skeleton.js';
 import { previewUrl, verdictGist } from './prototypeTile.js';
 
@@ -160,14 +161,14 @@ export function boardVariants(repo: string, prototype: Prototype): BoardVariant[
       id: variant.id,
       title: variant.title,
       image: variant.shot === null ? null : prototypeShotUrl(repo, variant.shot),
-      page: variant.page === null ? null : prototypeFileUrl(repo, prototype.branch, variant.page),
+      page: variant.page === null ? null : prototypeFileUrl(repo, prototype.branch, variant.page, prototype.sha),
     }));
   }
   return prototypeVariants(prototype).map((variant) => ({
     id: variant.id,
     title: variant.title,
-    image: variant.imageFile === null ? null : prototypeFileUrl(repo, prototype.branch, variant.imageFile),
-    page: variant.pageFile === null ? null : prototypeFileUrl(repo, prototype.branch, variant.pageFile),
+    image: variant.imageFile === null ? null : prototypeFileUrl(repo, prototype.branch, variant.imageFile, prototype.sha),
+    page: variant.pageFile === null ? null : prototypeFileUrl(repo, prototype.branch, variant.pageFile, prototype.sha),
   }));
 }
 
@@ -210,7 +211,7 @@ function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string
       const title = variants.length === 1 && variant.title.startsWith('Variant ') ? ticketTitle : variant.title;
       const href = variant.page ?? variant.image ?? canvas;
       const marker = isPicked ? '<span data-icon="check" aria-hidden="true"></span><span class="sr-only">Picked winner:</span>' : '';
-      return `<a class="wf-var decision-variant${stateClass}" role="listitem" href="${escapeHtml(href)}" target="_blank" rel="noreferrer" aria-label="Open variant ${escapeHtml(variant.id)}: ${escapeHtml(title)}${isPicked ? ' (picked)' : ''}">${variantFrame(variant)}<span class="lbl">${marker}${escapeHtml(`${variant.id} · ${title}`)}</span></a>`;
+      return `<a class="wf-var decision-variant${stateClass}" role="listitem" href="${escapeHtml(href)}" ${canvasEntryAttrs(repo, prototype, ticketTitle, variant.page)} aria-label="Open variant ${escapeHtml(variant.id)}: ${escapeHtml(title)}${isPicked ? ' (picked)' : ''}">${variantFrame(variant)}<span class="lbl">${marker}${escapeHtml(`${variant.id} · ${title}`)}</span></a>`;
     })
     .join('');
   const pickAction = decision.pickTicket === null
@@ -220,7 +221,7 @@ function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string
   return `<section class="wf-node wf-proto is-${decision.state}" style="--accent: var(${accent})">
     <div class="h">${status}<button type="button" class="wf-proto-title" data-jump="${String(prototype.ticketNumber)}" title="Open #${String(prototype.ticketNumber)} on the map">#${String(prototype.ticketNumber)} ${escapeHtml(ticketTitle)}</button>
       ${date === '' ? '' : `<time class="when" datetime="${escapeHtml(prototype.updatedAt ?? '')}">${escapeHtml(date)}</time>`}
-      <span class="acts">${pickAction}<a class="${decision.state === 'waiting' ? 'primary' : 'ghost'}" href="${escapeHtml(canvas)}" target="_blank" rel="noreferrer" aria-label="Open the #${String(prototype.ticketNumber)} prototype canvas"><span data-icon="play" aria-hidden="true"></span>Canvas</a></span></div>
+      <span class="acts">${pickAction}<a class="${decision.state === 'waiting' ? 'primary' : 'ghost'}" href="${escapeHtml(canvas)}" ${canvasEntryAttrs(repo, prototype, ticketTitle)} aria-label="Open the #${String(prototype.ticketNumber)} prototype canvas"><span data-icon="play" aria-hidden="true"></span>Canvas</a></span></div>
     <p class="gist">${escapeHtml(summary)}</p>
     <div class="wf-strip" role="list" aria-label="Variants for #${String(prototype.ticketNumber)}">${variantHtml}</div>
   </section>`;
