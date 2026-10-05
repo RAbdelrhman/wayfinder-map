@@ -201,7 +201,7 @@ window.CANVAS = {
                 'Sources: src/ui/styles.css tokens (surfaces, text, state and accent colours, light + dark), src/ui/chrome.ts STATE_LOOKS (Next up / Claimed / Blocked / Done words and icons), src/ui/icons.ts (state and type icons), app.ts ticket panel (state banner copy, Needs/Unblocks). No mobile design system exists yet; mobile.css builds phone parts on those tokens.',
                 'Checked: dark theme on A map, B map and B ticket sheet; light theme on C map and the board’s sign-in row (390×844 viewport). Touch targets: rows, buttons, pills and the Done toggle are 44px or more; segmented tabs are 40px (46px with track). State is never colour alone: each has an icon and a word. Fixed during review: dimmed Done tiles/nodes used opacity, which dropped muted text under 4.5:1, now a plain surface with secondary text; pills and the Show toggle were 32–36px tall.',
                 'Findings left open: B’s graph is small (12px text at 0.8 zoom) and pan-heavy; B’s sheet does not move or trap focus; C’s tabs are role=tab without arrow-key handling; the canvas board wraps the S-A style ids onto two lines.',
-                'Round 2 (R-C2), checked headless at 390×844 in dark and light: list, open sheet and filtered list. The Filter by button is 44px tall and its label names the current filter. Opening the sheet moves focus to the selected option; picking an option, tapping outside or pressing Escape closes it and returns focus to the button. The list sorts latest first (12 min, yesterday, 2 days, 3 weeks). Open: the sheet does not trap focus and has no slide animation.',
+                'Round 2 (R-C2), checked headless at 390×844 in dark and light: list, open sheet and filtered list. The Filter by button is 44px tall and its label names the current filter. Opening the sheet moves focus to the selected option; picking an option, tapping outside or pressing Escape closes it and returns focus to the button. The list sorts latest first (12 min, yesterday, 2 days, 3 weeks). Open: the sheet does not trap focus and has no slide animation. Top bar: back and Open on GitHub buttons moved from blue iOS link style to the desktop’s neutral look (src/ui/styles.css .ghost and .iconbtn: text-secondary, hairline, 9px radius), drawn at 34px inside a 44px hit area with a visible focus ring; checked on map and ticket screens in dark and light. This bar is shared, so every frame on the Directions page shows the new buttons too.',
                 'Not checked: every screen in both themes one by one, screen readers (VoiceOver/TalkBack), real devices and safe areas, dynamic type / large text, React Native feasibility of each option, landscape.',
               ].join('\n\n'),
             },
@@ -226,6 +226,8 @@ window.CANVAS = {
                 pros: ['Lands on the latest maps in one tap, as asked', 'One button scales to many repos; chips did not', 'The button always says what is showing'],
                 cons: ['Picking a repo takes two taps instead of one chip', 'The repo list hides inside a sheet'],
                 basedOn: ['R-C', 'R-A'],
+                disposition: 'keep',
+                feedback: 'Looks great. Restyle the back (Maps) and Open on GitHub buttons to match the app: done in round 2, neutral hairline buttons like the desktop .ghost and .iconbtn.',
               },
             },
             {

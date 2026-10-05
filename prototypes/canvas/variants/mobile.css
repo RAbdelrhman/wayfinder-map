@@ -87,20 +87,77 @@ body.viz-root {
   height: 22px;
 }
 
+/* Bar buttons follow the desktop's .ghost and .iconbtn: neutral text, hairline, 44px hit area. */
 .m-back {
+  flex: none;
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  padding: 0 8px 0 2px;
+  padding: 0;
   border: 0;
   background: none;
-  color: var(--accent-text);
-  font-size: 16px;
+  color: var(--text-secondary);
+  font: inherit;
+}
+
+.m-back-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 34px;
+  padding: 0 12px 0 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .m-back .i {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
+}
+
+.m-back:active .m-back-face,
+.m-bar .m-icon-btn:active::before {
+  background: var(--wash);
+}
+
+.m-back:active {
+  color: var(--text-primary);
+}
+
+.m-bar .m-icon-btn {
+  position: relative;
+  color: var(--text-secondary);
+}
+
+.m-bar .m-icon-btn::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+}
+
+.m-bar.is-large .m-icon-btn::before {
+  border: 0;
+}
+
+.m-bar .m-icon-btn .i {
+  position: relative;
+  width: 20px;
+  height: 20px;
+}
+
+.m-back:focus-visible,
+.m-bar .m-icon-btn:focus-visible {
+  outline: none;
+}
+
+.m-back:focus-visible .m-back-face,
+.m-bar .m-icon-btn:focus-visible::before {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
 }
 
 .m-scroll {

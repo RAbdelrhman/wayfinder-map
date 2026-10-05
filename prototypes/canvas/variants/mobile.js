@@ -41,7 +41,7 @@
   const chip = (state) => `<span class="m-chip" style="--accent: var(${S[state].variable})">${ic(S[state].icon)}${S[state].label}</span>`;
   const glyph = (type) => `<span class="m-glyph" title="${type}">${ic(TYPE_ICON[type])}<span class="m-sr">${type}</span></span>`;
   const dot = (state) => `<span class="m-dot" style="--accent: var(${S[state].variable})">${ic(S[state].icon)}</span>`;
-  const backBtn = (label) => `<button class="m-back" data-act="back">${ic('back')}${esc(label)}</button>`;
+  const backBtn = (label) => `<button class="m-back" data-act="back" aria-label="Back to ${esc(label)}"><span class="m-back-face">${ic('back')}${esc(label)}</span></button>`;
   const bar = (title, left = '', right = '<span style="width:44px"></span>') =>
     `<header class="m-bar">${left || '<span style="width:44px"></span>'}<h1>${esc(title)}</h1>${right}</header>`;
   const largeBar = (title, left = '', right = '') =>
