@@ -505,6 +505,57 @@ body.viz-root {
   color: var(--plane);
 }
 
+/* Round 2 R-C: one "Filter by" button instead of chips. */
+.m-filter-row {
+  display: flex;
+  margin: 10px 0 0;
+}
+
+.m-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+}
+
+.m-filter-btn b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.m-filter-btn .i {
+  width: 18px;
+  height: 18px;
+}
+
+.m-filter-btn:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.m-sheet-title {
+  margin: 0 4px 12px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.m-pick {
+  display: inline-flex;
+  color: var(--accent-text);
+}
+
+.m-pick .i {
+  width: 20px;
+  height: 20px;
+}
+
 /* ---------- sign-in ---------- */
 
 .m-hero {

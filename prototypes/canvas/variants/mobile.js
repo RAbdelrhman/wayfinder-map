@@ -7,6 +7,8 @@
   const params = new URLSearchParams(location.search);
   const V = ['A', 'B', 'C'].includes(params.get('v')) ? params.get('v') : 'A';
   const EDGE = params.get('state');
+  // ?remix=filter: round 2's R-C, with a "Filter by" button instead of repo chips.
+  const REMIX = params.get('remix');
   const D = window.MOBILE;
   const S = window.STATES;
   const esc = Kit.esc;
@@ -19,7 +21,7 @@
   /* ---------- navigation ---------- */
   const start = params.get('screen') ?? 'signin';
   const stack = [{ screen: start, ticket: Number(params.get('ticket') ?? 223), repo: D.repos[0].name }];
-  const ui = { signin: 0, mapTab: 'path', ticketTab: 'overview', filter: 'all', sheet: params.get('sheet') ?? null, selected: 223, zoom: 0.8, panX: 8, panY: 12, mapsFilter: 'All' };
+  const ui = { signin: 0, mapTab: 'path', ticketTab: 'overview', filter: 'all', sheet: params.get('sheet') ?? null, selected: 223, zoom: 0.8, panX: 8, panY: 12, mapsFilter: 'All', picker: params.get('picker') === '1' };
   const here = () => stack[stack.length - 1];
   function go(screen, extra = {}) {
     stack.push({ ...here(), screen, ...extra });
@@ -195,6 +197,7 @@
       return `${status()}${largeBar('Following', '', avatar)}${cached}<div class="m-scroll">${cards}
         <button class="m-btn is-quiet" data-act="browse" style="margin-top:4px">${ic('plus')}Follow another map</button></div>`;
     }
+    if (REMIX === 'filter') return reposFiltered();
     // C: every map from every repo in one list.
     const repoNames = ['All', ...new Set(D.maps.map((m) => m.repo.split('/')[1]))];
     const shown = D.maps.filter((m) => ui.mapsFilter === 'All' || m.repo.endsWith(`/${ui.mapsFilter}`));
@@ -203,6 +206,29 @@
       <div class="m-search">${ic('search')}<input aria-label="Search maps" placeholder="Search maps and repos"></div>
       <div class="m-filter" role="group" aria-label="Filter by repository">${repoNames.map((r) => `<button data-act="maps-filter" data-f="${esc(r)}" aria-pressed="${ui.mapsFilter === r}">${esc(r)}</button>`).join('')}</div>
       <div class="m-section-title">Recently active</div>${body}</div>`;
+  }
+
+  // Round 2 R-C: all maps, latest first; "Filter by" opens a sheet to narrow to one repo.
+  const minutesAgo = (s) => {
+    const [n, unit] = s.replace('yesterday', '1 day').split(' ');
+    return Number(n) * ({ min: 1, hour: 60, hours: 60, day: 1440, days: 1440, week: 10080, weeks: 10080 }[unit] ?? 1);
+  };
+  function reposFiltered() {
+    const shown = D.maps.filter((m) => ui.mapsFilter === 'All' || m.repo === ui.mapsFilter).sort((a, b) => minutesAgo(a.updated) - minutesAgo(b.updated));
+    const label = ui.mapsFilter === 'All' ? 'All maps' : ui.mapsFilter.split('/')[1];
+    const body = EDGE === 'loading' ? loadingRows() : EDGE === 'empty' ? emptyMaps() : `<div class="m-group">${shown.map((m) => mapRow(m, { repo: ui.mapsFilter === 'All' })).join('')}</div>`;
+    return `${status()}${largeBar('Maps', '', avatar)}${cached}<div class="m-scroll">
+      <div class="m-search">${ic('search')}<input aria-label="Search maps" placeholder="Search maps and repos"></div>
+      <div class="m-filter-row"><button class="m-filter-btn" data-act="filter-open" aria-haspopup="dialog" aria-label="Filter by repository, showing ${esc(label)}">${ic('filter')}<span>Filter by</span><b>${esc(label)}</b>${ic('down')}</button></div>
+      <div class="m-section-title">${ui.mapsFilter === 'All' ? 'Latest' : `${shown.length} map${shown.length === 1 ? '' : 's'} · latest first`}</div>${body}</div>${ui.picker ? repoPicker() : ''}`;
+  }
+  function repoPicker() {
+    const opts = [{ value: 'All', name: 'All maps', sub: `${D.maps.length} maps · every repository` }, ...D.repos.filter((r) => r.maps > 0).map((r) => ({ value: r.name, name: r.name.split('/')[1], sub: `${r.maps} map${r.maps === 1 ? '' : 's'}` }))];
+    return `<div class="m-scrim" data-act="filter-close"></div><section class="m-sheet" role="dialog" aria-label="Filter by repository">
+      <button class="m-grab" data-act="filter-close" aria-label="Close"></button>
+      <div class="m-scroll"><h2 class="m-sheet-title">Filter by repository</h2><div class="m-group">${opts
+        .map((o) => `<button class="m-row" data-act="maps-pick" data-f="${esc(o.value)}" aria-pressed="${ui.mapsFilter === o.value}"><span class="m-row-main"><span class="m-row-title">${esc(o.name)}</span><span class="m-row-sub">${esc(o.sub)}</span></span>${ui.mapsFilter === o.value ? `<span class="m-pick">${ic('check')}</span>` : ''}</button>`)
+        .join('')}</div></div></section>`;
   }
 
   // B: "Follow another map" browses repositories, then stars maps.
@@ -406,6 +432,9 @@
       case 'browse': return go('repos-browse');
       case 'map': return go('map');
       case 'maps-filter': ui.mapsFilter = el.dataset.f; return render();
+      case 'filter-open': ui.picker = true; render(); return app.querySelector('.m-sheet [aria-pressed="true"]')?.focus();
+      case 'filter-close': ui.picker = false; render(); return app.querySelector('.m-filter-btn')?.focus();
+      case 'maps-pick': ui.mapsFilter = el.dataset.f; ui.picker = false; render(); return app.querySelector('.m-filter-btn')?.focus();
       case 'ticket': if (V === 'B') { ui.selected = n; ui.sheet = 'half'; return render(); } return go('ticket', { ticket: n });
       case 'toggle-done': ui.showDone = !ui.showDone; return render();
       case 'map-tab': ui.mapTab = el.dataset.tab; return render();
@@ -440,7 +469,7 @@
   // Escape closes a sheet or goes back.
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (ui.sheet) { ui.sheet = null; render(); } else if (here().screen !== 'signin' && stack.length > 1) back();
+    if (ui.picker) { ui.picker = false; render(); app.querySelector('.m-filter-btn')?.focus(); } else if (ui.sheet) { ui.sheet = null; render(); } else if (here().screen !== 'signin' && stack.length > 1) back();
   });
 
   if (EDGE === 'sheet-full') ui.sheet = 'full';
