@@ -52,6 +52,24 @@ describe('readAccount', () => {
 });
 
 describe('discoverRepositories', () => {
+  it('follows search pages and deduplicates repositories and SSO warnings across them', async () => {
+    const next = 'https://api.github.com/search/issues?q=label%3Awayfinder%3Amap+user%3Aocto&page=2';
+    const runGh = runner([
+      'acme\n',
+      `HTTP/2 200\r\nLink: <${next}>; rel="next", <${next}>; rel="last"\r\nx-github-sso: partial-results; organizations=secret-co\r\n\r\n` +
+        JSON.stringify({ items: [{ repository_url: 'https://api.github.com/repos/octo/one' }] }),
+      'HTTP/2 200\r\nx-github-sso: partial-results; organizations=secret-co,other-co\r\n\r\n' +
+        JSON.stringify({ items: [{ repository_url: 'https://api.github.com/repos/acme/two' }, { repository_url: 'https://api.github.com/repos/octo/one' }] }),
+    ]);
+    const account = await readAccount(runner([ready]));
+
+    await expect(discoverRepositories(account, ['wayfinder:map'], runGh)).resolves.toEqual({
+      repositories: ['acme/two', 'octo/one'], skippedOrganizations: ['secret-co', 'other-co'],
+    });
+    expect(runGh).toHaveBeenCalledTimes(3);
+    expect(runGh).toHaveBeenLastCalledWith(['api', '-i', '-X', 'GET', next]);
+  });
+
   it('uses viewer and organization scopes and preserves SSO partial results', async () => {
     const runGh = runner([
       'acme\n',

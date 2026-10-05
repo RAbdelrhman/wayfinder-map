@@ -434,7 +434,10 @@ export async function startServer({
     const key = `${forRepo}#${mapNumber === null ? 'all' : String(mapNumber)}`;
     const cached = prototypeCache.get(key);
     if (!force && cached !== undefined && Date.now() - cached.at < PROTOTYPE_TTL_MS) return cached.list;
-    const list = map === null || map === undefined ? fetchAllPrototypes(forRepo, snapshot.maps) : fetchPrototypes(forRepo, map);
+    // Cache the ticket read as well: branches on settled maps need their ticket numbers.
+    const list = map === null || map === undefined
+      ? repositories.snapshot(forRepo, false, snapshot.maps.map((candidate) => candidate.number)).then((loaded) => fetchAllPrototypes(forRepo, loaded.maps))
+      : fetchPrototypes(forRepo, map);
     prototypeCache.set(key, { at: Date.now(), list });
     list.catch(() => prototypeCache.delete(key));
     return list;
