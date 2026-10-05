@@ -130,11 +130,16 @@ function startInput(workspaceRoot: string, index: number, branch: string): HandO
 }
 
 describe('T3HandOff concurrent prepare', () => {
+  // Eight real Git worktrees are prepared serially; loaded Windows hosts need
+  // more time than the default unit-test budget without relaxing assertions.
+  const realGitTimeout = 180_000;
   let tempRoot: string;
   let workspaceRoot: string;
   let runtime: T3Runtime;
+  let pendingStarts: Promise<unknown>[];
 
   beforeEach(async () => {
+    pendingStarts = [];
     tempRoot = await mkdtemp(join(tmpdir(), 'wayfinder-t3-prepare-'));
     workspaceRoot = join(tempRoot, 'repo');
     await mkdir(workspaceRoot);
@@ -145,36 +150,40 @@ describe('T3HandOff concurrent prepare', () => {
     execFileSync('git', ['add', 'README.md'], { cwd: workspaceRoot, stdio: 'ignore' });
     execFileSync('git', ['commit', '--quiet', '-m', 'fixture'], { cwd: workspaceRoot, stdio: 'ignore' });
     runtime = { origin: 'http://127.0.0.1:3773', pid: 123, stateDir: join(tempRoot, 'userdata') };
-  });
+  }, realGitTimeout);
 
   afterEach(async () => {
+    // A timeout or rejected prepare must not leave another hand-off using the
+    // fixture while teardown removes it. Release the mock barrier on failure.
+    state.releaseThreadCreateBarrier();
+    await Promise.allSettled(pendingStarts);
     await rm(tempRoot, { recursive: true, force: true });
-  });
+  }, realGitTimeout);
 
   it('creates one T3 project and keeps all thread dispatches concurrent', async () => {
     const count = 8;
     state.reset(count);
     const startThread = new T3HandOff().steps(runtime).startThread;
 
-    const results = await Promise.all(
-      Array.from({ length: count }, (_, index) => startThread(startInput(workspaceRoot, index, `wayfinder/ticket-${String(index + 1)}`))),
-    );
+    const starts = Array.from({ length: count }, (_, index) => startThread(startInput(workspaceRoot, index, `wayfinder/ticket-${String(index + 1)}`)));
+    pendingStarts = starts;
+    const results = await Promise.all(starts);
 
     expect(state.projectCreates).toBe(1);
     expect(state.turnStarts).toBe(count);
     expect(results).toHaveLength(count);
     expect(new Set(results.map((result) => result.tracking?.projectId)).size).toBe(1);
     expect(state.maxConcurrentThreadCreates).toBe(count);
-  }, 30_000);
+  }, realGitTimeout);
 
   it('assigns each concurrent new-map start its own branch', async () => {
     const count = 8;
     state.reset(count);
     const startThread = new T3HandOff().steps(runtime).startThread;
 
-    const results = await Promise.all(
-      Array.from({ length: count }, (_, index) => startThread(startInput(workspaceRoot, index, 'wayfinder/new-map'))),
-    );
+    const starts = Array.from({ length: count }, (_, index) => startThread(startInput(workspaceRoot, index, 'wayfinder/new-map')));
+    pendingStarts = starts;
+    const results = await Promise.all(starts);
 
     expect(state.projectCreates).toBe(1);
     expect(state.turnStarts).toBe(count);
@@ -183,5 +192,5 @@ describe('T3HandOff concurrent prepare', () => {
       ...Array.from({ length: count - 1 }, (_, index) => `wayfinder/new-map-${String(index + 2)}`),
     ]);
     expect(state.maxConcurrentThreadCreates).toBe(count);
-  }, 30_000);
+  }, realGitTimeout);
 });
