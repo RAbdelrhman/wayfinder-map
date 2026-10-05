@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.2.13](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.12...v0.2.13) (2026-10-05)
+
+
+### Features
+
+* add round 2 A+C remix to the canvas viewer prototype ([#207](https://github.com/RAbdelrhman/wayfinder-map/issues/207)) ([ebdf915](https://github.com/RAbdelrhman/wayfinder-map/commit/ebdf91532e7a4cdb210621cd0e43d65c9e1912d9))
+* add round 3 floating window to the canvas viewer prototype ([#207](https://github.com/RAbdelrhman/wayfinder-map/issues/207)) ([05c5563](https://github.com/RAbdelrhman/wayfinder-map/commit/05c556350620c5d006cc9c172b4c006424a67518))
+* add round 4 corner resizing to the canvas viewer prototype ([#207](https://github.com/RAbdelrhman/wayfinder-map/issues/207)) ([a04bf73](https://github.com/RAbdelrhman/wayfinder-map/commit/a04bf73cbc16fcf1cb53c9bfbe3e4253bc5508ae))
+* prototype the in-app canvas viewer shell ([#207](https://github.com/RAbdelrhman/wayfinder-map/issues/207)) ([4067201](https://github.com/RAbdelrhman/wayfinder-map/commit/406720108421101343f750cb06530b806d642909))
+* prototype the in-app canvas viewer shell ([#207](https://github.com/RAbdelrhman/wayfinder-map/issues/207)) ([1e2bc06](https://github.com/RAbdelrhman/wayfinder-map/commit/1e2bc06e7088522f82ac7d92416f8599b699f1e1))
+
+
+### Bug Fixes
+
+* guard update installation and shutdown handling ([#251](https://github.com/RAbdelrhman/wayfinder-map/issues/251)) ([762fe63](https://github.com/RAbdelrhman/wayfinder-map/commit/762fe639f0def415a810bcd92ec7c82081c14b46))
+* keep the scrim and drop stale ghosts when a canvas reopens mid-close ([#207](https://github.com/RAbdelrhman/wayfinder-map/issues/207)) ([dd2302f](https://github.com/RAbdelrhman/wayfinder-map/commit/dd2302f28b5cd1070b19cb8699b8c86fb8b67f18))
+* preserve Auto state and complete watched membership ([#252](https://github.com/RAbdelrhman/wayfinder-map/issues/252)) ([8167f95](https://github.com/RAbdelrhman/wayfinder-map/commit/8167f95bb619e87192fb9ba56821e2b0f0fe589e))
+* preserve concurrent settings updates ([#245](https://github.com/RAbdelrhman/wayfinder-map/issues/245)) ([2dca11f](https://github.com/RAbdelrhman/wayfinder-map/commit/2dca11ff57b8ba7f82396124455c6ce5ee6c5334))
+* preserve hand-off state across writers ([#246](https://github.com/RAbdelrhman/wayfinder-map/issues/246)) ([12dc103](https://github.com/RAbdelrhman/wayfinder-map/commit/12dc103c46421dbcd04efd6e2dc01a6f07000e25))
+* preserve repository details and complete discovery ([#247](https://github.com/RAbdelrhman/wayfinder-map/issues/247)) ([c3b34e6](https://github.com/RAbdelrhman/wayfinder-map/commit/c3b34e69e4e02caad0d423da3742ee31aef2e922))
+* preserve ticket choices and keyboard focus ([#248](https://github.com/RAbdelrhman/wayfinder-map/issues/248)) ([33be9ac](https://github.com/RAbdelrhman/wayfinder-map/commit/33be9ac7089de46c345353ed24246bf4d3b5801a))
+* reject foreign hosts before serving app data ([#204](https://github.com/RAbdelrhman/wayfinder-map/issues/204)) ([890da90](https://github.com/RAbdelrhman/wayfinder-map/commit/890da903e65160b69c286db843e63606613178a6))
+* restore doc encoding and apply review notes ([#219](https://github.com/RAbdelrhman/wayfinder-map/issues/219)) ([a003060](https://github.com/RAbdelrhman/wayfinder-map/commit/a0030600319cf266d592bde4fff59f9ec3326591))
+* reuse established T3 sessions for sequential requests ([#250](https://github.com/RAbdelrhman/wayfinder-map/issues/250)) ([11f506b](https://github.com/RAbdelrhman/wayfinder-map/commit/11f506bbdd05722b6956bd011041921b3ec22419))
+* settle clone actions after repository switches ([#249](https://github.com/RAbdelrhman/wayfinder-map/issues/249)) ([9514cd0](https://github.com/RAbdelrhman/wayfinder-map/commit/9514cd0c516801b46a3acebc0065fa796516f491))
+
 ## [0.2.12](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.11...v0.2.12) (2026-10-03)
 
 
