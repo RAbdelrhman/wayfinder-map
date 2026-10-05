@@ -13,6 +13,8 @@
     ACF Round 3, AC + a floating window: a size switch (Full window, Side pane, Floating)
        replaces Shrink. The floating window moves by its toolbar and resizes from its corner,
        and has no Open-on-GitHub button.
+       VIEWER.start('ACF', { grips: 'all' }) is round 4: it resizes from all four corners, with
+       handles that only show on hover.
 
   The app chrome and both entry points (the Prototypes board and the ticket panel's tile)
   copy the markup and classes of src/ui on main, so ../../../src/ui/styles.css styles them.
@@ -138,6 +140,7 @@
     defaultSize: ['pane', 'float'].includes(params.get('size')) ? params.get('size') : 'full', // AC, ACF: the setting
     size: 'full', // AC, ACF: the open viewer's size, starts at the setting
     floatRect: null, // ACF: where the floating window was left, kept between opens
+    grips: 'se', // ACF: resize from the bottom-right corner ('se') or every corner ('all')
     canvas: null, // what the bridge last said: { source, pages, options, page, option, presenting } or { source: 'none' }
     mounted: null, // the prototype whose iframe is kept mounted
     menu: false,
@@ -551,7 +554,7 @@
   function applyMode() {
     const m = mode();
     const viewer = document.getElementById('vw');
-    viewer.className = `vw is-${m.toLowerCase()}${S.expanded ? ' is-expanded' : ''}`;
+    viewer.className = `vw is-${m.toLowerCase()}${S.expanded ? ' is-expanded' : ''}${S.grips === 'all' ? ' has-corner-grips' : ''}${float ? ' is-dragging' : ''}`;
     if (m === 'F') {
       S.floatRect ??= defaultFloatRect();
       Object.assign(viewer.style, Object.fromEntries(Object.entries(S.floatRect).map(([k, v]) => [k, `${v}px`])));
@@ -565,12 +568,12 @@
     document.getElementById('vw-scrim').hidden = m !== 'A';
   }
 
-  // Bottom right of the window, clear of the edges.
+  // Bottom right of the window, clear of the edges and of the dashed Prototype bar (64 px).
   function defaultFloatRect() {
     const b = bodyEl().getBoundingClientRect();
     const width = Math.min(560, b.width - 32);
-    const height = Math.min(380, b.height - 32);
-    return { left: b.width - width - 16, top: b.height - height - 16, width, height };
+    const height = Math.min(380, b.height - 80);
+    return { left: b.width - width - 16, top: b.height - height - 64, width, height };
   }
 
   function setSize(size) {
@@ -718,7 +721,7 @@
         <div class="app is-nav-collapsed vw-app">${rail()}<div class="main" id="vw-main"></div></div>
         <div class="vw-scrim" id="vw-scrim" hidden></div>
         <section class="vw" id="vw" hidden role="${mode() === 'A' ? 'dialog' : 'region'}" ${mode() === 'A' ? 'aria-modal="true"' : ''} aria-labelledby="vw-title">
-          <div id="vw-toolbar"></div><div class="vw-stage" id="vw-stage"></div><span class="vw-grip" title="Drag to resize" aria-hidden="true"></span></section>
+          <div id="vw-toolbar"></div><div class="vw-stage" id="vw-stage"></div>${(S.grips === 'all' ? ['nw', 'ne', 'sw', 'se'] : ['se']).map((c) => `<span class="vw-grip" data-corner="${c}" title="Drag to resize" aria-hidden="true"></span>`).join('')}</section>
       </div></div>${protoBar()}`;
     S.mounted = null;
     S.canvas = null;
@@ -840,7 +843,7 @@
     const grip = event.target.closest('.vw-grip');
     if (!grip && (!event.target.closest('.vw-drag') || event.target.closest('button, a'))) return;
     event.preventDefault();
-    float = { resize: Boolean(grip), x: event.clientX, y: event.clientY, start: { ...S.floatRect } };
+    float = { corner: grip?.dataset.corner ?? null, x: event.clientX, y: event.clientY, start: { ...S.floatRect } };
     document.getElementById('vw').classList.add('is-dragging');
   });
   document.addEventListener('pointermove', (event) => {
@@ -849,9 +852,22 @@
     const dx = event.clientX - float.x;
     const dy = event.clientY - float.y;
     const r = { ...float.start };
-    if (float.resize) {
-      r.width = Math.max(360, Math.min(b.width - r.left, r.width + dx));
-      r.height = Math.max(240, Math.min(b.height - r.top, r.height + dy));
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const c = float.corner;
+    if (c) {
+      // Each corner moves its own two edges; the opposite edges stay put.
+      if (c.includes('e')) r.width = clamp(r.width + dx, 360, b.width - r.left);
+      if (c.includes('s')) r.height = clamp(r.height + dy, 240, b.height - r.top);
+      if (c.includes('w')) {
+        const right = r.left + r.width;
+        r.left = clamp(r.left + dx, 0, right - 360);
+        r.width = right - r.left;
+      }
+      if (c.includes('n')) {
+        const bottom = r.top + r.height;
+        r.top = clamp(r.top + dy, 0, bottom - 240);
+        r.height = bottom - r.top;
+      }
     } else {
       r.left = Math.max(0, Math.min(b.width - r.width, r.left + dx));
       r.top = Math.max(0, Math.min(b.height - r.height, r.top + dy));
@@ -879,8 +895,9 @@
   });
   document.addEventListener('pointerup', () => (drag = null));
 
-  function start(direction) {
+  function start(direction, { grips = 'se' } = {}) {
     S.dir = direction;
+    S.grips = grips;
     document.body.classList.add(`vw-dir-${direction.toLowerCase()}`);
     paintAll();
     H.stack = [{ canvas: null, view: S.view, url: mapUrl(S.view) }];

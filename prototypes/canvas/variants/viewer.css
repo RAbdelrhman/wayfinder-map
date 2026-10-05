@@ -321,14 +321,97 @@ button.proto-thumb {
 
 .vw.is-f .vw-grip {
   position: absolute;
-  right: 0;
-  bottom: 0;
   z-index: 2;
   display: block;
   width: 16px;
   height: 16px;
+}
+
+.vw-grip[data-corner='se'] {
+  right: 0;
+  bottom: 0;
   cursor: nwse-resize;
+}
+
+.vw-grip[data-corner='sw'] {
+  left: 0;
+  bottom: 0;
+  cursor: nesw-resize;
+}
+
+.vw-grip[data-corner='ne'] {
+  right: 0;
+  top: 0;
+  cursor: nesw-resize;
+}
+
+.vw-grip[data-corner='nw'] {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+
+/* Round 3: one visible grip, bottom right. */
+.vw.is-f:not(.has-corner-grips) .vw-grip {
   background: linear-gradient(135deg, transparent 0 55%, var(--text-muted) 55% 62%, transparent 62% 72%, var(--text-muted) 72% 79%, transparent 79%);
+}
+
+/* Round 4: every corner, and quiet. Nothing shows until the pointer is over the window; then
+   a faint arc follows each rounded corner, and the corner under the pointer firms up. */
+.vw.is-f.has-corner-grips .vw-grip {
+  width: 14px;
+  height: 14px;
+}
+
+.vw.is-f.has-corner-grips .vw-grip::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 0 solid var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+
+.vw.is-f.has-corner-grips .vw-grip[data-corner='se']::after {
+  right: 3px;
+  bottom: 3px;
+  border-right-width: 1.5px;
+  border-bottom-width: 1.5px;
+  border-bottom-right-radius: 7px;
+}
+
+.vw.is-f.has-corner-grips .vw-grip[data-corner='sw']::after {
+  left: 3px;
+  bottom: 3px;
+  border-left-width: 1.5px;
+  border-bottom-width: 1.5px;
+  border-bottom-left-radius: 7px;
+}
+
+.vw.is-f.has-corner-grips .vw-grip[data-corner='ne']::after {
+  right: 3px;
+  top: 3px;
+  border-right-width: 1.5px;
+  border-top-width: 1.5px;
+  border-top-right-radius: 7px;
+}
+
+.vw.is-f.has-corner-grips .vw-grip[data-corner='nw']::after {
+  left: 3px;
+  top: 3px;
+  border-left-width: 1.5px;
+  border-top-width: 1.5px;
+  border-top-left-radius: 7px;
+}
+
+.vw.is-f.has-corner-grips:hover .vw-grip::after {
+  opacity: 0.3;
+}
+
+.vw.is-f.has-corner-grips .vw-grip:hover::after,
+.vw.is-f.has-corner-grips.is-dragging .vw-grip::after {
+  opacity: 0.85;
 }
 
 .vw-sizes .seg {
