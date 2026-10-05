@@ -76,6 +76,8 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
   let workspace: WorkspaceView | 'loading' | null = repo === null ? null : 'loading';
   let cloneOpen = false;
   let cloneRequest = 0;
+  // Returning to the same repo still makes operations from its previous selection stale.
+  let repositoryGeneration = 0;
   let busy = false;
   let openMenu: 'repository' | 'model' | null = null;
   let mapNotice: string | null = null;
@@ -312,6 +314,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
       return;
     }
     repo = next;
+    repositoryGeneration += 1;
     context.setCurrentRepo(next);
     if (next !== null && !knownRepos.some((candidate) => candidate.toLowerCase() === next.toLowerCase())) knownRepos.unshift(next);
     mapNotice = null;
@@ -351,7 +354,8 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
 
   async function setClone(body: { choose: true } | { path: string }): Promise<void> {
     const requestedRepo = repo;
-    if (requestedRepo === null) return;
+    if (requestedRepo === null || cloneActivity.get(requestedRepo)?.busy) return;
+    const generation = repositoryGeneration;
     cloneActivity.set(requestedRepo, { text: 'choose' in body ? 'Choose a local clone…' : 'Checking the selected clone…', busy: true, error: false });
     sync();
     try {
@@ -361,36 +365,44 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
         body: JSON.stringify(body),
       });
       const result = (await response.json()) as Partial<WorkspaceView> & { error?: string; cancelled?: boolean };
-      if (requestedRepo !== repo) return;
-      if (result.status !== undefined) workspace = result as WorkspaceView;
+      const current = requestedRepo === repo && generation === repositoryGeneration;
+      if (current && result.status !== undefined) {
+        cloneRequest += 1;
+        workspace = result as WorkspaceView;
+      }
       if (result.cancelled === true) {
         cloneActivity.delete(requestedRepo);
-        announceClone('Clone selection canceled.');
+        if (current) announceClone('Clone selection canceled.');
       } else if (!response.ok || result.error !== undefined) {
         const message = result.error ?? 'Could not select that clone. Try again.';
         cloneActivity.set(requestedRepo, { text: message, busy: false, error: true });
-        announceClone(message);
+        if (current) announceClone(message);
       } else if (result.status === 'ready') {
         cloneActivity.delete(requestedRepo);
-        cloneOpen = false;
-        announceClone('The local clone is ready for T3 Code.');
+        if (current) {
+          cloneOpen = false;
+          announceClone('The local clone is ready for T3 Code.');
+        }
       } else {
         cloneActivity.delete(requestedRepo);
-        workspace = result as WorkspaceView;
-        cloneOpen = true;
-        announceClone('Choose a local clone before starting.');
+        if (current) {
+          workspace = result as WorkspaceView;
+          cloneOpen = true;
+          announceClone('Choose a local clone before starting.');
+        }
       }
     } catch {
       const message = 'Could not select that clone. Check Wayfinder and try again.';
       cloneActivity.set(requestedRepo, { text: message, busy: false, error: true });
-      announceClone(message);
+      if (repo === requestedRepo && generation === repositoryGeneration) announceClone(message);
     }
-    sync();
+    if (repo === requestedRepo) sync();
   }
 
   async function cloneRepository(): Promise<void> {
     const requestedRepo = repo;
     if (requestedRepo === null || cloneActivity.get(requestedRepo)?.busy) return;
+    const generation = repositoryGeneration;
     cloneActivity.set(requestedRepo, { text: 'Choose an empty folder for the clone…', busy: true, error: false });
     sync();
     try {
@@ -416,16 +428,21 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
         body: JSON.stringify({ target: folder.target }),
       });
       const result = (await response.json()) as Partial<WorkspaceView> & { error?: string };
-      if (repo !== requestedRepo) return;
-      if (result.status !== undefined) workspace = result as WorkspaceView;
+      const current = repo === requestedRepo && generation === repositoryGeneration;
+      if (current && result.status !== undefined) {
+        cloneRequest += 1;
+        workspace = result as WorkspaceView;
+      }
       if (!response.ok || result.error !== undefined) throw new Error(result.error ?? `Could not clone ${requestedRepo}. Try again.`);
       cloneActivity.delete(requestedRepo);
-      cloneOpen = false;
-      announceClone('The repository clone is ready for T3 Code.');
+      if (current) {
+        cloneOpen = false;
+        announceClone('The repository clone is ready for T3 Code.');
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not finish the clone. Check Wayfinder and try again.';
       cloneActivity.set(requestedRepo, { text: message, busy: false, error: true });
-      announceClone(message);
+      if (repo === requestedRepo && generation === repositoryGeneration) announceClone(message);
     }
     if (repo === requestedRepo) sync();
   }
@@ -466,7 +483,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
       optionButtons(repoOptions)[0]?.focus();
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      optionButtons(repoOptions)[0]?.click();
+      repoOptions.querySelector<HTMLButtonElement>('[data-repo]')?.click();
     } else if (event.key === 'Escape') {
       event.preventDefault();
       closeMenu(true);

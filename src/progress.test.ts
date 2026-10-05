@@ -72,6 +72,28 @@ describe('ProgressSettingsStore', () => {
     expect(await new ProgressSettingsStore(file).update('octo', { style: 'pie' })).toBeNull();
     await expect(readFile(file, 'utf8')).rejects.toThrow();
   });
+
+  it('persists simultaneous patches for the same login', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'wayfinder-progress-'));
+    const file = join(dir, 'progress.json');
+    const store = new ProgressSettingsStore(file);
+
+    const results = await Promise.all([store.update('Octo', { style: 'hex' }), store.update('octo', { goal: 8 })]);
+
+    expect(results.every((result) => result !== null)).toBe(true);
+    expect(await new ProgressSettingsStore(file).get('octo')).toEqual({ style: 'hex', goal: 8 });
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ octo: { style: 'hex', goal: 8 } });
+  });
+
+  it('persists simultaneous patches for different logins', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'wayfinder-progress-'));
+    const file = join(dir, 'progress.json');
+    const store = new ProgressSettingsStore(file);
+
+    await Promise.all([store.update('octo', { style: 'hex' }), store.update('mona', { goal: 8 })]);
+
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ octo: { style: 'hex', goal: 5 }, mona: { style: 'trail', goal: 8 } });
+  });
 });
 
 describe('dailyCounts', () => {

@@ -1,8 +1,8 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   applyStallSettings,
@@ -231,6 +231,11 @@ describe('markStalls', () => {
 });
 
 describe('stall settings', () => {
+  const temporaryDirectories: string[] = [];
+  afterEach(async () => {
+    await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+  });
+
   it('reads saved settings, with 7 days for anything missing or unknown', () => {
     expect(readStallSettings(undefined)).toEqual({ untouchedClaimDays: 7, deadHandOffDays: 7 });
     expect(readStallSettings({ untouchedClaimDays: 14, deadHandOffDays: 5 })).toEqual({ untouchedClaimDays: 14, deadHandOffDays: 7 });
@@ -243,12 +248,27 @@ describe('stall settings', () => {
   });
 
   it('keeps them in a file', async () => {
-    const path = join(await mkdtemp(join(tmpdir(), 'stalls-')), 'nested', 'stalls.json');
+    const directory = await mkdtemp(join(tmpdir(), 'stalls-'));
+    temporaryDirectories.push(directory);
+    const path = join(directory, 'nested', 'stalls.json');
     const store = new StallSettingsStore(path);
     expect(await store.get()).toEqual(DEFAULT_STALL_SETTINGS);
     expect(await store.update({ untouchedClaimDays: 30 })).toEqual({ untouchedClaimDays: 30, deadHandOffDays: 7 });
     expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ untouchedClaimDays: 30, deadHandOffDays: 7 });
     expect(await new StallSettingsStore(path).get()).toEqual({ untouchedClaimDays: 30, deadHandOffDays: 7 });
+  });
+
+  it('persists simultaneous patches without losing either change', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'stalls-'));
+    temporaryDirectories.push(directory);
+    const path = join(directory, 'stalls.json');
+    const store = new StallSettingsStore(path);
+
+    const results = await Promise.all([store.update({ untouchedClaimDays: 30 }), store.update({ deadHandOffDays: 3 })]);
+
+    expect(results.every((result) => result !== null)).toBe(true);
+    expect(await new StallSettingsStore(path).get()).toEqual({ untouchedClaimDays: 30, deadHandOffDays: 3 });
+    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ untouchedClaimDays: 30, deadHandOffDays: 3 });
   });
 
   it('keeps them in memory for tests', async () => {

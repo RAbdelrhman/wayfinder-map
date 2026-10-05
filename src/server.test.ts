@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { get as httpGet } from 'node:http';
 
 import type { Config } from './config.js';
 import type { HomeState } from './home.js';
@@ -95,6 +96,71 @@ const sampleMap: WayfinderMap = {
 };
 
 describe('repository-scoped server', () => {
+  // Node's fetch can replace Host, so use raw HTTP to exercise the received header.
+  function getWithHeaders(url: string, headers: Record<string, string>): Promise<{ status: number; body: string }> {
+    return new Promise((resolve, reject) => {
+      const request = httpGet(url, { headers }, (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk: string) => { body += chunk; });
+        response.once('error', reject);
+        response.once('end', () => resolve({ status: response.statusCode ?? 0, body }));
+      });
+      request.once('error', reject);
+    });
+  }
+
+  it.each(['/api/home', '/api/snapshot', '/api/repos/octo/one/snapshot', '/'])('rejects a foreign Host without Origin on %s', async (path) => {
+    const homeLoader = vi.fn(async () => home);
+    const fetcher = vi.fn<RepositoryFetcher>(async () => ({ maps: [], warnings: [] }));
+    const running = await startServer({ config, repo: 'octo/one', template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader, fetcher });
+
+    try {
+      const response = await getWithHeaders(`${running.url}${path}`, { host: 'attacker.example' });
+      expect(response.status).toBe(403);
+      expect(JSON.parse(response.body)).toEqual({ error: 'Only loopback hosts are accepted.' });
+      expect(homeLoader).not.toHaveBeenCalled();
+      expect(fetcher).not.toHaveBeenCalled();
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it.each(['attacker.example@localhost', 'localhost#attacker.example', 'localhost/path', 'localhost?query', 'localhost:abc', 'localhost:99999'])('rejects malformed authority %s', async (host) => {
+    const running = await startServer({ config, repo: 'octo/one', template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, fetcher: async () => ({ maps: [], warnings: [] }) });
+    try {
+      expect((await getWithHeaders(`${running.url}/api/home`, { host })).status).toBe(403);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it.each(['localhost', '127.0.0.1', '[::1]'])('accepts the loopback Host %s while preserving the Origin check', async (host) => {
+    const running = await startServer({
+      config,
+      repo: 'octo/one',
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      homeLoader: async () => home,
+      fetcher: async () => ({ maps: [], warnings: [] }),
+    });
+    const port = new URL(running.url).port;
+
+    try {
+      for (const path of ['/api/home', '/api/snapshot', '/api/repos/octo/one/snapshot', '/']) {
+        const response = await getWithHeaders(`${running.url}${path}`, { host: `${host}:${port}` });
+        expect(response.status).toBe(200);
+      }
+      const sameOrigin = await getWithHeaders(`${running.url}/api/home`, { host: `${host}:${port}`, origin: `http://${host}:${port}` });
+      expect(sameOrigin.status).toBe(200);
+      const foreignOrigin = await getWithHeaders(`${running.url}/api/home`, { host: `${host}:${port}`, origin: 'https://attacker.example' });
+      expect(foreignOrigin.status).toBe(403);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
   it('serves notification choices and bridges notifications to the desktop shell when present', async () => {
     const desktopNotification = vi.fn();
     const notificationsRead = vi.fn();

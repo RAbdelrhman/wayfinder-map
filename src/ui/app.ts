@@ -39,6 +39,7 @@ import { mountSettings, NOTIFICATION_SETTINGS_EVENT } from './settings.js';
 import { mountMapEventInbox } from './mapEventInbox.js';
 import { bindPan } from './pan.js';
 import { nextTabIndex, tabAttrs, tabPanelAttrs } from './tabs.js';
+import { rememberControlFocus } from './controlFocus.js';
 import type { NavigationController, NavigationView } from './navigation.js';
 import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
 import { recordMapOpened } from './homeRecency.js';
@@ -167,6 +168,8 @@ const routedTicketNumber = routedTicketText !== null && /^\d+$/.test(routedTicke
 let initialRouteTicketPending = routedTicketNumber !== null;
 let planningHandOff: HandOffStatusDto | null = null;
 let selected: number | null = null;
+/** Overrides for this page's hand-offs, retained when snapshots redraw the inspector. */
+const ticketModelChoices = new Map<string, ModelChoice | null>();
 let hovered: number | null = null;
 let filter: TicketFilter | null = null;
 let view: NavigationView = viewFromQuery(new URLSearchParams(window.location.search).get('view'));
@@ -797,6 +800,7 @@ function nodeHtml(ticket: Ticket | OutsideTicket, position: PositionedNode): str
 }
 
 function renderGraph(): void {
+  const restoreFocus = rememberControlFocus(els.nodes);
   els.canvasWrap.hidden = false;
   els.tableWrap.hidden = true;
   els.protoWrap.hidden = true;
@@ -851,9 +855,11 @@ function renderGraph(): void {
     .join('');
 
   syncHighlights();
+  restoreFocus();
 }
 
 function renderTable(): void {
+  const restoreFocus = rememberControlFocus(els.tableWrap);
   els.canvasWrap.hidden = true;
   els.tableWrap.hidden = false;
   els.protoWrap.hidden = true;
@@ -862,6 +868,7 @@ function renderTable(): void {
   const map = currentMap();
   if (map === null) {
     els.tableWrap.innerHTML = '';
+    restoreFocus();
     return;
   }
 
@@ -877,7 +884,7 @@ function renderTable(): void {
       return `<tr data-number="${String(ticket.number)}">
         <td class="num">#${String(ticket.number)}</td>
         <td><span class="typecell">${icon(typeStyle(ticket.type).icon)}${escapeHtml(typeStyle(ticket.type).label)}</span></td>
-        <td>${escapeHtml(ticket.title)}</td>
+        <td><button type="button" class="table-ticket" data-table-ticket="${String(ticket.number)}" aria-label="Open ticket #${String(ticket.number)}: ${escapeHtml(ticket.title)}">${escapeHtml(ticket.title)}</button></td>
         <td><span class="cellchip" style="--accent: var(${style.variable})">${icon(style.icon)}${escapeHtml(style.label)}</span></td>
         <td>${ticket.assignee === null ? '—' : escapeHtml(`@${ticket.assignee}`)}</td>
         <td>${pullRequest === undefined ? '—' : `<a href="${escapeHtml(pullRequest.url)}" target="_blank" rel="noreferrer">${escapeHtml(pullRequestText(pullRequest))}</a>`}</td>
@@ -895,6 +902,7 @@ function renderTable(): void {
   </table>`;
 
   syncHighlights();
+  restoreFocus();
 }
 
 /* ---------- prototypes: fetched per map on demand, since each one costs GitHub calls ---------- */
@@ -1086,6 +1094,7 @@ function setHovered(node: HTMLElement | null): void {
 /* ---------- inspector: the map brief and the open ticket, one tab each ---------- */
 
 function renderInspector(): void {
+  const restoreFocus = rememberControlFocus(els.inspector);
   const map = currentMap();
   if (map === null) {
     els.inspector.innerHTML = '';
@@ -1111,6 +1120,7 @@ function renderInspector(): void {
   const panel = els.inspector.querySelector('.insp-panel');
   if (panel !== null) panel.scrollTop = scrollTop;
   fitPrototypeThumbs(els.inspector);
+  restoreFocus();
 }
 
 function briefHtml(map: WayfinderMap): string {
@@ -1216,11 +1226,17 @@ function runWithHtml(ticketNumber: number): string {
     <div class="runwith-row picker" id="ticket-picker">${ticketPickerHtml(tier)}</div>`;
 }
 
+function ticketChoiceKey(ticketNumber: number): string {
+  return `${repoName().toLowerCase()}#${String(ticketNumber)}`;
+}
+
 function ticketPickerHtml(tier: Tier): string {
   const state = currentCatalog();
   if (state.status === 'loading') return '<span class="hint">Loading T3 Code models…</span>';
   if (state.status === 'unavailable') return `<span class="hint">${escapeHtml(state.reason)} T3 Code will pick the model.</span>`;
-  const choice = liveChoice(state.catalog, tierDefaults()[tier]);
+  const key = selected === null ? null : ticketChoiceKey(selected);
+  const saved = key !== null && ticketModelChoices.has(key) ? ticketModelChoices.get(key) : tierDefaults()[tier];
+  const choice = liveChoice(state.catalog, saved);
   return (
     modelSelectHtml(state.catalog, choice, 'id="ticket-model" aria-label="Model"') +
     effortSelectHtml(findModel(state.catalog, choice), choice?.effort?.value, 'id="ticket-effort"')
@@ -1630,7 +1646,9 @@ els.protoWrap.addEventListener('error', (event) => {
 }, true);
 
 els.tableWrap.addEventListener('click', (event) => {
-  const row = (event.target as HTMLElement).closest<HTMLElement>('tr[data-number]');
+  const target = event.target as HTMLElement;
+  if (target.closest('a') !== null) return;
+  const row = target.closest<HTMLElement>('tr[data-number]');
   if (row === null) return;
   select(Number(row.dataset['number']));
 });
@@ -1695,6 +1713,7 @@ els.inspector.addEventListener('click', (event) => {
   if (target.closest('#edit-tiers') !== null) openModels();
   const tierButton = target.closest<HTMLElement>('[data-tier]');
   if (tierButton !== null && selected !== null) {
+    ticketModelChoices.delete(ticketChoiceKey(selected));
     saveTicketTier(repoName(), selected, tierButton.dataset['tier'] as Tier);
     const runWith = document.getElementById('runwith');
     if (runWith !== null) runWith.innerHTML = runWithHtml(selected);
@@ -1710,7 +1729,10 @@ els.inspector.addEventListener('click', (event) => {
 
 els.inspector.addEventListener('change', (event) => {
   const target = event.target;
-  if (target instanceof HTMLSelectElement && target.id === 'ticket-model') refreshEffort(target, 'ticket-effort', 'id="ticket-effort"');
+  if (!(target instanceof HTMLSelectElement) || selected === null) return;
+  if (target.id !== 'ticket-model' && target.id !== 'ticket-effort') return;
+  if (target.id === 'ticket-model') refreshEffort(target, 'ticket-effort', 'id="ticket-effort"');
+  ticketModelChoices.set(ticketChoiceKey(selected), pickedModel());
 });
 
 els.tierRows.addEventListener('change', (event) => {

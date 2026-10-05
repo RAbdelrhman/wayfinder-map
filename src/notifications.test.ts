@@ -49,6 +49,20 @@ describe('notification settings', () => {
     expect(await store.get()).toMatchObject({ reviewReady: false });
   });
 
+  it('persists simultaneous patches without losing either change', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-notifications-'));
+    temporaryDirectories.push(directory);
+    const path = join(directory, 'notifications.json');
+    const store = new NotificationSettingsStore(path);
+
+    const results = await Promise.all([store.update({ unblocked: false }), store.update({ stalled: false })]);
+
+    expect(results.every((result) => result !== null)).toBe(true);
+    const expected = { ...DEFAULT_NOTIFICATION_SETTINGS, unblocked: false, stalled: false };
+    expect(await new NotificationSettingsStore(path).get()).toEqual(expected);
+    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual(expected);
+  });
+
   it('accepts only complete desktop notification targets', () => {
     expect(parseDesktopNotification({
       kind: 'unblocked',
