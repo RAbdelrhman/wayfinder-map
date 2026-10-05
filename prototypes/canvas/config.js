@@ -307,9 +307,9 @@ window.CANVAS = {
             {
               id: 'ACF-questions',
               kind: 'note',
-              name: 'Two calls I made',
+              name: 'Two calls I made (resolved)',
               text:
-                'Open in browser: the ↗ button in every round opens the prototype branch on GitHub, in the system browser. I took that to be the button you meant, and kept it at full window and side pane only. If you meant a new button that opens the canvas itself in the browser, that is a different control. Say so and I will add it.\n\nThe setting: I added Floating as a third choice in Settings › Preferences.',
+                'Open in browser: resolved. The user confirmed it is the existing ↗ button, which opens the prototype branch on GitHub. It shows at full window and side pane, not when floating. No new button.\n\nThe setting: Floating is a third choice in Settings › Preferences. The user kept round 4 with this in place.',
             },
           ],
         },
@@ -342,6 +342,8 @@ window.CANVAS = {
                   'The top corners sit near the size switch and Close; the 14 px corner areas stop short of them but leave little margin',
                   'Still pointer only: no keyboard way to resize or move it',
                 ],
+                disposition: 'keep',
+                feedback: 'Keep: the chosen direction. The user wrote: "Beautiful its perfect and yes it was the open in github button you can get rid of it. It\'s ready though we don\'t need more rounds"',
               },
             },
             {
