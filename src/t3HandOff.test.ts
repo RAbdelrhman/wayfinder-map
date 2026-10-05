@@ -150,7 +150,7 @@ describe('T3HandOff concurrent prepare', () => {
     execFileSync('git', ['add', 'README.md'], { cwd: workspaceRoot, stdio: 'ignore' });
     execFileSync('git', ['commit', '--quiet', '-m', 'fixture'], { cwd: workspaceRoot, stdio: 'ignore' });
     runtime = { origin: 'http://127.0.0.1:3773', pid: 123, stateDir: join(tempRoot, 'userdata') };
-  });
+  }, realGitTimeout);
 
   afterEach(async () => {
     // A timeout or rejected prepare must not leave another hand-off using the
