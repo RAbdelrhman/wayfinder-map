@@ -546,9 +546,7 @@ function keepKnownState(ref: PullRequestRef, known: readonly PullRequestRef[]): 
 
 export class HandOffStore {
   private records: StoredHandOff[] | null = null;
-  private loading: Promise<void> | null = null;
   private writes: Promise<void> = Promise.resolve();
-  private readonly deletedIds = new Set<string>();
   private readonly rawErrors = new Map<string, string>();
   private readonly now: () => Date;
 
@@ -559,7 +557,10 @@ export class HandOffStore {
   }
 
   async record(input: RecordHandOffInput): Promise<StoredHandOff> {
-    await this.ensureLoaded();
+    return this.withStoreLock(() => this.recordCurrent(input));
+  }
+
+  private async recordCurrent(input: RecordHandOffInput): Promise<StoredHandOff> {
     const now = this.now().toISOString();
     const handOff: StoredHandOff = {
       id: randomUUID(),
@@ -600,7 +601,10 @@ export class HandOffStore {
   }
 
   async list(): Promise<StoredHandOff[]> {
-    await this.ensureLoaded();
+    return this.withStoreLock(() => this.listCurrent());
+  }
+
+  private async listCurrent(): Promise<StoredHandOff[]> {
     const pruned = this.prune();
     if (pruned) await this.persist();
     return this.current().map(cloneHandOff);
@@ -612,7 +616,10 @@ export class HandOffStore {
   }
 
   async acknowledge(id: string): Promise<boolean> {
-    await this.ensureLoaded();
+    return this.withStoreLock(() => this.acknowledgeCurrent(id));
+  }
+
+  private async acknowledgeCurrent(id: string): Promise<boolean> {
     const handOff = this.current().find((item) => item.id === id);
     if (handOff === undefined) return false;
     if (handOff.acknowledged) return true;
@@ -624,7 +631,10 @@ export class HandOffStore {
 
   /** Save the reason the user gave for a model change in an Auto session. False when the hand-off or the change is not there. */
   async confirmModelChange(id: string, at: string, reason: ModelChangeReason): Promise<boolean> {
-    await this.ensureLoaded();
+    return this.withStoreLock(() => this.confirmModelChangeCurrent(id, at, reason));
+  }
+
+  private async confirmModelChangeCurrent(id: string, at: string, reason: ModelChangeReason): Promise<boolean> {
     const handOff = this.current().find((item) => item.id === id);
     const confirmed = handOff?.auto === undefined ? null : confirmModelChange(handOff.auto, at, reason, this.now());
     if (handOff === undefined || confirmed === null) return false;
@@ -635,7 +645,10 @@ export class HandOffStore {
   }
 
   async addPullRequests(id: string, refs: readonly PullRequestRef[]): Promise<void> {
-    await this.ensureLoaded();
+    return this.withStoreLock(() => this.addPullRequestsCurrent(id, refs));
+  }
+
+  private async addPullRequestsCurrent(id: string, refs: readonly PullRequestRef[]): Promise<void> {
     if (refs.length === 0) return;
     const handOff = this.current().find((item) => item.id === id);
     if (handOff === undefined || handOff.pullRequests.length > 0) return;
@@ -645,7 +658,10 @@ export class HandOffStore {
   }
 
   async setPullRequestState(id: string, url: string, update: PullRequestState): Promise<void> {
-    await this.ensureLoaded();
+    return this.withStoreLock(() => this.setPullRequestStateCurrent(id, url, update));
+  }
+
+  private async setPullRequestStateCurrent(id: string, url: string, update: PullRequestState): Promise<void> {
     const ref = this.current().find((item) => item.id === id)?.pullRequests.find((item) => item.url === url);
     if (ref === undefined || (ref.state === update.state && ref.mergedAt === update.mergedAt)) return;
     ref.state = update.state;
@@ -655,7 +671,10 @@ export class HandOffStore {
   }
 
   async setTicketClosed(id: string): Promise<void> {
-    await this.ensureLoaded();
+    return this.withStoreLock(() => this.setTicketClosedCurrent(id));
+  }
+
+  private async setTicketClosedCurrent(id: string): Promise<void> {
     const handOff = this.current().find((item) => item.id === id);
     if (handOff === undefined || handOff.ticketClosedAt !== undefined) return;
     const now = this.now().toISOString();
@@ -665,7 +684,10 @@ export class HandOffStore {
   }
 
   async applySnapshot(environmentId: string | null, origin: string, snapshot: unknown): Promise<void> {
-    await this.ensureLoaded();
+    return this.withStoreLock(() => this.applySnapshotCurrent(environmentId, origin, snapshot));
+  }
+
+  private async applySnapshotCurrent(environmentId: string | null, origin: string, snapshot: unknown): Promise<void> {
     const shell = record(snapshot);
     if (shell === null) return;
     const sequence = finiteNumber(shell['snapshotSequence']);
@@ -693,7 +715,10 @@ export class HandOffStore {
   }
 
   async applyEvent(environmentId: string | null, origin: string, value: unknown): Promise<void> {
-    await this.ensureLoaded();
+    return this.withStoreLock(() => this.applyEventCurrent(environmentId, origin, value));
+  }
+
+  private async applyEventCurrent(environmentId: string | null, origin: string, value: unknown): Promise<void> {
     const event = record(value);
     if (event === null) return;
     const kind = firstText(event['kind'], event['type'], event['event'], event['_tag']);
@@ -706,7 +731,7 @@ export class HandOffStore {
       const snapshotWithSequence = sequence !== null && shell !== null && finiteNumber(shell['snapshotSequence']) === null
         ? { ...shell, snapshotSequence: sequence }
         : snapshot;
-      await this.applySnapshot(environmentId, origin, snapshotWithSequence);
+      await this.applySnapshotCurrent(environmentId, origin, snapshotWithSequence);
       return;
     }
     if (kind === 'thread-removed') {
@@ -800,7 +825,7 @@ export class HandOffStore {
 
   private drop(handOffs: ReadonlySet<StoredHandOff>): boolean {
     if (handOffs.size === 0) return false;
-    for (const handOff of handOffs) this.deletedIds.add(handOff.id);
+    for (const handOff of handOffs) this.rawErrors.delete(handOff.id);
     this.records = this.current().filter((item) => !handOffs.has(item));
     return true;
   }
@@ -816,7 +841,6 @@ export class HandOffStore {
     const retainedIds = new Set(retained.map((item) => item.id));
     for (const handOff of this.current()) {
       if (retainedIds.has(handOff.id)) continue;
-      this.deletedIds.add(handOff.id);
       this.rawErrors.delete(handOff.id);
     }
     this.records = retained;
@@ -828,52 +852,63 @@ export class HandOffStore {
     return this.records;
   }
 
-  private async ensureLoaded(): Promise<void> {
-    this.loading ??= (async () => {
+  /** Serialize local operations and apply their mutations to the latest records while holding the shared lock. */
+  private withStoreLock<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.writes.catch(() => undefined).then(async () => {
       const filePath = this.options.filePath;
       if (filePath === null || filePath === undefined) {
-        this.records = [];
-        return;
+        this.records ??= [];
+        return operation();
       }
-      this.records = await readStoredHandOffs(filePath);
-      if (this.prune()) await this.persist();
-    })().catch((error: unknown) => {
-      this.loading = null;
-      throw error;
-    });
-    await this.loading;
-  }
-
-  private async persist(): Promise<void> {
-    const filePath = this.options.filePath;
-    if (filePath === null || filePath === undefined) return;
-    const records = this.current().map(cloneHandOff);
-    const deletedIds = new Set(this.deletedIds);
-    this.writes = this.writes.catch(() => undefined).then(async () => {
       await mkdir(dirname(filePath), { recursive: true, mode: 0o700 });
       const release = await acquireStoreLock(`${filePath}.lock`);
       try {
-        const merged = new Map((await readStoredHandOffs(filePath)).map((item) => [item.id, item]));
-        for (const id of deletedIds) merged.delete(id);
-        for (const handOff of records) merged.set(handOff.id, handOff);
-
-        const temporary = `${filePath}.${String(process.pid)}.${randomUUID()}.tmp`;
-        try {
-          await writeFile(temporary, JSON.stringify({ version: 2, records: [...merged.values()] }, null, 2), {
-            encoding: 'utf8',
-            mode: 0o600,
-          });
-          await renameWithRetry(temporary, filePath);
-        } catch (error) {
-          await unlink(temporary).catch(() => undefined);
-          throw error;
+        const next = await readStoredHandOffs(filePath);
+        const previousById = new Map(this.records?.map((handOff) => [handOff.id, handOff]));
+        const nextById = new Map(next.map((handOff) => [handOff.id, handOff]));
+        const trackingFields = [
+          'environmentId', 'threadId', 'sequence', 'lastSeenAt', 'status',
+          'rawSessionStatus', 'rawTurnState', 'lastError',
+        ] as const;
+        // Raw messages belong to the locally observed tracking generation, not
+        // to acknowledgements or other metadata written by another process.
+        for (const id of this.rawErrors.keys()) {
+          const previous = previousById.get(id);
+          const current = nextById.get(id);
+          if (previous === undefined || current === undefined
+            || trackingFields.some((field) => previous[field] !== current[field])) {
+            this.rawErrors.delete(id);
+          }
         }
-        for (const id of deletedIds) this.deletedIds.delete(id);
+        this.records = next;
+        if (this.prune()) await this.persist();
+        return await operation();
       } finally {
         await release();
       }
     });
-    await this.writes;
+    // A failed operation must not prevent later operations from acquiring the lock and reloading.
+    this.writes = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  /** Called only from an operation holding the store lock. The cache is the exact state being saved. */
+  private async persist(): Promise<void> {
+    const filePath = this.options.filePath;
+    if (filePath === null || filePath === undefined) return;
+    const records = this.current().map(cloneHandOff);
+    const temporary = `${filePath}.${String(process.pid)}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, JSON.stringify({ version: 2, records }, null, 2), {
+        encoding: 'utf8',
+        mode: 0o600,
+      });
+      await renameWithRetry(temporary, filePath);
+      this.records = records;
+    } catch (error) {
+      await unlink(temporary).catch(() => undefined);
+      throw error;
+    }
   }
 }
 

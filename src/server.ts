@@ -237,13 +237,12 @@ function originAllowed(request: IncomingMessage, port: number): boolean {
 
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
-/** A Host header naming this machine, so a rebound DNS name cannot read repo files through the page. */
+/** A Host header naming this machine, so a rebound DNS name cannot read authenticated app data. */
 function hostAllowed(request: IncomingMessage): boolean {
-  try {
-    return LOOPBACK.has(new URL(`http://${request.headers.host ?? ''}`).hostname);
-  } catch {
-    return false;
-  }
+  const authority = /^(localhost|127\.0\.0\.1|\[::1\])(?::([0-9]+))?$/i.exec(request.headers.host ?? '');
+  if (authority === null) return false;
+  const port = authority[2];
+  return port === undefined || (Number(port) > 0 && Number(port) <= 65535);
 }
 
 function extensionOf(file: string): string {
@@ -436,7 +435,10 @@ export async function startServer({
     const key = `${forRepo}#${mapNumber === null ? 'all' : String(mapNumber)}`;
     const cached = prototypeCache.get(key);
     if (!force && cached !== undefined && Date.now() - cached.at < PROTOTYPE_TTL_MS) return cached.list;
-    const list = map === null || map === undefined ? fetchAllPrototypes(forRepo, snapshot.maps) : fetchPrototypes(forRepo, map);
+    // Cache the ticket read as well: branches on settled maps need their ticket numbers.
+    const list = map === null || map === undefined
+      ? repositories.snapshot(forRepo, false, snapshot.maps.map((candidate) => candidate.number)).then((loaded) => fetchAllPrototypes(forRepo, loaded.maps))
+      : fetchPrototypes(forRepo, map);
     prototypeCache.set(key, { at: Date.now(), list });
     list.catch(() => prototypeCache.delete(key));
     return list;
@@ -625,6 +627,11 @@ export async function startServer({
   });
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    if (!hostAllowed(request)) {
+      json(response, 403, { error: 'Only loopback hosts are accepted.' });
+      return;
+    }
+
     const requestUrl = new URL(request.url ?? '/', url);
     const path = requestUrl.pathname;
 

@@ -136,6 +136,11 @@ function skippedOrganizations(headers: string): string[] {
     .filter(Boolean);
 }
 
+function nextSearchPage(headers: string): string | null {
+  const link = headers.split(/\r?\n/).find((line) => line.toLowerCase().startsWith('link:'));
+  return link?.match(/<([^>]+)>;\s*rel="?next"?(?:,|\s|$)/i)?.[1] ?? null;
+}
+
 function repoFromApiUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const match = value.match(/\/repos\/([^/]+)\/([^/]+)$/);
@@ -153,13 +158,23 @@ export async function discoverRepositories(
   const owners = [account.login, ...organizationOutput.split(/\r?\n/).map((owner) => owner.trim()).filter(Boolean)];
   const labels = `label:${[...new Set(mapLabels)].map((label) => `"${label}"`).join(',')}`;
   const ownerScope = owners.map((owner) => `user:${owner}`).join(' ');
-  const output = await runGh(['api', '-i', '-X', 'GET', 'search/issues', '-f', `q=${labels} ${ownerScope}`]);
-  const { headers, body } = splitHeaders(output);
-  const response = JSON.parse(body) as SearchResponse;
-  const issues = Array.isArray(response.items) ? (response.items as SearchIssue[]) : [];
-  const repositories = [...new Set(issues.map((issue) => repoFromApiUrl(issue.repository_url)).filter((repo): repo is string => repo !== null))]
-    .sort((left, right) => left.localeCompare(right));
-  return { repositories, skippedOrganizations: skippedOrganizations(headers) };
+  const repositories = new Set<string>();
+  const skipped = new Set<string>();
+  let args = ['api', '-i', '-X', 'GET', 'search/issues', '-f', `q=${labels} ${ownerScope}`];
+  while (true) {
+    const { headers, body } = splitHeaders(await runGh(args));
+    const response = JSON.parse(body) as SearchResponse;
+    const issues = Array.isArray(response.items) ? (response.items as SearchIssue[]) : [];
+    for (const issue of issues) {
+      const repo = repoFromApiUrl(issue.repository_url);
+      if (repo !== null) repositories.add(repo);
+    }
+    for (const organization of skippedOrganizations(headers)) skipped.add(organization);
+    const next = nextSearchPage(headers);
+    if (next === null) break;
+    args = ['api', '-i', '-X', 'GET', next];
+  }
+  return { repositories: [...repositories].sort((left, right) => left.localeCompare(right)), skippedOrganizations: [...skipped] };
 }
 
 export async function loadHomeState(mapLabels: readonly string[], runGh: HomeGh = gh): Promise<HomeState> {
