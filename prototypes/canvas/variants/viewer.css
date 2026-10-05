@@ -241,7 +241,8 @@ button.proto-thumb {
 
 .vw-dir-a,
 .vw-dir-b,
-.vw-dir-c {
+.vw-dir-c,
+.vw-dir-ac {
   --vw-pane: min(60vw, 820px);
 }
 

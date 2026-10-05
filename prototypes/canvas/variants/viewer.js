@@ -1,6 +1,6 @@
 /*
   PROTOTYPE (#207): the in-app canvas viewer shell. Load after ../kit/kit.js, then call
-  VIEWER.start('A' | 'B' | 'C').
+  VIEWER.start('A' | 'B' | 'C' | 'AC').
 
     A  Overlay: the canvas grows out of the tile and covers the whole window. The app stays
        mounted, inert, underneath.
@@ -8,6 +8,8 @@
        viewer's toolbar. The map view is unmounted and restored from saved state.
     C  Pane: the canvas opens in a wide pane beside the map or board. Expand makes it fill
        the app, the same way B does.
+    AC Round 2, A + C: opens as A's overlay by default; Shrink turns it into C's pane, and
+       Fill the window turns it back. A setting picks which size a canvas opens at.
 
   The app chrome and both entry points (the Prototypes board and the ticket panel's tile)
   copy the markup and classes of src/ui on main, so ../../../src/ui/styles.css styles them.
@@ -16,6 +18,7 @@
   sample-canvas.html in a sandboxed iframe, speaking the #206 bridge.
 
   Query: ?frame=desktop|browser  ?view=prototypes|map  ?cold=1  ?bridge=0  ?open=211[/B]
+         ?size=full|pane (AC only: the setting's value)
 */
 (() => {
   Object.assign(Kit.icons, {
@@ -127,12 +130,17 @@
     bridge: params.get('bridge') !== '0',
     open: null, // { n, origin } while the viewer shows
     expanded: false, // C: the pane fills the app
+    defaultSize: params.get('size') === 'pane' ? 'pane' : 'full', // AC: the setting
+    size: 'full', // AC: the open viewer's size, starts at the setting
     canvas: null, // what the bridge last said: { source, pages, options, page, option, presenting } or { source: 'none' }
     mounted: null, // the prototype whose iframe is kept mounted
     menu: false,
     scroll: { map: [0, 0], prototypes: [0, 0] },
     returnFocus: null,
   };
+
+  // AC switches between A's overlay and C's pane; every other direction is one mode.
+  const mode = () => (S.dir === 'AC' ? (S.size === 'full' ? 'A' : 'C') : S.dir);
 
   /* ---------- a fake history, so Back and the address bar can be shown ---------- */
 
@@ -367,15 +375,17 @@
     const controls = live ? `${pagesMenu(c)}${optionsGroup(c)}` : sourceNote(c);
     const title = `<span class="vw-title" id="vw-title">${icon('beaker')}<span class="num">#${p.n}</span><span class="vw-title-t">${esc(t.title)}</span></span>`;
     const github = `<a class="iconbtn" href="#" data-to="${esc(p.branch)} on GitHub" aria-label="Open the branch on GitHub">${icon('external')}</a>`;
-    if (S.dir === 'A') {
-      return `<div class="vw-bar is-a"><button type="button" class="ghost vw-close" data-act="close" aria-label="Close the canvas and go back to ${closeLabel()}">${icon('x')}<span class="vw-lbl">Close</span><kbd>Esc</kbd></button>${title}<span class="vw-sep"></span>${controls}<span class="topbar-spacer"></span>${github}</div>`;
+    if (mode() === 'A') {
+      const shrink = S.dir === 'AC' ? `<button type="button" class="iconbtn" data-act="expand" aria-label="Shrink to a side pane" title="Shrink to a side pane">${icon('shrink')}</button>` : '';
+      return `<div class="vw-bar is-a"><button type="button" class="ghost vw-close" data-act="close" aria-label="Close the canvas and go back to ${closeLabel()}">${icon('x')}<span class="vw-lbl">Close</span><kbd>Esc</kbd></button>${title}<span class="vw-sep"></span>${controls}<span class="topbar-spacer"></span>${github}${shrink}</div>`;
     }
     if (S.dir === 'B' || S.expanded) {
       const shrink = S.dir === 'C' ? `<button type="button" class="iconbtn" data-act="expand" aria-label="Back to the side pane" title="Back to the side pane">${icon('shrink')}</button>` : '';
       return `<header class="topbar vw-bar is-b"><button type="button" class="ghost vw-back" data-act="close" aria-label="Back to ${closeLabel()}">${icon('back')}<span class="vw-lbl">${closeLabel()}</span></button>
         <nav class="nav-map-scopes vw-crumbs" aria-label="Where you are"><span class="t">#${MAP.number} ${esc(MAP.title)}</span><span class="crumb-sep" aria-hidden="true">/</span></nav>${title}<span class="vw-sep"></span>${controls}<span class="topbar-spacer"></span>${github}${shrink}${S.dir === 'C' ? `<button type="button" class="iconbtn" data-act="close" aria-label="Close the canvas">${icon('x')}</button>` : ''}</header>`;
     }
-    return `<div class="vw-bar is-c"><div class="vw-c-row">${title}<span class="topbar-spacer"></span>${github}<button type="button" class="iconbtn" data-act="expand" aria-label="Open the canvas full size" title="Fill the app">${icon('expand')}</button><button type="button" class="iconbtn vw-close" data-act="close" aria-label="Close the canvas">${icon('x')}</button></div>
+    const grow = S.dir === 'AC' ? 'Fill the window' : 'Fill the app';
+    return `<div class="vw-bar is-c"><div class="vw-c-row">${title}<span class="topbar-spacer"></span>${github}<button type="button" class="iconbtn" data-act="expand" aria-label="${grow}" title="${grow}">${icon('expand')}</button><button type="button" class="iconbtn vw-close" data-act="close" aria-label="Close the canvas">${icon('x')}</button></div>
       ${controls ? `<div class="vw-c-row">${controls}</div>` : ''}</div>`;
   }
 
@@ -496,20 +506,31 @@
     S.open = { n, origin: originKey ?? (S.view === 'map' ? `${n}-tile` : `${n}`), from: S.view };
     S.menu = false;
     if (!fromHistory) push({ canvas: n, option, view: S.view, url: canvasUrl(n, PROTOS[n].kind === 'canvas' ? `directions${option ? `/${option}` : ''}` : '') });
-    const viewer = document.getElementById('vw');
-    viewer.hidden = false;
-    viewer.className = `vw is-${S.dir.toLowerCase()}${S.expanded ? ' is-expanded' : ''}`;
-    document.querySelector('.vw-app').classList.toggle('has-pane', S.dir === 'C' && !S.expanded);
+    S.size = S.defaultSize;
+    document.getElementById('vw').hidden = false;
+    applyMode();
     mountFrame(n, option);
     paintToolbar();
-    if (S.dir === 'A') document.querySelector('.vw-app').inert = true;
     if (S.dir === 'B') document.getElementById('vw-main').hidden = true;
     const to = viewerTarget();
-    document.getElementById('vw-scrim').hidden = S.dir !== 'A';
-    if (S.dir === 'A') document.getElementById('vw-scrim').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });
+    if (mode() === 'A') document.getElementById('vw-scrim').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });
     ghost(from, to, n, option, false);
     document.querySelector('#vw-toolbar [data-act="close"]')?.focus({ preventScroll: true });
-    if (S.dir === 'C') restoreScroll();
+    if (mode() === 'C') restoreScroll();
+  }
+
+  // A is a modal dialog over an inert app; B and C are regions beside a live one.
+  function applyMode() {
+    const m = mode();
+    const viewer = document.getElementById('vw');
+    viewer.className = `vw is-${m.toLowerCase()}${S.expanded ? ' is-expanded' : ''}`;
+    viewer.setAttribute('role', m === 'A' ? 'dialog' : 'region');
+    if (m === 'A') viewer.setAttribute('aria-modal', 'true');
+    else viewer.removeAttribute('aria-modal');
+    const app = document.querySelector('.vw-app');
+    app.classList.toggle('has-pane', m === 'C' && !S.expanded);
+    app.inert = m === 'A';
+    document.getElementById('vw-scrim').hidden = m !== 'A';
   }
 
   function keySel(el) {
@@ -548,7 +569,7 @@
     // The viewer stays mounted but hidden, so the next open of the same canvas is instant.
     viewer.classList.add('is-closing');
     setTimeout(() => viewer.classList.remove('is-closing'), 260);
-    if (S.dir === 'A') {
+    if (mode() === 'A') {
       const scrim = document.getElementById('vw-scrim');
       scrim.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200 }).finished.then(() => (scrim.hidden = true));
     }
@@ -560,14 +581,20 @@
   }
 
   function toggleExpand() {
-    S.expanded = !S.expanded;
     const viewer = document.getElementById('vw');
     const before = rectIn(viewer);
-    viewer.classList.toggle('is-expanded', S.expanded);
-    document.querySelector('.vw-app').classList.toggle('has-pane', !S.expanded);
-    if (S.expanded) saveScroll();
-    document.getElementById('vw-main').hidden = S.expanded;
-    if (!S.expanded) restoreScroll();
+    if (S.dir === 'AC') {
+      // Overlay and pane: the map stays mounted in both, so there is nothing to save or restore.
+      S.size = S.size === 'full' ? 'pane' : 'full';
+      applyMode();
+    } else {
+      S.expanded = !S.expanded;
+      viewer.classList.toggle('is-expanded', S.expanded);
+      document.querySelector('.vw-app').classList.toggle('has-pane', !S.expanded);
+      if (S.expanded) saveScroll();
+      document.getElementById('vw-main').hidden = S.expanded;
+      if (!S.expanded) restoreScroll();
+    }
     paintToolbar();
     const after = rectIn(viewer);
     if (!reduceMotion) {
@@ -618,9 +645,12 @@
 
   function protoBar() {
     const t = (key, on, label) => `<button type="button" data-proto="${key}" aria-pressed="${on}" class="${on ? 'is-on' : ''}">${label}</button>`;
+    const size = S.dir === 'AC'
+      ? `<span class="nx-proto-sep"></span><span class="nx-proto-lbl">Setting: open as</span>${t('full', S.defaultSize === 'full', 'Full window')}${t('pane', S.defaultSize === 'pane', 'Side pane')}`
+      : '';
     return `<div class="nx-proto vw-proto" role="group" aria-label="Prototype controls"><span class="nx-proto-tag">Prototype</span>
       <span class="nx-proto-lbl">Window</span>${t('desktop', S.frame === 'desktop', 'Desktop')}${t('browser', S.frame === 'browser', 'Browser')}
-      <span class="nx-proto-sep"></span>${t('cold', S.cold, 'Cold open')}${t('nobridge', !S.bridge, 'No bridge')}</div>`;
+      <span class="nx-proto-sep"></span>${t('cold', S.cold, 'Cold open')}${t('nobridge', !S.bridge, 'No bridge')}${size}</div>`;
   }
 
   /* ---------- paint and wire ---------- */
@@ -630,7 +660,7 @@
       <div class="vw-body" id="vw-body">
         <div class="app is-nav-collapsed vw-app">${rail()}<div class="main" id="vw-main"></div></div>
         <div class="vw-scrim" id="vw-scrim" hidden></div>
-        <section class="vw" id="vw" hidden role="${S.dir === 'A' ? 'dialog' : 'region'}" ${S.dir === 'A' ? 'aria-modal="true"' : ''} aria-labelledby="vw-title">
+        <section class="vw" id="vw" hidden role="${mode() === 'A' ? 'dialog' : 'region'}" ${mode() === 'A' ? 'aria-modal="true"' : ''} aria-labelledby="vw-title">
           <div id="vw-toolbar"></div><div class="vw-stage" id="vw-stage"></div></section>
       </div></div>${protoBar()}`;
     S.mounted = null;
@@ -680,6 +710,7 @@
       if (d.proto === 'desktop' || d.proto === 'browser') S.frame = d.proto;
       if (d.proto === 'cold') S.cold = !S.cold;
       if (d.proto === 'nobridge') S.bridge = !S.bridge;
+      if (d.proto === 'full' || d.proto === 'pane') S.defaultSize = d.proto;
       const wasOpen = S.open;
       S.open = null;
       S.expanded = false;
@@ -720,7 +751,7 @@
       if (S.canvas?.option) send({ type: 'go', page: S.canvas.page, option: null });
       else requestClose();
     }
-    if (S.dir === 'A' && event.key === 'Tab') {
+    if (mode() === 'A' && event.key === 'Tab') {
       // Keep focus inside the overlay: the toolbar, then the canvas frame.
       const focusables = [...document.querySelectorAll('#vw button:not([disabled]), #vw a[href], #vw iframe')];
       const first = focusables[0];

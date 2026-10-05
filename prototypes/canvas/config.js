@@ -50,6 +50,8 @@ window.CANVAS = {
                   'A modal: it needs a focus trap, inert app and aria-modal, and the rail can\'t be used to jump elsewhere without closing first',
                   'Feels like a lightbox rather than a place in the app; a deep link opens an overlay over a page you have not seen yet',
                 ],
+                disposition: 'combine',
+                feedback: 'Combine with C (round 2, AC). The user wrote: "They all look great could we default to A with option to go smaller like in C. We could even have a setting to make default canvas size pane or full."',
               },
             },
             {
@@ -124,6 +126,8 @@ window.CANVAS = {
                   'Two scrolling surfaces side by side, the map and the canvas, so wheel and drag can go to the wrong one',
                   'It takes the ticket panel\'s place, so the selected ticket\'s details are hidden while it is open',
                 ],
+                disposition: 'combine',
+                feedback: 'Combine with A (round 2, AC): A\'s overlay by default, C\'s pane as the smaller size. The user wrote: "They all look great could we default to A with option to go smaller like in C. We could even have a setting to make default canvas size pane or full."',
               },
             },
             {
@@ -135,6 +139,86 @@ window.CANVAS = {
                   'The same pane on the localhost page, opened from the Prototypes board. The board keeps the left side, so the other prototype cards stay in view. Opening adds ?canvas=211 to the URL; Back closes the pane.',
                 pros: ['You can open another card\'s canvas from the left without closing first'],
                 cons: ['The board\'s variant strip squeezes into the narrow left side'],
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title: 'A + C remix',
+      round: 2,
+      question:
+        'Round 2, from your feedback on round 1: open as A\'s overlay by default, shrink to C\'s side pane when you want the map beside it, and a setting for which size a canvas opens at. Does this combination work?',
+      sections: [
+        {
+          title: 'AC · Overlay that shrinks to a pane',
+          note: 'Opens full window like A. A Shrink button in the toolbar turns it into C\'s pane beside a live map or board; Fill the window turns it back. Settings › Preferences picks the size a canvas opens at. The dashed Prototype bar\'s "Setting: open as" switches it here.',
+          items: [
+            {
+              id: 'AC',
+              name: 'Overlay that shrinks to a pane, desktop app, from the board',
+              src: 'variants/viewer-ac.html?frame=desktop&view=prototypes',
+              note: {
+                basedOn: ['A', 'C'],
+                idea:
+                  'Click Canvas on #211: it grows out of the tile into A\'s overlay, with A\'s one-row toolbar and a Shrink button at the right end. Shrink slides it into C\'s pane (60% of the window, up to 820 px) under the top bar. The overlay\'s scrim and modal go away, so the board or map on the left is live again. In the pane, Fill the window brings the overlay back. Close, Esc or Back closes from either size, back into the tile, and focus returns to the tile. Size changes do not add history entries, so Back always closes. The map stays mounted at both sizes, so you return to the exact place without saving and restoring state. C\'s third size, filling the content area beside the rail, is dropped: full window already covers it.',
+                pros: [
+                  'A\'s strengths by default: the biggest canvas, the clearest grow-from-tile transition, exact return for free',
+                  'C\'s context when you want it: the map, its tickets and the pick ticket stay visible beside the options',
+                  'Two sizes, not C\'s three: overlay and pane are the only layouts to build and test',
+                  'People who always want the pane set it once',
+                ],
+                cons: [
+                  'Two layouts and two toolbars (A\'s row and C\'s two rows), plus the switch between them, all need building and testing',
+                  'The viewer is a modal dialog at one size and a region at the other, so focus handling and screen reader semantics change when you resize',
+                  'In the pane, the ticket panel is hidden and two scroll surfaces sit side by side, as in C',
+                  'Open question: should Shrink and Fill the window only last for this open, or update the setting (remember the last size)? Built here as this-open-only.',
+                ],
+              },
+            },
+            {
+              id: 'AC-browser',
+              name: 'Overlay that shrinks to a pane, localhost browser, from the ticket panel',
+              src: 'variants/viewer-ac.html?frame=browser&view=map',
+              note: {
+                basedOn: ['A-browser', 'C'],
+                idea:
+                  'The same viewer on the localhost page, opened from #211\'s tile in the ticket panel. The URL gets ?canvas=211 at both sizes, so the browser\'s Back closes it. Shrink it to pan the map while the canvas stays open.',
+                pros: ['In the pane, the browser chrome and one toolbar sit above a map you can still use'],
+                cons: ['At full window, the tab\'s chrome plus the overlay bar still means two rows of controls, as in A'],
+              },
+            },
+            {
+              id: 'AC-pane',
+              name: 'Setting on "Side pane": opens straight into the pane',
+              src: 'variants/viewer-ac.html?frame=desktop&view=map&size=pane',
+              note: {
+                basedOn: ['A', 'C'],
+                idea:
+                  'The same viewer with the setting on Side pane. Select #211 on the map and click its tile: it opens straight into the pane, and Fill the window grows it to the overlay.',
+                pros: ['Opening matches how you work, with no extra click each time'],
+                cons: ['A setting has to be found first: until someone changes it, everyone gets the overlay'],
+              },
+            },
+            {
+              id: 'AC-setting',
+              kind: 'components',
+              name: 'The setting, in Settings › Preferences',
+              width: 640,
+              columns: 1,
+              items: [
+                {
+                  label: 'Settings › Preferences, a new row under the existing ones (same segmented control as Theme)',
+                  html: '<section class="settings-section" aria-labelledby="ac-prefs"><h3 id="ac-prefs">Preferences</h3><div class="settings-row"><span class="grow">Theme</span><span class="segmented" role="group" aria-label="Theme"><button type="button" class="seg" aria-pressed="false">Light</button><button type="button" class="seg is-on" aria-pressed="true">Dark</button></span></div><div class="settings-row"><span class="grow">Open canvases<span class="hint">How big a prototype canvas is when you open it. You can still resize it from its toolbar.</span></span><span class="segmented" role="group" aria-label="Open canvases"><button type="button" class="seg is-on" aria-pressed="true">Full window</button><button type="button" class="seg" aria-pressed="false">Side pane</button></span></div></section>',
+                },
+              ],
+              note: {
+                basedOn: ['A', 'C'],
+                idea:
+                  'One new row in the Preferences section of the existing Settings dialog, using the same segmented control as Theme and Default model tier. Full window is the default. This is the only place the default is set: the viewer\'s Shrink and Fill the window buttons change the open canvas only.',
+                pros: ['Reuses the existing Settings dialog and control, so no new kind of UI'],
+                cons: ['One more preference in a list that is already growing'],
               },
             },
           ],
@@ -189,7 +273,7 @@ window.CANVAS = {
               kind: 'note',
               name: 'Design review',
               text:
-                'Sources inspected: src/ui/styles.css (tokens, .wf-proto, .wf-strip, .proto-tile, .topbar, .segmented, .ghost, .iconbtn, .chip), src/ui/prototypeBoard.ts and prototypeTile.ts (the board and tile markup copied here), src/ui/app.ts (routing via ?view= and pushState), src/desktop/main.ts (window 1320×860, minimum 900×620, setWindowOpenHandler), src/repoRoutes.ts, and docs/design/in-app-canvas-viewer.md (#206). The app chrome uses the real stylesheet and classes; the viewer adds only viewer.css, which uses existing tokens.\n\nChecked: dark (system) and light (?theme=light). In A, B and C: open from the tile, Esc to close, Alt+← to close and Alt+→ to reopen, with focus returning to the tile that opened the canvas (keys sent as scripted keydown events, not a physical keyboard). The browser frame’s Back and Forward buttons in B. Map scroll and selection after closing: B restored 120,60 with #211 selected; C kept 90,40 through Expand and Esc. The view-only fallback (bridge off) and a snapshot (#206). Layout at 1280×800 and at the desktop minimum of 900×620, where the toolbar drops its labels to icons and still fits. Contrast of the new colours, computed: address-bar host 4.92:1 (light) and 6.74:1 (dark), the sample canvas’s muted text 5.49:1 and 7.84:1, its warning text 5.02:1 and 10.51:1, the kbd hint 5.28:1. Semantics by reading the markup: A is role=dialog with aria-modal and an inert app behind it; B and C are labelled regions; the page menu is a menu of menuitemradio items; option buttons use aria-pressed; icon-only buttons have labels.\n\nFindings: in every direction the toolbar’s option letters rely on a title tooltip for the option name (the presented option’s name shows beside the arrows). The engine on today’s canvas branches sets location.hash itself when you click a frame, which pushes history entries; inside the viewer that would make Back step through options before closing. The stand-in canvas here uses location.replace. The build has to stop that in the wrapper or accept it (open question).\n\nNot checked: screen reader output (no NVDA or VoiceOver run); Tab trapping in A and arrow keys in the page menu (written, not exercised); real Electron framing and the mouse back button in Electron; real timing against the 300 ms warm-open bar; 60 fps of the transition on a real board; Windows High Contrast; touch.',
+                'Sources inspected: src/ui/styles.css (tokens, .wf-proto, .wf-strip, .proto-tile, .topbar, .segmented, .ghost, .iconbtn, .chip), src/ui/prototypeBoard.ts and prototypeTile.ts (the board and tile markup copied here), src/ui/app.ts (routing via ?view= and pushState), src/desktop/main.ts (window 1320×860, minimum 900×620, setWindowOpenHandler), src/repoRoutes.ts, and docs/design/in-app-canvas-viewer.md (#206). The app chrome uses the real stylesheet and classes; the viewer adds only viewer.css, which uses existing tokens.\n\nChecked: dark (system) and light (?theme=light). In A, B and C: open from the tile, Esc to close, Alt+← to close and Alt+→ to reopen, with focus returning to the tile that opened the canvas (keys sent as scripted keydown events, not a physical keyboard). The browser frame’s Back and Forward buttons in B. Map scroll and selection after closing: B restored 120,60 with #211 selected; C kept 90,40 through Expand and Esc. The view-only fallback (bridge off) and a snapshot (#206). Layout at 1280×800 and at the desktop minimum of 900×620, where the toolbar drops its labels to icons and still fits. Contrast of the new colours, computed: address-bar host 4.92:1 (light) and 6.74:1 (dark), the sample canvas’s muted text 5.49:1 and 7.84:1, its warning text 5.02:1 and 10.51:1, the kbd hint 5.28:1. Semantics by reading the markup: A is role=dialog with aria-modal and an inert app behind it; B and C are labelled regions; the page menu is a menu of menuitemradio items; option buttons use aria-pressed; icon-only buttons have labels.\n\nRound 2 (AC) reuses A’s and C’s code paths and adds the Shrink and Fill the window toggle and the setting row (the real .settings-section, .settings-row and .segmented classes from src/ui/settings.ts). Round 2 checked in headless Chromium, dark and light: it opens full window by default as a dialog with an inert app; Shrink gives a 768 px region at 1280 px and a 540 px one at the 900×620 minimum, with the app live and focus on Fill the window; Fill the window brings the dialog back with focus on Shrink; Esc closes from either size, with focus back on the tile; browser Back closes from the pane and the URL returns to ?ticket=211; with the setting on Side pane it opens straight into the pane. Round 2 finding: in the pane, the board’s #211 card is narrow enough that its title wraps word by word (C’s cramped con, still there). Not checked for round 2: screen reader announcement when the role switches between dialog and region; the Settings row inside the real Settings dialog (shown as a component sheet only).\n\nFindings: in every direction the toolbar’s option letters rely on a title tooltip for the option name (the presented option’s name shows beside the arrows). The engine on today’s canvas branches sets location.hash itself when you click a frame, which pushes history entries; inside the viewer that would make Back step through options before closing. The stand-in canvas here uses location.replace. The build has to stop that in the wrapper or accept it (open question).\n\nNot checked: screen reader output (no NVDA or VoiceOver run); Tab trapping in A and arrow keys in the page menu (written, not exercised); real Electron framing and the mouse back button in Electron; real timing against the 300 ms warm-open bar; 60 fps of the transition on a real board; Windows High Contrast; touch.',
             },
           ],
         },
