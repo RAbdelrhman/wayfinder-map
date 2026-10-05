@@ -20,7 +20,7 @@ Short answer: Expo Push, sent by the desktop. See [Recommendation](#recommendati
 
 - FCM HTTP v1: `POST https://fcm.googleapis.com/v1/projects/{projectId}/messages:send`, authorised with "a short-lived OAuth 2.0 access token derived from a service account". ([FCM HTTP v1](https://firebase.google.com/docs/cloud-messaging/send/v1-api)) The desktop would need the service account key and the Google auth library to mint tokens.
 - APNs: HTTP/2 requests to `api.push.apple.com`, authorised with a JWT signed by the `.p8` key, one request per device token. ([Sending notification requests to APNs](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns))
-- Going direct only buys independence from Expo. It costs two credential sets on every desktop, two clients, and our own handling of per-platform tokens and errors. For one user with a couple of devices that's a bad trade.
+- Going direct buys independence from Expo and finer-grained control over each platform's options. ([Expo push setup](https://docs.expo.dev/push-notifications/push-notifications-setup/)) Needs-you alerts don't need that control. Going direct costs two credential sets on every desktop, two clients, and our own handling of per-platform tokens and errors. For one user with a couple of devices that's a bad trade.
 
 ### Phone offline or asleep
 
