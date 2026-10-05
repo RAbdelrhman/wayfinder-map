@@ -15,7 +15,7 @@ permissions:
 jobs:
   ios:
     name: Boot on the iOS simulator
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
     defaults:
       run:
@@ -41,6 +41,8 @@ jobs:
           xcrun simctl bootstatus "$udid"
 
       # A Release build embeds the JS bundle, so no Metro server is needed.
+      - run: xcodebuild -version
+
       - run: bunx expo run:ios --configuration Release --no-bundler --device "$UDID"
         env:
           CI: 1
