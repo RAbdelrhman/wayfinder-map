@@ -4,10 +4,10 @@ import type { MapSnapshot } from '../types.js';
 import { escapeHtml } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
-import { NOTIFICATIONS_CHANGED, mapEventNotification, withInboxLock } from './notifications.js';
+import { KIND_LABEL, NOTIFICATIONS_CHANGED, mapEventNotification, notificationHref, withInboxLock } from './notifications.js';
 import type { NotificationInboxController } from './notifications.js';
-import { filterInbox, inboxCounts, mergeInbox, notificationRowHtml } from './unifiedInbox.js';
-import type { InboxFilter } from './unifiedInbox.js';
+import { filterInbox, inboxCounts, mergeInbox } from './unifiedInbox.js';
+import type { InboxFilter, InboxRow } from './unifiedInbox.js';
 import type { InboxSnapshot } from './notifications.js';
 import { readNotificationSettings } from '../notificationTypes.js';
 import type { NotificationSettings } from '../notificationTypes.js';
@@ -321,6 +321,54 @@ function watchKey(repo: string, mapNumber: number): string {
   return `${repo.toLowerCase()}#${String(mapNumber)}`;
 }
 
+function createInboxRow(row: InboxRow): HTMLElement {
+  const article = document.createElement('article');
+  const link = document.createElement('a');
+  const title = document.createElement('span');
+  const scope = document.createElement('span');
+  const time = document.createElement('time');
+  article.className = 'map-inbox-item';
+  link.className = 'map-inbox-event';
+  title.className = 'map-inbox-event-title';
+  scope.className = 'map-inbox-event-scope';
+  time.className = 'map-inbox-time';
+  if (row.type === 'activity') {
+    const event = row.event;
+    article.classList.toggle('is-read', event.read === true);
+    link.href = eventHref(event);
+    link.dataset.mapInboxEvent = eventKey(event);
+    title.textContent = eventSummary(event);
+    scope.textContent = `${event.repo} · Map #${String(event.mapNumber)}`;
+    if (event.whileYouWereAway === true) {
+      const away = document.createElement('span');
+      away.className = 'map-inbox-away';
+      away.textContent = 'While you were away';
+      article.append(away);
+    }
+  } else {
+    const item = row.notification;
+    article.classList.toggle('is-read', item.read);
+    article.classList.toggle('map-inbox-needs', row.type === 'needs');
+    link.href = notificationHref(item);
+    link.dataset.mapInboxEvent = item.id;
+    if (row.type === 'needs') {
+      const kind = document.createElement('span');
+      kind.className = 'map-inbox-kind';
+      kind.textContent = KIND_LABEL[item.kind];
+      link.append(kind);
+    }
+    title.textContent = `#${String(item.ticketNumber)} ${item.ticketTitle}${row.type === 'legacyActivity' ? ' is ready to start' : ''}`;
+    scope.textContent = `${item.repo} · Map #${String(item.mapNumber)} ${item.mapTitle}`;
+  }
+  link.append(title, scope);
+  article.prepend(link);
+  time.dateTime = row.at;
+  const date = new Date(row.at);
+  time.textContent = Number.isNaN(date.valueOf()) ? '' : date.toLocaleString();
+  article.append(time);
+  return article;
+}
+
 function renderInbox(root: HTMLElement, notifications: NotificationInboxController, filter: InboxFilter, trigger: HTMLButtonElement, panel: HTMLElement): void {
   const body = root.querySelector<HTMLElement>('#map-inbox-body');
   const count = root.querySelector<HTMLElement>('#map-inbox-count');
@@ -333,9 +381,14 @@ function renderInbox(root: HTMLElement, notifications: NotificationInboxControll
   const focused = body.contains(document.activeElement) && document.activeElement instanceof HTMLElement
     ? document.activeElement.getAttribute('data-map-inbox-event')
     : null;
-  body.innerHTML = visible.length === 0
-    ? `<p class="map-inbox-empty">${filter === 'needs' ? 'Nothing needs you.' : 'Nothing yet on maps you have opened.'}</p>`
-    : visible.map((row) => row.type === 'activity' ? mapInboxItemHtml(row.event) : notificationRowHtml(row.notification)).join('');
+  if (visible.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'map-inbox-empty';
+    empty.textContent = filter === 'needs' ? 'Nothing needs you.' : 'Nothing yet on maps you have opened.';
+    body.replaceChildren(empty);
+  } else {
+    body.replaceChildren(...visible.map(createInboxRow));
+  }
   body.scrollTop = scrollTop;
   if (focused !== null) body.querySelector<HTMLElement>(`[data-map-inbox-event="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
   count.textContent = counts.total > 99 ? '99+' : String(counts.total);
@@ -439,6 +492,10 @@ export function mountMapEventInbox(onEvent: ((event: MapEvent) => void) | undefi
   inbox.start();
   draw();
   const iconHost = trigger.querySelector<HTMLElement>('[data-icon="bell"]');
-  if (iconHost !== null) iconHost.innerHTML = icon(icons.BELL);
+  if (iconHost !== null) {
+    const svg = icon(icons.BELL).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+    const bell = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
+    iconHost.replaceChildren(document.importNode(bell, true));
+  }
   return inbox;
 }
