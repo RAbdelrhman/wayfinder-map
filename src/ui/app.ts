@@ -20,7 +20,6 @@ import {
   modelSelectHtml,
   readChoice,
   saveTicketTier,
-  saveTierDefault,
   ticketTier,
   tierDefaults,
 } from './models.js';
@@ -33,9 +32,9 @@ import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import { FOG_KEY_ROW, PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindTheme, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
+import { FOG_KEY_ROW, PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
-import { mountSettings, NOTIFICATION_SETTINGS_EVENT } from './settings.js';
+import { NOTIFICATION_SETTINGS_EVENT } from './settings.js';
 import { mountMapEventInbox } from './mapEventInbox.js';
 import { bindPan } from './pan.js';
 import { nextTabIndex, tabAttrs, tabPanelAttrs } from './tabs.js';
@@ -149,8 +148,6 @@ const els = {
   hovercard: need('hovercard'),
   toast: need('toast'),
   criticalPath: need<HTMLButtonElement>('critical-path'),
-  modelsDialog: need<HTMLDialogElement>('models-dialog'),
-  tierRows: need('tier-rows'),
 };
 
 paintIcons();
@@ -1221,7 +1218,7 @@ function runWithHtml(ticketNumber: number): string {
     <div class="runwith-row">
       <span class="runwith-label">Run as</span>
       <div class="segmented" role="group" aria-label="Task tier">${tiers}</div>
-      <button type="button" class="linkish" id="edit-tiers">Defaults</button>
+      <a class="linkish" href="/settings?section=tasks">Defaults</a>
     </div>
     <div class="runwith-row picker" id="ticket-picker">${ticketPickerHtml(tier)}</div>`;
 }
@@ -1260,39 +1257,6 @@ function refreshEffort(modelSelect: HTMLSelectElement, effortId: string, attrs: 
   const model = findModel(state.catalog, { instanceId, model: rest.join('::') });
   document.getElementById(effortId)?.remove();
   modelSelect.insertAdjacentHTML('afterend', effortSelectHtml(model, undefined, attrs));
-}
-
-function renderTierRows(): void {
-  const state = currentCatalog();
-  if (state.status !== 'ready') {
-    els.tierRows.innerHTML = `<p class="hint">${state.status === 'loading' ? 'Loading T3 Code models…' : escapeHtml(state.reason)}</p>`;
-    return;
-  }
-  const saved = tierDefaults();
-  els.tierRows.innerHTML = TIERS.map((tier) => {
-    const choice = liveChoice(state.catalog, saved[tier]);
-    return `<div class="tier-row">
-      <div class="tier-name"><strong>${TIER_LABEL[tier]}</strong><span>${escapeHtml(TIER_HINT[tier])}</span></div>
-      <div class="picker">
-        ${modelSelectHtml(state.catalog, choice, `id="tier-model-${tier}" data-tier-model="${tier}" aria-label="${TIER_LABEL[tier]} model"`)}
-        ${effortSelectHtml(findModel(state.catalog, choice), choice?.effort?.value, `id="tier-effort-${tier}" data-tier-effort="${tier}"`)}
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function saveTierRow(tier: Tier): void {
-  const state = currentCatalog();
-  const modelSelect = document.getElementById(`tier-model-${tier}`);
-  if (state.status !== 'ready' || !(modelSelect instanceof HTMLSelectElement)) return;
-  const effortSelect = document.getElementById(`tier-effort-${tier}`);
-  saveTierDefault(tier, readChoice(state.catalog, modelSelect, effortSelect instanceof HTMLSelectElement ? effortSelect : null));
-}
-
-function openModels(): void {
-  renderTierRows();
-  els.modelsDialog.showModal();
-  void loadCatalog(true).then(renderTierRows);
 }
 
 /** Put a fresh picker in the ticket panel once the catalog arrives or the defaults change. */
@@ -1710,7 +1674,6 @@ els.inspector.addEventListener('click', (event) => {
     return;
   }
 
-  if (target.closest('#edit-tiers') !== null) openModels();
   const tierButton = target.closest<HTMLElement>('[data-tier]');
   if (tierButton !== null && selected !== null) {
     ticketModelChoices.delete(ticketChoiceKey(selected));
@@ -1735,22 +1698,8 @@ els.inspector.addEventListener('change', (event) => {
   ticketModelChoices.set(ticketChoiceKey(selected), pickedModel());
 });
 
-els.tierRows.addEventListener('change', (event) => {
-  const target = event.target;
-  if (!(target instanceof HTMLSelectElement)) return;
-  const tier = (target.dataset['tierModel'] ?? target.dataset['tierEffort']) as Tier | undefined;
-  if (tier === undefined) return;
-  if (target.dataset['tierModel'] !== undefined) {
-    refreshEffort(target, `tier-effort-${tier}`, `id="tier-effort-${tier}" data-tier-effort="${tier}"`);
-  }
-  saveTierRow(tier);
-});
-
-els.modelsDialog.addEventListener('close', refreshTicketPicker);
-need('models').addEventListener('click', openModels);
-
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || els.modelsDialog.open) return;
+  if (event.key !== 'Escape') return;
   if (MENUS.some((entry) => !entry.menu.hidden)) {
     closeMenus();
     return;
@@ -1774,9 +1723,7 @@ syncedButton().addEventListener('click', () => {
   });
 });
 
-bindTheme(need('theme'));
 bindUpdater(need('updater'), toast);
-mountSettings(need('settings'), toast);
 bindAccountMark(document.getElementById('account-mark'));
 
 function setView(next: NavigationView): void {

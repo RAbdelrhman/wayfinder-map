@@ -1,5 +1,5 @@
 /*
-  Wayfinder's canvas for ticket #207: the in-app canvas viewer shell.
+  Wayfinder design canvas: Settings page and the original ticket #207 viewer shell.
   Paths are relative to index.html. Check with: node prototypes/canvas/tools/check.mjs
 */
 
@@ -45,6 +45,8 @@ window.CANVAS = {
                 idea: 'A dedicated Settings page with a category menu. Tasks & models combines the default tier, concurrency limit, per-tier model choices and Auto rating. Appearance, Notifications, Progress and Account each get their own section. Changes save as you go; Calibration sits under Advanced.',
                 pros: ['Shorter pages with a clear place for every setting', 'Room for model choices without squeezing controls into the modal', 'Category links can open a specific part of Settings directly'],
                 cons: ['Changing preferences across categories takes another click', 'A second menu sits beside the main application sidebar'],
+                disposition: 'keep',
+                feedback: 'The user chose A: "I like A". Implement the category layout as a dedicated Settings page.',
               },
             },
             {

@@ -73,7 +73,17 @@ await esbuild.build({
   logLevel: 'info',
 });
 
-for (const file of ['index.html', 'styles.css', 'home.html']) {
+await esbuild.build({
+  entryPoints: [join(root, 'src', 'ui', 'settingsPage.ts')],
+  outfile: join(dist, 'ui', 'settingsPage.js'),
+  bundle: true,
+  platform: 'browser',
+  target: 'es2022',
+  format: 'esm',
+  logLevel: 'info',
+});
+
+for (const file of ['index.html', 'styles.css', 'home.html', 'settings.html']) {
   await cp(join(root, 'src', 'ui', file), join(dist, 'ui', file));
 }
 // The app logo: the sidebar's brand mark and every page's favicon.

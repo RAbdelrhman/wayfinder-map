@@ -6,8 +6,8 @@ import { currentTheme, paintIcons, renderAccountMarkContent, setTheme, THEME_CHA
 import type { Theme } from './chrome.js';
 import { escapeHtml } from './markdown.js';
 import { supportsModelRating } from '../autoPick.js';
-import { autoRater, calibrationMode, currentCatalog, defaultTier, loadCatalog, saveAutoRater, saveCalibrationMode, saveDefaultTier, TIER_HINT, TIER_LABEL, TIERS, tierDefaults } from './models.js';
-import type { AutoRater, CalibrationMode, CatalogState, Tier } from './models.js';
+import { autoRater, calibrationMode, currentCatalog, defaultTier, effortSelectHtml, findModel, liveChoice, loadCatalog, modelSelectHtml, readChoice, saveAutoRater, saveCalibrationMode, saveDefaultTier, saveTierDefault, TIER_HINT, TIER_LABEL, TIERS, tierDefaults } from './models.js';
+import type { AutoRater, CalibrationMode, CatalogState, ModelChoice, Tier } from './models.js';
 import { GOALS, PROGRESS_SETTINGS_EVENT } from './progress.js';
 import { handOffCap, HAND_OFF_CAPS, saveHandOffCap } from './startNext.js';
 import { DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_KINDS } from '../notificationTypes.js';
@@ -26,6 +26,7 @@ export interface SettingsView {
   calibration: CalibrationMode;
   /** T3 Code's models, for choosing the rating model. */
   models: CatalogState;
+  tierModels: Partial<Record<Tier, ModelChoice>>;
   /** How many hand-offs may run at once on this machine before Start next queues the rest. */
   cap: number;
   /** Null while progress loads or when no one is signed in to save it for. */
@@ -39,6 +40,25 @@ export interface SettingsView {
 }
 
 const THEME_LABEL: Record<Theme, string> = { light: 'Light', dark: 'Dark' };
+export const SETTINGS_CATEGORIES = ['appearance', 'tasks', 'notifications', 'progress', 'account'] as const;
+export type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number];
+const CATEGORY_LABEL: Record<SettingsCategory, string> = { appearance: 'Appearance', tasks: 'Tasks & models', notifications: 'Notifications', progress: 'Progress', account: 'Account' };
+const CATEGORY_HINT: Record<SettingsCategory, string> = {
+  appearance: 'Choose how Wayfinder looks.',
+  tasks: 'Set the defaults for new tickets and maps. You can override them on a ticket.',
+  notifications: 'Choose which updates need your attention.',
+  progress: 'Set your daily goal and decide when a ticket counts as stalled.',
+  account: 'Manage the GitHub account Wayfinder uses.',
+};
+const CATEGORY_ICON: Record<SettingsCategory, string> = { appearance: 'moon', tasks: 'sliders', notifications: 'bell', progress: 'graph', account: 'person' };
+
+export function settingsCategory(value: string | null): SettingsCategory {
+  return SETTINGS_CATEGORIES.find((category) => category === value) ?? 'appearance';
+}
+
+export function settingsNavigationHtml(category: SettingsCategory): string {
+  return SETTINGS_CATEGORIES.map((candidate) => `<a href="/settings?section=${candidate}" data-settings-category="${candidate}"${candidate === category ? ' aria-current="location"' : ''}><span data-icon="${CATEGORY_ICON[candidate]}" aria-hidden="true"></span>${CATEGORY_LABEL[candidate]}</a>`).join('');
+}
 export const NOTIFICATION_SETTINGS_EVENT = 'wayfinder:notification-settings';
 const NOTIFICATION_LABEL: Record<NotificationKind, readonly [string, string]> = {
   unblocked: ['Tickets become ready', 'An unblocked ticket can be started from the map.'],
@@ -135,32 +155,48 @@ export function calibrationHtml(mode: CalibrationMode, models: CatalogState): st
   return `${row}<div class="settings-row"><span class="grow">Shadow model</span>${select}</div>`;
 }
 
-export function settingsBodyHtml(view: SettingsView): string {
+export function tierModelsHtml(models: CatalogState, defaults: SettingsView['tierModels']): string {
+  if (models.status !== 'ready') return `<p class="hint" role="status">${models.status === 'loading' ? 'Loading T3 Code models…' : escapeHtml(models.reason)}</p>${models.status === 'unavailable' ? '<button type="button" class="ghost" data-settings-retry-models>Try again</button>' : ''}`;
+  return TIERS.map((tier) => {
+    const choice = liveChoice(models.catalog, defaults[tier]);
+    return `<div class="settings-row"><span class="grow">${TIER_LABEL[tier]}<span class="hint">${escapeHtml(TIER_HINT[tier])}</span></span><div class="settings-model-picker">
+      ${modelSelectHtml(models.catalog, choice, `id="settings-model-${tier}" data-settings-model="${tier}" aria-label="${TIER_LABEL[tier]} model"`)}
+      ${effortSelectHtml(findModel(models.catalog, choice), choice?.effort?.value, `id="settings-effort-${tier}" data-settings-effort="${tier}"`)}
+    </div></div>`;
+  }).join('');
+}
+
+export function settingsBodyHtml(view: SettingsView, category?: SettingsCategory): string {
   const themes = segmented('Theme', (['light', 'dark'] as const).map((theme) => seg('data-settings-theme', theme, THEME_LABEL[theme], theme === view.theme)).join(''));
-  const tiers = segmented('Default model tier', TIERS.map((tier) => seg('data-settings-tier', tier, TIER_LABEL[tier], tier === view.tier)).join(''));
+  const tiers = segmented('Default task tier', TIERS.map((tier) => seg('data-settings-tier', tier, TIER_LABEL[tier], tier === view.tier)).join(''));
   const caps = segmented('Hand-offs at once', HAND_OFF_CAPS.map((cap) => seg('data-settings-cap', String(cap), String(cap), cap === view.cap)).join(''));
   const goals = segmented(
     'Daily goal',
     GOALS.map((goal) => seg('data-settings-goal', String(goal), String(goal), goal === view.progress?.goal, view.progress === null)).join(''),
   );
-  return `<section class="settings-section" aria-labelledby="settings-account-title">
+  const contents: Record<SettingsCategory, string> = {
+    account: `<section class="settings-section" aria-labelledby="settings-account-title">
       <h3 id="settings-account-title">GitHub account</h3>
       ${accountHtml(view.account, view.busy)}
-    </section>
-    <section class="settings-section" aria-labelledby="settings-prefs-title">
-      <h3 id="settings-prefs-title">Preferences</h3>
-      <div class="settings-row"><span class="grow">Theme</span>${themes}</div>
-      <div class="settings-row"><span class="grow">Default model tier<span class="hint">${escapeHtml(TIER_HINT[view.tier])}. New tickets and maps start here.</span></span>${tiers}</div>
-      ${autoRaterHtml(view.rater, view.models)}
-      ${calibrationHtml(view.calibration, view.models)}
+    </section>`,
+    appearance: `<section class="settings-section"><div class="settings-row"><span class="grow">Theme<span class="hint">Use a light or dark appearance throughout the app.</span></span>${themes}</div></section>`,
+    tasks: `<section class="settings-section" aria-labelledby="settings-tasks-title">
+      <h3 id="settings-tasks-title">Task defaults</h3>
+      <div class="settings-row"><span class="grow">Default task tier<span class="hint">${escapeHtml(TIER_HINT[view.tier])}. New tickets and maps start here.</span></span>${tiers}</div>
       <div class="settings-row"><span class="grow">Hand-offs at once<span class="hint">Start next runs this many in T3 Code on this machine and queues the rest.</span></span>${caps}</div>
+    </section><section class="settings-section" aria-labelledby="settings-models-title"><h3 id="settings-models-title">Models by tier</h3>${tierModelsHtml(view.models, view.tierModels)}</section>
+    <section class="settings-section" aria-labelledby="settings-auto-title"><h3 id="settings-auto-title">Automatic task rating</h3>${autoRaterHtml(view.rater, view.models)}<details class="settings-advanced" id="settings-calibration"><summary>Advanced · Calibration</summary>${calibrationHtml(view.calibration, view.models)}</details></section>`,
+    progress: `<section class="settings-section">
       <div class="settings-row"><span class="grow">Daily goal<span class="hint">${view.progress === null ? 'Sign in to set a goal.' : 'Tickets to clear each day on Home.'}</span></span>${goals}</div>
     </section>
     <section class="settings-section" aria-labelledby="settings-stalls-title">
       <h3 id="settings-stalls-title">Stalled tickets</h3>
       ${stallRow('untouchedClaimDays', 'Untouched claim', 'Claimed, with no commit, PR, comment or live hand-off.', view.stalls)}
       ${stallRow('deadHandOffDays', 'Dead hand-off', 'The hand-off failed or never started, with no retry or PR.', view.stalls)}
-    </section>`;
+    </section>`,
+    notifications: notificationSettingsHtml(view.notifications),
+  };
+  return (category === undefined ? SETTINGS_CATEGORIES : [category]).map((key) => contents[key]).join('');
 }
 
 export function notificationSettingsHtml(settings: NotificationSettings | null): string {
@@ -198,50 +234,44 @@ function postJson<T>(url: string, body?: unknown): Promise<T> {
   }).then((response) => readJson<T>(response));
 }
 
-/**
- * Binds the sidebar's Settings button to a modal dialog. The native `<dialog>` keeps focus
- * inside, closes on Escape, and hands focus back to the button.
- */
-export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?: number) => void): void {
-  const dialog = document.createElement('dialog');
-  dialog.className = 'dialog settings-dialog';
-  dialog.id = 'settings-dialog';
-  dialog.setAttribute('aria-labelledby', 'settings-title');
-  dialog.innerHTML = `<div class="dialog-head"><h2 id="settings-title">Settings</h2><button type="button" class="detail-close" data-settings-close aria-label="Close settings">×</button></div><div id="settings-body"></div>`;
-  document.body.append(dialog);
-  const body = dialog.querySelector<HTMLElement>('#settings-body')!;
-  trigger.setAttribute('aria-haspopup', 'dialog');
-  trigger.setAttribute('aria-controls', dialog.id);
-
-  let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), rater: autoRater(), calibration: calibrationMode(), models: currentCatalog(), cap: handOffCap(), progress: null, stalls: null, notifications: null, busy: null };
+/** Mount the dedicated Settings page. Categories have URLs and follow browser history. */
+export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms?: number) => void): void {
+  root.innerHTML = `<header class="settings-page-heading"><div><h1>Settings</h1><p>Make Wayfinder work your way.</p></div><span class="settings-save-note"><span data-icon="check" aria-hidden="true"></span>Changes save automatically</span></header><div class="settings-page-layout"><nav class="settings-categories" aria-label="Settings categories"></nav><div><div id="settings-load-status" role="status"></div><header class="settings-category-heading"><h2 id="settings-category-title"></h2><p id="settings-category-hint"></p></header><div id="settings-body"></div></div></div>`;
+  const body = root.querySelector<HTMLElement>('#settings-body')!;
+  const nav = root.querySelector<HTMLElement>('.settings-categories')!;
+  const loadStatus = root.querySelector<HTMLElement>('#settings-load-status')!;
+  let category = settingsCategory(new URLSearchParams(location.search).get('section'));
+  let calibrationOpen = false;
+  let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), rater: autoRater(), calibration: calibrationMode(), models: currentCatalog(), tierModels: tierDefaults(), cap: handOffCap(), progress: null, stalls: null, notifications: null, busy: null };
 
   const draw = (): void => {
     const focusKey = document.activeElement instanceof HTMLElement && body.contains(document.activeElement) ? focusKeyOf(document.activeElement) : null;
-    body.innerHTML = settingsBodyHtml(view) + notificationSettingsHtml(view.notifications);
+    calibrationOpen = body.querySelector<HTMLDetailsElement>('#settings-calibration')?.open ?? calibrationOpen;
+    body.innerHTML = settingsBodyHtml(view, category);
+    const details = body.querySelector<HTMLDetailsElement>('#settings-calibration');
+    if (details !== null) details.open = calibrationOpen;
+    root.querySelector<HTMLElement>('#settings-category-title')!.textContent = CATEGORY_LABEL[category];
+    root.querySelector<HTMLElement>('#settings-category-hint')!.textContent = CATEGORY_HINT[category];
     paintIcons(body);
     if (focusKey !== null) body.querySelector<HTMLElement>(focusKey)?.focus();
   };
 
   const load = async (): Promise<void> => {
-    void fetch('/api/notification-settings').then((response) => readJson<NotificationSettings>(response)).then(
-      (notifications) => {
-        view = { ...view, notifications };
-        if (dialog.open) draw();
-      },
-      () => undefined,
-    );
-    const [account, progress, stalls] = await Promise.allSettled([
+    const [account, progress, stalls, notifications] = await Promise.allSettled([
       fetch('/api/auth/status').then((response) => readJson<HomeAccount>(response)),
       fetch('/api/progress').then((response) => readJson<ProgressState>(response)),
       fetch('/api/stall-settings').then((response) => readJson<StallSettings>(response)),
+      fetch('/api/notification-settings').then((response) => readJson<NotificationSettings>(response)),
     ]);
     view = {
       ...view,
       account: account.status === 'fulfilled' ? account.value : { status: 'unavailable', host: 'github.com', login: null, accounts: [], missingScopes: [], tokenSource: null, message: 'GitHub account information is unavailable.' },
       progress: progress.status === 'fulfilled' && progress.value.login !== null ? progress.value.settings : null,
       stalls: stalls.status === 'fulfilled' ? stalls.value : view.stalls,
+      notifications: notifications.status === 'fulfilled' ? notifications.value : view.notifications,
     };
-    if (dialog.open) draw();
+    loadStatus.innerHTML = [account, progress, stalls, notifications].some((result) => result.status === 'rejected') ? '<p class="hint failure">Some settings could not be loaded. <button type="button" class="linkish" data-settings-retry>Try again</button></p>' : '';
+    draw();
   };
 
   const accountAction = async (busy: 'switch' | 'logout', work: () => Promise<HomeAccount>, done: string): Promise<void> => {
@@ -258,25 +288,52 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
     }
   };
 
-  trigger.addEventListener('click', () => {
-    view = { ...view, theme: currentTheme(), tier: defaultTier(), rater: autoRater(), calibration: calibrationMode(), models: currentCatalog(), cap: handOffCap() };
+  const loadModels = (): void => {
+    view = { ...view, models: { status: 'loading' } };
     draw();
-    dialog.showModal();
-    void load();
     void loadCatalog().then((models) => {
       view = { ...view, models };
-      if (dialog.open) draw();
+      draw();
     });
+  };
+  const showCategory = (): void => {
+    category = settingsCategory(new URLSearchParams(location.search).get('section'));
+    nav.innerHTML = settingsNavigationHtml(category);
+    paintIcons(nav);
+    draw();
+  };
+  nav.addEventListener('click', (event) => {
+    const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('[data-settings-category]') : null;
+    if (link === null || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    event.preventDefault();
+    history.pushState(null, '', link.href);
+    showCategory();
+    nav.querySelector<HTMLElement>('[aria-current]')?.focus();
+    root.scrollTop = 0;
   });
+  window.addEventListener('popstate', showCategory);
 
   document.addEventListener(THEME_CHANGE_EVENT, () => {
     view = { ...view, theme: currentTheme() };
-    if (dialog.open) draw();
+    draw();
   });
 
-  dialog.addEventListener('change', (event) => {
+  body.addEventListener('change', (event) => {
     const select = event.target;
     if (!(select instanceof HTMLSelectElement)) return;
+    const tier = select.dataset['settingsModel'] ?? select.dataset['settingsEffort'];
+    if (tier !== undefined && (TIERS as readonly string[]).includes(tier) && view.models.status === 'ready') {
+      const modelSelect = body.querySelector<HTMLSelectElement>(`#settings-model-${tier}`);
+      if (modelSelect === null) return;
+      if (select.hasAttribute('data-settings-model')) {
+        const [instanceId = '', ...rest] = select.value.split(RATER_SEPARATOR);
+        body.querySelector(`#settings-effort-${tier}`)?.remove();
+        modelSelect.insertAdjacentHTML('afterend', effortSelectHtml(findModel(view.models.catalog, { instanceId, model: rest.join(RATER_SEPARATOR) }), undefined, `id="settings-effort-${tier}" data-settings-effort="${tier}"`));
+      }
+      saveTierDefault(tier as Tier, readChoice(view.models.catalog, modelSelect, body.querySelector<HTMLSelectElement>(`#settings-effort-${tier}`)));
+      view = { ...view, tierModels: tierDefaults() };
+      return;
+    }
     const forCalibration = select.hasAttribute('data-settings-calibration-model');
     if (!forCalibration && !select.hasAttribute('data-settings-rater-model')) return;
     const [instanceId = '', ...rest] = select.value.split(RATER_SEPARATOR);
@@ -293,14 +350,14 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
     view = { ...view, rater: next };
   });
 
-  dialog.addEventListener('click', (event) => {
-    if (event.target === dialog) {
-      dialog.close();
+  root.addEventListener('click', (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('[data-settings-retry]')) {
+      void load();
       return;
     }
-    const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest('[data-settings-close]')) {
-      dialog.close();
+    if (target?.closest('[data-settings-retry-models]')) {
+      loadModels();
       return;
     }
     const theme = target?.closest<HTMLElement>('[data-settings-theme]')?.dataset['settingsTheme'];
@@ -361,12 +418,12 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
       postJson<ProgressSettings>('/api/progress/settings', { goal }).then(
         (settings) => {
           view = { ...view, progress: settings };
-          if (dialog.open) draw();
+          draw();
           document.dispatchEvent(new CustomEvent<ProgressSettings>(PROGRESS_SETTINGS_EVENT, { detail: settings }));
         },
         (error: unknown) => {
           view = { ...view, progress: before };
-          if (dialog.open) draw();
+          draw();
           toast(error instanceof Error ? error.message : String(error), 9000);
         },
       );
@@ -384,11 +441,11 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
       postJson<StallSettings>('/api/stall-settings', { [stallKey]: days }).then(
         (settings) => {
           view = { ...view, stalls: settings };
-          if (dialog.open) draw();
+          draw();
         },
         (error: unknown) => {
           view = { ...view, stalls: before };
-          if (dialog.open) draw();
+          draw();
           toast(error instanceof Error ? error.message : String(error), 9000);
         },
       );
@@ -405,12 +462,12 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
       postJson<NotificationSettings>('/api/notification-settings', { [notificationKind]: enabled }).then(
         (settings) => {
           view = { ...view, notifications: settings };
-          if (dialog.open) draw();
+          draw();
           document.dispatchEvent(new CustomEvent<NotificationSettings>(NOTIFICATION_SETTINGS_EVENT, { detail: settings }));
         },
         (error: unknown) => {
           view = { ...view, notifications: before };
-          if (dialog.open) draw();
+          draw();
           toast(error instanceof Error ? error.message : String(error), 9000);
         },
       );
@@ -425,14 +482,20 @@ export function mountSettings(trigger: HTMLElement, toast: (message: string, ms?
       void accountAction('logout', () => postJson<HomeAccount>('/api/auth/logout'), 'Signed out of GitHub.');
     }
   });
+  showCategory();
+  paintIcons(root);
+  void load();
+  loadModels();
 }
 
 /** A selector that finds the same control after a redraw, so keyboard focus stays put. */
 export function focusKeyOf(element: Element): string | null {
-  for (const attribute of ['data-settings-theme', 'data-settings-tier', 'data-settings-rater', 'data-settings-cap', 'data-settings-goal', 'data-settings-claim-days', 'data-settings-hand-off-days', 'data-settings-notification', 'data-settings-switch']) {
+  for (const attribute of ['data-settings-theme', 'data-settings-tier', 'data-settings-rater', 'data-settings-calibration', 'data-settings-model', 'data-settings-effort', 'data-settings-cap', 'data-settings-goal', 'data-settings-claim-days', 'data-settings-hand-off-days', 'data-settings-notification', 'data-settings-switch']) {
     const value = element.getAttribute(attribute);
     if (value !== null) return `[${attribute}="${value}"]`;
   }
   if (element.hasAttribute('data-settings-rater-model')) return '[data-settings-rater-model]';
+  if (element.hasAttribute('data-settings-calibration-model')) return '[data-settings-calibration-model]';
+  if (element.id === 'settings-calibration' || element.matches('#settings-calibration > summary')) return '#settings-calibration > summary';
   return element.hasAttribute('data-settings-logout') ? '[data-settings-logout]' : null;
 }

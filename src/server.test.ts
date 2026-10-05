@@ -96,6 +96,23 @@ const sampleMap: WayfinderMap = {
 };
 
 describe('repository-scoped server', () => {
+  it('serves a dedicated Settings document for direct category links', async () => {
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, fetcher: async () => ({ maps: [], warnings: [] }), handOffStore: new HandOffStore({ filePath: null }) });
+    try {
+      const response = await fetch(`${running.url}/settings?section=tasks`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toContain('text/html');
+      expect(response.headers.get('content-security-policy')).toContain("object-src 'none'");
+      const html = await response.text();
+      expect(html).toContain('<title>Settings · Wayfinder</title>');
+      expect(html).toContain('src="/settingsPage.js"');
+      expect(html).not.toContain('settings-dialog');
+      expect(html).not.toContain('models-dialog');
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
   // Node's fetch can replace Host, so use raw HTTP to exercise the received header.
   function getWithHeaders(url: string, headers: Record<string, string>): Promise<{ status: number; body: string }> {
     return new Promise((resolve, reject) => {

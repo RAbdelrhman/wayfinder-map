@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { HomeAccount } from '../home.js';
 import type { CatalogState } from './models.js';
-import { autoRaterHtml, calibrationHtml, notificationSettingsHtml, ratingModels, settingsBodyHtml } from './settings.js';
+import { autoRaterHtml, calibrationHtml, focusKeyOf, ratingModels, settingsBodyHtml, settingsCategory, settingsNavigationHtml, tierModelsHtml } from './settings.js';
 import type { SettingsView } from './settings.js';
 
 const ACCOUNT: HomeAccount = {
@@ -17,10 +17,40 @@ const ACCOUNT: HomeAccount = {
 };
 
 function view(patch: Partial<SettingsView> = {}): SettingsView {
-  return { account: ACCOUNT, theme: 'dark', tier: 'mid', rater: { kind: 'logic' }, calibration: { kind: 'off' }, models: { status: 'loading' }, cap: 4, progress: { style: 'trail', goal: 5 }, stalls: { untouchedClaimDays: 7, deadHandOffDays: 7 }, notifications: null, busy: null, ...patch };
+  return { account: ACCOUNT, theme: 'dark', tier: 'mid', rater: { kind: 'logic' }, calibration: { kind: 'off' }, models: { status: 'loading' }, tierModels: {}, cap: 4, progress: { style: 'trail', goal: 5 }, stalls: { untouchedClaimDays: 7, deadHandOffDays: 7 }, notifications: null, busy: null, ...patch };
 }
 
-describe('Settings dialog', () => {
+describe('Settings page', () => {
+  it('opens valid category links and falls back to Appearance for invalid input', () => {
+    expect(settingsCategory('tasks')).toBe('tasks');
+    expect(settingsCategory(null)).toBe('appearance');
+    expect(settingsCategory('<script>')).toBe('appearance');
+    const nav = settingsNavigationHtml('tasks');
+    expect(nav).toContain('href="/settings?section=tasks" data-settings-category="tasks" aria-current="location"');
+    expect(nav.match(/aria-current/g)).toHaveLength(1);
+  });
+
+  it('keeps each category focused while retaining every existing preference', () => {
+    const appearance = settingsBodyHtml(view(), 'appearance');
+    expect(appearance).toContain('data-settings-theme');
+    expect(appearance).not.toContain('data-settings-tier');
+    const tasks = settingsBodyHtml(view(), 'tasks');
+    expect(tasks).toContain('data-settings-tier');
+    expect(tasks).toContain('data-settings-cap');
+    expect(tasks).toContain('<details class="settings-advanced"');
+    expect(tasks).not.toContain('data-settings-theme');
+    expect(tasks).not.toContain('data-settings-goal');
+    expect(settingsBodyHtml(view(), 'progress')).toContain('data-settings-claim-days');
+    expect(settingsBodyHtml(view(), 'notifications')).toContain('data-settings-notification');
+    expect(settingsBodyHtml(view(), 'account')).toContain('data-settings-logout');
+  });
+
+  it('keeps calibration and model controls focused after asynchronous redraws', () => {
+    for (const attribute of ['data-settings-calibration', 'data-settings-model', 'data-settings-effort']) {
+      const control = { getAttribute: (name: string) => name === attribute ? 'simple' : null } as unknown as Element;
+      expect(focusKeyOf(control)).toBe(`[${attribute}="simple"]`);
+    }
+  });
   it('holds the signed-in account with sign out and a switch to every other gh account', () => {
     const html = settingsBodyHtml(view());
 
@@ -86,6 +116,36 @@ describe('Settings dialog', () => {
 
   it('shows a loading line before the account arrives', () => {
     expect(settingsBodyHtml(view({ account: null }))).toContain('Reading GitHub CLI…');
+  });
+});
+
+describe('Settings model defaults', () => {
+  const models: CatalogState = {
+    status: 'ready',
+    catalog: { providers: [{ instanceId: 'codex', name: 'Codex', ready: true, models: [{ slug: 'model', name: 'A model', isDefault: true, effort: { id: 'reasoning', label: 'Reasoning effort', defaultValue: 'high', options: [{ id: 'high', label: 'High' }, { id: 'low', label: 'Low' }] } }] }] },
+  };
+
+  it('offers all tier models and retains saved reasoning effort', () => {
+    const html = tierModelsHtml(models, { simple: { instanceId: 'codex', model: 'model', effort: { id: 'reasoning', value: 'low' } } });
+    expect(html).toContain('aria-label="Simple model"');
+    expect(html).toContain('aria-label="Mid model"');
+    expect(html).toContain('aria-label="Hard model"');
+    expect(html).toContain('value="low" selected');
+    expect(html).toContain('T3 Code default');
+  });
+
+  it('falls back to T3 defaults when a saved model is no longer available', () => {
+    const html = tierModelsHtml(models, { hard: { instanceId: 'missing', model: 'gone' } });
+    expect(html.match(/value="" selected/g)).toHaveLength(3);
+    expect(html).not.toContain('settings-effort-hard');
+  });
+
+  it('shows loading and retry states without replacing saved models', () => {
+    expect(tierModelsHtml({ status: 'loading' }, {})).toContain('Loading T3 Code models');
+    const html = tierModelsHtml({ status: 'unavailable', reason: '<offline>' }, {});
+    expect(html).toContain('&lt;offline&gt;');
+    expect(html).toContain('data-settings-retry-models');
+    expect(html).not.toContain('<select');
   });
 });
 
