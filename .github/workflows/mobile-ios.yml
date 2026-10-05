@@ -1,0 +1,61 @@
+name: Mobile iOS boot
+
+# Builds the Expo app in mobile/ and boots it on an iOS simulator.
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    name: Boot on the iOS simulator
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.1.0
+
+      - run: bun install --frozen-lockfile
+
+      - name: Boot a simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name | startswith("iPhone"))][0].udid')
+          echo "UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid"
+
+      # A Release build embeds the JS bundle, so no Metro server is needed.
+      - run: bunx expo run:ios --configuration Release --no-bundler --device "$UDID"
+        env:
+          CI: 1
+
+      - name: The app is still running after launch
+        run: |
+          xcrun simctl terminate "$UDID" com.abdelrhr.wayfinder || true
+          xcrun simctl launch "$UDID" com.abdelrhr.wayfinder
+          sleep 20
+          xcrun simctl spawn "$UDID" launchctl list | grep -q com.abdelrhr.wayfinder
+          xcrun simctl io "$UDID" screenshot ios-boot.png
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-boot
+          path: mobile/ios-boot.png
+          if-no-files-found: ignore
