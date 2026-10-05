@@ -42,7 +42,8 @@ function readingFromWindows(windows: readonly Window[], reachedFlag: boolean, ob
     return live.length === 0 ? null : { state: 'available', observedAt: observedAt.toISOString(), resetsAt: null };
   }
   const resets = full.flatMap((window) => (window.resetsAt === null ? [] : [window.resetsAt]));
-  return { state: 'limited', observedAt: observedAt.toISOString(), resetsAt: resets.length === 0 ? null : Math.min(...resets) };
+  const resetsAt = full.some((window) => window.resetsAt === null) || resets.length === 0 ? null : Math.max(...resets);
+  return { state: 'limited', observedAt: observedAt.toISOString(), resetsAt };
 }
 
 /** Codex's `account/rateLimits/read` result, or null when it holds no usable limit data (so the provider stays unknown). */

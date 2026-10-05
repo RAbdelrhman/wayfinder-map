@@ -73,6 +73,7 @@ export function parseAutoMapChange(value: unknown): AutoMapChange | null {
 interface Pending {
   repo: string;
   mapNumber: number;
+  setting: AutoMapSetting;
   events: Map<number, MapEvent>;
 }
 
@@ -213,10 +214,12 @@ export class AutoMapService {
     this.entries.set(id, { ...entry, setting: turnedOff(entry.setting) });
     this.limits.set(id, { message: stop.message, resetsAt: stop.resetsAt });
     this.unwatch(id);
-    await this.persist();
+    await this.persistWithRetry();
+    if (this.closed) return;
     const item = batch.items.find((candidate) => candidate.ticketNumber === stop.ticketNumber) ?? batch.items[0];
     if (item === undefined) return;
     const map = await this.deps.loadMap(batch.repo, batch.mapNumber).catch(() => null);
+    if (this.closed) return;
     await this.publish({
       id: `automap:${batch.id}`,
       kind: 'handOffError',
@@ -272,7 +275,10 @@ export class AutoMapService {
   private take(event: MapEvent): void {
     if (event.type !== 'ticket-next' || autoStartTickets([event], this.setting(event.repo, event.mapNumber)).length === 0) return;
     const id = autoMapKey(event.repo, event.mapNumber);
-    const batch = this.pending.get(id) ?? { repo: event.repo, mapNumber: event.mapNumber, events: new Map<number, MapEvent>() };
+    const setting = this.setting(event.repo, event.mapNumber);
+    const existing = this.pending.get(id);
+    // Retain earlier events and their generation; an invalidated mixed batch falls back to ready notices.
+    const batch = existing ?? { repo: event.repo, mapNumber: event.mapNumber, setting, events: new Map<number, MapEvent>() };
     batch.events.set(event.ticket.number, event);
     this.pending.set(id, batch);
     if (this.timer === null) {
@@ -282,30 +288,42 @@ export class AutoMapService {
   }
 
   private async start(batch: Pending): Promise<void> {
+    if (this.closed) return;
     const events = [...batch.events.values()].sort((a, b) => a.ticket.number - b.ticket.number);
     // It may have been turned off while the tickets waited to be batched.
     const setting = this.setting(batch.repo, batch.mapNumber);
     const map = await this.deps.loadMap(batch.repo, batch.mapNumber).catch(() => null);
-    if (setting.enabled) {
+    if (setting.enabled && batch.setting === setting && !this.closed && this.setting(batch.repo, batch.mapNumber) === setting) {
       const tickets = await this.entriesFor(setting.tier, map, events.map((event) => event.ticket.number));
-      const result = await this.deps
-        .submit(batch.repo, { map: batch.mapNumber, cap: normalizeCap(this.settings.cap), auto: true, tickets })
-        .catch((error: unknown) => ({ ok: false, error: (error as Error).message }));
-      if (result.ok) return;
+      // A change replaces the setting object even if a disable/re-enable has the same timestamp.
+      if (this.closed) return;
+      if (this.setting(batch.repo, batch.mapNumber) === setting) {
+        const result = await this.deps
+          .submit(batch.repo, { map: batch.mapNumber, cap: normalizeCap(this.settings.cap), auto: true, tickets })
+          .catch((error: unknown) => ({ ok: false, error: (error as Error).message }));
+        if (result.ok) return;
+      }
     }
+    if (this.closed) return;
     // The ticket goes back to the ordinary "ready" notification, so a start that failed is not silent.
+    const errors: unknown[] = [];
     for (const event of events) {
-      await this.publish({
-        id: `map:${event.repo.toLowerCase()}#${String(event.mapNumber)}:${String(event.id)}:${event.at}`,
-        kind: 'unblocked',
-        repo: event.repo,
-        mapNumber: event.mapNumber,
-        mapTitle: map?.title ?? `Map #${String(event.mapNumber)}`,
-        ticketNumber: event.ticket.number,
-        ticketTitle: event.ticket.title,
-        createdAt: event.at,
-      });
+      try {
+        await this.publish({
+          id: `map:${event.repo.toLowerCase()}#${String(event.mapNumber)}:${String(event.id)}:${event.at}`,
+          kind: 'unblocked',
+          repo: event.repo,
+          mapNumber: event.mapNumber,
+          mapTitle: map?.title ?? `Map #${String(event.mapNumber)}`,
+          ticketNumber: event.ticket.number,
+          ticketTitle: event.ticket.title,
+          createdAt: event.at,
+        });
+      } catch (error) {
+        errors.push(error);
+      }
     }
+    if (errors.length > 0) throw new AggregateError(errors, 'Could not save ready notifications.');
   }
 
   /** What each ticket starts on: the map's tier, or for Auto the tier and model it rates the ticket to. Auto runs on Mid when it cannot rate. */
@@ -369,15 +387,28 @@ export class AutoMapService {
 
   /** Put a notice where the page's inbox will find it, and show it as an OS notification in the desktop app. */
   private async publish(notice: AutoMapNotice): Promise<void> {
-    if (!(await this.deps.notificationOn(notice.kind).catch(() => true)) || this.notices.some((existing) => existing.id === notice.id)) return;
+    if (this.closed || !(await this.deps.notificationOn(notice.kind).catch(() => true)) || this.closed || this.notices.some((existing) => existing.id === notice.id)) return;
     this.notices = this.fresh([notice, ...this.notices]);
-    await this.persist();
-    this.deps.desktop?.(desktopNotificationOf(notice));
+    await this.persistWithRetry();
+    if (!this.closed) this.deps.desktop?.(desktopNotificationOf(notice));
   }
 
   private fresh(notices: readonly AutoMapNotice[]): AutoMapNotice[] {
     const oldest = this.now().getTime() - NOTICE_MAX_AGE_MS;
     return notices.filter((notice) => Date.parse(notice.createdAt) >= oldest).slice(0, NOTICE_LIMIT);
+  }
+
+  /** Retry transient writes for usage shutdowns and ready notices without losing current state. */
+  private async persistWithRetry(): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        // Capture current state on every attempt, preserving a concurrent settings change.
+        await this.persist();
+        return;
+      } catch (error) {
+        if (this.closed || attempt === 2) throw error;
+      }
+    }
   }
 
   private persist(): Promise<void> {

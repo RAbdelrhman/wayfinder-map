@@ -37,6 +37,7 @@ import { cloneRepository as cloneRepo, RepositoryCloneError } from './clone.js';
 import { WAYFINDER_VERSION } from './version.js';
 import { resolveRepoIcon, type ResolvedRepoIcon } from './repoIcon.js';
 import { HandOffStore, HandOffTracker, handOffStorePath } from './handOffTracking.js';
+import { isLiveHandOff } from './handOffLiveness.js';
 import type { HandOffTrackingClient } from './handOffTracking.js';
 import { githubMapWatchReader, MapWatcher } from './mapWatcher.js';
 import type { MapWatchStateStore } from './mapWatchStore.js';
@@ -359,8 +360,9 @@ export async function startServer({
                   t3.subscribeShell?.(sequence, onValue, onClose) ?? Promise.reject(new Error('T3 Code tracking is unavailable.')),
               }),
         };
+  const trackingStore = handOffStore ?? new HandOffStore({ filePath: handOffStorePath() });
   const handOffTracker = new HandOffTracker(
-    handOffStore ?? new HandOffStore({ filePath: handOffStorePath() }),
+    trackingStore,
     trackingClient,
   );
   const mapWatcher =
@@ -534,6 +536,10 @@ export async function startServer({
     ...(startNextIntervalMs === undefined ? {} : { intervalMs: startNextIntervalMs }),
     running: () => handOffTracker.liveCount(),
     lastErrors: (ids) => handOffTracker.lastErrors(ids),
+    activeHandOffIds: async (ids) => {
+      const wanted = new Set(ids);
+      return new Set((await trackingStore.list()).filter((item) => wanted.has(item.id) && isLiveHandOff(item)).map((item) => item.id));
+    },
     repick: (item): Promise<Repick> => autoMaps.repick(item),
     onUsageStop: (batch) => {
       if (batch.auto) void autoMaps.usageStopped(batch).catch(() => undefined);

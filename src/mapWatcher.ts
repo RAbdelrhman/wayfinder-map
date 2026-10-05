@@ -4,6 +4,7 @@ import type { MapEvent, RateLimit, WatchedPullRequest, WatchedTicket } from './m
 import type { MapWatchStateStore, StoredMapWatch } from './mapWatchStore.js';
 import type { TicketActivity } from './stalled.js';
 import type { TicketState } from './types.js';
+import { parseChildNumbers } from './mapBody.js';
 
 /** #122's interval: a `304` is free, and list responses are cached for 60 s anyway. */
 export const WATCH_INTERVAL_MS = 2 * 60 * 1000;
@@ -393,37 +394,102 @@ const PULL_REQUESTS_QUERY = `query($owner: String!, $name: String!) {
   rateLimit { limit remaining resetAt }
 }`;
 
-/** The reads #122 recommends: a conditional `sub_issues` request, and one GraphQL query per repository for pull requests. */
-export const githubMapWatchReader: MapWatchReader = {
-  async readMap(repo, mapNumber, etag) {
-    const args = ['api', '-i', `repos/${repo}/issues/${String(mapNumber)}/sub_issues?per_page=100`];
-    if (etag !== null) args.push('-H', `If-None-Match: ${etag}`);
-    const response = parseHttpResponse(await ghIncludingHeaders(args));
-    if (response === null) throw new Error(`GitHub gave no answer for map #${String(mapNumber)}.`);
-    const rateLimit = rateLimitOf(response.headers);
-    const pollInterval = Number(response.headers['x-poll-interval']);
-    const pollIntervalSeconds = Number.isFinite(pollInterval) && pollInterval > 0 ? pollInterval : null;
-    if (response.status === 304) return { status: 'unchanged', rateLimit, pollIntervalSeconds };
-    if (response.status !== 200) {
-      const remaining = rateLimit?.remaining;
-      throw new Error(remaining === 0 ? RATE_LIMIT_WARNING : `GitHub answered ${String(response.status)} for map #${String(mapNumber)}.`);
-    }
-    return { status: 'changed', etag: response.headers['etag'] ?? null, tickets: watchedTickets(JSON.parse(response.body)), rateLimit, pollIntervalSeconds };
-  },
-  async readPullRequests(repo) {
-    const [owner = '', name = ''] = repo.split('/', 2);
-    const result = JSON.parse(
-      await gh(['api', 'graphql', '-f', `query=${PULL_REQUESTS_QUERY}`, '-f', `owner=${owner}`, '-f', `name=${name}`]),
-    ) as { data?: { repository?: { pullRequests?: { nodes?: unknown }; refs?: { nodes?: unknown } }; rateLimit?: { limit?: number; remaining?: number; resetAt?: string } } };
-    const budget = result.data?.rateLimit;
-    const resetAt = budget?.resetAt === undefined ? Number.NaN : Date.parse(budget.resetAt);
-    return {
-      byTicket: pullRequestsByTicket(result.data?.repository?.pullRequests?.nodes),
-      lastCommits: branchCommitsByTicket(result.data?.repository?.refs?.nodes),
-      rateLimit:
-        typeof budget?.limit === 'number' && typeof budget.remaining === 'number' && Number.isFinite(resetAt)
-          ? { resource: 'graphql', limit: budget.limit, remaining: budget.remaining, resetAt }
-          : null,
-    };
-  },
-};
+interface CachedWatchResource {
+  value: unknown;
+  etag: string | null;
+  next: boolean;
+  unavailable?: true;
+}
+
+interface CachedWatchRead {
+  token: string;
+  parent: CachedWatchResource;
+  pages: Map<number, CachedWatchResource>;
+  bodyIssues: Map<number, CachedWatchResource>;
+}
+
+/** Every membership resource has its own conditional read, so later pages and body-only tickets can change independently. */
+export function createGithubMapWatchReader(runApi: (args: string[]) => Promise<string> = ghIncludingHeaders): MapWatchReader {
+  const cachedMaps = new Map<string, CachedWatchRead>();
+  return {
+    async readMap(repo, mapNumber, etag) {
+      const id = key(repo, mapNumber);
+      const known = cachedMaps.get(id);
+      // A restored watcher has no reader cache. Build its complete baseline instead of accepting a partial 304.
+      const previous = etag !== null && known?.token === etag ? known : undefined;
+      let changed = previous === undefined;
+      let rateLimit: RateLimit | null = null;
+      let pollIntervalSeconds: number | null = null;
+      const read = async (route: string, cached?: CachedWatchResource, page?: number, bodyMember = false): Promise<CachedWatchResource> => {
+        const args = ['api', '-i', '-X', 'GET'];
+        if (cached?.etag !== null && cached?.etag !== undefined) args.push('-H', `If-None-Match: ${cached.etag}`);
+        if (page !== undefined) args.push('-F', 'per_page=100', '-F', `page=${String(page)}`);
+        args.push(route);
+        const response = parseHttpResponse(await runApi(args));
+        if (response === null) throw new Error(`GitHub gave no answer for map #${String(mapNumber)}.`);
+        rateLimit = rateLimitOf(response.headers) ?? rateLimit;
+        const interval = Number(response.headers['x-poll-interval']);
+        if (Number.isFinite(interval) && interval > 0) pollIntervalSeconds = Math.max(pollIntervalSeconds ?? 0, interval);
+        if (response.status === 304 && cached !== undefined) return cached;
+        // Missing membership resources do not hide readable children; a missing parent still fails.
+        if (response.status === 404 && (page !== undefined || bodyMember) && rateLimit?.remaining !== 0) {
+          if (cached?.unavailable === true) return cached;
+          changed = true;
+          return { value: bodyMember ? {} : [], etag: null, next: false, unavailable: true };
+        }
+        if (response.status !== 200) throw new Error(rateLimit?.remaining === 0 ? RATE_LIMIT_WARNING : `GitHub answered ${String(response.status)} for map #${String(mapNumber)}.`);
+        changed = true;
+        const value: unknown = JSON.parse(response.body);
+        if (page !== undefined ? !Array.isArray(value) : typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('GitHub returned invalid map membership.');
+        return {
+          value,
+          etag: response.headers['etag'] ?? null,
+          next: /;\s*rel="?next"?(?:,|\s|$)/i.test(response.headers['link'] ?? '') || (page !== undefined && Array.isArray(value) && value.length === 100),
+        };
+      };
+      const parent = await read(`repos/${repo}/issues/${String(mapNumber)}`, previous?.parent);
+      const pages = new Map<number, CachedWatchResource>();
+      const native: unknown[] = [];
+      for (let page = 1; ; page += 1) {
+        const resource = await read(`repos/${repo}/issues/${String(mapNumber)}/sub_issues`, previous?.pages.get(page), page);
+        pages.set(page, resource);
+        native.push(...resource.value as unknown[]);
+        if (!resource.next) break;
+      }
+      const nativeTickets = watchedTickets(native);
+      const attached = new Set(nativeTickets.map((ticket) => ticket.number));
+      const body = (parent.value as Record<string, unknown>)['body'];
+      const bodyIssues = new Map<number, CachedWatchResource>();
+      for (const number of parseChildNumbers(typeof body === 'string' ? body : '', repo)) {
+        if (number === mapNumber || attached.has(number)) continue;
+        bodyIssues.set(number, await read(`repos/${repo}/issues/${String(number)}`, previous?.bodyIssues.get(number), undefined, true));
+      }
+      const token = JSON.stringify([parent.etag, [...pages].map(([page, resource]) => [page, resource.etag]), [...bodyIssues].map(([number, resource]) => [number, resource.etag])]);
+      cachedMaps.delete(id);
+      cachedMaps.set(id, { token, parent, pages, bodyIssues });
+      // Eviction changes only the next baseline's cost; it never returns incomplete membership.
+      if (cachedMaps.size > 100) cachedMaps.delete(cachedMaps.keys().next().value ?? '');
+      return changed
+        ? { status: 'changed', etag: token, tickets: [...nativeTickets, ...watchedTickets([...bodyIssues.values()].map((resource) => resource.value))], rateLimit, pollIntervalSeconds }
+        : { status: 'unchanged', rateLimit, pollIntervalSeconds };
+    },
+    async readPullRequests(repo) {
+      const [owner = '', name = ''] = repo.split('/', 2);
+      const result = JSON.parse(
+        await gh(['api', 'graphql', '-f', `query=${PULL_REQUESTS_QUERY}`, '-f', `owner=${owner}`, '-f', `name=${name}`]),
+      ) as { data?: { repository?: { pullRequests?: { nodes?: unknown }; refs?: { nodes?: unknown } }; rateLimit?: { limit?: number; remaining?: number; resetAt?: string } } };
+      const budget = result.data?.rateLimit;
+      const resetAt = budget?.resetAt === undefined ? Number.NaN : Date.parse(budget.resetAt);
+      return {
+        byTicket: pullRequestsByTicket(result.data?.repository?.pullRequests?.nodes),
+        lastCommits: branchCommitsByTicket(result.data?.repository?.refs?.nodes),
+        rateLimit:
+          typeof budget?.limit === 'number' && typeof budget.remaining === 'number' && Number.isFinite(resetAt)
+            ? { resource: 'graphql', limit: budget.limit, remaining: budget.remaining, resetAt }
+            : null,
+      };
+    },
+  };
+}
+
+export const githubMapWatchReader: MapWatchReader = createGithubMapWatchReader();

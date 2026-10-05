@@ -174,6 +174,57 @@ describe('AutoMapService', () => {
   });
 
   describe('starting what becomes next', () => {
+    it.each(['disable', 'restart', 'tier', 'close'] as const)('invalidates a prepared start after %s while catalog loading waits', async (change) => {
+      let release!: () => void;
+      let entered!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const reading = new Promise<void>((resolve) => { entered = resolve; });
+      const h = harness({ catalog: async () => { entered(); await gate; return CATALOG; } });
+      await h.service.change('octo/one', 5, { op: 'enable', tier: 'mid' });
+      h.emit(next(11));
+      const flushing = h.service.flush();
+      await reading;
+      if (change === 'close') h.service.close();
+      else if (change === 'tier') await h.service.change('octo/one', 5, { op: 'tier', tier: 'hard' });
+      else {
+        await h.service.change('octo/one', 5, { op: 'disable' });
+        if (change === 'restart') await h.service.change('octo/one', 5, { op: 'enable' });
+      }
+      release();
+      await flushing;
+      expect(h.submits).toEqual([]);
+      expect(h.service.view().notices.map((notice) => [notice.kind, notice.ticketNumber]))
+        .toEqual(change === 'close' ? [] : [['unblocked', 11]]);
+      h.service.close();
+    });
+
+    it.each(['tier', 'restart'] as const)('preserves every pending event when %s precedes another ticket becoming next', async (change) => {
+      const h = harness({ batchMs: 400 });
+      await h.service.change('octo/one', 5, { op: 'enable', tier: 'mid' });
+      h.emit(next(11));
+      if (change === 'tier') await h.service.change('octo/one', 5, { op: 'tier', tier: 'hard' });
+      else {
+        await h.service.change('octo/one', 5, { op: 'disable' });
+        await h.service.change('octo/one', 5, { op: 'enable' });
+      }
+      h.emit(next(12));
+      await h.service.flush();
+      const accounted = [
+        ...h.submits.flatMap((submit) => submit.body.tickets.map((entry) => entry.ticket)),
+        ...h.service.view().notices.map((notice) => notice.ticketNumber),
+      ].sort();
+      expect(accounted).toEqual([11, 12]);
+      expect(h.submits).toEqual([]);
+      expect(h.service.view().notices.map((notice) => notice.ticketNumber).sort()).toEqual([11, 12]);
+      await h.service.flush();
+      expect(h.service.view().notices).toHaveLength(2);
+      h.emit(next(13));
+      await h.service.flush();
+      expect(h.submits).toHaveLength(1);
+      expect(h.submits[0]?.body.tickets).toEqual([{ ticket: 13, tier: change === 'tier' ? 'hard' : 'mid', model: null }]);
+      h.service.close();
+    });
+
     it('hands off the tickets that became next as one batch, with the cap, once the events settle', async () => {
       const h = harness({ batchMs: 5 });
       await h.service.updateSettings({ cap: 2 });
@@ -362,6 +413,38 @@ describe('AutoMapService', () => {
   });
 
   describe('when the start fails', () => {
+    it('persists and announces every invalidated event after a transient notice save failure', async () => {
+      const store = memoryAutoMapStore();
+      const save = vi.spyOn(store, 'save');
+      const h = harness({ store, batchMs: 400 });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      h.emit(next(11));
+      h.emit(next(12));
+      await h.service.change('octo/one', 5, { op: 'tier', tier: 'hard' });
+      save.mockRejectedValueOnce(new Error('Temporary file contention'));
+      await h.service.flush();
+      expect(h.submits).toEqual([]);
+      expect((await store.load()).notices.map((notice) => notice.ticketNumber).sort()).toEqual([11, 12]);
+      expect(h.desktop.map((notice) => notice.ticketNumber).sort()).toEqual([11, 12]);
+      h.service.close();
+    });
+
+    it('attempts every ready notice when persistent storage failure exhausts retries', async () => {
+      const store = memoryAutoMapStore();
+      const save = vi.spyOn(store, 'save');
+      const h = harness({ store, batchMs: 400 });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      h.emit(next(11));
+      h.emit(next(12));
+      await h.service.change('octo/one', 5, { op: 'tier', tier: 'hard' });
+      save.mockClear().mockRejectedValue(new Error('Storage unavailable'));
+      await expect(h.service.flush()).rejects.toThrow('Could not save ready notifications');
+      expect(save).toHaveBeenCalledTimes(6);
+      expect(h.service.view().notices.map((notice) => notice.ticketNumber).sort()).toEqual([11, 12]);
+      expect(h.desktop).toEqual([]);
+      h.service.close();
+    });
+
     it('leaves the ordinary "ready" notice in the inbox and shows it as an OS notification', async () => {
       const h = harness();
       h.reply.ok = false;
@@ -407,6 +490,88 @@ describe('AutoMapService', () => {
   });
 
   describe('usage limit', () => {
+    it('persists a usage-limit disable after a transient save failure, so restart keeps it off', async () => {
+      const store = memoryAutoMapStore();
+      const save = vi.spyOn(store, 'save');
+      const h = harness({ store });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      save.mockRejectedValueOnce(new Error('Temporary file contention'));
+      await h.service.usageStopped(stopped());
+      expect(h.service.setting('octo/one', 5).enabled).toBe(false);
+      expect((await store.load()).maps[0]?.setting.enabled).toBe(false);
+      const restarted = harness({ store });
+      await restarted.service.init();
+      expect(restarted.service.setting('octo/one', 5).enabled).toBe(false);
+      expect(restarted.watching.size).toBe(0);
+      expect(h.desktop).toHaveLength(1);
+      h.service.close();
+      restarted.service.close();
+    });
+
+    it('bounds usage-stop save retries and leaves the map unwatched after persistent failure', async () => {
+      const store = memoryAutoMapStore();
+      const save = vi.spyOn(store, 'save');
+      const h = harness({ store });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      save.mockClear();
+      save.mockRejectedValue(new Error('Storage unavailable'));
+      await expect(h.service.usageStopped(stopped())).rejects.toThrow('Storage unavailable');
+      expect(save).toHaveBeenCalledTimes(3);
+      expect(h.service.setting('octo/one', 5).enabled).toBe(false);
+      expect(h.watching.size).toBe(0);
+      h.service.close();
+    });
+
+    it('retains a settings change queued during a failed usage-stop save', async () => {
+      const store = memoryAutoMapStore();
+      const save = vi.spyOn(store, 'save');
+      const h = harness({ store });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      let settingsChange: Promise<boolean> | undefined;
+      save.mockImplementationOnce(async () => {
+        settingsChange = h.service.updateSettings({ cap: 2 });
+        throw new Error('Temporary file contention');
+      });
+      await h.service.usageStopped(stopped());
+      await settingsChange;
+      const saved = await store.load();
+      expect(saved.settings.cap).toBe(2);
+      expect(saved.maps[0]?.setting.enabled).toBe(false);
+      h.service.close();
+    });
+
+    it('does not retry a failed usage-stop save after the service closes', async () => {
+      const store = memoryAutoMapStore();
+      const save = vi.spyOn(store, 'save');
+      const h = harness({ store });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      save.mockClear();
+      save.mockImplementationOnce(async () => {
+        h.service.close();
+        throw new Error('Closed during save');
+      });
+      await expect(h.service.usageStopped(stopped())).rejects.toThrow('Closed during save');
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(h.desktop).toEqual([]);
+    });
+
+    it('does not publish a usage-stop notice after closing during its map lookup', async () => {
+      let release!: () => void;
+      let entered!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const reading = new Promise<void>((resolve) => { entered = resolve; });
+      const h = harness({ loadMap: async () => { entered(); await gate; return mapOf([ticket(11)]); } });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      const stopping = h.service.usageStopped(stopped());
+      await reading;
+      h.service.close();
+      release();
+      await stopping;
+      expect(h.desktop).toEqual([]);
+      expect(h.service.view().notices).toEqual([]);
+      expect((await h.store.load()).maps[0]?.setting.enabled).toBe(false);
+    });
+
     it('turns the map off on the first usage-limit stop, stops watching it and tells the user', async () => {
       const h = harness();
       await h.service.change('octo/one', 5, { op: 'enable' });

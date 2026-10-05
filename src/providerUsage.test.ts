@@ -32,6 +32,20 @@ describe('readingFromCodexLimits', () => {
     expect(readingFromCodexLimits(codexResult(100, 40), now)).toEqual({ state: 'limited', observedAt: now.toISOString(), resetsAt: (epoch(3_600_000)) * 1000 });
   });
 
+  it('keeps exhaustion until every exhausted window has reset', () => {
+    const reading = readingFromCodexLimits(codexResult(100, 100), now);
+    expect(reading?.resetsAt).toBe(epoch(86_400_000) * 1000);
+    expect(combineUsage([], { codex: reading! }, later(3_600_001)).codex?.state).toBe('limited');
+    expect(combineUsage([], { codex: reading! }, later(86_400_001))).toEqual({});
+  });
+
+  it('keeps the reset unknown when an exhausted window gives no reset time', () => {
+    const result = { rateLimits: { primary: { usedPercent: 100, resetsAt: epoch(3_600_000) }, secondary: { usedPercent: 100 } } };
+    const reading = readingFromCodexLimits(result, now);
+    expect(reading).toEqual({ state: 'limited', observedAt: now.toISOString(), resetsAt: null });
+    expect(combineUsage([], { codex: reading! }, later(USAGE_FRESH_MS + 1))).toEqual({});
+  });
+
   it('reads limited when Codex says ordinary usage is not allowed or names a reached limit', () => {
     expect(readingFromCodexLimits(codexResult(10, 10, { ordinaryUsageAllowed: false }), now)?.state).toBe('limited');
     expect(readingFromCodexLimits(codexResult(10, 10, {}, 'rate_limit_reached'), now)?.state).toBe('limited');
