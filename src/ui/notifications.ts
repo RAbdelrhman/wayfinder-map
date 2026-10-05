@@ -23,7 +23,25 @@ export interface InboxNotification {
   resolved?: boolean;
 }
 
-export type NewInboxNotification = Omit<InboxNotification, 'read'>;
+export type NewInboxNotification = Omit<InboxNotification, 'read'> & { read?: boolean };
+export type InboxSnapshot = Pick<MapSnapshot, 'repo' | 'maps'> & Partial<Pick<MapSnapshot, 'fetchedAt'>>;
+
+export async function withInboxLock<T>(operation: () => T | Promise<T>): Promise<T> {
+  if (typeof navigator !== 'undefined' && navigator.locks !== undefined) {
+    return navigator.locks.request('wayfinder-map:inbox', operation);
+  }
+  return operation();
+}
+
+function eventHandlesNotification(item: InboxNotification, event: MapEvent): boolean {
+  return event.type === 'ticket-closed' ||
+    (item.kind === 'failingCi' && 'pullRequest' in event && (event.pullRequest.state !== 'open' || (event.pullRequest.checks !== null && event.pullRequest.checks !== 'failing'))) ||
+    (item.kind === 'reviewReady' && 'pullRequest' in event && (event.pullRequest.state !== 'open' || event.pullRequest.draft || (event.pullRequest.checks !== null && event.pullRequest.checks !== 'passing') || (event.pullRequest.review !== null && event.pullRequest.review !== 'review_required')));
+}
+
+function ticketKey(item: { repo: string; mapNumber: number; ticketNumber: number }): string {
+  return `${item.repo.toLowerCase()}#${String(item.mapNumber)}#${String(item.ticketNumber)}`;
+}
 
 export interface UnblockedTicket {
   number: number;
@@ -193,8 +211,10 @@ function isInboxNotification(value: unknown): value is InboxNotification {
 
 export class NotificationInbox {
   private items: InboxNotification[];
-  private snapshots = new Map<string, Pick<MapSnapshot, 'repo' | 'maps'>>();
+  private snapshots = new Map<string, InboxSnapshot>();
   private handOffs: readonly HandOffStatusDto[] | null = null;
+  private eventTimes = new Map<string, number>();
+  private ticketEvents = new Map<string, MapEvent>();
 
   constructor(private readonly storage: Pick<Storage, 'getItem' | 'setItem'>) {
     this.items = this.read();
@@ -209,8 +229,9 @@ export class NotificationInbox {
   }
 
   push(notification: NewInboxNotification): boolean {
+    this.mergeStored();
     if (this.items.some((item) => item.id === notification.id)) return false;
-    const item: InboxNotification = { ...notification, read: false };
+    const item: InboxNotification = { ...notification, read: notification.read ?? false };
     item.resolved = this.isHandled(item);
     this.items = [item, ...this.items].slice(0, NOTIFICATION_LIMIT);
     this.write();
@@ -223,17 +244,29 @@ export class NotificationInbox {
     this.write();
   }
 
-  clearActivity(): void {
-    this.items = this.items.map((item) => item.kind === 'unblocked' ? { ...item, read: true } : item);
+  clearActivity(): boolean {
+    this.mergeStored();
+    const previous = this.items;
+    this.items = this.items.map((item) => item.kind === 'unblocked' ? { ...item, resolved: true } : item);
+    if (this.write()) return true;
+    this.items = previous;
+    return false;
+  }
+
+  markRead(id: string): void {
+    this.mergeStored();
+    this.items = this.items.map((item) => item.id === id ? { ...item, read: true } : item);
     this.write();
   }
 
   refresh(): void {
     this.items = this.read();
-    this.reconcile();
   }
 
-  reconcileSnapshot(snapshot: Pick<MapSnapshot, 'repo' | 'maps'>): void {
+  reconcileSnapshot(snapshot: InboxSnapshot): void {
+    const previous = this.snapshots.get(snapshot.repo.toLowerCase());
+    if ((snapshot.fetchedAt === undefined ? 0 : Date.parse(snapshot.fetchedAt)) < (this.eventTimes.get(snapshot.repo.toLowerCase()) ?? 0)) return;
+    if (previous?.fetchedAt !== undefined && (snapshot.fetchedAt === undefined || Date.parse(snapshot.fetchedAt) < Date.parse(previous.fetchedAt))) return;
     this.snapshots.set(snapshot.repo.toLowerCase(), snapshot);
     this.reconcile();
   }
@@ -244,7 +277,16 @@ export class NotificationInbox {
   }
 
   reconcileEvent(event: MapEvent): void {
+    this.mergeStored();
     const snapshot = this.snapshots.get(event.repo.toLowerCase());
+    const repo = event.repo.toLowerCase();
+    const at = Date.parse(event.at);
+    const key = ticketKey({ ...event, ticketNumber: event.ticket.number });
+    const previousEvent = this.ticketEvents.get(key);
+    if (previousEvent !== undefined && at < Date.parse(previousEvent.at)) return;
+    if (snapshot?.fetchedAt !== undefined && Date.parse(event.at) < Date.parse(snapshot.fetchedAt)) return;
+    this.eventTimes.set(repo, Math.max(this.eventTimes.get(repo) ?? 0, at));
+    this.ticketEvents.set(key, event);
     if (snapshot !== undefined) {
       this.snapshots.set(event.repo.toLowerCase(), { ...snapshot, maps: snapshot.maps.map((map) => {
         if (map.number !== event.mapNumber) return map;
@@ -255,20 +297,21 @@ export class NotificationInbox {
     }
     this.items = this.items.map((item) => {
       if (item.repo.toLowerCase() !== event.repo.toLowerCase() || item.mapNumber !== event.mapNumber || item.ticketNumber !== event.ticket.number) return item;
-      const handled = event.type === 'ticket-closed' ||
-        (item.kind === 'failingCi' && 'pullRequest' in event && event.pullRequest.checks !== null && event.pullRequest.checks !== 'failing') ||
-        (item.kind === 'reviewReady' && 'pullRequest' in event && !reviewIsReady(event.pullRequest));
+      const handled = eventHandlesNotification(item, event);
       return handled ? { ...item, resolved: true } : item;
     });
     this.write();
   }
 
   private reconcile(): void {
+    this.mergeStored();
     this.items = this.items.map((item) => item.resolved === true || !this.isHandled(item) ? item : { ...item, resolved: true });
     this.write();
   }
 
   private isHandled(item: InboxNotification): boolean {
+    const event = this.ticketEvents.get(ticketKey(item));
+    if (event !== undefined && Date.parse(event.at) >= Date.parse(item.createdAt) && eventHandlesNotification(item, event)) return true;
     const snapshot = this.snapshots.get(item.repo.toLowerCase());
     if (snapshot !== undefined) {
       const map = snapshot.maps.find((candidate) => candidate.number === item.mapNumber);
@@ -278,8 +321,8 @@ export class NotificationInbox {
         if (ticket === undefined || !ticket.open) return true;
         if (item.kind === 'stalled') return !map.stalled.some((stall) => stall.ticket === item.ticketNumber);
         const pr = map.pullRequests.find((candidate) => candidate.ticket === item.ticketNumber);
-        if (item.kind === 'failingCi') return pr === undefined || pr.state !== 'open' || (pr.checks !== null && pr.checks !== 'failing');
-        if (item.kind === 'reviewReady') return pr === undefined || pr.state !== 'open' || pr.draft === true || (pr.review !== null && pr.review !== 'review_required') || (pr.checks !== null && pr.checks !== 'passing');
+        if (item.kind === 'failingCi') return pr !== undefined && (pr.state !== 'open' || (pr.checks !== null && pr.checks !== 'failing'));
+        if (item.kind === 'reviewReady') return pr !== undefined && (pr.state !== 'open' || pr.draft === true || (pr.review !== null && pr.review !== 'review_required') || (pr.checks !== null && pr.checks !== 'passing'));
       }
     }
     if (this.handOffs !== null && (item.kind === 'threadWaiting' || item.kind === 'handOffError')) {
@@ -300,11 +343,23 @@ export class NotificationInbox {
     }
   }
 
-  private write(): void {
+  private mergeStored(): void {
+    const merged = new Map(this.items.map((item) => [item.id, item]));
+    for (const item of this.read()) {
+      const local = merged.get(item.id);
+      merged.set(item.id, local === undefined ? item : { ...local, read: local.read || item.read, resolved: local.resolved === true || item.resolved === true });
+    }
+    this.items = [...merged.values()].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, NOTIFICATION_LIMIT);
+  }
+
+  private write(): boolean {
     try {
-      this.storage.setItem(NOTIFICATIONS_KEY, JSON.stringify(this.items));
+      const serialized = JSON.stringify(this.items);
+      if (this.storage.getItem(NOTIFICATIONS_KEY) !== serialized) this.storage.setItem(NOTIFICATIONS_KEY, serialized);
+      return true;
     } catch {
       // Notifications stay available for this page even when browser storage is full.
+      return false;
     }
   }
 }
@@ -327,13 +382,14 @@ export function desktopNotificationFor(
 }
 
 export interface NotificationInboxController {
-  push: (notification: NewInboxNotification) => boolean;
+  push: (notification: NewInboxNotification) => Promise<boolean>;
   list: () => readonly InboxNotification[];
   unreadCount: () => number;
-  clearActivity: () => void;
-  reconcileSnapshot: (snapshot: Pick<MapSnapshot, 'repo' | 'maps'>) => void;
-  reconcileHandOffs: (records: readonly HandOffStatusDto[]) => void;
-  reconcileEvent: (event: MapEvent) => void;
+  clearActivity: () => boolean;
+  markRead: (id: string) => Promise<void>;
+  reconcileSnapshot: (snapshot: InboxSnapshot) => Promise<void>;
+  reconcileHandOffs: (records: readonly HandOffStatusDto[]) => Promise<void>;
+  reconcileEvent: (event: MapEvent) => Promise<void>;
 }
 
 export interface UnblockedNoticeController {
@@ -415,12 +471,13 @@ export function mountNotificationInbox(): NotificationInboxController {
     if (event.key === NOTIFICATIONS_KEY) { inbox.refresh(); changed(); }
   });
   return {
-    push(notification) { const added = inbox.push(notification); if (added) changed(); return added; },
+    push(notification) { return withInboxLock(() => { const added = inbox.push(notification); if (added) changed(); return added; }); },
     list: () => inbox.list(),
     unreadCount: () => inbox.unreadCount(),
-    clearActivity() { inbox.clearActivity(); changed(); },
-    reconcileSnapshot(snapshot) { inbox.reconcileSnapshot(snapshot); changed(); },
-    reconcileHandOffs(records) { inbox.reconcileHandOffs(records); changed(); },
-    reconcileEvent(event) { inbox.reconcileEvent(event); changed(); },
+    clearActivity() { const cleared = inbox.clearActivity(); changed(); return cleared; },
+    markRead(id) { return withInboxLock(() => { inbox.markRead(id); changed(); }); },
+    reconcileSnapshot(snapshot) { return withInboxLock(() => { inbox.reconcileSnapshot(snapshot); changed(); }); },
+    reconcileHandOffs(records) { return withInboxLock(() => { inbox.reconcileHandOffs(records); changed(); }); },
+    reconcileEvent(event) { return withInboxLock(() => { inbox.reconcileEvent(event); changed(); }); },
   };
 }

@@ -7480,6 +7480,15 @@ textarea.input {
   background: var(--wash);
 }
 
+.map-inbox-needs.is-read::before {
+  opacity: 0.35;
+}
+
+.map-inbox-item.is-read .map-inbox-event-title {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
 .map-inbox-kind {
   color: var(--handoff-needs-you);
   font-size: 11px;

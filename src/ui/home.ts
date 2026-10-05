@@ -73,7 +73,7 @@ document.addEventListener(NOTIFICATION_SETTINGS_EVENT, (event) => {
 async function publishNotification(notification: NewInboxNotification): Promise<boolean> {
   await notificationSettingsReady;
   if (!notificationSettings[notification.kind]) return false;
-  const added = notificationInbox.push(notification);
+  const added = await notificationInbox.push(notification);
   if (!added) return false;
   const saved = notificationInbox.list().find((item) => item.id === notification.id);
   if (saved !== undefined) {
