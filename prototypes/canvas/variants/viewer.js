@@ -530,6 +530,9 @@
 
   function openViewer(n, option, originEl, { fromHistory = true } = {}) {
     if (S.open) return;
+    // Reopened mid-close: drop the closing ghost and fades so they can't land on the new viewer.
+    for (const g of document.querySelectorAll('.vw-ghost')) g.remove();
+    for (const a of document.getElementById('vw-scrim').getAnimations()) a.cancel();
     saveScroll();
     const originKey = originEl?.closest('[data-origin]')?.dataset.origin ?? (originEl ? null : null);
     const from = originEl ? rectIn(originEl.closest('[data-origin]') ?? originEl) : null;
@@ -631,7 +634,9 @@
     setTimeout(() => viewer.classList.remove('is-closing'), 260);
     if (mode() === 'A') {
       const scrim = document.getElementById('vw-scrim');
-      scrim.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200 }).finished.then(() => (scrim.hidden = true));
+      scrim.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200 }).finished.then(() => {
+        if (!S.open) scrim.hidden = true; // reopened while fading: keep the new overlay's scrim
+      });
     }
     app.classList.remove('has-pane');
     S.open = null;
