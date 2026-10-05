@@ -1,6 +1,7 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+import { SettingsFileWriter } from './settingsFile.js';
 import { applyNotificationSettings, DEFAULT_NOTIFICATION_SETTINGS, readNotificationSettings } from './notificationTypes.js';
 import type { DesktopNotification, NotificationSettings } from './notificationTypes.js';
 
@@ -17,7 +18,11 @@ export function notificationSettingsFile(): string {
 }
 
 export class NotificationSettingsStore implements NotificationSettingsSource {
-  constructor(private readonly path: string = notificationSettingsFile()) {}
+  private readonly writer: SettingsFileWriter;
+
+  constructor(private readonly path: string = notificationSettingsFile()) {
+    this.writer = new SettingsFileWriter(path);
+  }
 
   async get(): Promise<NotificationSettings> {
     try {
@@ -28,11 +33,12 @@ export class NotificationSettingsStore implements NotificationSettingsSource {
   }
 
   async update(patch: unknown): Promise<NotificationSettings | null> {
-    const next = applyNotificationSettings(await this.get(), patch);
-    if (next === null) return null;
-    await mkdir(dirname(this.path), { recursive: true });
-    await writeFile(this.path, JSON.stringify(next, null, 2) + '\n', 'utf8');
-    return next;
+    return this.writer.update(async () => {
+      const next = applyNotificationSettings(await this.get(), patch);
+      if (next === null) return null;
+      await this.writer.write(next);
+      return next;
+    });
   }
 }
 
