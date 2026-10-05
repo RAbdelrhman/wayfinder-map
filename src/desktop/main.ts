@@ -226,12 +226,7 @@ async function startRuntime(): Promise<void> {
       updaterHandle = startAutoUpdates({
         window: mainWindow,
         enabled: shouldEnableUpdates(app.isPackaged, app.getVersion(), AUTO_UPDATE_ENABLED),
-        prepareForRestart: async () => {
-          updaterHandle?.stop();
-          await lifecycle.quit(async () => runtime?.close());
-          tray?.destroy();
-          tray = null;
-        },
+        // NSIS can refuse installation. Electron's before-quit path owns runtime/tray cleanup.
       });
       stopUpdates = () => updaterHandle?.stop();
     } catch (error) {

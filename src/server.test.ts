@@ -659,6 +659,89 @@ describe('repository-scoped server', () => {
     }
   });
 
+  it.each(['up-to-date', 'available', 'error', 'disabled'] as const)(
+    'rejects an install request when the updater is %s',
+    async (updateStatus) => {
+      const install = vi.fn(async () => undefined);
+      const status = () => ({ status: updateStatus, currentVersion: '0.2.12' });
+      const running = await startServer({
+        config,
+        repo: null,
+        template: DEFAULT_TEMPLATE,
+        workspaceRoot: null,
+        t3,
+        homeLoader: async () => home,
+        updater: { check: async () => status(), status, install },
+      });
+      try {
+        const response = await fetch(`${running.url}/api/updater/install`, {
+          method: 'POST',
+          headers: { origin: running.url },
+        });
+        expect(response.status).toBe(409);
+        await expect(response.json()).resolves.toEqual({
+          error: 'No update is ready to install.',
+        });
+        expect(install).not.toHaveBeenCalled();
+      } finally {
+        await new Promise<void>((resolve) =>
+          running.server.close(() => resolve()),
+        );
+      }
+    },
+  );
+
+  it('retains owner-validated installation for legacy services without a status callback', async () => {
+    const install = vi.fn(async () => undefined);
+    const running = await startServer({
+      config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3,
+      updater: { check: async () => ({ status: 'ready', currentVersion: '0.2.12' }), install },
+    });
+    try {
+      const response = await fetch(`${running.url}/api/updater/install`, {
+        method: 'POST', headers: { origin: running.url },
+      });
+      expect(response.status).toBe(200);
+      await vi.waitFor(() => expect(install).toHaveBeenCalledTimes(1));
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('consumes an asynchronous installation failure and keeps serving requests', async () => {
+    const install = vi.fn(async () => {
+      throw new Error('Restart preparation failed');
+    });
+    const status = () => ({
+      status: 'ready' as const,
+      currentVersion: '0.2.12',
+    });
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      homeLoader: async () => home,
+      updater: { check: async () => status(), status, install },
+    });
+    try {
+      const response = await fetch(`${running.url}/api/updater/install`, {
+        method: 'POST',
+        headers: { origin: running.url },
+      });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ installing: true });
+      await vi.waitFor(() => expect(install).toHaveBeenCalledTimes(1));
+      const readback = await fetch(`${running.url}/api/updater`);
+      expect(readback.status).toBe(200);
+    } finally {
+      await new Promise<void>((resolve) =>
+        running.server.close(() => resolve()),
+      );
+    }
+  });
+
   it('provides default updater when none configured', async () => {
     const running = await startServer({
       config,

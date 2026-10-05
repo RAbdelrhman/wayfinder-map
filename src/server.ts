@@ -177,7 +177,7 @@ export interface Following {
 }
 
 export interface UpdaterStatus {
-  status: 'up-to-date' | 'available' | 'downloading' | 'ready' | 'dev' | 'disabled' | 'error';
+  status: 'up-to-date' | 'available' | 'downloading' | 'ready' | 'installing' | 'dev' | 'disabled' | 'error';
   currentVersion: string;
   latestVersion?: string;
   releaseUrl?: string;
@@ -904,8 +904,14 @@ export async function startServer({
           json(response, 400, { error: 'Direct installation is only available in the desktop application.' });
           return;
         }
+        // Legacy install-only owners validate readiness themselves, as before status was exposed.
+        if (service.status && service.status().status !== 'ready') {
+          json(response, 409, { error: 'No update is ready to install.' });
+          return;
+        }
         json(response, 200, { installing: true });
-        void service.install();
+        // Installation closes this server, so acknowledge first and consume async failures.
+        void Promise.resolve().then(() => service.install?.()).catch(() => undefined);
         return;
       }
 

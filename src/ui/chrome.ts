@@ -108,7 +108,7 @@ export function bindTheme(button: HTMLElement): void {
 }
 
 export interface UpdaterStatus {
-  status: 'up-to-date' | 'available' | 'downloading' | 'ready' | 'dev' | 'disabled' | 'error';
+  status: 'up-to-date' | 'available' | 'downloading' | 'ready' | 'installing' | 'dev' | 'disabled' | 'error';
   currentVersion: string;
   latestVersion?: string;
   releaseUrl?: string;
@@ -118,6 +118,7 @@ export interface UpdaterStatus {
 /** The rail's updater button: checks for updates or restarts into a downloaded update. */
 export function bindUpdater(button: HTMLElement, showToast: (message: string, ms?: number) => void): void {
   let lastStatus: UpdaterStatus | null = null;
+  let installRequest = 0;
 
   function applyStatus(data: UpdaterStatus, manual: boolean): void {
     lastStatus = data;
@@ -128,6 +129,16 @@ export function bindUpdater(button: HTMLElement, showToast: (message: string, ms
       button.title = `Update to v${data.latestVersion ?? ''} ready — click to restart and install`;
       button.setAttribute('aria-label', button.title);
       if (manual) showToast(`Update ready: click to restart and install v${data.latestVersion ?? ''}`);
+      if (data.error) {
+        button.classList.add('is-error');
+        button.title = `Update failed: ${data.error}. Click to retry installing v${data.latestVersion ?? ''}`;
+        button.setAttribute('aria-label', button.title);
+        if (manual) showToast(button.title);
+      }
+    } else if (data.status === 'installing') {
+      button.classList.add('is-downloading');
+      button.title = 'Installing update...';
+      button.setAttribute('aria-label', button.title);
     } else if (data.status === 'available') {
       button.classList.add('is-available');
       button.title = `Update v${data.latestVersion ?? ''} is available`;
@@ -155,11 +166,30 @@ export function bindUpdater(button: HTMLElement, showToast: (message: string, ms
     }
   }
 
+  async function observeInstallation(request: number): Promise<void> {
+    // Successful restart closes the server. Observe preparation until it finishes or fails.
+    while (request === installRequest) {
+      const response = await fetch('/api/updater').catch(() => null);
+      if (!response?.ok) return;
+      const data = await response.json().catch(() => null) as UpdaterStatus | null;
+      if (!data || request !== installRequest) return;
+      if (data.status !== 'installing') {
+        applyStatus(data, Boolean(data.error));
+        return;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
   // Poll status quietly on load
+  const initialRequest = installRequest;
   void fetch('/api/updater')
     .then((r) => (r.ok ? (r.json() as Promise<UpdaterStatus>) : null))
     .then((data) => {
-      if (data) applyStatus(data, false);
+      if (data && initialRequest === installRequest) {
+        applyStatus(data, false);
+        if (data.status === 'installing') void observeInstallation(initialRequest);
+      }
     })
     .catch(() => {
       // Ignore background fetch errors
@@ -167,15 +197,27 @@ export function bindUpdater(button: HTMLElement, showToast: (message: string, ms
 
   // Clicking triggers a check or initiates restart
   button.addEventListener('click', () => {
+    if (lastStatus?.status === 'installing') return;
     if (lastStatus?.status === 'ready') {
-      button.classList.add('is-downloading');
+      const request = ++installRequest;
+      applyStatus({ status: 'installing', currentVersion: lastStatus.currentVersion }, false);
       showToast('Installing update...');
-      void fetch('/api/updater/install', { method: 'POST' }).catch(() => {
-        showToast('Failed to trigger update restart');
+      void (async () => {
+        const response = await fetch('/api/updater/install', { method: 'POST' });
+        if (!response.ok) {
+          const error = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(error.error ?? `HTTP ${String(response.status)}`);
+        }
+        await observeInstallation(request);
+      })().catch((error: unknown) => {
+        if (request !== installRequest) return;
+        const message = error instanceof Error ? error.message : String(error);
+        applyStatus({ status: 'error', currentVersion: lastStatus?.currentVersion ?? '...', error: message }, true);
       });
       return;
     }
 
+    const request = ++installRequest;
     button.classList.add('is-downloading');
     showToast('Checking for updates...');
 
@@ -188,9 +230,13 @@ export function bindUpdater(button: HTMLElement, showToast: (message: string, ms
         return r.json() as Promise<UpdaterStatus>;
       })
       .then((data) => {
-        applyStatus(data, true);
+        if (request === installRequest) {
+          applyStatus(data, true);
+          if (data.status === 'installing') void observeInstallation(request);
+        }
       })
       .catch((error: unknown) => {
+        if (request !== installRequest) return;
         const msg = error instanceof Error ? error.message : String(error);
         applyStatus({ status: 'error', currentVersion: '...', error: msg }, true);
       });
