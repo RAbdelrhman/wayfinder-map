@@ -177,7 +177,7 @@ export interface Following {
 }
 
 export interface UpdaterStatus {
-  status: 'up-to-date' | 'available' | 'downloading' | 'ready' | 'dev' | 'disabled' | 'error';
+  status: 'up-to-date' | 'available' | 'downloading' | 'ready' | 'installing' | 'dev' | 'disabled' | 'error';
   currentVersion: string;
   latestVersion?: string;
   releaseUrl?: string;

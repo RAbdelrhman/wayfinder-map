@@ -8,7 +8,7 @@ const RELEASES_URL = 'https://github.com/RAbdelrhman/wayfinder-map/releases';
 const DAILY = 24 * 60 * 60 * 1000;
 
 export interface UpdaterStatus {
-  status: 'up-to-date' | 'available' | 'downloading' | 'ready' | 'dev' | 'disabled' | 'error';
+  status: 'up-to-date' | 'available' | 'downloading' | 'ready' | 'installing' | 'dev' | 'disabled' | 'error';
   currentVersion: string;
   latestVersion?: string;
   releaseUrl?: string;
@@ -26,7 +26,8 @@ export interface DesktopUpdaterHandle {
 export interface UpdateOptions {
   window: BrowserWindow;
   enabled: boolean;
-  prepareForRestart: () => Promise<void>;
+  /** Optional reversible preparation. Runtime cleanup belongs to Electron's quit path. */
+  prepareForRestart?: () => Promise<void>;
 }
 
 export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateOptions): DesktopUpdaterHandle {
@@ -65,6 +66,7 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
   let cancelDownload: (() => void) | undefined;
   let timer: ReturnType<typeof setInterval> | undefined;
   let installation: Promise<void> | null = null;
+  let installing = false;
   const versionStatus = () => ({
     currentVersion: autoUpdater.currentVersion.version,
     releaseUrl: RELEASES_URL,
@@ -88,7 +90,7 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
 
   function setReleaseStatus(available: boolean, latestVersion: string): void {
     currentStatus = {
-      status: downloadedVersion ? 'ready' : available ? 'available' : 'up-to-date',
+      status: installing ? 'installing' : downloadedVersion ? 'ready' : available ? 'available' : 'up-to-date',
       ...versionStatus(),
       latestVersion: downloadedVersion ?? latestVersion,
     };
@@ -117,7 +119,7 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
     // BaseUpdater uses this uncoded error when its cached installer no longer exists.
     if (message === "No update filepath provided, can't quit and install") downloadedVersion = undefined;
     currentStatus = {
-      status: downloadedVersion ? 'ready' : 'error',
+      status: installing ? 'installing' : downloadedVersion ? 'ready' : 'error',
       ...versionStatus(),
       ...(downloadedVersion ? { latestVersion: downloadedVersion } : {}),
       error: message,
@@ -144,10 +146,11 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
       return Promise.reject(new Error('No update is ready to install.'));
     }
     const readyVersion = downloadedVersion;
+    installing = true;
     installation = (async () => {
       try {
         setReleaseStatus(true, readyVersion);
-        await prepareForRestart();
+        await prepareForRestart?.();
         if (stopped || window.isDestroyed()) return;
         const revision = errorRevision;
         autoUpdater.quitAndInstall(false, true);
@@ -157,10 +160,12 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
         }
         stop();
       } catch (error) {
+        installing = false;
         reportError(error);
         throw error;
       }
     })().finally(() => {
+      installing = false;
       installation = null;
     });
     return installation;
@@ -192,7 +197,7 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
   autoUpdater.on('error', reportError);
 
   const check = async (): Promise<UpdaterStatus> => {
-    if (stopped) return currentStatus;
+    if (stopped || installing) return currentStatus;
     const revision = errorRevision;
     try {
       const result = await autoUpdater.checkForUpdates();
