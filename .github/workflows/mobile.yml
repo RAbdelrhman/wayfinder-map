@@ -1,0 +1,62 @@
+name: Mobile
+
+# Checks the Expo app in mobile/ and the desktop code it shares from src/.
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - 'src/**'
+      - '.github/workflows/mobile.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - 'src/**'
+      - '.github/workflows/mobile.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  mobile:
+    name: Mobile typecheck, test and bundle
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.1.0
+
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run test
+      # Proves Metro resolves the shared code in ../src for both platforms.
+      - run: bun run check:bundle
+
+  desktop:
+    name: Desktop typecheck and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.1.0
+
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run typecheck
+      - run: bun run test
+      - run: bun run build
