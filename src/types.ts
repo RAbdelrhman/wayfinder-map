@@ -174,6 +174,8 @@ export interface Prototype {
   openable: string[];
   /** The page to show running, or null when nothing on the branch can run on its own. */
   preview: string | null;
+  /** Independent canvas boards discovered on this branch, each with its own URL. */
+  canvases?: string[];
   /** The closed ticket's last comment, which the wayfinder flow writes as its answer. Null while open. */
   verdict: string | null;
   /** The variants its canvas lays out side by side, named as the canvas names them. */

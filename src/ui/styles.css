@@ -2437,6 +2437,14 @@ textarea.input {
   color: var(--text-muted);
 }
 
+.proto-canvas-links {
+  flex-wrap: wrap;
+}
+
+.proto-canvas-links a {
+  overflow-wrap: anywhere;
+}
+
 .proto-tile-foot a,
 .proto-tile-foot .linkish {
   color: var(--text-secondary);

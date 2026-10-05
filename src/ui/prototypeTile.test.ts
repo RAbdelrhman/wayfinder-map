@@ -33,6 +33,14 @@ describe('verdictGist', () => {
 });
 
 describe('prototypeTileHtml', () => {
+  it('links every independent board without changing the primary sandboxed preview', () => {
+    const canvases = ['prototypes/canvas/index.html', 'prototypes/8-home/index.html'];
+    const html = prototypeTileHtml('octo/one', { ...base, canvases, preview: canvases[1] ?? null }, { eyebrow: '#8', title: 'Home page' });
+    for (const board of canvases) expect(html).toContain(`href="/proto/octo/one/prototype%2F8-home/${board}"`);
+    expect(html).toContain('aria-label="Canvases for #8"');
+    expect(html).toContain('sandbox="allow-scripts"');
+    expect(html).not.toContain('allow-same-origin');
+  });
   it('shows the prototype running, sandboxed, and opens it full size', () => {
     const html = prototypeTileHtml('octo/one', base, { eyebrow: '#8', title: 'Home page' });
     const url = previewUrl('octo/one', base);

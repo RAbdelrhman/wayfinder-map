@@ -194,11 +194,19 @@ When you capture the prototype, commit it to the branch {{prototypeBranch}}
 and push it. That exact name is how wayfinder-map finds it later, so do not
 pick another. When the question is visual or UX, build the prototype as a
 design canvas: a board showing the options side by side (pages, styles,
-components, palettes, moodboards) with a note on each. If the repo already
-has prototypes/canvas, build on it. If not, and you have the design-canvas
-skill, run node ~/.claude/skills/design-canvas/scaffold.mjs. Either way,
-follow prototypes/canvas/README.md, and make node
-prototypes/canvas/tools/check.mjs pass before you show the user.
+components, palettes, moodboards) with a note on each. This ticket's canvas
+directory is {{canvasDirectory}}. Create a fresh canvas there; never append
+this ticket's options to an unrelated canvas, including prototypes/canvas.
+If the directory already exists, inspect its config.js and continue there only
+when it belongs to this ticket. Preserve its earlier rounds and options.
+If the repo provides canvas:create, run bun run canvas:create {{ticketSlug}}
+--ticket {{ticketNumber}}. Otherwise, use the design-canvas skill with an
+explicit directory: node ~/.claude/skills/design-canvas/scaffold.mjs
+{{canvasDirectory}}. Set config.js ticket to {{ticketNumber}}.
+Follow {{canvasDirectory}}/README.md, and make node
+{{canvasDirectory}}/tools/check.mjs pass before you show the user.
+Inspect the running canvas, then provide its exact link and visible preview
+BEFORE asking the user to choose. Ask one product decision at a time.
 wayfinder-map opens a canvas (an index.html with its config.js beside it)
 before any other file. For any other prototype, commit
 prototype-snapshot.html at the branch root: the prototype as one HTML file
@@ -256,6 +264,12 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
       ? `\nBlocked by: ${ticket.openBlockers.map((number) => `#${number}`).join(', ')}`
       : '';
   const slug = ticketSlug(ticket);
+  const prototypeValues = {
+    prototypeBranch: prototypeBranch(ticket),
+    canvasDirectory: `prototypes/${slug}`,
+    ticketSlug: slug,
+    ticketNumber: String(ticket.number),
+  };
   const typeSteps = ticket.type ? TYPE_STEPS[ticket.type] : undefined;
   const branchName = worktree?.branch ?? ticketBranch(ticket);
   const worktreeValues = {
@@ -287,17 +301,15 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
   return renderTemplate(chosenTemplate, {
     repo,
     ...mapValues,
-    ticketNumber: String(ticket.number),
     ticketTitle: ticket.title,
     ticketType: ticket.type ?? 'untyped',
     ticketState: STATE_WORDS[ticket.state],
     ticketUrl: ticket.url,
     ticketBody: indent(ticket.body),
-    ticketSlug: slug,
     ...worktreeValues,
     worktreeSteps: renderTemplate(worktree ? PREPARED_WORKTREE_STEPS : WORKTREE_STEPS, worktreeValues),
-    prototypeBranch: prototypeBranch(ticket),
-    typeSteps: typeSteps ? `\n${renderTemplate(typeSteps, { prototypeBranch: prototypeBranch(ticket) })}\n` : '',
+    ...prototypeValues,
+    typeSteps: typeSteps ? `\n${renderTemplate(typeSteps, prototypeValues)}\n` : '',
     mapRules: MAP_RULES,
     blockedLine,
   }).trim();

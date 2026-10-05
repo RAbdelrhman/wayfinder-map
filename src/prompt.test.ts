@@ -105,6 +105,19 @@ describe('buildPrompt', () => {
     expect(buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'task' } })).not.toContain('design canvas');
   });
 
+  it('gives each ticket its own canvas and shares a preview before asking for a choice', () => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
+    expect(prompt).toContain('directory is prototypes/11-retire-api-agents-once-nothing-needs-it');
+    expect(prompt).toContain('never append');
+    expect(prompt).toContain('--ticket 11');
+    expect(prompt).toContain('Set config.js ticket to 11');
+    expect(prompt).toContain('BEFORE asking the user to choose');
+    expect(prompt).not.toContain('has prototypes/canvas, build on it');
+    expect(prompt).not.toContain('{{canvasDirectory}}');
+    const other = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, number: 12, type: 'prototype' } });
+    expect(other).toContain('directory is prototypes/12-retire-api-agents-once-nothing-needs-it');
+  });
+
   it('keeps variant feedback, remix lineage, and review checks in the prototype workflow', () => {
     const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
     expect(prompt).toContain('Keep, Change, or Combine');
