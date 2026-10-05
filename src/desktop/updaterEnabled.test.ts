@@ -476,11 +476,15 @@ describe('enabled desktop updates', () => {
       });
       const nativeFetch = globalThis.fetch;
       let statusReads = 0;
+      let stoppedPolls = 0;
       const apiFetch: typeof fetch = (input, init) => {
         if (String(input) === '/api/updater') statusReads += 1;
         return nativeFetch(new URL(String(input), running.url), {
           ...init,
           headers: { origin: running.url, ...init?.headers },
+        }).catch((error: unknown) => {
+          if (String(input) === '/api/updater') stoppedPolls += 1;
+          throw error;
         });
       };
       try {
@@ -501,6 +505,7 @@ describe('enabled desktop updates', () => {
         };
         vi.stubGlobal('fetch', apiFetch);
         bindUpdater(button as unknown as HTMLElement, vi.fn());
+        let reloadedButton: typeof button | undefined;
         await vi.waitFor(() => expect(classes.has('is-ready')).toBe(true));
         if (failure === 'not-ready') {
           updater.emit('update-available', { version: '1.2.5' });
@@ -523,6 +528,9 @@ describe('enabled desktop updates', () => {
           click?.();
           expect(prepareForRestart).toHaveBeenCalledTimes(1);
           expect(mocks.checkForUpdates).toHaveBeenCalledTimes(checks);
+          reloadedButton = { ...button, title: '', addEventListener: vi.fn() };
+          bindUpdater(reloadedButton as unknown as HTMLElement, vi.fn());
+          await vi.waitFor(() => expect(reloadedButton?.title).toBe('Installing update...'));
           releasePreparation?.();
         }
         await vi.waitFor(() => expect(button.title).toContain(message));
@@ -530,6 +538,9 @@ describe('enabled desktop updates', () => {
         expect(classes.has('is-error')).toBe(true);
         expect(classes.has('is-downloading')).toBe(false);
         expect(button.title).toContain('Click to retry');
+        if (reloadedButton) {
+          await vi.waitFor(() => expect(reloadedButton?.title).toContain(message));
+        }
         const status = await apiFetch('/api/updater');
         await expect(status.json()).resolves.toMatchObject({ status: 'ready', latestVersion: '1.2.4', error: message });
         const attemptsBeforeRetry = mocks.quitAndInstall.mock.calls.length;
@@ -538,9 +549,14 @@ describe('enabled desktop updates', () => {
         expect(handle.status().status).toBe('installing');
       } finally {
         releasePreparation?.();
-        vi.unstubAllGlobals();
         handle.stop();
         await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        if (failure !== 'not-ready') {
+          // Complete this case's readback before a later test can replace global fetch.
+          // The reloaded page's first observer already ended when preparation failed.
+          await vi.waitFor(() => expect(stoppedPolls).toBe(1));
+        }
+        vi.unstubAllGlobals();
       }
     },
     10_000,

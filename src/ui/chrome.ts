@@ -166,12 +166,30 @@ export function bindUpdater(button: HTMLElement, showToast: (message: string, ms
     }
   }
 
+  async function observeInstallation(request: number): Promise<void> {
+    // Successful restart closes the server. Observe preparation until it finishes or fails.
+    while (request === installRequest) {
+      const response = await fetch('/api/updater').catch(() => null);
+      if (!response?.ok) return;
+      const data = await response.json().catch(() => null) as UpdaterStatus | null;
+      if (!data || request !== installRequest) return;
+      if (data.status !== 'installing') {
+        applyStatus(data, Boolean(data.error));
+        return;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
   // Poll status quietly on load
   const initialRequest = installRequest;
   void fetch('/api/updater')
     .then((r) => (r.ok ? (r.json() as Promise<UpdaterStatus>) : null))
     .then((data) => {
-      if (data && initialRequest === installRequest) applyStatus(data, false);
+      if (data && initialRequest === installRequest) {
+        applyStatus(data, false);
+        if (data.status === 'installing') void observeInstallation(initialRequest);
+      }
     })
     .catch(() => {
       // Ignore background fetch errors
@@ -190,19 +208,7 @@ export function bindUpdater(button: HTMLElement, showToast: (message: string, ms
           const error = (await response.json().catch(() => ({}))) as { error?: string };
           throw new Error(error.error ?? `HTTP ${String(response.status)}`);
         }
-        // Successful restart closes the server. Observe preparation until it finishes or fails.
-        while (request === installRequest) {
-          const statusResponse = await fetch('/api/updater').catch(() => null);
-          if (!statusResponse?.ok) return;
-          const data = await statusResponse.json().catch(() => null) as UpdaterStatus | null;
-          if (!data) return;
-          if (request !== installRequest) return;
-          if (data.status !== 'installing') {
-            applyStatus(data, Boolean(data.error));
-            return;
-          }
-          await new Promise<void>((resolve) => setTimeout(resolve, 250));
-        }
+        await observeInstallation(request);
       })().catch((error: unknown) => {
         if (request !== installRequest) return;
         const message = error instanceof Error ? error.message : String(error);
@@ -224,7 +230,10 @@ export function bindUpdater(button: HTMLElement, showToast: (message: string, ms
         return r.json() as Promise<UpdaterStatus>;
       })
       .then((data) => {
-        if (request === installRequest) applyStatus(data, true);
+        if (request === installRequest) {
+          applyStatus(data, true);
+          if (data.status === 'installing') void observeInstallation(request);
+        }
       })
       .catch((error: unknown) => {
         if (request !== installRequest) return;
