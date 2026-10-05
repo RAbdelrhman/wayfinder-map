@@ -413,6 +413,38 @@ describe('AutoMapService', () => {
   });
 
   describe('when the start fails', () => {
+    it('persists and announces every invalidated event after a transient notice save failure', async () => {
+      const store = memoryAutoMapStore();
+      const save = vi.spyOn(store, 'save');
+      const h = harness({ store, batchMs: 400 });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      h.emit(next(11));
+      h.emit(next(12));
+      await h.service.change('octo/one', 5, { op: 'tier', tier: 'hard' });
+      save.mockRejectedValueOnce(new Error('Temporary file contention'));
+      await h.service.flush();
+      expect(h.submits).toEqual([]);
+      expect((await store.load()).notices.map((notice) => notice.ticketNumber).sort()).toEqual([11, 12]);
+      expect(h.desktop.map((notice) => notice.ticketNumber).sort()).toEqual([11, 12]);
+      h.service.close();
+    });
+
+    it('attempts every ready notice when persistent storage failure exhausts retries', async () => {
+      const store = memoryAutoMapStore();
+      const save = vi.spyOn(store, 'save');
+      const h = harness({ store, batchMs: 400 });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      h.emit(next(11));
+      h.emit(next(12));
+      await h.service.change('octo/one', 5, { op: 'tier', tier: 'hard' });
+      save.mockClear().mockRejectedValue(new Error('Storage unavailable'));
+      await expect(h.service.flush()).rejects.toThrow('Could not save ready notifications');
+      expect(save).toHaveBeenCalledTimes(6);
+      expect(h.service.view().notices.map((notice) => notice.ticketNumber).sort()).toEqual([11, 12]);
+      expect(h.desktop).toEqual([]);
+      h.service.close();
+    });
+
     it('leaves the ordinary "ready" notice in the inbox and shows it as an OS notification', async () => {
       const h = harness();
       h.reply.ok = false;

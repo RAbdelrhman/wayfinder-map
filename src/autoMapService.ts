@@ -214,7 +214,7 @@ export class AutoMapService {
     this.entries.set(id, { ...entry, setting: turnedOff(entry.setting) });
     this.limits.set(id, { message: stop.message, resetsAt: stop.resetsAt });
     this.unwatch(id);
-    await this.persistUsageStop();
+    await this.persistWithRetry();
     if (this.closed) return;
     const item = batch.items.find((candidate) => candidate.ticketNumber === stop.ticketNumber) ?? batch.items[0];
     if (item === undefined) return;
@@ -306,18 +306,24 @@ export class AutoMapService {
     }
     if (this.closed) return;
     // The ticket goes back to the ordinary "ready" notification, so a start that failed is not silent.
+    const errors: unknown[] = [];
     for (const event of events) {
-      await this.publish({
-        id: `map:${event.repo.toLowerCase()}#${String(event.mapNumber)}:${String(event.id)}:${event.at}`,
-        kind: 'unblocked',
-        repo: event.repo,
-        mapNumber: event.mapNumber,
-        mapTitle: map?.title ?? `Map #${String(event.mapNumber)}`,
-        ticketNumber: event.ticket.number,
-        ticketTitle: event.ticket.title,
-        createdAt: event.at,
-      });
+      try {
+        await this.publish({
+          id: `map:${event.repo.toLowerCase()}#${String(event.mapNumber)}:${String(event.id)}:${event.at}`,
+          kind: 'unblocked',
+          repo: event.repo,
+          mapNumber: event.mapNumber,
+          mapTitle: map?.title ?? `Map #${String(event.mapNumber)}`,
+          ticketNumber: event.ticket.number,
+          ticketTitle: event.ticket.title,
+          createdAt: event.at,
+        });
+      } catch (error) {
+        errors.push(error);
+      }
     }
+    if (errors.length > 0) throw new AggregateError(errors, 'Could not save ready notifications.');
   }
 
   /** What each ticket starts on: the map's tier, or for Auto the tier and model it rates the ticket to. Auto runs on Mid when it cannot rate. */
@@ -381,10 +387,10 @@ export class AutoMapService {
 
   /** Put a notice where the page's inbox will find it, and show it as an OS notification in the desktop app. */
   private async publish(notice: AutoMapNotice): Promise<void> {
-    if (!(await this.deps.notificationOn(notice.kind).catch(() => true)) || this.notices.some((existing) => existing.id === notice.id)) return;
+    if (this.closed || !(await this.deps.notificationOn(notice.kind).catch(() => true)) || this.closed || this.notices.some((existing) => existing.id === notice.id)) return;
     this.notices = this.fresh([notice, ...this.notices]);
-    await this.persist();
-    this.deps.desktop?.(desktopNotificationOf(notice));
+    await this.persistWithRetry();
+    if (!this.closed) this.deps.desktop?.(desktopNotificationOf(notice));
   }
 
   private fresh(notices: readonly AutoMapNotice[]): AutoMapNotice[] {
@@ -392,8 +398,8 @@ export class AutoMapService {
     return notices.filter((notice) => Date.parse(notice.createdAt) >= oldest).slice(0, NOTICE_LIMIT);
   }
 
-  /** A transient failed save must not leave Auto enabled on disk after a usage stop. */
-  private async persistUsageStop(): Promise<void> {
+  /** Retry transient writes for usage shutdowns and ready notices without losing current state. */
+  private async persistWithRetry(): Promise<void> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         // Capture current state on every attempt, preserving a concurrent settings change.
