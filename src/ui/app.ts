@@ -192,7 +192,7 @@ let previousHandOffRecords: readonly HandOffStatusDto[] | null = null;
 const mapEventInbox = mountMapEventInbox((event) => {
   if (snapshot === null) pendingMapEvents.push(event);
   else void receiveMapEvent(event);
-});
+}, notificationInbox);
 let handOffRecords: readonly HandOffStatusDto[] = [];
 let handOffVisualKey = '';
 let notificationSettingsChanged = false;
@@ -279,6 +279,7 @@ handOffSurface.subscribe((records) => {
   previousHandOffRecords = records;
   notifyHandOffTransitions(previous ?? [], records);
   handOffRecords = records;
+  notificationInbox.reconcileHandOffs(records);
   const key = handOffVisualSignature(records);
   if (key === handOffVisualKey) return;
   handOffVisualKey = key;

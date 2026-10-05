@@ -3,10 +3,10 @@ import { prototypeTicketNumber } from '../prototypes.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import type { MapEvent } from '../mapWatch.js';
 import type { DesktopNotification, NotificationKind } from '../notificationTypes.js';
-import type { Prototype, WayfinderMap } from '../types.js';
+import type { MapSnapshot, Prototype, WayfinderMap } from '../types.js';
 import { escapeHtml } from './markdown.js';
-import { paintIcons } from './chrome.js';
 
+export const NOTIFICATIONS_CHANGED = 'wayfinder:notifications-changed';
 export const NOTIFICATIONS_KEY = 'wayfinder-map:notifications';
 const NOTIFICATION_LIMIT = 100;
 
@@ -20,6 +20,7 @@ export interface InboxNotification {
   ticketTitle: string;
   createdAt: string;
   read: boolean;
+  resolved?: boolean;
 }
 
 export type NewInboxNotification = Omit<InboxNotification, 'read'>;
@@ -30,7 +31,7 @@ export interface UnblockedTicket {
   type: string | null;
 }
 
-const KIND_LABEL: Record<NotificationKind, string> = {
+export const KIND_LABEL: Record<NotificationKind, string> = {
   unblocked: 'Ready to start',
   threadWaiting: 'T3 Code needs you',
   failingCi: 'CI is failing',
@@ -192,6 +193,8 @@ function isInboxNotification(value: unknown): value is InboxNotification {
 
 export class NotificationInbox {
   private items: InboxNotification[];
+  private snapshots = new Map<string, Pick<MapSnapshot, 'repo' | 'maps'>>();
+  private handOffs: readonly HandOffStatusDto[] | null = null;
 
   constructor(private readonly storage: Pick<Storage, 'getItem' | 'setItem'>) {
     this.items = this.read();
@@ -207,7 +210,9 @@ export class NotificationInbox {
 
   push(notification: NewInboxNotification): boolean {
     if (this.items.some((item) => item.id === notification.id)) return false;
-    this.items = [{ ...notification, read: false }, ...this.items].slice(0, NOTIFICATION_LIMIT);
+    const item: InboxNotification = { ...notification, read: false };
+    item.resolved = this.isHandled(item);
+    this.items = [item, ...this.items].slice(0, NOTIFICATION_LIMIT);
     this.write();
     return true;
   }
@@ -216,6 +221,74 @@ export class NotificationInbox {
     if (this.items.every((item) => item.read)) return;
     this.items = this.items.map((item) => ({ ...item, read: true }));
     this.write();
+  }
+
+  clearActivity(): void {
+    this.items = this.items.map((item) => item.kind === 'unblocked' ? { ...item, read: true } : item);
+    this.write();
+  }
+
+  refresh(): void {
+    this.items = this.read();
+    this.reconcile();
+  }
+
+  reconcileSnapshot(snapshot: Pick<MapSnapshot, 'repo' | 'maps'>): void {
+    this.snapshots.set(snapshot.repo.toLowerCase(), snapshot);
+    this.reconcile();
+  }
+
+  reconcileHandOffs(records: readonly HandOffStatusDto[]): void {
+    this.handOffs = records;
+    this.reconcile();
+  }
+
+  reconcileEvent(event: MapEvent): void {
+    const snapshot = this.snapshots.get(event.repo.toLowerCase());
+    if (snapshot !== undefined) {
+      this.snapshots.set(event.repo.toLowerCase(), { ...snapshot, maps: snapshot.maps.map((map) => {
+        if (map.number !== event.mapNumber) return map;
+        if (event.type === 'ticket-closed') return { ...map, tickets: map.tickets.map((ticket) => ticket.number === event.ticket.number ? { ...ticket, open: false } : ticket) };
+        if ('pullRequest' in event) return { ...map, pullRequests: [...map.pullRequests.filter((pr) => pr.ticket !== event.ticket.number), { ...event.pullRequest, ticket: event.ticket.number }] };
+        return map;
+      }) });
+    }
+    this.items = this.items.map((item) => {
+      if (item.repo.toLowerCase() !== event.repo.toLowerCase() || item.mapNumber !== event.mapNumber || item.ticketNumber !== event.ticket.number) return item;
+      const handled = event.type === 'ticket-closed' ||
+        (item.kind === 'failingCi' && 'pullRequest' in event && event.pullRequest.checks !== null && event.pullRequest.checks !== 'failing') ||
+        (item.kind === 'reviewReady' && 'pullRequest' in event && !reviewIsReady(event.pullRequest));
+      return handled ? { ...item, resolved: true } : item;
+    });
+    this.write();
+  }
+
+  private reconcile(): void {
+    this.items = this.items.map((item) => item.resolved === true || !this.isHandled(item) ? item : { ...item, resolved: true });
+    this.write();
+  }
+
+  private isHandled(item: InboxNotification): boolean {
+    const snapshot = this.snapshots.get(item.repo.toLowerCase());
+    if (snapshot !== undefined) {
+      const map = snapshot.maps.find((candidate) => candidate.number === item.mapNumber);
+      if (map === undefined || !map.open) return true;
+      if (map.ticketsLoaded) {
+        const ticket = [...map.tickets, ...map.outside].find((candidate) => candidate.number === item.ticketNumber);
+        if (ticket === undefined || !ticket.open) return true;
+        if (item.kind === 'stalled') return !map.stalled.some((stall) => stall.ticket === item.ticketNumber);
+        const pr = map.pullRequests.find((candidate) => candidate.ticket === item.ticketNumber);
+        if (item.kind === 'failingCi') return pr === undefined || pr.state !== 'open' || (pr.checks !== null && pr.checks !== 'failing');
+        if (item.kind === 'reviewReady') return pr === undefined || pr.state !== 'open' || pr.draft === true || (pr.review !== null && pr.review !== 'review_required') || (pr.checks !== null && pr.checks !== 'passing');
+      }
+    }
+    if (this.handOffs !== null && (item.kind === 'threadWaiting' || item.kind === 'handOffError')) {
+      const records = this.handOffs.filter((record) => record.repo.toLowerCase() === item.repo.toLowerCase() && record.mapNumber === item.mapNumber && record.ticketNumber === item.ticketNumber);
+      return !records.some((record) => !record.ticketClosed && (item.kind === 'threadWaiting'
+        ? record.pendingApproval || record.pendingUserInput || record.status === 'waiting'
+        : record.status === 'failed'));
+    }
+    return false;
   }
 
   private read(): InboxNotification[] {
@@ -240,25 +313,6 @@ export function notificationHref(notification: Pick<InboxNotification, 'repo' | 
   return mapPath(notification.repo, notification.mapNumber) + '?view=map&ticket=' + String(notification.ticketNumber);
 }
 
-export function notificationPanelHtml(items: readonly InboxNotification[]): string {
-  if (items.length === 0) return '<p class="notification-empty">No notifications yet.</p>';
-  return '<ol class="notification-items">' + items.map((item) => {
-    const href = notificationHref(item);
-    const description = '#' + String(item.ticketNumber) + ' ' + item.ticketTitle;
-    return '<li><a class="notification-item' + (item.read ? '' : ' is-unread') +
-      '" href="' + escapeHtml(href) + '"><span class="notification-kind">' + escapeHtml(KIND_LABEL[item.kind]) +
-      '</span><strong>' + escapeHtml(description) + '</strong><span class="notification-context">' +
-      escapeHtml(item.repo + ' · Map #' + String(item.mapNumber) + ' ' + item.mapTitle) +
-      '</span><time datetime="' + escapeHtml(item.createdAt) + '">' + escapeHtml(notificationTime(item.createdAt)) +
-      '</time></a></li>';
-  }).join('') + '</ol>';
-}
-
-function notificationTime(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(date);
-}
-
 export function desktopNotificationFor(
   notification: InboxNotification,
 ): DesktopNotification {
@@ -276,6 +330,10 @@ export interface NotificationInboxController {
   push: (notification: NewInboxNotification) => boolean;
   list: () => readonly InboxNotification[];
   unreadCount: () => number;
+  clearActivity: () => void;
+  reconcileSnapshot: (snapshot: Pick<MapSnapshot, 'repo' | 'maps'>) => void;
+  reconcileHandOffs: (records: readonly HandOffStatusDto[]) => void;
+  reconcileEvent: (event: MapEvent) => void;
 }
 
 export interface UnblockedNoticeController {
@@ -351,56 +409,18 @@ export function mountUnblockedNotice(
 }
 
 export function mountNotificationInbox(): NotificationInboxController {
-  const trigger = document.getElementById('notification-trigger');
-  const panel = document.getElementById('notification-panel');
-  const body = document.getElementById('notification-body');
-  const badge = document.getElementById('notification-count');
-  if (!(trigger instanceof HTMLButtonElement) || !(panel instanceof HTMLElement) || !(body instanceof HTMLElement) || !(badge instanceof HTMLElement)) {
-    throw new Error('Missing notification inbox controls.');
-  }
   const inbox = new NotificationInbox(localStorage);
-  const draw = (): void => {
-    body.innerHTML = notificationPanelHtml(inbox.list());
-    const unread = inbox.unreadCount();
-    badge.textContent = unread > 99 ? '99+' : String(unread);
-    badge.hidden = unread === 0;
-    trigger.setAttribute('aria-label', unread === 0 ? 'Notifications' : 'Notifications, ' + String(unread) + ' unread');
-    paintIcons(body);
-  };
-  const close = (): void => {
-    panel.hidden = true;
-    trigger.setAttribute('aria-expanded', 'false');
-  };
-  trigger.addEventListener('click', () => {
-    const opening = panel.hidden;
-    panel.hidden = !opening;
-    trigger.setAttribute('aria-expanded', String(opening));
-    if (!opening) return;
-    inbox.markAllRead();
-    draw();
-    void fetch('/api/desktop/notifications/read', { method: 'POST' }).catch(() => undefined);
+  const changed = (): void => { document.dispatchEvent(new Event(NOTIFICATIONS_CHANGED)); };
+  window.addEventListener('storage', (event) => {
+    if (event.key === NOTIFICATIONS_KEY) { inbox.refresh(); changed(); }
   });
-  panel.addEventListener('click', (event) => {
-    const target = event.target;
-    if (target instanceof Element && target.closest('[data-notification-close]')) close();
-  });
-  document.addEventListener('click', (event) => {
-    if (!panel.hidden && event.target instanceof Node && !panel.contains(event.target) && !trigger.contains(event.target)) close();
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !panel.hidden) {
-      close();
-      trigger.focus();
-    }
-  });
-  draw();
   return {
-    push(notification) {
-      const added = inbox.push(notification);
-      if (added) draw();
-      return added;
-    },
+    push(notification) { const added = inbox.push(notification); if (added) changed(); return added; },
     list: () => inbox.list(),
     unreadCount: () => inbox.unreadCount(),
+    clearActivity() { inbox.clearActivity(); changed(); },
+    reconcileSnapshot(snapshot) { inbox.reconcileSnapshot(snapshot); changed(); },
+    reconcileHandOffs(records) { inbox.reconcileHandOffs(records); changed(); },
+    reconcileEvent(event) { inbox.reconcileEvent(event); changed(); },
   };
 }

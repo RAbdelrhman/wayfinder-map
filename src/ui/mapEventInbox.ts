@@ -4,6 +4,10 @@ import type { MapSnapshot } from '../types.js';
 import { escapeHtml } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
+import { NOTIFICATIONS_CHANGED } from './notifications.js';
+import type { NotificationInboxController } from './notifications.js';
+import { filterInbox, inboxCounts, mergeInbox, notificationRowHtml } from './unifiedInbox.js';
+import type { InboxFilter } from './unifiedInbox.js';
 
 export const MAP_WATCH_SET_KEY = 'wayfinder-map:opened-map-watch-set:v1';
 export const MAP_EVENT_INBOX_KEY = 'wayfinder-map:event-inbox:v1';
@@ -145,6 +149,7 @@ export class MapEventInbox {
     private readonly createStream: MapEventStreamFactory = (url) => new EventSource(url),
     private readonly fetcher: typeof fetch = fetch,
     private readonly onChange: () => void = () => undefined,
+    private readonly onSnapshot: (snapshot: Pick<MapSnapshot, 'repo' | 'maps'>) => void = () => undefined,
   ) {
     this.watches = readMapWatchSet(storage);
   }
@@ -169,6 +174,7 @@ export class MapEventInbox {
   }
 
   reconcileSnapshot(snapshot: Pick<MapSnapshot, 'repo' | 'maps'>): void {
+    this.onSnapshot(snapshot);
     const active = new Set(snapshot.maps.filter((map) => map.open && map.settled === null).map((map) => map.number));
     const removed = this.watches.filter((watch) => watch.repo.toLowerCase() === snapshot.repo.toLowerCase() && !active.has(watch.mapNumber));
     if (removed.length === 0) return;
@@ -280,29 +286,38 @@ function watchKey(repo: string, mapNumber: number): string {
   return `${repo.toLowerCase()}#${String(mapNumber)}`;
 }
 
-function renderInbox(root: HTMLElement, inbox: MapEventInbox, trigger: HTMLButtonElement, panel: HTMLElement): void {
+function renderInbox(root: HTMLElement, notifications: NotificationInboxController, filter: InboxFilter, trigger: HTMLButtonElement, panel: HTMLElement): void {
   const body = root.querySelector<HTMLElement>('#map-inbox-body');
   const count = root.querySelector<HTMLElement>('#map-inbox-count');
   const summary = root.querySelector<HTMLElement>('#map-inbox-summary');
   if (body === null || count === null || summary === null) return;
-  const events = readMapInboxEvents(localStorage);
+  const rows = mergeInbox(readMapInboxEvents(localStorage), notifications.list());
+  const counts = inboxCounts(rows);
+  const visible = filterInbox(rows, filter);
   const scrollTop = body.scrollTop;
   const focused = body.contains(document.activeElement) && document.activeElement instanceof HTMLElement
     ? document.activeElement.getAttribute('data-map-inbox-event')
     : null;
-  body.innerHTML = events.length === 0
-    ? '<p class="map-inbox-empty">No map changes yet.</p>'
-    : events.map(mapInboxItemHtml).join('');
+  body.innerHTML = visible.length === 0
+    ? `<p class="map-inbox-empty">${filter === 'needs' ? 'Nothing needs you.' : 'Nothing yet on maps you have opened.'}</p>`
+    : visible.map((row) => row.type === 'activity' ? mapInboxItemHtml(row.event) : notificationRowHtml(row.notification)).join('');
   body.scrollTop = scrollTop;
   if (focused !== null) body.querySelector<HTMLElement>(`[data-map-inbox-event="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
-  count.textContent = events.length > 99 ? '99+' : String(events.length);
-  count.hidden = events.length === 0;
-  summary.textContent = events.length === 0 ? 'Changes on maps you have opened' : `${String(events.length)} saved change${events.length === 1 ? '' : 's'}`;
-  trigger.setAttribute('aria-label', events.length === 0 ? 'Map activity inbox, empty' : `Map activity inbox, ${String(events.length)} changes`);
+  count.textContent = counts.total > 99 ? '99+' : String(counts.total);
+  count.hidden = counts.total === 0;
+  summary.textContent = counts.summary;
+  trigger.setAttribute('aria-label', counts.accessibleName);
+  const needsCount = root.querySelector<HTMLElement>('#map-inbox-needs-count');
+  if (needsCount !== null) { needsCount.textContent = String(counts.needs); needsCount.hidden = counts.needs === 0; }
+  for (const chip of root.querySelectorAll<HTMLButtonElement>('[data-inbox-filter]')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.inboxFilter === filter));
+  }
+  const clear = root.querySelector<HTMLButtonElement>('#map-inbox-clear');
+  if (clear !== null) clear.hidden = counts.activity === 0;
   trigger.setAttribute('aria-expanded', String(!panel.hidden));
 }
 
-export function mountMapEventInbox(onEvent?: (event: MapEvent) => void): MapEventInbox {
+export function mountMapEventInbox(onEvent: ((event: MapEvent) => void) | undefined, notifications: NotificationInboxController): MapEventInbox {
   const root = document.getElementById('map-inbox-anchor');
   const trigger = document.getElementById('map-inbox-trigger');
   const panel = document.getElementById('map-inbox-list');
@@ -313,17 +328,31 @@ export function mountMapEventInbox(onEvent?: (event: MapEvent) => void): MapEven
     empty.start();
     return empty;
   }
-  const inbox = new MapEventInbox(localStorage, undefined, undefined, () => renderInbox(root, inbox, trigger, panel));
+  let filter: InboxFilter = 'all';
+  const draw = (): void => renderInbox(root, notifications, filter, trigger, panel);
+  const inbox = new MapEventInbox(localStorage, undefined, undefined, draw, (snapshot) => notifications.reconcileSnapshot(snapshot));
+  inbox.subscribe((event) => notifications.reconcileEvent(event));
+  document.addEventListener(NOTIFICATIONS_CHANGED, draw);
+  root.addEventListener('click', (event) => {
+    if (!(event.target instanceof Element)) return;
+    const chip = event.target.closest<HTMLButtonElement>('[data-inbox-filter]');
+    if (chip === null) return;
+    filter = chip.dataset.inboxFilter === 'needs' ? 'needs' : 'all';
+    draw();
+  });
   if (onEvent !== undefined) inbox.subscribe(onEvent);
   const setOpen = (open: boolean, returnFocus = false): void => {
     panel.hidden = !open;
     trigger.setAttribute('aria-expanded', String(open));
-    if (open) close.focus();
+    if (open) {
+      close.focus();
+      void fetch('/api/desktop/notifications/read', { method: 'POST' }).catch(() => undefined);
+    }
     else if (returnFocus) trigger.focus();
   };
   trigger.addEventListener('click', () => setOpen(panel.hidden));
   close.addEventListener('click', () => setOpen(false, true));
-  clear.addEventListener('click', () => inbox.clear());
+  clear.addEventListener('click', () => { inbox.clear(); notifications.clearActivity(); });
   document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -341,8 +370,8 @@ export function mountMapEventInbox(onEvent?: (event: MapEvent) => void): MapEven
   });
   window.addEventListener('pagehide', () => inbox.close(), { once: true });
   inbox.start();
-  renderInbox(root, inbox, trigger, panel);
-  const iconHost = trigger.querySelector<HTMLElement>('[data-icon="inbox"]');
-  if (iconHost !== null) iconHost.innerHTML = icon(icons.INBOX);
+  draw();
+  const iconHost = trigger.querySelector<HTMLElement>('[data-icon="bell"]');
+  if (iconHost !== null) iconHost.innerHTML = icon(icons.BELL);
   return inbox;
 }

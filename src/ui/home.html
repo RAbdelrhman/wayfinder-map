@@ -16,17 +16,11 @@
         <header class="topbar" id="topbar">
           <div class="nav-topbar" id="nav-topbar"></div>
           <span class="topbar-spacer"></span>
-          <div class="notification-anchor">
-            <button type="button" class="notification-trigger" id="notification-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="notification-panel" aria-label="Notifications" title="Notifications"><span data-icon="bell" aria-hidden="true"></span><span class="notification-count" id="notification-count" hidden></span></button>
-            <section class="notification-panel" id="notification-panel" role="dialog" aria-labelledby="notification-title" hidden>
-              <header class="notification-panel-head"><h2 id="notification-title">Notifications</h2><button type="button" class="handoff-close" data-notification-close aria-label="Close notifications">×</button></header>
-              <div class="notification-body" id="notification-body"></div>
-            </section>
-          </div>
           <div class="map-inbox-anchor" id="map-inbox-anchor">
-            <button type="button" class="map-inbox-trigger" id="map-inbox-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="map-inbox-list" aria-label="Map activity inbox"><span data-icon="inbox" aria-hidden="true"></span><span class="map-inbox-label">Inbox</span><span class="map-inbox-count" id="map-inbox-count" hidden></span></button>
+            <button type="button" class="map-inbox-trigger" id="map-inbox-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="map-inbox-list" aria-label="Inbox, 0 need you, 0 new"><span data-icon="bell" aria-hidden="true"></span><span class="map-inbox-label">Inbox</span><span class="map-inbox-count" id="map-inbox-count" hidden></span></button>
             <section class="map-inbox-list" id="map-inbox-list" role="dialog" aria-labelledby="map-inbox-title" hidden>
-              <header class="map-inbox-head"><div><h2 id="map-inbox-title">Map activity</h2><p id="map-inbox-summary">Changes on maps you have opened</p></div><button type="button" class="map-inbox-clear" id="map-inbox-clear">Clear</button><button type="button" class="handoff-close" id="map-inbox-close" aria-label="Close inbox">×</button></header>
+              <header class="map-inbox-head"><div><h2 id="map-inbox-title">Inbox</h2><p id="map-inbox-summary">Changes on maps you have opened</p></div><button type="button" class="map-inbox-clear" id="map-inbox-clear">Clear activity</button><button type="button" class="handoff-close" id="map-inbox-close" aria-label="Close inbox">×</button></header>
+              <div class="map-inbox-filters" role="group" aria-label="Show"><button type="button" class="map-inbox-filter" data-inbox-filter="all" aria-pressed="true">All</button><button type="button" class="map-inbox-filter" data-inbox-filter="needs" aria-pressed="false">Needs you<span id="map-inbox-needs-count" class="map-inbox-needs-count" hidden></span></button></div>
               <div class="map-inbox-body" id="map-inbox-body"></div>
             </section>
           </div>
