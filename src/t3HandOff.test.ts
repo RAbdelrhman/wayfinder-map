@@ -132,7 +132,7 @@ function startInput(workspaceRoot: string, index: number, branch: string): HandO
 describe('T3HandOff concurrent prepare', () => {
   // Eight real Git worktrees are prepared serially; loaded Windows hosts need
   // more time than the default unit-test budget without relaxing assertions.
-  const realGitTimeout = 90_000;
+  const realGitTimeout = 180_000;
   let tempRoot: string;
   let workspaceRoot: string;
   let runtime: T3Runtime;
