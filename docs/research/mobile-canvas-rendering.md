@@ -2,7 +2,10 @@
 
 Research for [#221](https://github.com/RAbdelrhman/wayfinder-map/issues/221) on map #217 (A Wayfinder mobile app).
 
-**Answer: yes.** Both canvases tested load and run on the iOS engine (WebKit) and the Android engine (Chromium) at phone size, with no script errors. That holds once the app downloads every file the canvas references, including two files outside `prototypes/`. The canvas engine runs fine on a phone. Its chrome doesn't fit one: the top bar runs off screen, the board fits at 26–30% so thumbnails can't be read, and desktop-width pages get cut off in Present. One engine bug matters too: on an older Android System WebView (124), the board's CSS `zoom` shrinks each frame's viewport, so board thumbnails render over-zoomed. Present is unaffected.
+**Answer: yes.** Both canvases tested load and run on the iOS engine (WebKit) and the Android engine (Chromium) at phone size, with no script errors. That holds once the app downloads every file the canvas references, including two files outside `prototypes/`. Present (one option full screen) works. The board doesn't yet:
+
+- **Broken board thumbnails.** The board shrinks with CSS `zoom`, and frames inside a zoomed parent render wrong on two of the three engines: WebKit 26.6 paints each thumbnail as a cropped top-left corner, and the real Android System WebView 124 lays each frame out at about a quarter of its width. Only Chromium 153 draws them right. Switching the board to `transform: scale()` should fix both.
+- **Chrome that doesn't fit.** The top bar runs off screen, the board fits at 26–30% so thumbnails can't be read, and desktop-width pages get cut off in Present.
 
 ## How it was tested
 
@@ -22,14 +25,14 @@ The scripts are in [`mobile-canvas/probe/`](mobile-canvas/probe/). Run them from
 
 | Canvas | Engine | Mode | Errors | Page width (viewport) | Board fit | Top-bar controls off screen | Frames with content |
 |---|---|---|---|---|---|---|---|
-| #223 | WebKit (iOS) | http, file | none | 396 (390) | 26% | Present (6 px) | 16 / 16 |
+| #223 | WebKit (iOS) | http, file | none | 396 (390) | 26% | Present (6 px) | 16 / 16 loaded, but painted as cropped corners (see Zoom) |
 | #223 | Chromium (Android) | http, file | none | 412 (412) | 28% | none | 16 / 16 |
-| #207 | WebKit (iOS) | http, file | none | 540 (390) | 28% | zoom-fit, zoom-in, theme, help, Present | all |
+| #207 | WebKit (iOS) | http, file | none | 540 (390) | 28% | zoom-fit, zoom-in, theme, help, Present | all loaded, painted as cropped corners |
 | #207 | Chromium (Android) | http, file | none | 533 (412), page shrunk to fit | 30% | none at 533, but text is shrunk | all |
 | #223 | **Android System WebView 124** | file (app-private files dir) | none | 412 (412) | 28% | none | 16 / 16 loaded, but over-zoomed (see Zoom) |
 | #207 | **Android System WebView 124** | file (app-private files dir) | none | 532 (412), page shrunk to fit | 30% | none at 532, but text is shrunk | all loaded, over-zoomed |
 
-"Errors: none" is after the fix in the next section. Before it, every variant page 404'd on one stylesheet.
+"Errors: none" is after the fix in the next section. Before it, every variant page 404'd on one stylesheet. "Loaded" means each frame navigated to its page and has text in it. It doesn't mean the frame painted correctly: check the screenshots for that.
 
 ### Board
 
@@ -68,7 +71,7 @@ The app has to fetch the closure, not just the folder: scan the `.html`, `.css` 
 
 ### Scripts
 
-Nothing broke. Classic `<script src>`, `srcdoc` frames, `ResizeObserver` and `postMessage` height reports, `<dialog>` and hash routing all worked on every engine, in every load mode, including the real WebView 124. CSS `zoom` worked on WebKit 26.6 and Chromium 153. On WebView 124 it hits the iframe bug described under Zoom. The sandbox rules in the canvas README (relative paths, no modules or `fetch`, no storage) are what make the `file://` mode work as well.
+No script errors or failed requests on any engine, in any load mode, including the real WebView 124 (once the missing stylesheet was fetched). The engine's scripts ran: the board built every frame, page frames navigated and filled with content, option notes rendered, and Present and its theme and notes toggles responded. The help `<dialog>`, the feedback form and the ↗ links weren't exercised. The sandbox rules in the canvas README (relative paths, no modules or `fetch`, no storage) are what make the `file://` mode work as well.
 
 Two things the real WebView showed about the app around the canvas:
 
@@ -83,21 +86,28 @@ Not tested here, and the app has to handle these:
 
 ### Scroll and zoom
 
-- **Scroll.** The board is an `overflow: auto` element with default `touch-action`, so a one-finger swipe scrolls it natively. Drag-to-pan uses pointer events and doesn't get in the way.
-- **Zoom.** The canvas zooms only through its buttons and Ctrl + wheel. It has no pinch handler. Pinching zooms the whole page instead (Chromium 153 and the real WebView 124: `visualViewport.scale` went 1 → 2 while the canvas zoom stayed at 28%), toolbar included. Pinch works, but it zooms the wrong thing.
-- **CSS `zoom` and iframes on older WebViews.** The board scales with `zoom` on `#stage`. On WebView 124, an iframe inside a zoomed ancestor gets a viewport of its CSS width × zoom. At 28%, a 390 px phone frame was laid out 109 px wide (a 1440 px desktop frame: 431 px), so every thumbnail shows an enlarged, cropped corner. With `#stage` set back to `zoom: 1`, the same frames measured 390 px and rendered right. Chromium 153 lays them out at full width under zoom, so newer Chromium has fixed this (CSS `zoom` was standardized around Chrome 128). System WebView updates through the Play Store, so most phones run a current version. Even so, the board should scale with `transform: scale()` alone (as each frame already does) rather than `zoom`, and not depend on the WebView version.
+- **Scroll.** Not tested with a real swipe. From the code: the board is an `overflow: auto` element with default `touch-action`, so a one-finger swipe should scroll it natively. Drag-to-pan only starts on empty board space.
+- **Zoom.** The canvas zooms only through its buttons and Ctrl + wheel. It has no pinch handler (`canvas.js`). A synthesized pinch (CDP `Input.synthesizePinchGesture`, on Chromium 153 and the real WebView 124, run while Present was open) zoomed the whole page instead: `visualViewport.scale` went 1 → 2 while the canvas zoom label stayed at 28–30%. So pinch zooms the page, toolbar included, not the canvas.
+- **CSS `zoom` breaks board thumbnails.** The board scales with `zoom` on `#stage`, and frames inside it render wrong on two engines:
+  - **Android System WebView 124:** an iframe inside a zoomed parent gets a viewport of its CSS width × zoom. At 28%, a 390 px phone frame was laid out 109 px wide (a 1440 px desktop frame: 431 px), so each thumbnail shows an enlarged corner. With `#stage` set back to `zoom: 1`, the same frames measured 390 px and rendered right ([screenshot](mobile-canvas/223-webview124-board-zoom100.jpg)).
+  - **WebKit 26.6:** layout is right (frames measure 388 px under zoom), but each frame is painted into a box shrunk by the zoom, so only the top-left corner shows, at full size ([#223](mobile-canvas/223-ios-board.jpg), [#207](mobile-canvas/207-ios-board.jpg)). This is Playwright's WebKit build on Windows. Whether iOS `WKWebView` paints the same way is unverified.
+  - **Chromium 153:** correct.
+
+  System WebView updates through the Play Store, so most Android phones may not hit the 124 bug. The WebKit result still points the same way: the board should shrink with `transform: scale()` alone (each frame already uses it) rather than `zoom`.
 - **Fit.** "Fit" lays the board out at 26–30% on a phone, so the frames can be seen but not read. That's fine for an overview. You then have to Present an option to read it.
 
 ## Recommended rendering approach
 
 1. **Fetch through the GitHub API and cache to disk.** Read the branch tree once, then download the blobs under `prototypes/<canvas>/` plus the out-of-folder files they reference, into the app's cache directory keyed by blob SHA. Don't count on reaching the desktop server: it already serves canvases with the right sandbox, but a phone off the home network can't reach it.
-2. **Load from `file://` in `react-native-webview`.** Use `allowFileAccess` on Android and `allowingReadAccessToURL` set to the cache folder on iOS. Leave `onMessage` unset, or ignore canvas messages. `file://` worked identically to the sandboxed `http` mode in both engines. It skips a local HTTP server, which would add a native module just to send a CSP header. The WebView keeps canvas code away from the app's token and native API.
+2. **Load from `file://` in `react-native-webview`.** Use `allowFileAccess` on Android and `allowingReadAccessToURL` set to the cache folder on iOS. `file://` rendered the same as the sandboxed `http` mode on every engine, and it avoids adding a native module for a local HTTP server.
+
+   **Rendering parity isn't security parity.** `file://` responses carry no CSP, so the desktop's `sandbox` header doesn't apply. Canvas files are repo code, and this research did not test how isolated they are from the app. Before shipping, do two things. First, load the canvas inside an `<iframe sandbox="allow-scripts">` from a small host page, so canvas code runs at an opaque origin. Second, leave `onMessage` unset, or accept only a fixed message shape, so canvas code can't reach the GitHub token or native APIs. Verify both on a device.
 3. **Make the canvas engine fit a phone.** This is engine work in `prototypes/canvas`, shipped to every canvas through the scaffold:
    - a narrow top bar, with the title on one line and the secondary controls in a menu;
    - Present scales a page to its declared `width`, as the board already does;
    - notes start hidden below about 640 px;
    - pinch on the board drives the canvas zoom (`touch-action` plus pointer events), not the page;
-   - the board zooms with `transform` instead of CSS `zoom`, so thumbnails render right on older Android WebViews.
+   - the board shrinks with `transform` instead of CSS `zoom`, so thumbnails render right on WebKit and older Android WebViews.
 
    These are visible UI changes, so per the map's rules they need a prototype the user picks before anyone builds them.
 
