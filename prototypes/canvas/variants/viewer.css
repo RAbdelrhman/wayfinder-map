@@ -242,7 +242,8 @@ button.proto-thumb {
 .vw-dir-a,
 .vw-dir-b,
 .vw-dir-c,
-.vw-dir-ac {
+.vw-dir-ac,
+.vw-dir-acf {
   --vw-pane: min(60vw, 820px);
 }
 
@@ -289,6 +290,50 @@ button.proto-thumb {
   width: auto;
   border-left: 0;
   box-shadow: none;
+}
+
+/* ACF: a floating window over the app, which stays live around it. */
+.vw.is-f {
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.vw.is-f .vw-drag {
+  cursor: grab;
+  user-select: none;
+}
+
+.vw.is-dragging,
+.vw.is-dragging .vw-drag {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.vw.is-dragging .vw-frame {
+  pointer-events: none;
+}
+
+.vw-grip {
+  display: none;
+}
+
+.vw.is-f .vw-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: block;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 0 55%, var(--text-muted) 55% 62%, transparent 62% 72%, var(--text-muted) 72% 79%, transparent 79%);
+}
+
+.vw-sizes .seg {
+  min-width: 30px;
+  padding: 0 6px;
 }
 
 .vw-stage {

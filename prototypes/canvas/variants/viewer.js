@@ -1,6 +1,6 @@
 /*
   PROTOTYPE (#207): the in-app canvas viewer shell. Load after ../kit/kit.js, then call
-  VIEWER.start('A' | 'B' | 'C' | 'AC').
+  VIEWER.start('A' | 'B' | 'C' | 'AC' | 'ACF').
 
     A  Overlay: the canvas grows out of the tile and covers the whole window. The app stays
        mounted, inert, underneath.
@@ -10,6 +10,9 @@
        the app, the same way B does.
     AC Round 2, A + C: opens as A's overlay by default; Shrink turns it into C's pane, and
        Fill the window turns it back. A setting picks which size a canvas opens at.
+    ACF Round 3, AC + a floating window: a size switch (Full window, Side pane, Floating)
+       replaces Shrink. The floating window moves by its toolbar and resizes from its corner,
+       and has no Open-on-GitHub button.
 
   The app chrome and both entry points (the Prototypes board and the ticket panel's tile)
   copy the markup and classes of src/ui on main, so ../../../src/ui/styles.css styles them.
@@ -18,7 +21,7 @@
   sample-canvas.html in a sandboxed iframe, speaking the #206 bridge.
 
   Query: ?frame=desktop|browser  ?view=prototypes|map  ?cold=1  ?bridge=0  ?open=211[/B]
-         ?size=full|pane (AC only: the setting's value)
+         ?size=full|pane|float (AC and ACF: the setting's value; float is ACF only)
 */
 (() => {
   Object.assign(Kit.icons, {
@@ -51,6 +54,8 @@
     shrink: '<path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/>',
     board: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
     pages: '<path d="M7 3h8l4 4v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M14 3v5h5"/>',
+    sizePane: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M13 4v16"/>',
+    sizeFloat: '<rect x="3" y="4" width="18" height="16" rx="2"/><rect x="11.5" y="11.5" width="6.5" height="5.5" rx="1"/>',
     eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   });
 
@@ -130,8 +135,9 @@
     bridge: params.get('bridge') !== '0',
     open: null, // { n, origin } while the viewer shows
     expanded: false, // C: the pane fills the app
-    defaultSize: params.get('size') === 'pane' ? 'pane' : 'full', // AC: the setting
-    size: 'full', // AC: the open viewer's size, starts at the setting
+    defaultSize: ['pane', 'float'].includes(params.get('size')) ? params.get('size') : 'full', // AC, ACF: the setting
+    size: 'full', // AC, ACF: the open viewer's size, starts at the setting
+    floatRect: null, // ACF: where the floating window was left, kept between opens
     canvas: null, // what the bridge last said: { source, pages, options, page, option, presenting } or { source: 'none' }
     mounted: null, // the prototype whose iframe is kept mounted
     menu: false,
@@ -139,8 +145,11 @@
     returnFocus: null,
   };
 
-  // AC switches between A's overlay and C's pane; every other direction is one mode.
-  const mode = () => (S.dir === 'AC' ? (S.size === 'full' ? 'A' : 'C') : S.dir);
+  // AC and ACF switch between A's overlay, C's pane and (ACF) a floating window; every
+  // other direction is one mode.
+  const MODE_OF_SIZE = { full: 'A', pane: 'C', float: 'F' };
+  const sized = () => S.dir === 'AC' || S.dir === 'ACF';
+  const mode = () => (sized() ? MODE_OF_SIZE[S.size] : S.dir);
 
   /* ---------- a fake history, so Back and the address bar can be shown ---------- */
 
@@ -375,7 +384,15 @@
     const controls = live ? `${pagesMenu(c)}${optionsGroup(c)}` : sourceNote(c);
     const title = `<span class="vw-title" id="vw-title">${icon('beaker')}<span class="num">#${p.n}</span><span class="vw-title-t">${esc(t.title)}</span></span>`;
     const github = `<a class="iconbtn" href="#" data-to="${esc(p.branch)} on GitHub" aria-label="Open the branch on GitHub">${icon('external')}</a>`;
+    if (mode() === 'F') {
+      // Floating: compact, no Open on GitHub. Drag the first row to move it.
+      return `<div class="vw-bar is-c is-f"><div class="vw-c-row vw-drag" title="Drag to move">${title}<span class="topbar-spacer"></span>${sizeGroup()}<button type="button" class="iconbtn vw-close" data-act="close" aria-label="Close the canvas">${icon('x')}</button></div>
+        ${controls ? `<div class="vw-c-row">${controls}</div>` : ''}</div>`;
+    }
     if (mode() === 'A') {
+      if (S.dir === 'ACF') {
+        return `<div class="vw-bar is-a"><button type="button" class="ghost vw-close" data-act="close" aria-label="Close the canvas and go back to ${closeLabel()}">${icon('x')}<span class="vw-lbl">Close</span><kbd>Esc</kbd></button>${title}<span class="vw-sep"></span>${controls}<span class="topbar-spacer"></span>${github}${sizeGroup()}</div>`;
+      }
       const shrink = S.dir === 'AC' ? `<button type="button" class="iconbtn" data-act="expand" aria-label="Shrink to a side pane" title="Shrink to a side pane">${icon('shrink')}</button>` : '';
       return `<div class="vw-bar is-a"><button type="button" class="ghost vw-close" data-act="close" aria-label="Close the canvas and go back to ${closeLabel()}">${icon('x')}<span class="vw-lbl">Close</span><kbd>Esc</kbd></button>${title}<span class="vw-sep"></span>${controls}<span class="topbar-spacer"></span>${github}${shrink}</div>`;
     }
@@ -385,8 +402,19 @@
         <nav class="nav-map-scopes vw-crumbs" aria-label="Where you are"><span class="t">#${MAP.number} ${esc(MAP.title)}</span><span class="crumb-sep" aria-hidden="true">/</span></nav>${title}<span class="vw-sep"></span>${controls}<span class="topbar-spacer"></span>${github}${shrink}${S.dir === 'C' ? `<button type="button" class="iconbtn" data-act="close" aria-label="Close the canvas">${icon('x')}</button>` : ''}</header>`;
     }
     const grow = S.dir === 'AC' ? 'Fill the window' : 'Fill the app';
+    if (S.dir === 'ACF') {
+      return `<div class="vw-bar is-c"><div class="vw-c-row">${title}<span class="topbar-spacer"></span>${github}${sizeGroup()}<button type="button" class="iconbtn vw-close" data-act="close" aria-label="Close the canvas">${icon('x')}</button></div>
+        ${controls ? `<div class="vw-c-row">${controls}</div>` : ''}</div>`;
+    }
     return `<div class="vw-bar is-c"><div class="vw-c-row">${title}<span class="topbar-spacer"></span>${github}<button type="button" class="iconbtn" data-act="expand" aria-label="${grow}" title="${grow}">${icon('expand')}</button><button type="button" class="iconbtn vw-close" data-act="close" aria-label="Close the canvas">${icon('x')}</button></div>
       ${controls ? `<div class="vw-c-row">${controls}</div>` : ''}</div>`;
+  }
+
+  // ACF: one switch for the three sizes, in every size's toolbar.
+  function sizeGroup() {
+    const b = (size, ic, label) =>
+      `<button type="button" class="seg${S.size === size ? ' is-on' : ''}" data-size="${size}" aria-pressed="${S.size === size}" aria-label="${label}" title="${label}">${icon(ic)}</button>`;
+    return `<div class="segmented vw-sizes" role="group" aria-label="Canvas size">${b('full', 'expand', 'Full window')}${b('pane', 'sizePane', 'Side pane')}${b('float', 'sizeFloat', 'Floating window')}</div>`;
   }
 
   function paintToolbar() {
@@ -398,7 +426,7 @@
   }
 
   function keyOf(el) {
-    for (const key of ['act', 'go', 'page', 'step']) if (el.dataset[key] !== undefined) return `[data-${key}="${el.dataset[key]}"]`;
+    for (const key of ['act', 'size', 'go', 'page', 'step']) if (el.dataset[key] !== undefined) return `[data-${key}="${el.dataset[key]}"]`;
     return null;
   }
 
@@ -524,6 +552,10 @@
     const m = mode();
     const viewer = document.getElementById('vw');
     viewer.className = `vw is-${m.toLowerCase()}${S.expanded ? ' is-expanded' : ''}`;
+    if (m === 'F') {
+      S.floatRect ??= defaultFloatRect();
+      Object.assign(viewer.style, Object.fromEntries(Object.entries(S.floatRect).map(([k, v]) => [k, `${v}px`])));
+    } else Object.assign(viewer.style, { left: '', top: '', width: '', height: '' });
     viewer.setAttribute('role', m === 'A' ? 'dialog' : 'region');
     if (m === 'A') viewer.setAttribute('aria-modal', 'true');
     else viewer.removeAttribute('aria-modal');
@@ -531,6 +563,31 @@
     app.classList.toggle('has-pane', m === 'C' && !S.expanded);
     app.inert = m === 'A';
     document.getElementById('vw-scrim').hidden = m !== 'A';
+  }
+
+  // Bottom right of the window, clear of the edges.
+  function defaultFloatRect() {
+    const b = bodyEl().getBoundingClientRect();
+    const width = Math.min(560, b.width - 32);
+    const height = Math.min(380, b.height - 32);
+    return { left: b.width - width - 16, top: b.height - height - 16, width, height };
+  }
+
+  function setSize(size) {
+    if (size === S.size) return;
+    const viewer = document.getElementById('vw');
+    const before = rectIn(viewer);
+    S.size = size;
+    applyMode();
+    paintToolbar();
+    const after = rectIn(viewer);
+    if (!reduceMotion) {
+      viewer.animate(
+        [{ transform: `translate(${before.left - after.left}px, ${before.top - after.top}px)`, width: `${before.width}px`, height: `${before.height}px` }, { transform: 'none', width: `${after.width}px`, height: `${after.height}px` }],
+        { duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)' },
+      );
+    }
+    document.querySelector(`#vw-toolbar [data-size="${size}"]`)?.focus();
   }
 
   function keySel(el) {
@@ -645,8 +702,8 @@
 
   function protoBar() {
     const t = (key, on, label) => `<button type="button" data-proto="${key}" aria-pressed="${on}" class="${on ? 'is-on' : ''}">${label}</button>`;
-    const size = S.dir === 'AC'
-      ? `<span class="nx-proto-sep"></span><span class="nx-proto-lbl">Setting: open as</span>${t('full', S.defaultSize === 'full', 'Full window')}${t('pane', S.defaultSize === 'pane', 'Side pane')}`
+    const size = sized()
+      ? `<span class="nx-proto-sep"></span><span class="nx-proto-lbl">Setting: open as</span>${t('full', S.defaultSize === 'full', 'Full window')}${t('pane', S.defaultSize === 'pane', 'Side pane')}${S.dir === 'ACF' ? t('float', S.defaultSize === 'float', 'Floating') : ''}`
       : '';
     return `<div class="nx-proto vw-proto" role="group" aria-label="Prototype controls"><span class="nx-proto-tag">Prototype</span>
       <span class="nx-proto-lbl">Window</span>${t('desktop', S.frame === 'desktop', 'Desktop')}${t('browser', S.frame === 'browser', 'Browser')}
@@ -661,7 +718,7 @@
         <div class="app is-nav-collapsed vw-app">${rail()}<div class="main" id="vw-main"></div></div>
         <div class="vw-scrim" id="vw-scrim" hidden></div>
         <section class="vw" id="vw" hidden role="${mode() === 'A' ? 'dialog' : 'region'}" ${mode() === 'A' ? 'aria-modal="true"' : ''} aria-labelledby="vw-title">
-          <div id="vw-toolbar"></div><div class="vw-stage" id="vw-stage"></div></section>
+          <div id="vw-toolbar"></div><div class="vw-stage" id="vw-stage"></div><span class="vw-grip" title="Drag to resize" aria-hidden="true"></span></section>
       </div></div>${protoBar()}`;
     S.mounted = null;
     S.canvas = null;
@@ -670,7 +727,7 @@
   }
 
   document.addEventListener('click', (event) => {
-    const el = event.target.closest('[data-open], [data-select], [data-view], [data-act], [data-go], [data-page], [data-step], [data-hist], [data-proto]');
+    const el = event.target.closest('[data-open], [data-select], [data-view], [data-act], [data-size], [data-go], [data-page], [data-step], [data-hist], [data-proto]');
     if (!el) {
       if (S.menu && !event.target.closest('.vw-menu-anchor')) {
         S.menu = false;
@@ -691,6 +748,7 @@
     } else if (d.view) setView(d.view);
     else if (d.act === 'close') requestClose();
     else if (d.act === 'expand') toggleExpand();
+    else if (d.size) setSize(d.size);
     else if (d.act === 'menu') {
       S.menu = !S.menu;
       paintToolbar();
@@ -710,7 +768,7 @@
       if (d.proto === 'desktop' || d.proto === 'browser') S.frame = d.proto;
       if (d.proto === 'cold') S.cold = !S.cold;
       if (d.proto === 'nobridge') S.bridge = !S.bridge;
-      if (d.proto === 'full' || d.proto === 'pane') S.defaultSize = d.proto;
+      if (d.proto === 'full' || d.proto === 'pane' || d.proto === 'float') S.defaultSize = d.proto;
       const wasOpen = S.open;
       S.open = null;
       S.expanded = false;
@@ -772,6 +830,39 @@
       event.preventDefault();
       travel(event.button === 3 ? -1 : 1);
     }
+  });
+
+  // ACF: move the floating window by its toolbar's first row, resize it from its corner.
+  // The frame ignores the pointer meanwhile, or it would swallow the drag.
+  let float = null;
+  document.addEventListener('pointerdown', (event) => {
+    if (mode() !== 'F' || !S.open) return;
+    const grip = event.target.closest('.vw-grip');
+    if (!grip && (!event.target.closest('.vw-drag') || event.target.closest('button, a'))) return;
+    event.preventDefault();
+    float = { resize: Boolean(grip), x: event.clientX, y: event.clientY, start: { ...S.floatRect } };
+    document.getElementById('vw').classList.add('is-dragging');
+  });
+  document.addEventListener('pointermove', (event) => {
+    if (!float) return;
+    const b = bodyEl().getBoundingClientRect();
+    const dx = event.clientX - float.x;
+    const dy = event.clientY - float.y;
+    const r = { ...float.start };
+    if (float.resize) {
+      r.width = Math.max(360, Math.min(b.width - r.left, r.width + dx));
+      r.height = Math.max(240, Math.min(b.height - r.top, r.height + dy));
+    } else {
+      r.left = Math.max(0, Math.min(b.width - r.width, r.left + dx));
+      r.top = Math.max(0, Math.min(b.height - r.height, r.top + dy));
+    }
+    S.floatRect = r;
+    applyMode();
+  });
+  document.addEventListener('pointerup', () => {
+    if (!float) return;
+    float = null;
+    document.getElementById('vw').classList.remove('is-dragging');
   });
 
   // Drag the map's empty space to pan, like the real map.

@@ -175,6 +175,8 @@ window.CANVAS = {
                   'In the pane, the ticket panel is hidden and two scroll surfaces sit side by side, as in C',
                   'Open question: should Shrink and Fill the window only last for this open, or update the setting (remember the last size)? Built here as this-open-only.',
                 ],
+                disposition: 'change',
+                feedback: 'Change: add a floating window size (round 3, ACF). Keep the open-in-browser button at full window and side pane; drop it when floating. The user wrote: "looks amazing could you have a floating window option? Like this [screenshot of the viewer as a small window floating over another app]. When fullscreen or half view i want the open in browser button. but when floating that button could go away"',
               },
             },
             {
@@ -220,6 +222,92 @@ window.CANVAS = {
                 pros: ['Reuses the existing Settings dialog and control, so no new kind of UI'],
                 cons: ['One more preference in a list that is already growing'],
               },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title: 'Floating window',
+      round: 3,
+      question:
+        'Round 3, from your feedback on AC: add a floating window as a third size. Full window and Side pane keep the ↗ button; the floating window drops it. Does this work?',
+      sections: [
+        {
+          title: 'ACF · Full window, side pane or floating',
+          note: 'AC with a third size. One size switch (Full window · Side pane · Floating) sits in every size\'s toolbar and replaces AC\'s Shrink and Fill the window buttons. The floating window moves by its title row and resizes from its bottom-right corner. Settings › Preferences gets the third choice too. The dashed Prototype bar\'s "Setting: open as" switches it here.',
+          items: [
+            {
+              id: 'ACF',
+              name: 'Full, pane or floating, desktop app, from the board',
+              src: 'variants/viewer-acf.html?frame=desktop&view=prototypes',
+              note: {
+                basedOn: ['AC'],
+                idea:
+                  'Click Canvas on #211: it opens full window as in AC. The size switch at the right end of the toolbar has three icons: Full window, Side pane, Floating. Floating shrinks it into a 560 × 380 window in the bottom-right corner, with rounded corners and a shadow, over a board or map you can still use. Drag its title row to move it and its corner to resize it (at least 360 × 240). It stays where you left it the next time it floats. The floating toolbar keeps the title, the size switch, Close, and on a second row the page menu and Board · A · B · C. It has no ↗ button. Esc, Close or Back closes it from any size, back into the tile.',
+                pros: [
+                  'Compare the canvas with the map or another ticket at whatever size and place suits you, without a fixed split',
+                  'One size switch instead of separate Shrink and Fill buttons, so every size is one click from every other',
+                  'The floating toolbar is smaller, with nothing in it you need less often',
+                ],
+                cons: [
+                  'Three layouts to build and test, plus moving, resizing and keeping the window inside the app',
+                  'A small floating window shows the canvas scaled down: at 560 px wide, a canvas page is hard to read until you resize it or go full window',
+                  'Moving and resizing are pointer only here. Keyboard users get the size switch but cannot move or resize the floating window yet',
+                  'The floating window covers part of the map, and nothing moves the map out of its way',
+                ],
+              },
+            },
+            {
+              id: 'ACF-float',
+              name: 'Setting on "Floating": opens straight into the floating window',
+              src: 'variants/viewer-acf.html?frame=desktop&view=map&size=float',
+              note: {
+                basedOn: ['AC'],
+                idea:
+                  'The setting on Floating. Select #211 on the map and click its tile: it opens as the floating window in the corner, and the map stays usable behind it. The size switch grows it to the pane or full window.',
+                pros: ['Suits people who keep a canvas open while they work through the map'],
+                cons: ['Opening into a small window first means an extra click for anyone who wants to read the canvas closely'],
+              },
+            },
+            {
+              id: 'ACF-browser',
+              name: 'Full, pane or floating, localhost browser, from the ticket panel',
+              src: 'variants/viewer-acf.html?frame=browser&view=map',
+              note: {
+                basedOn: ['AC-browser'],
+                idea:
+                  'The same viewer in the localhost tab, opened from #211\'s tile in the ticket panel. The URL gets ?canvas=211 at every size; changing size adds no history, so the browser\'s Back still closes it.',
+                pros: ['The floating window keeps the canvas in reach without leaving the tab'],
+                cons: ['At full window, the tab\'s chrome plus the viewer\'s bar is still two rows of controls, as in A'],
+              },
+            },
+            {
+              id: 'ACF-setting',
+              kind: 'components',
+              name: 'The setting, with a third choice',
+              width: 640,
+              columns: 1,
+              items: [
+                {
+                  label: 'Settings › Preferences, the same row as round 2 with Floating added',
+                  html: '<section class="settings-section" aria-labelledby="acf-prefs"><h3 id="acf-prefs">Preferences</h3><div class="settings-row"><span class="grow">Theme</span><span class="segmented" role="group" aria-label="Theme"><button type="button" class="seg" aria-pressed="false">Light</button><button type="button" class="seg is-on" aria-pressed="true">Dark</button></span></div><div class="settings-row"><span class="grow">Open canvases<span class="hint">How big a prototype canvas is when you open it. You can still resize it from its toolbar.</span></span><span class="segmented" role="group" aria-label="Open canvases"><button type="button" class="seg is-on" aria-pressed="true">Full window</button><button type="button" class="seg" aria-pressed="false">Side pane</button><button type="button" class="seg" aria-pressed="false">Floating</button></span></div></section>',
+                },
+              ],
+              note: {
+                basedOn: ['AC-setting'],
+                idea:
+                  'The round 2 row with a third choice, Floating. Full window stays the default. This is my guess: you asked for a floating option, not for it in the setting.',
+                pros: ['Every size can be the one a canvas opens at'],
+                cons: ['Three choices in a row that already sits in a long list'],
+              },
+            },
+            {
+              id: 'ACF-questions',
+              kind: 'note',
+              name: 'Two calls I made',
+              text:
+                'Open in browser: the ↗ button in every round opens the prototype branch on GitHub, in the system browser. I took that to be the button you meant, and kept it at full window and side pane only. If you meant a new button that opens the canvas itself in the browser, that is a different control. Say so and I will add it.\n\nThe setting: I added Floating as a third choice in Settings › Preferences.',
             },
           ],
         },
@@ -273,7 +361,7 @@ window.CANVAS = {
               kind: 'note',
               name: 'Design review',
               text:
-                'Sources inspected: src/ui/styles.css (tokens, .wf-proto, .wf-strip, .proto-tile, .topbar, .segmented, .ghost, .iconbtn, .chip), src/ui/prototypeBoard.ts and prototypeTile.ts (the board and tile markup copied here), src/ui/app.ts (routing via ?view= and pushState), src/desktop/main.ts (window 1320×860, minimum 900×620, setWindowOpenHandler), src/repoRoutes.ts, and docs/design/in-app-canvas-viewer.md (#206). The app chrome uses the real stylesheet and classes; the viewer adds only viewer.css, which uses existing tokens.\n\nChecked: dark (system) and light (?theme=light). In A, B and C: open from the tile, Esc to close, Alt+← to close and Alt+→ to reopen, with focus returning to the tile that opened the canvas (keys sent as scripted keydown events, not a physical keyboard). The browser frame’s Back and Forward buttons in B. Map scroll and selection after closing: B restored 120,60 with #211 selected; C kept 90,40 through Expand and Esc. The view-only fallback (bridge off) and a snapshot (#206). Layout at 1280×800 and at the desktop minimum of 900×620, where the toolbar drops its labels to icons and still fits. Contrast of the new colours, computed: address-bar host 4.92:1 (light) and 6.74:1 (dark), the sample canvas’s muted text 5.49:1 and 7.84:1, its warning text 5.02:1 and 10.51:1, the kbd hint 5.28:1. Semantics by reading the markup: A is role=dialog with aria-modal and an inert app behind it; B and C are labelled regions; the page menu is a menu of menuitemradio items; option buttons use aria-pressed; icon-only buttons have labels.\n\nRound 2 (AC) reuses A’s and C’s code paths and adds the Shrink and Fill the window toggle and the setting row (the real .settings-section, .settings-row and .segmented classes from src/ui/settings.ts). Round 2 checked in headless Chromium, dark and light: it opens full window by default as a dialog with an inert app; Shrink gives a 768 px region at 1280 px and a 540 px one at the 900×620 minimum, with the app live and focus on Fill the window; Fill the window brings the dialog back with focus on Shrink; Esc closes from either size, with focus back on the tile; browser Back closes from the pane and the URL returns to ?ticket=211; with the setting on Side pane it opens straight into the pane. Round 2 finding: in the pane, the board’s #211 card is narrow enough that its title wraps word by word (C’s cramped con, still there). Not checked for round 2: screen reader announcement when the role switches between dialog and region; the Settings row inside the real Settings dialog (shown as a component sheet only).\n\nFindings: in every direction the toolbar’s option letters rely on a title tooltip for the option name (the presented option’s name shows beside the arrows). The engine on today’s canvas branches sets location.hash itself when you click a frame, which pushes history entries; inside the viewer that would make Back step through options before closing. The stand-in canvas here uses location.replace. The build has to stop that in the wrapper or accept it (open question).\n\nNot checked: screen reader output (no NVDA or VoiceOver run); Tab trapping in A and arrow keys in the page menu (written, not exercised); real Electron framing and the mouse back button in Electron; real timing against the 300 ms warm-open bar; 60 fps of the transition on a real board; Windows High Contrast; touch.',
+                'Sources inspected: src/ui/styles.css (tokens, .wf-proto, .wf-strip, .proto-tile, .topbar, .segmented, .ghost, .iconbtn, .chip), src/ui/prototypeBoard.ts and prototypeTile.ts (the board and tile markup copied here), src/ui/app.ts (routing via ?view= and pushState), src/desktop/main.ts (window 1320×860, minimum 900×620, setWindowOpenHandler), src/repoRoutes.ts, and docs/design/in-app-canvas-viewer.md (#206). The app chrome uses the real stylesheet and classes; the viewer adds only viewer.css, which uses existing tokens.\n\nChecked: dark (system) and light (?theme=light). In A, B and C: open from the tile, Esc to close, Alt+← to close and Alt+→ to reopen, with focus returning to the tile that opened the canvas (keys sent as scripted keydown events, not a physical keyboard). The browser frame’s Back and Forward buttons in B. Map scroll and selection after closing: B restored 120,60 with #211 selected; C kept 90,40 through Expand and Esc. The view-only fallback (bridge off) and a snapshot (#206). Layout at 1280×800 and at the desktop minimum of 900×620, where the toolbar drops its labels to icons and still fits. Contrast of the new colours, computed: address-bar host 4.92:1 (light) and 6.74:1 (dark), the sample canvas’s muted text 5.49:1 and 7.84:1, its warning text 5.02:1 and 10.51:1, the kbd hint 5.28:1. Semantics by reading the markup: A is role=dialog with aria-modal and an inert app behind it; B and C are labelled regions; the page menu is a menu of menuitemradio items; option buttons use aria-pressed; icon-only buttons have labels.\n\nRound 2 (AC) reuses A’s and C’s code paths and adds the Shrink and Fill the window toggle and the setting row (the real .settings-section, .settings-row and .segmented classes from src/ui/settings.ts). Round 2 checked in headless Chromium, dark and light: it opens full window by default as a dialog with an inert app; Shrink gives a 768 px region at 1280 px and a 540 px one at the 900×620 minimum, with the app live and focus on Fill the window; Fill the window brings the dialog back with focus on Shrink; Esc closes from either size, with focus back on the tile; browser Back closes from the pane and the URL returns to ?ticket=211; with the setting on Side pane it opens straight into the pane. Round 2 finding: in the pane, the board’s #211 card is narrow enough that its title wraps word by word (C’s cramped con, still there). Round 3 (ACF), headless Chromium, dark and light: the size switch moves between full window (dialog, ↗ shown), side pane (region, ↗ shown) and floating (region, 560×380 bottom right, no ↗), with the pressed size marked by aria-pressed and focus staying on the switch; dragging the title row moved it by −320,−258 and the corner resized it by +100,+60; the app behind stayed usable (the Map tab switched views under it); Esc and browser Back closed it from floating; with the setting on Floating it reopened where it was left; at 900×620 it fits all three sizes with no toolbar overflow. Round 3 findings: moving and resizing are pointer only, with no keyboard equivalent; at 900×620 the side pane covers the map’s Key and zoom controls (also true of C). Not checked for round 2: screen reader announcement when the role switches between dialog and region; the Settings row inside the real Settings dialog (shown as a component sheet only).\n\nFindings: in every direction the toolbar’s option letters rely on a title tooltip for the option name (the presented option’s name shows beside the arrows). The engine on today’s canvas branches sets location.hash itself when you click a frame, which pushes history entries; inside the viewer that would make Back step through options before closing. The stand-in canvas here uses location.replace. The build has to stop that in the wrapper or accept it (open question).\n\nNot checked: screen reader output (no NVDA or VoiceOver run); Tab trapping in A and arrow keys in the page menu (written, not exercised); real Electron framing and the mouse back button in Electron; real timing against the 300 ms warm-open bar; 60 fps of the transition on a real board; Windows High Contrast; touch.',
             },
           ],
         },
