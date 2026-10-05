@@ -76,6 +76,8 @@
   }
 
   const mapCounts = (m) => (m.number === map.number ? counts() : m.counts);
+  // Only #217 has sample tickets, so other maps explain themselves instead of opening #217 under their name.
+  const openMap = (m) => (m.number === map.number ? 'data-act="map"' : `data-toast="Sample data: only #${map.number} has tickets in this prototype. #${m.number} would open here."`);
   const mapTotal = (m) => Object.values(mapCounts(m)).reduce((a, b) => a + b, 0);
   const nextUp = () => D.tickets.filter((t) => t.state === 'frontier');
 
@@ -155,7 +157,7 @@
   function mapRow(m, opts = {}) {
     const c = mapCounts(m);
     const total = mapTotal(m);
-    return `<button class="m-row" data-act="map" style="align-items:flex-start;flex-wrap:wrap">
+    return `<button class="m-row" ${openMap(m)} style="align-items:flex-start;flex-wrap:wrap">
       <span class="m-row-main"><span class="m-row-title">${esc(m.title)}</span>
       <span class="m-row-sub">${opts.repo ? `${esc(m.repo.split('/')[1])} · ` : ''}#${m.number} · ${c.done}/${total} done · ${m.updated}</span>
       <span style="display:block;margin-top:8px">${progress(c, total, false)}</span></span>${opts.star ? `<span class="m-icon-btn" role="img" aria-label="${m.followed ? 'Following' : 'Not following'}" style="color:${m.followed ? 'var(--state-blocked)' : 'var(--text-muted)'};width:32px;height:32px">${ic('star')}</span>` : ic('chevron')}</button>`;
@@ -189,7 +191,7 @@
                 .map((m) => {
                   const c = mapCounts(m);
                   const n = m.number === map.number ? nextUp()[0] : null;
-                  return `<button class="m-card" data-act="map"><div style="display:flex;gap:14px;align-items:center">${ring(c, mapTotal(m))}
+                  return `<button class="m-card" ${openMap(m)}><div style="display:flex;gap:14px;align-items:center">${ring(c, mapTotal(m))}
                     <div class="m-row-main"><h3>${esc(m.title)}</h3><div class="m-row-sub">${esc(m.repo.split('/')[1])} · #${m.number} · ${m.updated}</div></div></div>
                     ${n ? `<div class="m-next">${dot('frontier')}<span class="m-row-main"><b>Next:</b> #${n.number} ${esc(n.title)}</span></div>` : c.frontier ? `<div class="m-next">${dot('frontier')}<span class="m-row-main">${c.frontier} ready to start</span></div>` : ''}</button>`;
                 })

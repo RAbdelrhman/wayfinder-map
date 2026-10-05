@@ -3,7 +3,8 @@
   Paths are relative to index.html. Check with: node prototypes/canvas/tools/check.mjs
 */
 
-const phone = (v, screen, extra = '') => ({ src: `variants/mobile.html?v=${v}&screen=${screen}${extra}`, width: 390, height: 844, boardWidth: 300 });
+// Every frame is the whole phone app; src stays a literal so Wayfinder can read each direction's page.
+const PHONE = { width: 390, height: 844, boardWidth: 300 };
 
 window.CANVAS = {
   ticket: 223,
@@ -37,7 +38,7 @@ window.CANVAS = {
             {
               id: 'S-A',
               name: 'A · Button, then code',
-              ...phone('A', 'signin'),
+              src: 'variants/mobile.html?v=A&screen=signin', ...PHONE,
               note: {
                 idea: 'A plain welcome with one "Sign in with GitHub" button. The next screen shows the code and "Copy code and open GitHub". Back in the app, a "Waiting for GitHub…" state moves on by itself once you approve.',
                 pros: ['Familiar: looks like every other "Sign in with" app', 'The code only appears when you asked for it'],
@@ -49,7 +50,7 @@ window.CANVAS = {
             {
               id: 'S-B',
               name: 'B · Welcome, then steps',
-              ...phone('B', 'signin'),
+              src: 'variants/mobile.html?v=B&screen=signin', ...PHONE,
               note: {
                 idea: 'A welcome screen lists what the app does (follow maps, start tickets, alerts). "Continue with GitHub" copies the code and shows a three-step checklist: Code copied ✓ → Approve on GitHub → You’re in.',
                 pros: ['First run explains the app', 'The checklist shows where you are in the device flow'],
@@ -59,7 +60,7 @@ window.CANVAS = {
             {
               id: 'S-C',
               name: 'C · Code on the first screen',
-              ...phone('C', 'signin'),
+              src: 'variants/mobile.html?v=C&screen=signin', ...PHONE,
               note: {
                 idea: 'One screen. The code is already copied and shown big, with "Open GitHub" and "Copy code again". After you approve, it moves on.',
                 pros: ['Fewest taps: one button', 'Nothing to explain: this is a personal build for one user'],
@@ -75,7 +76,7 @@ window.CANVAS = {
             {
               id: 'R-A',
               name: 'A · Repos, then maps',
-              ...phone('A', 'repos'),
+              src: 'variants/mobile.html?v=A&screen=repos', ...PHONE,
               note: {
                 idea: 'Mirrors the desktop: Home lists repositories with map counts. Tap one to see its maps, each with a progress bar in the state colours.',
                 pros: ['Same shape as desktop Home → Repository', 'Scales to many repos with search'],
@@ -85,7 +86,7 @@ window.CANVAS = {
             {
               id: 'R-B',
               name: 'B · Following',
-              ...phone('B', 'repos'),
+              src: 'variants/mobile.html?v=B&screen=repos', ...PHONE,
               note: {
                 idea: 'Home is the maps you follow, as cards with a progress ring and the next ticket ready to start. "Follow another map" browses repositories and stars maps.',
                 pros: ['Matches "follow your maps" in the map’s destination', 'The next ticket is visible without opening the map'],
@@ -95,7 +96,7 @@ window.CANVAS = {
             {
               id: 'R-C',
               name: 'C · All maps, one list',
-              ...phone('C', 'repos'),
+              src: 'variants/mobile.html?v=C&screen=repos', ...PHONE,
               note: {
                 idea: 'One list of every map from every repo, most recently active first, with search and repository filter chips.',
                 pros: ['One tap to any map', 'No new concept: just filtering'],
@@ -111,7 +112,7 @@ window.CANVAS = {
             {
               id: 'M-A',
               name: 'A · Grouped by state',
-              ...phone('A', 'map'),
+              src: 'variants/mobile.html?v=A&screen=map', ...PHONE,
               note: {
                 idea: 'The destination and a progress bar on top, then tickets grouped Next up / Claimed / Blocked / Done (Done collapsed). Blocked rows say what they need.',
                 pros: ['Answers "what can I do now?" first', 'Plain list: fast, accessible, works one-handed'],
@@ -121,7 +122,7 @@ window.CANVAS = {
             {
               id: 'M-B',
               name: 'B · Graph, like the desktop',
-              ...phone('B', 'map'),
+              src: 'variants/mobile.html?v=B&screen=map', ...PHONE,
               note: {
                 idea: 'A small version of the desktop graph: drag to pan, +/− to zoom, tap a card to highlight its edges. A peek bar at the bottom shows the selected ticket; tap it to open the detail sheet.',
                 pros: ['Same mental model as the desktop', 'Dependencies are visible'],
@@ -131,7 +132,7 @@ window.CANVAS = {
             {
               id: 'M-C',
               name: 'C · Path, Tickets, Brief',
-              ...phone('C', 'map'),
+              src: 'variants/mobile.html?v=C&screen=map', ...PHONE,
               note: {
                 idea: 'Three tabs. Path lays tickets out in dependency steps from top to bottom (step 1 can start now, step 2 waits on step 1…). Tickets is a flat list with state filters. Brief shows destination, decisions, fog and out of scope.',
                 pros: ['Keeps the dependency order without a graph', 'The brief is readable on the phone'],
@@ -149,7 +150,7 @@ window.CANVAS = {
             {
               id: 'T-A',
               name: 'A · Full page',
-              ...phone('A', 'ticket'),
+              src: 'variants/mobile.html?v=A&screen=ticket', ...PHONE,
               note: {
                 idea: 'A pushed page: type, number and state, the title, the same state banner the desktop panel shows, the body (Question, Done when), then Needs and Unblocks as tappable pills. Open on GitHub sits in the top bar; the Start slot is pinned to the bottom.',
                 pros: ['All on one scroll', 'Pills move along the chain one ticket at a time'],
@@ -159,7 +160,7 @@ window.CANVAS = {
             {
               id: 'T-B',
               name: 'B · Sheet over the map',
-              ...phone('B', 'ticket'),
+              src: 'variants/mobile.html?v=B&screen=ticket', ...PHONE,
               note: {
                 idea: 'The ticket opens as a half-height sheet over the map; tap the handle for full height, tap outside or × to close. Pills open the next ticket in the same sheet.',
                 pros: ['Keeps map context', 'Fast to flick through tickets'],
@@ -169,7 +170,7 @@ window.CANVAS = {
             {
               id: 'T-C',
               name: 'C · Tabs: Overview, Links, Activity',
-              ...phone('C', 'ticket'),
+              src: 'variants/mobile.html?v=C&screen=ticket', ...PHONE,
               note: {
                 idea: 'A full page with tabs: Overview (banner and body), Links (needs / unblocks), Activity (the issue’s comments, where closing evidence and decisions land).',
                 pros: ['Comments are readable on the phone', 'Each tab stays short'],
@@ -184,10 +185,10 @@ window.CANVAS = {
           title: 'Edge states',
           note: 'The same edge states in every direction; shown here in the direction that makes them most visible.',
           items: [
-            { id: 'X-expired', name: 'Code expired', ...phone('A', 'signin', '&state=expired'), note: { idea: 'The device code timed out (15 minutes). One button gets a new code.', pros: ['Clear recovery'], cons: ['Doesn’t say if you denied it rather than let it lapse'] } },
-            { id: 'X-offline', name: 'Offline, cached', ...phone('A', 'map', '&state=offline'), note: { idea: 'No network: the last data GitHub sent is shown, with its age.', pros: ['Following works on the train'], cons: ['Needs a local cache'] } },
-            { id: 'X-empty', name: 'No maps', ...phone('C', 'repos', '&state=empty'), note: { idea: 'Signed in, but none of your repos has a map yet. Points you to the desktop, since starting a map is out of scope on the phone.', pros: ['Explains the out-of-scope rule'], cons: [] } },
-            { id: 'X-loading', name: 'Loading', ...phone('B', 'repos', '&state=loading'), note: { idea: 'Skeleton rows while GitHub answers.', pros: ['Shows layout before data'], cons: [] } },
+            { id: 'X-expired', name: 'Code expired', src: 'variants/mobile.html?v=A&screen=signin&state=expired', ...PHONE, note: { idea: 'The device code timed out (15 minutes). One button gets a new code.', pros: ['Clear recovery'], cons: ['Doesn’t say if you denied it rather than let it lapse'] } },
+            { id: 'X-offline', name: 'Offline, cached', src: 'variants/mobile.html?v=A&screen=map&state=offline', ...PHONE, note: { idea: 'No network: the last data GitHub sent is shown, with its age.', pros: ['Following works on the train'], cons: ['Needs a local cache'] } },
+            { id: 'X-empty', name: 'No maps', src: 'variants/mobile.html?v=C&screen=repos&state=empty', ...PHONE, note: { idea: 'Signed in, but none of your repos has a map yet. Points you to the desktop, since starting a map is out of scope on the phone.', pros: ['Explains the out-of-scope rule'], cons: [] } },
+            { id: 'X-loading', name: 'Loading', src: 'variants/mobile.html?v=B&screen=repos&state=loading', ...PHONE, note: { idea: 'Skeleton rows while GitHub answers.', pros: ['Shows layout before data'], cons: [] } },
           ],
         },
         {
@@ -202,6 +203,7 @@ window.CANVAS = {
                 'Checked: dark theme on A map, B map and B ticket sheet; light theme on C map and the board’s sign-in row (390×844 viewport). Touch targets: rows, buttons, pills and the Done toggle are 44px or more; segmented tabs are 40px (46px with track). State is never colour alone: each has an icon and a word. Fixed during review: dimmed Done tiles/nodes used opacity, which dropped muted text under 4.5:1, now a plain surface with secondary text; pills and the Show toggle were 32–36px tall.',
                 'Findings left open: B’s graph is small (12px text at 0.8 zoom) and pan-heavy; B’s sheet does not move or trap focus; C’s tabs are role=tab without arrow-key handling; the canvas board wraps the S-A style ids onto two lines.',
                 'Round 2 (R-C2), checked headless at 390×844 in dark and light: list, open sheet and filtered list. The Filter by button is 44px tall and its label names the current filter. Opening the sheet moves focus to the selected option; picking an option, tapping outside or pressing Escape closes it and returns focus to the button. The list sorts latest first (12 min, yesterday, 2 days, 3 weeks). Open: the sheet does not trap focus and has no slide animation. Top bar: back and Open on GitHub buttons moved from blue iOS link style to the desktop’s neutral look (src/ui/styles.css .ghost and .iconbtn: text-secondary, hairline, 9px radius), drawn at 34px inside a 44px hit area with a visible focus ring; checked on map and ticket screens in dark and light. This bar is shared, so every frame on the Directions page shows the new buttons too.',
+                'PR review fixes (Sourcery on #263): map rows other than #217 used to open #217 under their own name; only #217 has sample tickets, so the others now show a toast saying so. The state and repo filter chips grew from 36px to 44px. Frame src values are literal strings so Wayfinder’s board can read each direction’s page. Not changed: safe-area insets (frames run in canvas iframes, not on a device; still Not checked).',
                 'Not checked: every screen in both themes one by one, screen readers (VoiceOver/TalkBack), real devices and safe areas, dynamic type / large text, React Native feasibility of each option, landscape.',
               ].join('\n\n'),
             },
@@ -220,7 +222,7 @@ window.CANVAS = {
             {
               id: 'R-C2',
               name: 'R-C2 · All maps, Filter by',
-              ...phone('C', 'repos', '&remix=filter'),
+              src: 'variants/mobile.html?v=C&screen=repos&remix=filter', ...PHONE,
               note: {
                 idea: 'Opens on every map from every repo, latest activity first. The repo chips are gone. One "Filter by: All maps" button opens a sheet that narrows the list to one repository.',
                 pros: ['Lands on the latest maps in one tap, as asked', 'One button scales to many repos; chips did not', 'The button always says what is showing'],
@@ -233,7 +235,7 @@ window.CANVAS = {
             {
               id: 'R-C2-sheet',
               name: 'R-C2 · Filter sheet open',
-              ...phone('C', 'repos', '&remix=filter&picker=1'),
+              src: 'variants/mobile.html?v=C&screen=repos&remix=filter&picker=1', ...PHONE,
               note: {
                 idea: 'The Filter by sheet: "All maps" first, then each repository that has maps, with its map count. The current choice has a check. Tap one to filter; tap outside, the handle or Escape to close.',
                 pros: ['Keeps R-A’s repos-then-maps path as a choice, not a step', 'Map counts show where the work is'],
