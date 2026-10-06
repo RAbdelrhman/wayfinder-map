@@ -6,6 +6,49 @@ import { readCanvasMessage } from './ui/canvasViewer.js';
 import ts from 'typescript';
 
 describe('sandboxed canvas bridge', () => {
+  it('uses replacement navigation for option-page anchor tabs and client-side routers', () => {
+    const listeners = new Map<string, (event: unknown) => void>();
+    const replace = vi.fn(),
+      replaceState = vi.fn(),
+      pushState = vi.fn();
+    const window = { history: { replaceState, pushState }, addEventListener: vi.fn() };
+    class Anchor {
+      target = '';
+      constructor(readonly href: string) {}
+      closest(): Anchor {
+        return this;
+      }
+      hasAttribute(): boolean {
+        return false;
+      }
+    }
+    runInNewContext(CANVAS_BRIDGE_SCRIPT, {
+      window,
+      Element: Anchor,
+      URL,
+      parent: { postMessage: vi.fn() },
+      location: { href: 'http://localhost/proto/o/r/prototype%2F1/option.html', hash: '', replace },
+      document: { readyState: 'loading', addEventListener: (name: string, fn: (event: unknown) => void) => listeners.set(name, fn) },
+    });
+    const preventDefault = vi.fn();
+    const click = {
+      button: 0,
+      defaultPrevented: false,
+      preventDefault,
+      target: new Anchor('http://localhost/proto/o/r/prototype%2F1/option.html#tab-2'),
+    };
+    listeners.get('click')?.(click);
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(replace).toHaveBeenCalledWith(click.target.href);
+    window.history.pushState({ tab: 2 }, '', '#tab-2');
+    expect(pushState).not.toHaveBeenCalled();
+    expect(replaceState).toHaveBeenCalledWith({ tab: 2 }, '', '#tab-2');
+    replace.mockClear();
+    preventDefault.mockClear();
+    listeners.get('click')?.({ ...click, target: new Anchor('https://example.com/') });
+    expect(replace).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
   it('replaces presentation-frame navigation for page and generated options without setting src/srcdoc', () => {
     const source = viewerPrototypeBytes('canvas.js', readFileSync(new URL('../prototypes/canvas/canvas.js', import.meta.url))).toString();
     const parsed = ts.createSourceFile('canvas.js', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -31,7 +74,7 @@ describe('sandboxed canvas bridge', () => {
     expect(data).toMatch(/^data:text\/html;charset=utf-8,/);
     const html = decodeURIComponent(data.slice(data.indexOf(',') + 1));
     expect(html).toContain('<base href="http://localhost/proto/o/r/prototype%2F1/index.html">');
-    expect(html).toContain('type:"key",key:"Escape"');
+    expect(html).toContain(CANVAS_BRIDGE_SCRIPT);
     expect(setAttribute).not.toHaveBeenCalled();
     expect(removeAttribute).not.toHaveBeenCalled();
   });

@@ -1,5 +1,5 @@
 import type { Prototype, Ticket, WayfinderMap } from '../types.js';
-import { prototypeFileUrl, prototypeShotUrl } from '../prototypes.js';
+import { prototypeFileUrl, prototypePageUrl, prototypeShotUrl } from '../prototypes.js';
 import { escapeHtml } from './markdown.js';
 import { canvasEntryAttrs } from './canvasEntry.js';
 import { bone, boneButton } from './skeleton.js';
@@ -161,7 +161,7 @@ export function boardVariants(repo: string, prototype: Prototype): BoardVariant[
       id: variant.id,
       title: variant.title,
       image: variant.shot === null ? null : prototypeShotUrl(repo, variant.shot),
-      page: variant.page === null ? null : prototypeFileUrl(repo, prototype.branch, variant.page, prototype.sha),
+      page: variant.page === null ? null : prototypePageUrl(repo, prototype.branch, variant.page, prototype.sha),
     }));
   }
   return prototypeVariants(prototype).map((variant) => ({

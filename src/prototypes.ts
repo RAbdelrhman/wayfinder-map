@@ -17,7 +17,7 @@ export const PROTOTYPE_SNAPSHOT_FILE = 'prototype-snapshot.html';
 /** Where the page serves a file off a prototype branch. */
 export const PROTOTYPE_ROUTE = '/proto/';
 /** Bump when the injected bridge or served engine adaptation changes. */
-export const PROTOTYPE_HOST_VERSION = 'viewer-1';
+export const PROTOTYPE_HOST_VERSION = 'viewer-2';
 
 /** The ticket a prototype branch belongs to, or null when the name does not follow the convention. */
 export function prototypeTicketNumber(branch: string): number | null {
@@ -81,6 +81,13 @@ export function prototypeFileUrl(repo: string, branch: string, file: string, sha
   const [owner = '', name = ''] = repo.split('/', 2);
   const prefix = `${PROTOTYPE_ROUTE}${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
   return `${prefix}/${encodeURIComponent(branch)}/${sha && /^[a-f0-9]{40}$/.test(sha) ? sha + '/' + PROTOTYPE_HOST_VERSION + '/' : ''}${file.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+/** Config page URLs carry runtime query/hash options separately from the repo file path. */
+export function prototypePageUrl(repo: string, branch: string, page: string, sha?: string): string {
+  const suffixAt = page.search(/[?#]/);
+  return suffixAt < 0 ? prototypeFileUrl(repo, branch, page, sha)
+    : prototypeFileUrl(repo, branch, page.slice(0, suffixAt), sha) + page.slice(suffixAt);
 }
 
 /** What a `/proto/...` path asks for, or null for anything off a prototype branch or climbing out of it. */

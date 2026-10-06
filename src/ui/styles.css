@@ -7777,7 +7777,14 @@ textarea.input {
 /* ---------- poster and ghost: the tile's picture, never a blank frame ---------- */
 .vw { position: fixed; z-index: 100; --vw-pane: min(60vw, 820px); transform-origin: top left; }
 .vw[hidden], .vw-menu[hidden] { display: none; }
-.vw.is-a .vw-bar { flex-wrap: wrap; height: auto; min-height: 52px; padding-block: 8px; }
+.vw.is-a .vw-bar { flex-wrap: nowrap; }
+.vw-bar .vw-title { flex: 1 1 160px; }
+.vw.is-a .vw-title { max-width: 240px; }
+.vw-bar .vw-close, .vw-bar .vw-sizes, .vw-bar .iconbtn, .vw-menu-anchor { flex-shrink: 0; }
+.vw-c-row { flex-wrap: nowrap; }
+.vw-options { min-width: 0; flex: 1 1 auto; overflow-x: auto; }
+.vw-options .seg { flex-shrink: 0; }
+.vw.is-f .vw-optname { display: none; }
 .vw.is-c { top: 56px; }
 .app.has-canvas-pane .main > :not(.topbar) { margin-right: min(60vw, 820px); }
 .app.has-canvas-pane .inspector { display: none; }

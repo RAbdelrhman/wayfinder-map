@@ -15,6 +15,21 @@ export interface CanvasPage {
   title: string;
   options: { id: string; name: string; file: string | null }[];
 }
+/** Every viewer frame retains the existing opaque-origin capabilities. */
+export function canvasFrameHtml(route: CanvasRoute): string {
+  return `<iframe class="vw-frame" sandbox="allow-scripts" title="Canvas: ${escapeHtml(route.title)}" src="${escapeHtml(route.url)}"></iframe>`;
+}
+
+export function canvasOptionForFile(pages: readonly CanvasPage[], file: string | null): { page: string; option: string } | null {
+  if (!file) return null;
+  const candidates = pages.flatMap((page) =>
+    page.options.filter((option) => option.file !== null).map((option) => ({ page: page.id, option })),
+  );
+  const exact = candidates.find((candidate) => candidate.option.file === file);
+  // Older config parsers retain the variant's path but not its runtime query.
+  const match = exact ?? candidates.find((candidate) => candidate.option.file?.split(/[?#]/)[0] === file.split(/[?#]/)[0]);
+  return match ? { page: match.page, option: match.option.id } : null;
+}
 export type CanvasMessage =
   | { wf: 1; type: 'ready'; source: 'dom' | 'engine' | 'page'; pages: CanvasPage[] }
   | { wf: 1; type: 'state'; page: string | null; option: string | null; presenting: boolean }
@@ -268,13 +283,9 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
         copy.className = 'vw-poster-image';
         stage.append(copy);
       }
-      frame = document.createElement('iframe');
-      frame.className = 'vw-frame';
-      frame.setAttribute('sandbox', 'allow-scripts');
-      frame.title = 'Canvas: ' + route.title;
+      stage.insertAdjacentHTML('beforeend', canvasFrameHtml(route));
+      frame = stage.querySelector<HTMLIFrameElement>('.vw-frame')!;
       frame.addEventListener('load', () => frame?.classList.add('is-ready'));
-      frame.src = route.url;
-      stage.append(frame);
       clearTimeout(timer);
       timer = setTimeout(() => {
         if (source === 'loading') {
@@ -287,13 +298,11 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
   };
   const chooseFile = (): void => {
     if (!pages.length) return;
-    for (const page of pages) {
-      const option = page.options.find((o) => o.file === pendingFile);
-      if (option) {
-        send(page.id, option.id);
-        pendingFile = null;
-        return;
-      }
+    const match = canvasOptionForFile(pages, pendingFile);
+    if (match) {
+      send(match.page, match.option);
+      pendingFile = null;
+      return;
     }
     send(pages[0]!.id, null);
     pendingFile = null;

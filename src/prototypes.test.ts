@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest';
 
-import { PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, parsePrototypeFilePath, pickPreview, prototypeFileUrl, prototypeTicketNumber, unlistedCanvasBoards } from './prototypes.js';
+import { PROTOTYPE_HOST_VERSION, PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, parsePrototypeFilePath, pickPreview, prototypeFileUrl, prototypePageUrl, prototypeTicketNumber, unlistedCanvasBoards } from './prototypes.js';
 
 it('addresses cached files by SHA and viewer rendition, keeping relative assets in that prefix', () => {
   const sha = 'a'.repeat(40);
   const url = prototypeFileUrl('octo/one', 'prototype/207', 'prototypes/canvas/index.html', sha);
-  expect(url).toContain(`/${sha}/viewer-1/`);
+  expect(url).toContain(`/${sha}/${PROTOTYPE_HOST_VERSION}/`);
   const asset = new URL('canvas.js', 'http://localhost' + url).pathname;
-  expect(parsePrototypeFilePath(asset)).toEqual({ repo: 'octo/one', branch: 'prototype/207', sha, renderVersion: 'viewer-1', file: 'prototypes/canvas/canvas.js' });
-  expect(parsePrototypeFilePath(url.replace('/viewer-1/', '/'))).toEqual({ repo: 'octo/one', branch: 'prototype/207', sha, file: 'prototypes/canvas/index.html' });
+  expect(parsePrototypeFilePath(asset)).toEqual({ repo: 'octo/one', branch: 'prototype/207', sha, renderVersion: PROTOTYPE_HOST_VERSION, file: 'prototypes/canvas/canvas.js' });
+  expect(parsePrototypeFilePath(url.replace(`/${PROTOTYPE_HOST_VERSION}/`, '/'))).toEqual({ repo: 'octo/one', branch: 'prototype/207', sha, file: 'prototypes/canvas/index.html' });
+});
+
+it('keeps runtime page parameters out of the GitHub file path', () => {
+  const url = prototypePageUrl('o/r', 'prototype/163', 'variants/inbox.html?sheet=1&v=C#tab-2', 'a'.repeat(40));
+  const parsed = new URL(url, 'http://localhost');
+  expect(parsed.search).toBe('?sheet=1&v=C');
+  expect(parsed.hash).toBe('#tab-2');
+  expect(parsePrototypeFilePath(parsed.pathname)?.file).toBe('variants/inbox.html');
 });
 
 describe('prototypeTicketNumber', () => {

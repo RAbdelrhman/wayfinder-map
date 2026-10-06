@@ -20,7 +20,7 @@ The viewer owns one history entry. Size and page/option switches add none. The s
 
 The wrapper announces readiness at DOM readiness, rather than waiting for every nested option's load. It supports implicit page IDs, one-page shorthand configs and expanded style comparisons in old copied engines. The viewer checks the sending iframe and validates message shapes; commands only select known pages/options. Pin, note and pick commands are not implemented here.
 
-Files use `/proto/<owner>/<repo>/<branch>/<sha>/viewer-1/<path>`. The rendition segment versions the injected wrapper and engine adaptation as well as the SHA-addressed repo bytes. Bump `PROTOTYPE_HOST_VERSION` when either adaptation changes. Versioned SHA responses keep the original CSP and have immutable caching; legacy branch and unversioned SHA URLs remain uncached. The server keeps a 50 MB LRU of raw commit bytes and coalesces reads. Prototype lists queue up to 64 relevant files per unseen SHA with three reads at once. The last viewer iframe stays mounted after close.
+Files use `/proto/<owner>/<repo>/<branch>/<sha>/viewer-2/<path>`. The rendition segment versions the injected wrapper and engine adaptation as well as the SHA-addressed repo bytes. Bump `PROTOTYPE_HOST_VERSION` when either adaptation changes. Versioned SHA responses keep the original CSP and have immutable caching; legacy branch and unversioned SHA URLs remain uncached. The server keeps a 50 MB LRU of raw commit bytes and coalesces reads. Prototype lists queue up to 64 relevant files per unseen SHA with three reads at once. The last viewer iframe stays mounted after close.
 
 The sandbox headers and `sandbox="allow-scripts"` iframe are unchanged. The wrapper provides no API proxy. Installed-app validation, provider hand-offs, performance measurements for #214, annotations/picking and release work remain separate.
 
@@ -28,8 +28,8 @@ The observations below describe the pre-implementation baseline measured for #20
 
 - The tile's **Canvas** button and every variant tile are `target="_blank"` links (`src/ui/prototypeBoard.ts:213`, `:223`; `src/ui/prototypeTile.ts:63`, `:71`). On desktop, `setWindowOpenHandler` sends them to `shell.openExternal` (`src/desktop/main.ts:128`).
 - Previews are already sandboxed twice: `PROTOTYPE_CSP` on the response (`src/server.ts:81`) and `sandbox="allow-scripts"` on the iframe (`src/ui/prototypeBoard.ts:178`, `src/ui/prototypeTile.ts:64`). The effective sandbox is the intersection of the two, so forms, popups, modals and downloads are blocked in the preview.
-- Every `/proto/…` file is one `gh api …/contents/…?ref=<branch>` call (`src/github.ts:1025`), served with `cache-control: no-store` (`src/server.ts:1357`). Nothing is cached, so every open is cold.
-- The canvas engine (`prototypes/canvas/canvas.js`) keeps its page and presented item in `location.hash` (`#page/B`, lines 508, 588, 666). It tags each option frame with `data-frame="<id>"` (line 356), zooms with CSS `zoom` on `#stage` (line 429), and pans by scrolling `#board` (lines 449–458). It already uses `postMessage`, but only between its own option frames and the board (`canvasHeight`, lines 136 and 401).
+- Every `/proto/â€¦` file is one `gh api â€¦/contents/â€¦?ref=<branch>` call (`src/github.ts:1025`), served with `cache-control: no-store` (`src/server.ts:1357`). Nothing is cached, so every open is cold.
+- The canvas engine (`prototypes/canvas/canvas.js`) keeps its page and presented item in `location.hash` (`#page/B`, lines 508, 588, 666). It tags each option frame with `data-frame="<id>"` (line 356), zooms with CSS `zoom` on `#stage` (line 429), and pans by scrolling `#board` (lines 449â€“458). It already uses `postMessage`, but only between its own option frames and the board (`canvasHeight`, lines 136 and 401).
 
 ## What was measured
 
@@ -40,8 +40,8 @@ A throwaway Electron app ran the desktop window's `webPreferences`. Its page mou
 | Probe | Result |
 | --- | --- |
 | Parent reads `iframe.contentWindow.location` | `SecurityError`. The viewer cannot read the hash, so it needs a bridge. |
-| Frame → parent `postMessage` | Arrives with `event.origin === "null"`; `event.source === iframe.contentWindow` is `true` |
-| Parent → frame `postMessage(msg, '*')` | Arrives, with the parent's real origin as `event.origin` |
+| Frame â†’ parent `postMessage` | Arrives with `event.origin === "null"`; `event.source === iframe.contentWindow` is `true` |
+| Parent â†’ frame `postMessage(msg, '*')` | Arrives, with the parent's real origin as `event.origin` |
 | Frame `fetch('/api/x')` | Reaches the server with `Origin: null`. Wayfinder's `originAllowed` (`src/server.ts:225`) returns 403 for that, and CORS blocks the read anyway (`TypeError: Failed to fetch`). |
 | Frame `localStorage` | Throws |
 | Initial `src` with `#p/B` | The frame sees `location.hash === "#p/B"`, so the viewer can open a canvas straight to a page and option |
@@ -51,14 +51,14 @@ A throwaway Electron app ran the desktop window's `webPreferences`. Its page mou
 ### Cold open cost today
 
 - One `gh api` raw file read on a prototype branch took **690, 545 and 506 ms**.
-- The canvas on `prototype/43-…` is 21 files (excluding `tools/` and screenshots). It loads in at least three serial waves: `index.html`, then `canvas.css`, `config.js` and `canvas.js`, then each option page with its CSS and `kit/kit.js`. That puts a cold open at **about 1.5 to 2 s or more**, and today every open is cold.
+- The canvas on `prototype/43-â€¦` is 21 files (excluding `tools/` and screenshots). It loads in at least three serial waves: `index.html`, then `canvas.css`, `config.js` and `canvas.js`, then each option page with its CSS and `kit/kit.js`. That puts a cold open at **about 1.5 to 2 s or more**, and today every open is cold.
 
 ### Engine hooks on every canvas branch
 
 | Branch | Canvas engine | `data-frame` | `hashchange` | `#stage` zoom |
 | --- | --- | --- | --- | --- |
 | `prototype/39`, `42`, `43`, `44`, `45`, `125`, `163`, `196` | yes | yes | yes | yes |
-| `prototype/8`, `17` | no (`prototype-snapshot.html` only) | — | — | — |
+| `prototype/8`, `17` | no (`prototype-snapshot.html` only) | â€” | â€” | â€” |
 
 ## Hosting: plain iframe vs Electron-native view
 
@@ -71,7 +71,7 @@ A throwaway Electron app ran the desktop window's `webPreferences`. Its page mou
 | Rendering cost | Its own renderer process (measured), so 60 fps pan and zoom depend on the canvas, not Wayfinder | Same |
 | Esc / Back to the map | The viewer is a route in the same page, so history and scroll restore are the app's existing navigation | Needs IPC to tear down the view and restore the page |
 
-**Pick the iframe.** The only desktop change is to stop canvas opens from reaching `setWindowOpenHandler`: the tiles open the viewer instead of a `_blank` link. Keep `allow-popups` off the iframe so that a canvas's own `target="_blank"` links (such as the present-mode ↗ button, `prototypes/canvas/index.html`) do nothing rather than open the system browser.
+**Pick the iframe.** The only desktop change is to stop canvas opens from reaching `setWindowOpenHandler`: the tiles open the viewer instead of a `_blank` link. Keep `allow-popups` off the iframe so that a canvas's own `target="_blank"` links (such as the present-mode â†— button, `prototypes/canvas/index.html`) do nothing rather than open the system browser.
 
 ## The bridge
 
@@ -86,14 +86,14 @@ A throwaway Electron app ran the desktop window's `webPreferences`. Its page mou
 Every message is a plain object with `wf: 1` (the protocol version) and a `type`. The viewer accepts a message only when `event.source === iframe.contentWindow`. The origin is always `"null"`, so it can't be used. The viewer sends with target `'*'`, because an opaque origin can't be named. That is safe only because the viewer never sends anything secret.
 
 ```ts
-// canvas (wrapper) → viewer
+// canvas (wrapper) â†’ viewer
 type FromCanvas =
   | { wf: 1; type: 'ready'; source: 'engine' | 'dom' | 'page'; pages: { id: string; title: string }[]; options: { id: string; name: string }[] }
   | { wf: 1; type: 'state'; page: string | null; option: string | null; presenting: boolean; zoom: number | null }
-  | { wf: 1; type: 'hit'; requestId: number; page: string | null; option: string | null; fx: number; fy: number } // fx, fy: 0–1 inside the option frame, or the page when option is null
+  | { wf: 1; type: 'hit'; requestId: number; page: string | null; option: string | null; fx: number; fy: number } // fx, fy: 0â€“1 inside the option frame, or the page when option is null
   | { wf: 1; type: 'key'; key: 'Escape' }; // only when the canvas did not use it (not presenting, no dialog open)
 
-// viewer → canvas (wrapper)
+// viewer â†’ canvas (wrapper)
 type ToCanvas =
   | { wf: 1; type: 'go'; page: string; option: string | null } // the wrapper sets location.hash
   | { wf: 1; type: 'hitTest'; requestId: number; x: number; y: number } // viewport px inside the iframe
@@ -122,7 +122,7 @@ The map defines warm as "once the branch is cached". The plan makes a warm open 
 3. **Server cache keyed by `(repo, sha, path)`.** An in-memory LRU of bytes, about 50 MB, so a browser-cache miss (a new window, a restart of the localhost page) costs a local read, not a 500 ms `gh` call. Commit contents never change, so it never needs invalidating, only eviction.
 4. **Prefetch when the prototype list loads.** For each canvas, read its `config.js` (already read for variants), then fetch the board's files and every page it lists into the server cache, with the existing `pool` and a low concurrency. This is the step that makes a branch "cached".
 5. **Keep the last viewer mounted.** On close, hide the iframe instead of removing it. Reopening the same canvas then costs nothing, and the wrapper's `go` message restores the page and option without a reload.
-6. **No blank flash.** Paint the tile's screenshot (`/proto-shot/…`, already `max-age=300`) as a poster under the iframe. Fade the iframe in on the wrapper's `ready` message, or on `load` when no wrapper answers.
+6. **No blank flash.** Paint the tile's screenshot (`/proto-shot/â€¦`, already `max-age=300`) as a poster under the iframe. Fade the iframe in on the wrapper's `ready` message, or on `load` when no wrapper answers.
 
 Switching options or pages goes through `go`, which changes only the hash, so the canvas never reloads. That meets the bar's "switching options or canvas pages never reloads the whole canvas" with no extra work.
 

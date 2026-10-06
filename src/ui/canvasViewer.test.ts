@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CanvasRouting, canvasToolbarHtml, floatGeometry, readCanvasMessage, readCanvasRoute } from './canvasViewer.js';
+import {
+  CanvasRouting,
+  canvasFrameHtml,
+  canvasOptionForFile,
+  canvasToolbarHtml,
+  floatGeometry,
+  readCanvasMessage,
+  readCanvasRoute,
+} from './canvasViewer.js';
 import { canvasEntryAttrs } from './canvasEntry.js';
 import type { Prototype } from '../types.js';
 
@@ -47,6 +55,32 @@ describe('canvas routing', () => {
 });
 
 describe('approved ACF4 shell', () => {
+  it('creates the viewer iframe with only the existing opaque-origin sandbox capability', () => {
+    const html = canvasFrameHtml({ ...route, title: 'Untrusted <title>' });
+    expect(html).toContain('sandbox="allow-scripts"');
+    expect(html).not.toMatch(/allow-same-origin|allow-popups|allow-top-navigation/);
+    expect(html).toContain('Untrusted &lt;title&gt;');
+    expect(html).toContain(`src="${route.url}"`);
+  });
+  it('opens the exact query variant and falls back to its path for older config metadata', () => {
+    const pages = [
+      {
+        id: 'round-4',
+        title: 'Round 4',
+        options: [
+          { id: 'AC', name: 'Auto', file: '/proto/o/r/prototype%2F163/start-ac.html?phase=confirm&auto=1' },
+          { id: 'B', name: 'Final', file: '/proto/o/r/prototype%2F163/start-final.html?phase=confirm' },
+          { id: 'B-running', name: 'Running', file: '/proto/o/r/prototype%2F163/start-final.html?phase=running' },
+        ],
+      },
+    ];
+    expect(canvasOptionForFile(pages, '/proto/o/r/prototype%2F163/start-ac.html')).toEqual({ page: 'round-4', option: 'AC' });
+    expect(canvasOptionForFile(pages, '/proto/o/r/prototype%2F163/start-final.html?phase=running')).toEqual({
+      page: 'round-4',
+      option: 'B-running',
+    });
+    expect(canvasOptionForFile(pages, '/proto/other.html')).toBeNull();
+  });
   it('keeps the same size control and only offers GitHub at full window and pane', () => {
     const pages = [
       {

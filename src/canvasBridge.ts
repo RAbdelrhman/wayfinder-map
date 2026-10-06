@@ -1,5 +1,25 @@
 /** Runs in the prototype's opaque origin. No API or privileged operation is exposed. */
 function canvasBridge(): void {
+  // Nested documents share the browser's joint session history. Anchor tabs and
+  // client-side page routers must replace their entry, just like engine options.
+  if (window.history)
+    window.history.pushState = (data: unknown, unused: string, url?: string | URL | null): void => {
+      window.history.replaceState(data, unused, url);
+    };
+  document.addEventListener(
+    'click',
+    (event) => {
+      if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
+      if (!anchor || anchor.hasAttribute('download') || (anchor.target && anchor.target !== '_self')) return;
+      const next = new URL(anchor.href, location.href);
+      const current = new URL(location.href);
+      if (next.origin !== current.origin || next.pathname !== current.pathname || next.search !== current.search) return;
+      event.preventDefault();
+      location.replace(next.href);
+    },
+    true,
+  );
   type Item = { id?: string; name?: string; src?: string; kind?: string; styles?: string[] };
   type Page = { id?: string; title?: string; name?: string; sections?: { items?: Item[] }[]; items?: Item[] };
   type Config = {
@@ -116,8 +136,8 @@ export function viewerPrototypeBytes(file: string, bytes: Buffer): Buffer {
         if (item.kind === 'page') frame.contentWindow.location.replace(pageSrc(item));
         else {
           const html = srcdoc(item, present).replace(/<head([^>]*)>/i, '<head$1><base href="' + esc(location.href) + '">');
-          const key = '<script>document.addEventListener("keydown",e=>{if(e.key==="Escape")parent.postMessage({wf:1,type:"key",key:"Escape"},"*")})<' + '/script>';
-          frame.contentWindow.location.replace('data:text/html;charset=utf-8,' + encodeURIComponent(html + key));
+          const bridge = '<script>' + ${JSON.stringify(CANVAS_BRIDGE_SCRIPT)} + '<' + '/script>';
+          frame.contentWindow.location.replace('data:text/html;charset=utf-8,' + encodeURIComponent(html + bridge));
         }
         return;
       }`;
