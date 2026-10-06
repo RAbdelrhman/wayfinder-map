@@ -47,7 +47,11 @@ focus restoration. Both themes and all five categories fit at 1280 by 900,
 The sandbox canvas checker and its 14 tests passed. Typecheck, lint and build
 passed. Unit and HTTP tests cover category URLs, isolated category content,
 model fallbacks, focus selectors, shared navigation and the dedicated document.
-All 1,164 Vitest tests across 92 files passed with two workers and a 15-second
+Mounted-page tests additionally cover every direct category URL, invalid-query
+fallback, category clicks, history events and hostile account/model strings.
+The four scanner annotations are limited to fixed demo/category markup and the
+escaped Settings HTML builders; no raw query, account or catalog text is inserted.
+All 1,173 Vitest tests across 93 files passed with two workers and a 15-second
 test timeout. The unrestricted run hit two existing tests' five-second timeouts;
 a focused rerun passed the desktop test but timed out a different server test.
 Installed Electron behavior, real account switching, screen readers and forced

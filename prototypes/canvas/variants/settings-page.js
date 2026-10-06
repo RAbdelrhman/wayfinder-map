@@ -29,7 +29,11 @@ const sections = [
 ];
 const categories = document.getElementById('settings-categories');
 const content = document.getElementById('settings-sections');
+// Only fixed section definitions and static icons enter this demo markup; the layout query is a boolean.
+// nosemgrep: javascript.browser.security.insecure-document-method, javascript.browser.security.insecure-innerhtml
 categories.innerHTML = sections.map((section) => `<a href="#${section.id}" data-category="${section.id}">${icon(section.icon)}${section.title}</a>`).join('');
+// Every title, hint and body comes from the fixed demo definitions above, with no API or user text.
+// nosemgrep: javascript.browser.security.insecure-document-method, javascript.browser.security.insecure-innerhtml
 content.innerHTML = sections.map((section) => `<section class="settings-demo-category" id="${section.id}" aria-labelledby="${section.id}-title"><header class="settings-demo-category-heading"><h2 id="${section.id}-title">${section.title}</h2><p>${section.hint}</p></header>${section.body}</section>`).join('');
 function selectCategory(id) {
   for (const section of content.children) section.hidden = !single && section.id !== id;

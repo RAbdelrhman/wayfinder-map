@@ -247,6 +247,8 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
   const draw = (): void => {
     const focusKey = document.activeElement instanceof HTMLElement && body.contains(document.activeElement) ? focusKeyOf(document.activeElement) : null;
     calibrationOpen = body.querySelector<HTMLDetailsElement>('#settings-calibration')?.open ?? calibrationOpen;
+    // The HTML builders escape account/catalog strings; hostile-field DOM tests cover this boundary.
+    // nosemgrep: javascript.browser.security.insecure-document-method, javascript.browser.security.insecure-innerhtml
     body.innerHTML = settingsBodyHtml(view, category);
     const details = body.querySelector<HTMLDetailsElement>('#settings-calibration');
     if (details !== null) details.open = calibrationOpen;
@@ -298,6 +300,8 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
   };
   const showCategory = (): void => {
     category = settingsCategory(new URLSearchParams(location.search).get('section'));
+    // IDs, labels and icons come from the fixed category allowlist; query text is never interpolated.
+    // nosemgrep: javascript.browser.security.insecure-document-method, javascript.browser.security.insecure-innerhtml
     nav.innerHTML = settingsNavigationHtml(category);
     paintIcons(nav);
     draw();
