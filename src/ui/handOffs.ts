@@ -6,7 +6,6 @@ import { newMapPath, rememberNewMapRetry } from './newMap.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
-import { clickedOutside } from './outsideClick.js';
 
 export type HandOffUiState = 'starting' | 'working' | 'needs-you' | 'pr-ready' | 'merged' | 'done' | 'failed';
 
@@ -130,27 +129,6 @@ export function handOffPresentation(handOff: HandOffStatusDto): HandOffPresentat
 
 function t3PullRequests(handOff: HandOffStatusDto): HandOffStatusDto['pullRequests'] {
   return handOff.pullRequests.filter((pullRequest) => pullRequest.source === 't3');
-}
-
-export function listedHandOffs(records: readonly HandOffStatusDto[]): HandOffStatusDto[] {
-  return records
-    .filter((handOff) => handOff.threadId !== null && !handOff.acknowledged)
-    .sort((a, b) => {
-      const priority: Record<HandOffUiState, number> = { failed: 0, 'needs-you': 1, starting: 2, working: 3, 'pr-ready': 4, merged: 5, done: 6 };
-      const stateDifference = priority[handOffPresentation(a).state] - priority[handOffPresentation(b).state];
-      if (stateDifference !== 0) return stateDifference;
-      return Date.parse(a.createdAt) - Date.parse(b.createdAt);
-    });
-}
-
-export function handOffTriggerLabel(records: readonly HandOffStatusDto[], available: boolean | null): string {
-  const listed = listedHandOffs(records);
-  const total = listed.length;
-  const needYou = listed.filter((item) => handOffPresentation(item).needsYou).length;
-  const count = `${String(total)} hand-off${total === 1 ? '' : 's'} in T3 Code`;
-  const urgency = needYou === 0 ? '' : `, ${String(needYou)} need you`;
-  const offline = available === false ? ', T3 Code is offline; showing the last reported status' : '';
-  return `${count}${urgency}${offline}`;
 }
 
 export function handOffTime(handOff: HandOffStatusDto, now = Date.now()): string {
@@ -328,67 +306,16 @@ export function homeHandOffHistoryHtml(handOff: HandOffStatusDto): string {
 }
 
 export function mountHandOffs(): HandOffSurface {
-  const anchor = document.getElementById('handoff-anchor');
-  const trigger = document.getElementById('handoff-trigger');
-  const panel = document.getElementById('handoff-list');
-  const body = document.getElementById('handoff-list-body');
-  const heading = document.getElementById('handoff-list-count');
   const announce = document.getElementById('handoff-announcement');
-  if (!(anchor instanceof HTMLElement) || !(trigger instanceof HTMLButtonElement) || !(panel instanceof HTMLElement) || !(body instanceof HTMLElement) || !(heading instanceof HTMLElement) || !(announce instanceof HTMLElement)) {
+  if (!(announce instanceof HTMLElement)) {
     return { getRecords: () => [], refresh: async () => undefined, subscribe: () => () => undefined };
   }
 
   let records: HandOffStatusDto[] = [];
-  let available: boolean | null = null;
-  let open = false;
   let refreshInFlight: Promise<void> | null = null;
   const listeners = new Set<(items: readonly HandOffStatusDto[]) => void>();
-  const focusFallback = (): void => {
-    document.querySelector<HTMLElement>('#search, #repo-name, #main')?.focus();
-  };
-
-  const close = (returnFocus: boolean): void => {
-    open = false;
-    panel.hidden = true;
-    trigger.setAttribute('aria-expanded', 'false');
-    anchor.hidden = listedHandOffs(records).length === 0;
-    if (returnFocus) {
-      if (anchor.hidden) focusFallback();
-      else trigger.focus();
-    }
-  };
 
   const render = (): void => {
-    const listed = listedHandOffs(records);
-    const total = listed.length;
-    const needYou = listed.filter((item) => handOffPresentation(item).needsYou).length;
-    const focusWasInAnchor = anchor.contains(document.activeElement);
-    if (total === 0 && open) close(false);
-    anchor.hidden = total === 0;
-    trigger.classList.toggle('is-urgent', needYou > 0);
-    trigger.setAttribute('aria-expanded', String(open));
-    trigger.setAttribute('aria-label', handOffTriggerLabel(records, available));
-    trigger.innerHTML = `${available === false ? icon(icons.PLUG) : ''}<span class="handoff-dots" aria-hidden="true">${listed.map((item) => `<i class="is-${handOffPresentation(item).state}"></i>`).join('')}</span><span>${String(total)} hand-off${total === 1 ? '' : 's'} in T3 Code${needYou === 0 ? '' : ` · ${String(needYou)} need you`}</span>`;
-    heading.textContent = `${String(total)} across all repositories and maps`;
-    trigger.setAttribute('aria-expanded', String(open));
-    panel.hidden = !open;
-    panel.dataset['offline'] = String(available === false);
-
-    const scrollTop = body.scrollTop;
-    const active = panel.contains(document.activeElement) && document.activeElement instanceof HTMLElement
-      ? document.activeElement.getAttribute('data-focus-key')
-      : null;
-    const groups: HandOffPresentation['group'][] = ['Waiting on you', 'In T3 Code', 'Done'];
-    const parts = groups.flatMap((group) => {
-      const items = listed.filter((item) => handOffPresentation(item).group === group);
-      if (items.length === 0) return [];
-      return [`<section class="handoff-group" aria-labelledby="handoff-group-${group === 'In T3 Code' ? 'active' : group === 'Done' ? 'done' : 'waiting'}"><h3 id="handoff-group-${group === 'In T3 Code' ? 'active' : group === 'Done' ? 'done' : 'waiting'}">${group}</h3><ol>${items.map((item) => rowHtml(item)).join('')}</ol></section>`];
-    });
-    const offline = available === false ? '<p class="handoff-offline" role="status">T3 Code isn’t running. Showing the last reported status.</p>' : '';
-    body.innerHTML = `${offline}${parts.join('')}`;
-    body.scrollTop = scrollTop;
-    if (active !== null) panel.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(active)}"]`)?.focus();
-    if (anchor.hidden && focusWasInAnchor) focusFallback();
     for (const listener of listeners) listener(records);
   };
 
@@ -398,7 +325,7 @@ export function mountHandOffs(): HandOffSurface {
       try {
         const response = await fetch('/api/hand-offs');
         if (!response.ok) return;
-        const snapshot = (await response.json()) as { handOffs?: HandOffStatusDto[]; t3?: { available?: boolean } };
+        const snapshot = (await response.json()) as { handOffs?: HandOffStatusDto[] };
         if (!Array.isArray(snapshot.handOffs)) return;
         const viewKey = (item: HandOffStatusDto): string => `${handOffPresentation(item).state}:${handOffPresentation(item).report}:${String(item.stale)}`;
         const previous = new Map(records.map((item) => [item.id, viewKey(item)]));
@@ -410,7 +337,6 @@ export function mountHandOffs(): HandOffSurface {
           return before !== undefined && before !== viewKey(item);
         });
         records = snapshot.handOffs;
-        available = snapshot.t3?.available ?? false;
         const firstNew = newlyObserved[0];
         if (firstNew !== undefined) {
           announce.textContent = `New hand-off: ${handOffTitle(firstNew)} is in T3 Code.`;
@@ -468,32 +394,15 @@ export function mountHandOffs(): HandOffSurface {
         announce.textContent = error instanceof Error ? error.message : 'The answer was not saved.';
       });
   });
-  trigger.addEventListener('click', () => {
-    if (open) {
-      close(true);
-      return;
-    }
-    open = true;
-    render();
-    panel.querySelector<HTMLElement>('.handoff-close')?.focus();
-    for (const item of listedHandOffs(records)) {
-      if (handOffPresentation(item).terminal) void acknowledge(item.id).catch(() => undefined);
-    }
-  });
-  panel.querySelector<HTMLButtonElement>('.handoff-close')?.addEventListener('click', () => close(true));
   document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
     const action = target.closest<HTMLButtonElement>('[data-handoff-action]');
-    if (action === null) {
-      if (target.closest('a[href]') !== null) close(false);
-      return;
-    }
+    if (action === null) return;
     event.preventDefault();
     const id = action.dataset['handoffId'];
     const kind = action.dataset['handoffAction'];
     if (id === undefined) return;
-    const closeAfterAction = panel.contains(action);
     action.disabled = true;
     void (async () => {
       try {
@@ -517,7 +426,6 @@ export function mountHandOffs(): HandOffSurface {
         announce.textContent = error instanceof Error ? error.message : 'The hand-off action failed.';
       } finally {
         action.disabled = false;
-        if (closeAfterAction) close(true);
       }
     })();
   });
@@ -527,16 +435,6 @@ export function mountHandOffs(): HandOffSurface {
     const link = target.closest<HTMLAnchorElement>('[data-handoff-ack]');
     if (link !== null) void acknowledge(link.dataset['handoffAck'] ?? '').catch(() => undefined);
   });
-  document.addEventListener('click', (event) => {
-    if (open && clickedOutside(event, anchor)) close(false);
-  });
-  document.addEventListener('keydown', (event) => {
-    if (open && event.key === 'Escape') {
-      event.preventDefault();
-      close(true);
-    }
-  });
-
   void refresh();
   const timer = window.setInterval(() => {
     if (document.visibilityState === 'visible') void refresh();
@@ -560,24 +458,4 @@ export function mountHandOffs(): HandOffSurface {
 function omitModelChange(handOff: HandOffStatusDto): HandOffStatusDto {
   const { modelChange: _answered, ...rest } = handOff;
   return rest;
-}
-
-function rowHtml(handOff: HandOffStatusDto): string {
-  const presentation = handOffPresentation(handOff);
-  const timestamp = handOff.lastSeenAt ?? handOff.updatedAt;
-  const stale = handOff.stale ? ' · stale' : '';
-  const ariaLabel = `${presentation.label}, ${handOffTitle(handOff)}, ${handOff.repo}, ${handOffMapLabel(handOff)}${stale}`;
-  const title = handOffTitle(handOff);
-  const mapLabel = handOffMapLabel(handOff);
-  return `<li class="handoff-row is-${presentation.state}${handOff.stale ? ' is-stale' : ''}" aria-label="${escapeHtml(ariaLabel)}">
-    <span class="handoff-row-icon is-${presentation.state}" aria-hidden="true"></span>
-    <div class="handoff-row-main">
-      <div class="handoff-row-heading">${handOffPill(handOff)}<time datetime="${escapeHtml(timestamp)}">${escapeHtml(handOffTime(handOff))}${stale}</time></div>
-      <b class="handoff-row-title" title="${escapeHtml(title)}">${escapeHtml(title)}</b>
-      <span class="handoff-row-context" title="${escapeHtml(`${handOff.repo} · ${mapLabel}`)}">${escapeHtml(handOff.repo)} · ${escapeHtml(mapLabel)}</span>
-      <span class="handoff-row-report">${handOff.stale ? 'Last report: ' : ''}${escapeHtml(presentation.report)}</span>
-      ${modelChangePromptHtml(handOff)}
-      <div class="handoff-actions">${handOffActions(handOff)}<a class="ghost handoff-source" href="${escapeHtml(handOffSourcePath(handOff))}">${icon(icons.ARROW)}Back to ${handOff.ticketNumber === null ? 'map' : 'ticket'}</a></div>
-    </div>
-  </li>`;
 }

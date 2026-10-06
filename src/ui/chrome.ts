@@ -54,7 +54,7 @@ const STATIC_ICONS: Record<string, string> = {
   folder: icons.FOLDER,
   person: icons.PERSON,
   grill: icons.GRILL,
-  map: icons.COMPASS,
+  map: icons.MAP,
   ticket: icons.LIST,
   chevron: icons.CHEVRON,
   download: icons.DOWNLOAD,

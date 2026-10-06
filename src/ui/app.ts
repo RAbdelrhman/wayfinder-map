@@ -27,6 +27,7 @@ import type { ModelChoice, Tier } from './models.js';
 import { AutoRefresh } from './autoRefresh.js';
 import { fitPrototypeThumbs, prototypeTileHtml } from './prototypeTile.js';
 import { lineage, matchesFilter, matchesQuery, onLineage, syncedLabel } from './focus.js';
+import { setSyncedBusy, setSyncedLabel } from './syncedButton.js';
 import type { Lineage, TicketFilter } from './focus.js';
 import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
@@ -46,7 +47,6 @@ import { recordMapOpened } from './homeRecency.js';
 import {
   SIGNAL_KEY_ROWS,
   criticalEdges,
-  criticalPathButtonHtml,
   edgeKey,
   pullRequestLinesHtml,
   pullRequestMetaHtml,
@@ -148,7 +148,6 @@ const els = {
   inspector: need('inspector'),
   hovercard: need('hovercard'),
   toast: need('toast'),
-  criticalPath: need<HTMLButtonElement>('critical-path'),
 };
 
 paintIcons();
@@ -175,23 +174,20 @@ let zoom = 1;
 /** The map the canvas was last homed for, so a background refresh keeps the view where it is. */
 let homedMap: number | null = null;
 let inspectorTab: 'brief' | 'ticket' = 'brief';
-/** The critical-path count is pressed: everything off the path is dimmed on the map and hidden in the table. */
-let pathFocus = false;
 let briefSection: keyof MapSections = 'destination';
 
 let query = '';
 let navigation: NavigationController | null = null;
 const canvasViewer = mountCanvasViewer(els.app, () => {
-  const saved = { selected, inspectorTab, zoom, view, filter, pathFocus, query };
+  const saved = { selected, inspectorTab, zoom, view, filter, query };
   return () => {
     zoom = saved.zoom;
     els.canvas.style.zoom = String(zoom);
     els.zoomReset.textContent = `${String(Math.round(zoom * 100))}%`;
     const viewChanged = view !== saved.view;
-    const highlightsChanged = filter !== saved.filter || pathFocus !== saved.pathFocus || query !== saved.query;
+    const highlightsChanged = filter !== saved.filter || query !== saved.query;
     view = saved.view;
     filter = saved.filter;
-    pathFocus = saved.pathFocus;
     query = saved.query;
     els.search.value = query;
     if (viewChanged) {
@@ -203,7 +199,6 @@ const canvasViewer = mountCanvasViewer(els.app, () => {
       selected = saved.selected;
       inspectorTab = saved.inspectorTab;
       renderFilters();
-      renderCriticalPath();
       syncHighlights();
       renderInspector();
     }
@@ -566,7 +561,7 @@ function toast(message: string, ms = 4200): void {
 async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean> {
   if (loadInFlight !== null) return loadInFlight;
   const query = mode === 'manual' ? '?refresh=1' : mode === 'background' ? '?check=1' : '';
-  if (mode === 'manual') syncedButton().classList.add('is-busy');
+  if (mode === 'manual') setSyncedBusy(syncedButton(), true);
 
   loadInFlight = (async () => {
     try {
@@ -630,7 +625,7 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       return false;
     } finally {
       loadInFlight = null;
-      syncedButton().classList.remove('is-busy');
+      setSyncedBusy(syncedButton(), false);
     }
   })();
   return loadInFlight;
@@ -705,7 +700,6 @@ function render(): void {
 
   els.app.classList.toggle('is-prototypes', view === 'prototypes');
   renderSynced();
-  renderCriticalPath();
   renderPlanningHandoff();
   renderFilters();
   renderKey();
@@ -721,21 +715,7 @@ function render(): void {
 function renderSynced(): void {
   if (snapshot === null) return;
   const fetched = Date.parse(snapshot.fetchedAt);
-  const text = Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched);
-  const synced = syncedButton();
-  const label = synced.querySelector<HTMLElement>('.synced-label') ?? synced;
-  label.textContent = text;
-}
-
-/** "N left on the critical path", after the view tabs. It focuses the path on the map and in the table. */
-function renderCriticalPath(): void {
-  const map = currentMap();
-  const html = map === null || view === 'prototypes' ? null : criticalPathButtonHtml(map.criticalPath);
-  if (html === null) pathFocus = false;
-  els.criticalPath.hidden = html === null;
-  els.criticalPath.innerHTML = html ?? '';
-  els.criticalPath.setAttribute('aria-pressed', String(pathFocus));
-  els.criticalPath.title = pathFocus ? 'Show every ticket' : 'Show only the critical path';
+  setSyncedLabel(syncedButton(), Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
 }
 
 function renderFilters(): void {
@@ -1045,29 +1025,25 @@ function syncHighlights(): void {
     return ticket !== undefined && matches(ticket);
   };
   const chain: Lineage | null = hovered === null ? null : lineage(graphTickets(map), hovered);
-  const pathTickets = new Set(pathFocus ? map.criticalPath.tickets : []);
-  const pathEdges = pathFocus ? criticalEdges(map.criticalPath) : null;
-  const offPath = (number: number): boolean => pathFocus && !pathTickets.has(number);
   const related = (number: number): boolean =>
     chain === null || number === hovered || chain.upstream.has(number) || chain.downstream.has(number);
 
   for (const node of els.nodes.querySelectorAll<HTMLElement>('.node')) {
     const number = Number(node.dataset['number']);
     node.classList.toggle('is-selected', number === selected);
-    node.classList.toggle('is-dim', !related(number) || !shown(number) || offPath(number));
+    node.classList.toggle('is-dim', !related(number) || !shown(number));
   }
 
   for (const path of els.edges.querySelectorAll<SVGPathElement>('path')) {
     const edge = { from: Number(path.dataset['from']), to: Number(path.dataset['to']) };
     const onPath = chain !== null && hovered !== null && onLineage(edge, hovered, chain);
     path.classList.toggle('is-path', onPath);
-    const offPathEdge = pathEdges !== null && !pathEdges.has(edgeKey(edge.from, edge.to));
-    path.classList.toggle('is-dim', (chain === null ? !(shown(edge.from) && shown(edge.to)) : !onPath) || offPathEdge);
+    path.classList.toggle('is-dim', chain === null ? !(shown(edge.from) && shown(edge.to)) : !onPath);
   }
 
   for (const row of els.tableWrap.querySelectorAll<HTMLElement>('tr[data-number]')) {
     const number = Number(row.dataset['number']);
-    row.hidden = !shown(number) || offPath(number);
+    row.hidden = !shown(number);
     row.classList.toggle('is-selected', number === selected);
   }
 }
@@ -1572,12 +1548,6 @@ els.planningHandoff.addEventListener('click', async (event) => {
   } finally {
     button.disabled = false;
   }
-});
-
-els.criticalPath.addEventListener('click', () => {
-  pathFocus = !pathFocus;
-  renderCriticalPath();
-  syncHighlights();
 });
 
 els.filters.addEventListener('click', (event) => {

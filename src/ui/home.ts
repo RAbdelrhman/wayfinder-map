@@ -32,6 +32,7 @@ import { DEFAULT_NOTIFICATION_SETTINGS, readNotificationSettings } from '../noti
 import type { NotificationSettings } from '../notificationTypes.js';
 import type { MapEvent } from '../mapWatch.js';
 import { mountCanvasViewer } from './canvasViewer.js';
+import { setSyncedBusy, setSyncedLabel } from './syncedButton.js';
 
 function need<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -117,9 +118,7 @@ handOffSurface.subscribe((records) => {
 });
 
 function setSynced(text: string): void {
-  const synced = syncedButton();
-  const label = synced.querySelector<HTMLElement>('.synced-label') ?? synced;
-  label.textContent = text;
+  setSyncedLabel(syncedButton(), text);
 }
 
 function syncedButton(): HTMLButtonElement {
@@ -127,7 +126,7 @@ function syncedButton(): HTMLButtonElement {
 }
 
 function setSyncBusy(busy: boolean): void {
-  syncedButton().classList.toggle('is-busy', busy);
+  setSyncedBusy(syncedButton(), busy);
 }
 
 let toastTimer = 0;

@@ -9,10 +9,8 @@ import {
   handOffPresentation,
   handOffSourcePath,
   handOffTime,
-  handOffTriggerLabel,
   handOffVisualSignature,
   homeHandOffHistoryHtml,
-  listedHandOffs,
   modelChangePromptHtml,
   recentHandOffs,
   restoreMapTicketFocus,
@@ -88,23 +86,6 @@ describe('hand-off presentation', () => {
     });
     expect(handOffPresentation(item).label).toBe('Working');
     expect(handOffCardHtml(item)).not.toContain('Open PR #42');
-  });
-
-  it('orders attention first and hides acknowledged and untracked records', () => {
-    const items = [
-      handOff({ id: 'working', createdAt: '2026-09-23T10:00:00Z' }),
-      handOff({ id: 'needs-you', status: 'waiting' }),
-      handOff({ id: 'failed', status: 'failed' }),
-      handOff({ id: 'acknowledged', acknowledged: true }),
-      handOff({ id: 'untracked', threadId: null }),
-    ];
-    expect(listedHandOffs(items).map((item) => item.id)).toEqual(['failed', 'needs-you', 'working']);
-  });
-
-  it('describes urgency and offline status in the trigger label', () => {
-    expect(handOffTriggerLabel([handOff()], true)).toBe('1 hand-off in T3 Code');
-    expect(handOffTriggerLabel([handOff({ status: 'waiting' })], false)).toBe('1 hand-off in T3 Code, 1 need you, T3 Code is offline; showing the last reported status');
-    expect(handOffTriggerLabel([], null)).toBe('0 hand-offs in T3 Code');
   });
 
   it('uses the repository, map and ticket for source links', () => {
@@ -229,7 +210,6 @@ describe('finished hand-offs', () => {
     expect(closed).toMatchObject({ state: 'done', label: 'Done', group: 'Done', needsYou: false, terminal: true });
     expect(handOffPresentation(handOff({ status: 'finished', ticketClosed: true })).state).toBe('done');
     expect(handOffPresentation(handOff({ status: 'failed', ticketClosed: true })).state).toBe('done');
-    expect(handOffTriggerLabel([handOff({ status: 'ready', ticketClosed: true })], true)).toBe('1 hand-off in T3 Code');
     expect(handOffVisualSignature([handOff({ status: 'ready' })])).not.toBe(handOffVisualSignature([handOff({ status: 'ready', ticketClosed: true })]));
   });
 

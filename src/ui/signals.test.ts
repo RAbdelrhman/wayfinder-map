@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   checkCountText,
   criticalEdges,
-  criticalPathButtonHtml,
   edgeKey,
   pullRequestLinesHtml,
   pullRequestMetaHtml,
@@ -111,10 +110,5 @@ describe('the critical path', () => {
     expect([...edges]).toEqual([edgeKey(3, 5), edgeKey(5, 8)]);
     expect(edges.has(edgeKey(3, 8))).toBe(false);
     expect(criticalEdges({ tickets: [3], remaining: 1 }).size).toBe(0);
-  });
-
-  it('counts what is left, and has no button once nothing is', () => {
-    expect(text(criticalPathButtonHtml({ tickets: [3, 5, 8], remaining: 2 }) ?? '')).toBe('2 left on the critical path');
-    expect(criticalPathButtonHtml({ tickets: [3, 5], remaining: 0 })).toBeNull();
   });
 });

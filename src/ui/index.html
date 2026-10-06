@@ -15,7 +15,6 @@
       <div class="main">
         <header class="topbar map-topbar" id="topbar">
           <div class="nav-topbar" id="nav-topbar"></div>
-          <button type="button" class="critical-count" id="critical-path" aria-pressed="false" hidden></button>
           <span class="topbar-spacer"></span>
           <div class="handoff-anchor batch-anchor" id="batch-anchor" hidden>
             <button type="button" class="handoff-trigger batch-trigger" id="batch-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="batch-list"></button>
@@ -33,16 +32,6 @@
               <header class="map-inbox-head"><div><h2 id="map-inbox-title">Inbox</h2><p id="map-inbox-summary">Changes on maps you have opened</p></div><button type="button" class="map-inbox-clear" id="map-inbox-clear">Clear activity</button><button type="button" class="handoff-close" id="map-inbox-close" aria-label="Close inbox">×</button></header>
               <div class="map-inbox-filters" role="group" aria-label="Show"><button type="button" class="map-inbox-filter" data-inbox-filter="all" aria-pressed="true">All</button><button type="button" class="map-inbox-filter" data-inbox-filter="needs" aria-pressed="false">Needs you<span id="map-inbox-needs-count" class="map-inbox-needs-count" hidden></span></button></div>
               <div class="map-inbox-body" id="map-inbox-body"></div>
-            </section>
-          </div>
-          <div class="handoff-anchor" id="handoff-anchor" hidden>
-            <button type="button" class="handoff-trigger" id="handoff-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="handoff-list" aria-label="Hand-offs in T3 Code"></button>
-            <section class="handoff-list" id="handoff-list" role="dialog" aria-labelledby="handoff-list-title" hidden>
-              <header class="handoff-list-head">
-                <div><h2 id="handoff-list-title">Hand-offs</h2><p id="handoff-list-count"></p></div>
-                <button type="button" class="handoff-close" data-focus-key="close" aria-label="Close hand-offs">×</button>
-              </header>
-              <div class="handoff-list-body" id="handoff-list-body"></div>
             </section>
           </div>
           <button type="button" class="search nav-topbar-jump" id="jump-to-top" data-nav-action="jump" aria-label="Jump to" title="Jump to · Ctrl K" hidden><span data-icon="lens"></span><span class="ph">Jump to…</span><kbd>Ctrl K</kbd></button>
