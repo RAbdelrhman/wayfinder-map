@@ -1,4 +1,4 @@
-import { prototypeFileUrl } from '../prototypes.js';
+import { canvasEntries, prototypeFileUrl } from '../prototypes.js';
 import type { Prototype } from '../types.js';
 import { escapeHtml } from './markdown.js';
 import { canvasEntryAttrs } from './canvasEntry.js';
@@ -49,6 +49,16 @@ export function previewUrl(repo: string, prototype: Prototype): string | null {
   return prototype.preview === null ? null : prototypeFileUrl(repo, prototype.branch, prototype.preview, prototype.sha);
 }
 
+/** Keep every board reachable when a prototype branch holds multiple design tasks. */
+export function canvasLinksHtml(repo: string, prototype: Prototype): string {
+  const boards = prototype.canvases ?? canvasEntries(prototype.openable, prototype.files);
+  if (boards.length < 2) return '';
+  return `<nav class="proto-tile-foot proto-canvas-links" aria-label="Canvases for #${String(prototype.ticketNumber)}">${boards.map((board) => {
+    const label = board.replace(/\/?index\.html$/i, '') || 'Canvas';
+    return `<a href="${escapeHtml(prototypeFileUrl(repo, prototype.branch, board, prototype.sha))}" ${canvasEntryAttrs(repo, { ...prototype, preview: board }, label)}>${escapeHtml(label)}</a>`;
+  }).join('')}</nav>`;
+}
+
 /**
  * One prototype as a tile: a live, scaled-down copy of the page on top, what it is below.
  * Clicking the picture or the title opens the shared in-app canvas viewer.
@@ -78,6 +88,7 @@ export function prototypeTileHtml(repo: string, prototype: Prototype, text: Tile
       <p class="eyebrow">${escapeHtml(text.eyebrow)}</p>
       <h2>${title}</h2>
       ${gist === '' ? '' : `<p class="proto-gist">${escapeHtml(gist)}</p>`}
+      ${canvasLinksHtml(repo, prototype)}
       ${footer === '' ? '' : `<div class="proto-tile-foot">${footer}</div>`}
     </div>
   </article>`;

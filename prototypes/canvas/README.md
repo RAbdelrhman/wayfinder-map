@@ -26,11 +26,11 @@ Use it when a decision is **visual or UX**. Logic-only prototypes don't need it.
 
 ## Quick start (agents)
 
-1. Put the canvas in the repo: `node ~/.claude/skills/design-canvas/scaffold.mjs [dir]` (default `prototypes/canvas`). It never overwrites `config.js`, `variants/` or `assets/`, so running it again just updates the engine.
+1. Give each unrelated task its own directory: `bun run canvas:create <task-id>` from the repo root. For tickets use `<ticket>-<title-slug>` and append `--ticket <ticket>`. It refuses an existing directory. With the external skill, pass the explicit path: `node ~/.claude/skills/design-canvas/scaffold.mjs prototypes/<task-id>`. Never append an unrelated task to an existing board. Reuse a directory only for rounds of the same task.
 2. Describe your options in `config.js`. Put full pages in `variants/`, images in `assets/`.
 3. Preview it under the same sandbox a prototype viewer uses: `node <dir>/tools/serve.mjs` → the URL it prints.
 4. Check it: `node <dir>/tools/check.mjs`. It exits 1 on errors.
-5. Commit and show the user.
+5. Inspect the preview, then provide the exact canvas link and visible preview before asking the user to choose. Commit the completed work.
 
 ## Rules (the sandbox)
 

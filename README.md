@@ -159,15 +159,31 @@ hand, use the same name, because the name is the only way the tool finds it.
 A prototype that asks a visual or UX question is built as a **design canvas**: a board
 that lays the options out side by side (full pages, style directions, component sheets,
 palettes, type, layered moodboards), each with a note giving its pros and cons. It can
-have several pages, and any option opens full size. It lives in `prototypes/canvas/`:
-the options are described in `config.js`, and its `README.md` is the full reference.
+have several pages, and any option opens full size. Each unrelated design task lives
+in its own `prototypes/<task-id>/` directory. Ticket tasks use `<ticket>-<title-slug>`;
+non-ticket tasks use a descriptive ID such as `onboarding-flow`. Existing boards,
+including the legacy `prototypes/canvas/`, retain their content and URLs.
+The options are described in `config.js`, and its `README.md` is the full reference.
 To add one, use the `design-canvas` skill:
 
 ```sh
-node ~/.claude/skills/design-canvas/scaffold.mjs prototypes/canvas  # engine + starter; never overwrites your config.js, variants/ or assets/
-node prototypes/canvas/tools/check.mjs                              # validates the config and the sandbox rules
-node prototypes/canvas/tools/serve.mjs                              # previews it under the same CSP the tool serves it with
+bun run canvas:create onboarding-flow                 # fresh board; refuses an existing directory
+bun run canvas:create 8-home-page --ticket 8           # keeps the ticket association
+node prototypes/onboarding-flow/tools/check.mjs       # validates config and sandbox rules
+node prototypes/onboarding-flow/tools/serve.mjs 4395   # use an unused preview port
 ```
+
+The creation command copies the engine, never another task's config, variants, or
+assets. Author the options in the new directory and follow its README. With the
+external skill, always pass the explicit directory to `scaffold.mjs`. Continue an
+existing board only for iterations of the same task, preserving previous rounds.
+Inspect and share the exact canvas URL and visible preview before asking for a
+choice. A preview server serves the checkout, so each board has a distinct URL
+on the same port. Separate worktrees need separate servers and unused ports.
+These local canvases need no issues, maps, T3 jobs, or pushes. The hosted gallery
+still discovers ticket-associated `prototype/` branches. When a branch has several
+canvases, all discovered boards have links, and the ticket's own directory takes
+priority for its preview and variants.
 
 Any other prototype carries `prototype-snapshot.html` at its branch root: the prototype
 as one HTML file with its styles and script inlined, no paths starting with `/`, and no
@@ -286,7 +302,7 @@ wayfinder-map --prompt ./my-prompt.txt
 Placeholders: `{{repo}}`, `{{mapNumber}}`, `{{mapTitle}}`, `{{mapUrl}}`,
 `{{destination}}`, `{{notes}}`, `{{decisions}}`, `{{fog}}`, `{{ticketNumber}}`,
 `{{ticketTitle}}`, `{{ticketType}}`, `{{ticketState}}`, `{{ticketUrl}}`,
-`{{ticketBody}}`, `{{ticketSlug}}`, `{{worktreeName}}`, `{{branchName}}`, `{{prototypeBranch}}`,
+`{{ticketBody}}`, `{{ticketSlug}}`, `{{worktreeName}}`, `{{branchName}}`, `{{prototypeBranch}}`, `{{canvasDirectory}}`,
 `{{baseBranch}}`, `{{worktreeSteps}}`, `{{typeSteps}}`, `{{blockedLine}}`.
 `{{worktreeSteps}}` asks the agent to make its worktree, or tells it that T3 Code
 already did. `{{typeSteps}}` tells the agent that grilling and prototype tickets are

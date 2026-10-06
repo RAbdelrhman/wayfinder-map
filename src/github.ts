@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 
 import { criticalPath } from './criticalPath.js';
 import { parseBlockedByLine, parseChildNumbers, parseMapBody } from './mapBody.js';
-import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SHOTS_DIR, PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, pickPreview, prototypeTicketNumber, prototypeVariantInfo, unlistedCanvasBoards, verdictComment } from './prototypes.js';
+import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SHOTS_DIR, PROTOTYPE_SNAPSHOT_FILE, canvasEntries, isHtml, isSelfContained, pickPreview, prototypeTicketNumber, prototypeVariantInfo, unlistedCanvasBoards, verdictComment } from './prototypes.js';
 import { idleCutoff, isIdleCandidate, settlementOf } from './settling.js';
 import { isMapShown, mapVisibility } from './visibility.js';
 import type { Viewer } from './visibility.js';
@@ -976,12 +976,12 @@ async function variantsOf(
   preview: { openable: string[]; preview: string | null },
   shots: readonly string[],
 ): Promise<PrototypeVariant[]> {
-  const configFile =
-    files.find((file) => /(?:^|\/)config\.js$/.test(file)) ??
-    (preview.preview !== null && /(?:^|\/)index\.html$/i.test(preview.preview) ? preview.preview.replace(/index\.html$/i, 'config.js') : null);
+  const configFile = preview.preview !== null && /(?:^|\/)index\.html$/i.test(preview.preview)
+    ? preview.preview.replace(/index\.html$/i, 'config.js') : null;
   const configSource = configFile === null ? null : await fetchBranchFile(repo, branch, configFile).then((bytes) => bytes.toString('utf8'), () => null);
   const canvasDir = configFile === null ? '' : configFile.replace(/config\.js$/, '');
-  const pages = [...new Set([...preview.openable, ...files.filter(isHtml)])];
+  const pages = [...new Set([...preview.openable, ...files.filter(isHtml)])]
+    .filter((file) => canvasDir === '' || file.startsWith(canvasDir));
   return prototypeVariantInfo(ticketNumber, shots, configSource, canvasDir, pages);
 }
 
@@ -992,7 +992,7 @@ export async function fetchDefaultBranchFile(repo: string, file: string): Promis
 }
 
 /** What the branch can show running: its standalone HTML files, and the one to lead with. */
-async function previewOf(repo: string, branch: string, files: readonly string[]): Promise<{ openable: string[]; preview: string | null }> {
+async function previewOf(repo: string, branch: string, files: readonly string[]): Promise<{ openable: string[]; preview: string | null; canvases: string[] }> {
   const boards = unlistedCanvasBoards(files);
   const [changed, boardsOnBranch, hasSnapshot] = await Promise.all([
     openableFiles(repo, branch, files),
@@ -1000,7 +1000,15 @@ async function previewOf(repo: string, branch: string, files: readonly string[])
     snapshotExists(repo, branch),
   ]);
   const openable = [...boardsOnBranch, ...changed];
-  return { openable, preview: pickPreview(hasSnapshot, openable, [...files, ...boardsOnBranch]) };
+  const candidates = openable.filter((file) => /(?:^|\/)index\.html$/i.test(file));
+  const configs = await pool(candidates, 4, async (board) => {
+    const config = board.replace(/index\.html$/i, 'config.js');
+    return fetchBranchFile(repo, branch, config).then(() => config, () => null);
+  });
+  const canvasFiles = configs.filter((file): file is string => file !== null);
+  const canvases = canvasEntries(openable, canvasFiles);
+  const preferred = `prototypes/${branch.slice(PROTOTYPE_BRANCH_PREFIX.length)}/index.html`;
+  return { openable, canvases, preview: pickPreview(hasSnapshot, openable, canvasFiles, preferred) };
 }
 
 /** Whether the branch carries a runnable snapshot. Read directly, since the diff may not list it. */

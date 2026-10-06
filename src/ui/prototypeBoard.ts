@@ -3,7 +3,7 @@ import { prototypeFileUrl, prototypePageUrl, prototypeShotUrl } from '../prototy
 import { escapeHtml } from './markdown.js';
 import { canvasEntryAttrs } from './canvasEntry.js';
 import { bone, boneButton } from './skeleton.js';
-import { previewUrl, verdictGist } from './prototypeTile.js';
+import { canvasLinksHtml, previewUrl, verdictGist } from './prototypeTile.js';
 
 export type PrototypeDecisionState = 'waiting' | 'building' | 'decided';
 
@@ -59,10 +59,12 @@ function fileVariant(file: string, index: number, ticketNumber: number): Prototy
 }
 
 export function prototypeVariants(prototype: Prototype): PrototypeVariant[] {
+  const canvasDir = prototype.canvases?.includes(prototype.preview ?? '') === true
+    ? prototype.preview?.replace(/index\.html$/i, '') ?? '' : '';
   const files = [
     ...prototype.files.filter((file) => IMAGE_FILE.test(file) && VARIANT_DIRECTORY.test(file)),
     ...prototype.openable.filter((file) => HTML_FILE.test(file) && file !== prototype.preview && VARIANT_DIRECTORY.test(file)),
-  ];
+  ].filter((file) => canvasDir === '' || file.startsWith(canvasDir));
   const variants = new Map<string, PrototypeVariant>();
   files.forEach((file, index) => {
     const candidate = fileVariant(file, index, prototype.ticketNumber);
@@ -223,6 +225,7 @@ function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string
       ${date === '' ? '' : `<time class="when" datetime="${escapeHtml(prototype.updatedAt ?? '')}">${escapeHtml(date)}</time>`}
       <span class="acts">${pickAction}<a class="${decision.state === 'waiting' ? 'primary' : 'ghost'}" href="${escapeHtml(canvas)}" ${canvasEntryAttrs(repo, prototype, ticketTitle)} aria-label="Open the #${String(prototype.ticketNumber)} prototype canvas"><span data-icon="play" aria-hidden="true"></span>Canvas</a></span></div>
     <p class="gist">${escapeHtml(summary)}</p>
+    ${canvasLinksHtml(repo, prototype)}
     <div class="wf-strip" role="list" aria-label="Variants for #${String(prototype.ticketNumber)}">${variantHtml}</div>
   </section>`;
 }

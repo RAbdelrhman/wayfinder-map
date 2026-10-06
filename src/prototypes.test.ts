@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PROTOTYPE_HOST_VERSION, PROTOTYPE_SNAPSHOT_FILE, isHtml, isSelfContained, parsePrototypeFilePath, pickPreview, prototypeFileUrl, prototypePageUrl, prototypeTicketNumber, unlistedCanvasBoards } from './prototypes.js';
+import { PROTOTYPE_HOST_VERSION, PROTOTYPE_SNAPSHOT_FILE, canvasEntries, isHtml, isSelfContained, parsePrototypeFilePath, pickPreview, prototypeFileUrl, prototypePageUrl, prototypeTicketNumber, unlistedCanvasBoards } from './prototypes.js';
 
 it('addresses cached files by SHA and viewer rendition, keeping relative assets in that prefix', () => {
   const sha = 'a'.repeat(40);
@@ -86,6 +86,10 @@ describe('prototype file paths', () => {
 });
 
 describe('unlistedCanvasBoards', () => {
+  it('discovers independent boards after only variants or assets change', () => {
+    expect(unlistedCanvasBoards(['prototypes/home/variants/a.html', 'prototypes/home/assets/a.png', 'prototypes/onboarding/config.js']))
+      .toEqual(['prototypes/home/index.html', 'prototypes/onboarding/index.html']);
+  });
   it('finds a canvas board the diff left out because only its config changed', () => {
     expect(unlistedCanvasBoards(['prototypes/canvas/config.js', 'prototypes/canvas/variants/a.html'])).toEqual(['prototypes/canvas/index.html']);
     expect(unlistedCanvasBoards(['config.js'])).toEqual(['index.html']);
@@ -98,6 +102,14 @@ describe('unlistedCanvasBoards', () => {
 });
 
 describe('pickPreview', () => {
+  it('keeps independent board URLs and prefers the current task over an inherited legacy board', () => {
+    const boards = ['prototypes/canvas/index.html', 'prototypes/8-home/index.html'];
+    const files = boards.flatMap((board) => [board, board.replace('index.html', 'config.js')]);
+    expect(canvasEntries(boards, files)).toEqual(boards);
+    expect(pickPreview(true, boards, files, boards[1])).toBe(boards[1]);
+    expect(pickPreview(false, boards, files, 'missing/index.html')).toBe(boards[0]);
+    expect(new Set(boards.map((board) => prototypeFileUrl('octo/repo', 'prototype/8-home', board))).size).toBe(2);
+  });
   it('leads with the saved snapshot, which runs without the app', () => {
     expect(pickPreview(true, ['docs/flow.html'])).toBe(PROTOTYPE_SNAPSHOT_FILE);
   });
