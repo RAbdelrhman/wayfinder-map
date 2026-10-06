@@ -8,6 +8,7 @@ import {
   handOffMapLabel,
   handOffPresentation,
   handOffSourcePath,
+  handOffsToAcknowledge,
   handOffTime,
   handOffVisualSignature,
   homeHandOffHistoryHtml,
@@ -86,6 +87,18 @@ describe('hand-off presentation', () => {
     });
     expect(handOffPresentation(item).label).toBe('Working');
     expect(handOffCardHtml(item)).not.toContain('Open PR #42');
+  });
+
+  it('acknowledges only finished, tracked hand-offs not yet acknowledged when the Inbox opens', () => {
+    const items = [
+      handOff({ id: 'failed', status: 'failed' }),
+      handOff({ id: 'done', status: 'ready', ticketClosed: true }),
+      handOff({ id: 'working' }),
+      handOff({ id: 'needs-you', status: 'waiting' }),
+      handOff({ id: 'seen', status: 'failed', acknowledged: true }),
+      handOff({ id: 'untracked', status: 'failed', threadId: null }),
+    ];
+    expect(handOffsToAcknowledge(items).map((item) => item.id)).toEqual(['failed', 'done']);
   });
 
   it('uses the repository, map and ticket for source links', () => {

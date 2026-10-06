@@ -6,6 +6,7 @@ import { newMapPath, rememberNewMapRetry } from './newMap.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
+import { INBOX_OPENED } from './notifications.js';
 
 export type HandOffUiState = 'starting' | 'working' | 'needs-you' | 'pr-ready' | 'merged' | 'done' | 'failed';
 
@@ -129,6 +130,11 @@ export function handOffPresentation(handOff: HandOffStatusDto): HandOffPresentat
 
 function t3PullRequests(handOff: HandOffStatusDto): HandOffStatusDto['pullRequests'] {
   return handOff.pullRequests.filter((pullRequest) => pullRequest.source === 't3');
+}
+
+/** Finished hand-offs the user has not acknowledged yet. Opening the Inbox acknowledges them, as the old topbar list did. */
+export function handOffsToAcknowledge(records: readonly HandOffStatusDto[]): HandOffStatusDto[] {
+  return records.filter((handOff) => handOff.threadId !== null && !handOff.acknowledged && handOffPresentation(handOff).terminal);
 }
 
 export function handOffTime(handOff: HandOffStatusDto, now = Date.now()): string {
@@ -435,6 +441,10 @@ export function mountHandOffs(): HandOffSurface {
     const link = target.closest<HTMLAnchorElement>('[data-handoff-ack]');
     if (link !== null) void acknowledge(link.dataset['handoffAck'] ?? '').catch(() => undefined);
   });
+  document.addEventListener(INBOX_OPENED, () => {
+    for (const item of handOffsToAcknowledge(records)) void acknowledge(item.id).catch(() => undefined);
+  });
+
   void refresh();
   const timer = window.setInterval(() => {
     if (document.visibilityState === 'visible') void refresh();

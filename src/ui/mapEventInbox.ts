@@ -4,7 +4,7 @@ import type { MapSnapshot } from '../types.js';
 import { escapeHtml } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
-import { KIND_LABEL, NOTIFICATIONS_CHANGED, mapEventNotification, notificationHref, withInboxLock } from './notifications.js';
+import { INBOX_OPENED, KIND_LABEL, NOTIFICATIONS_CHANGED, mapEventNotification, notificationHref, withInboxLock } from './notifications.js';
 import type { NotificationInboxController } from './notifications.js';
 import { filterInbox, inboxCounts, mergeInbox } from './unifiedInbox.js';
 import type { InboxFilter, InboxRow } from './unifiedInbox.js';
@@ -456,6 +456,7 @@ export function mountMapEventInbox(onEvent: ((event: MapEvent) => void) | undefi
     trigger.setAttribute('aria-expanded', String(open));
     if (open) {
       close.focus();
+      document.dispatchEvent(new Event(INBOX_OPENED));
       void fetch('/api/desktop/notifications/read', { method: 'POST' }).catch(() => undefined);
     }
     else if (returnFocus) trigger.focus();

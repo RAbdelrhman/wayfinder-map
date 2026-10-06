@@ -7,6 +7,8 @@ import type { MapSnapshot, Prototype, WayfinderMap } from '../types.js';
 import { escapeHtml } from './markdown.js';
 
 export const NOTIFICATIONS_CHANGED = 'wayfinder:notifications-changed';
+/** The Inbox opened: the user has now seen what finished, so finished hand-offs count as acknowledged. */
+export const INBOX_OPENED = 'wayfinder:inbox-opened';
 export const NOTIFICATIONS_KEY = 'wayfinder-map:notifications';
 const NOTIFICATION_LIMIT = 100;
 
