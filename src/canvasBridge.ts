@@ -76,6 +76,8 @@ function canvasBridge(): void {
     });
   };
   const ready = (): void => {
+    if (typeof performance !== 'undefined' && performance.getEntriesByType('navigation').some((entry) => (entry as PerformanceNavigationTiming).type === 'back_forward'))
+      post({ type: 'back' });
     post({
       type: 'ready',
       source: pages().length ? 'dom' : 'page',
@@ -97,6 +99,10 @@ function canvasBridge(): void {
     if (event.source !== parent) {
       // Escape from an option document does not bubble through an iframe.
       const child = [...document.querySelectorAll('iframe')].some((frame) => frame.contentWindow === event.source);
+      if (child && message['wf'] === 1 && message['type'] === 'back') {
+        post({ type: 'back' });
+        return;
+      }
       if (!child || message['wf'] !== 1 || message['type'] !== 'key' || message['key'] !== 'Escape') return;
       if (document.querySelector('#present-view:not([hidden])')) location.replace('#' + location.hash.slice(1).split('/')[0]);
       else post({ type: 'key', key: 'Escape' });
@@ -110,6 +116,9 @@ function canvasBridge(): void {
     );
   });
   window.addEventListener('hashchange', state);
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) post({ type: 'back' });
+  });
   window.addEventListener('canvas:change', state);
   document.addEventListener(
     'keydown',

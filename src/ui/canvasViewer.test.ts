@@ -20,6 +20,29 @@ const route = {
 };
 
 describe('canvas routing', () => {
+  it('continues closing when Back traverses a child document without a parent popstate', () => {
+    vi.useFakeTimers();
+    try {
+      const history = { pushState: vi.fn(), back: vi.fn() };
+      const changed = vi.fn();
+      const routing = new CanvasRouting(history, changed);
+      routing.open(route, origin + '/maps/205', null);
+      routing.close();
+      routing.close();
+      expect(history.back).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(300);
+      expect(history.back).toHaveBeenCalledTimes(2);
+      routing.pop({ wfCanvas: route }, origin);
+      vi.advanceTimersByTime(300);
+      expect(history.back).toHaveBeenCalledTimes(3);
+      routing.pop(null, origin);
+      expect(changed).toHaveBeenLastCalledWith(null);
+      vi.advanceTimersByTime(1000);
+      expect(history.back).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('adds exactly one entry and consumes Back/Forward without redrawing the map', () => {
     const history = { pushState: vi.fn(), back: vi.fn() },
       changed = vi.fn();

@@ -6,6 +6,28 @@ import { readCanvasMessage } from './ui/canvasViewer.js';
 import ts from 'typescript';
 
 describe('sandboxed canvas bridge', () => {
+  it('reports document-history traversal and relays it only from an actual child frame', () => {
+    const listeners = new Map<string, (event: unknown) => void>();
+    const parent = { postMessage: vi.fn() };
+    const child = {};
+    runInNewContext(CANVAS_BRIDGE_SCRIPT, {
+      window: { addEventListener: (name: string, fn: (event: unknown) => void) => listeners.set(name, fn) },
+      parent,
+      performance: { getEntriesByType: () => [{ type: 'back_forward' }] },
+      location: { href: 'http://localhost/proto/o/r/prototype%2F1/option.html', hash: '' },
+      document: { readyState: 'interactive', querySelector: () => null, querySelectorAll: () => [{ contentWindow: child }], addEventListener: vi.fn() },
+      URL,
+    });
+    expect(parent.postMessage).toHaveBeenCalledWith({ wf: 1, type: 'back' }, '*');
+    parent.postMessage.mockClear();
+    listeners.get('message')?.({ source: {}, data: { wf: 1, type: 'back' } });
+    expect(parent.postMessage).not.toHaveBeenCalled();
+    listeners.get('message')?.({ source: child, data: { wf: 1, type: 'back' } });
+    expect(parent.postMessage).toHaveBeenCalledOnce();
+    parent.postMessage.mockClear();
+    listeners.get('pageshow')?.({ persisted: true });
+    expect(parent.postMessage).toHaveBeenCalledWith({ wf: 1, type: 'back' }, '*');
+  });
   it('uses replacement navigation for option-page anchor tabs and client-side routers', () => {
     const listeners = new Map<string, (event: unknown) => void>();
     const replace = vi.fn(),

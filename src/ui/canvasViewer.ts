@@ -33,6 +33,7 @@ export function canvasOptionForFile(pages: readonly CanvasPage[], file: string |
 export type CanvasMessage =
   | { wf: 1; type: 'ready'; source: 'dom' | 'engine' | 'page'; pages: CanvasPage[] }
   | { wf: 1; type: 'state'; page: string | null; option: string | null; presenting: boolean }
+  | { wf: 1; type: 'back' }
   | { wf: 1; type: 'key'; key: 'Escape' };
 
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -40,6 +41,7 @@ const textOrNull = (value: unknown): value is string | null => value === null ||
 
 export function readCanvasMessage(value: unknown): CanvasMessage | null {
   if (!record(value) || value['wf'] !== 1) return null;
+  if (value['type'] === 'back') return { wf: 1, type: 'back' };
   if (value['type'] === 'key' && value['key'] === 'Escape') return value as CanvasMessage;
   if (value['type'] === 'state' && textOrNull(value['page']) && textOrNull(value['option']) && typeof value['presenting'] === 'boolean')
     return value as CanvasMessage;
@@ -97,6 +99,7 @@ export function readCanvasRoute(value: unknown, origin: string): CanvasRoute | n
 export class CanvasRouting {
   current: CanvasRoute | null = null;
   private closing = false;
+  private closeTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(
     private readonly history: Pick<History, 'pushState' | 'back'>,
     private readonly changed: (route: CanvasRoute | null) => void,
@@ -112,12 +115,25 @@ export class CanvasRouting {
   close(): void {
     if (this.current !== null && !this.closing) {
       this.closing = true;
-      this.history.back();
+      this.stepBack();
     }
   }
+  private stepBack(): void {
+    this.history.back();
+    // A prototype can navigate an opaque child frame to another document. That
+    // joint-history step has no parent popstate. Continue until the map entry
+    // arrives, rather than leaving Close permanently locked after that step.
+    if (this.closing) this.closeTimer = setTimeout(() => this.stepBack(), 300);
+  }
   pop(state: unknown, origin: string): boolean {
-    this.closing = false;
+    if (this.closeTimer !== null) clearTimeout(this.closeTimer);
+    this.closeTimer = null;
     const next = readCanvasRoute(record(state) ? state['wfCanvas'] : null, origin);
+    if (this.closing && next !== null) {
+      this.closeTimer = setTimeout(() => this.stepBack(), 300);
+      return true;
+    }
+    this.closing = false;
     if (next === null && this.current === null) return false;
     this.current = next;
     this.changed(next);
@@ -467,7 +483,7 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       pageId = message.page;
       optionId = message.option;
     }
-    if (message.type === 'key' && routing.current) routing.close();
+    if ((message.type === 'key' || message.type === 'back') && routing.current) routing.close();
     paint();
   });
   document.addEventListener(
