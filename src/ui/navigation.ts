@@ -52,7 +52,7 @@ export interface NavigationController {
 const SIDEBAR_STATE = 'wayfinder-map:navigation-expanded';
 const VIEWS: readonly NavigationView[] = ['map', 'table', 'prototypes'];
 const VIEW_LABEL: Record<NavigationView, string> = { map: 'Map', table: 'Table', prototypes: 'Prototypes' };
-const VIEW_ICON: Record<NavigationView, string> = { map: 'graph', table: 'table', prototypes: 'beaker' };
+const VIEW_ICON: Record<NavigationView, string> = { map: 'map', table: 'table', prototypes: 'beaker' };
 
 export const MAP_COUNTS_KEY = 'wayfinder-map:navigation-map-counts';
 const LOADING_ROW_LIMIT = 12;
@@ -444,7 +444,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
                 .join('');
         const mapCount = snapshot === undefined ? '' : `<span class="nav-meta">${String(snapshot.maps.length)}</span>`;
         return `<li class="nav-mark-item"><button type="button" class="rail-btn${current ? ' is-here' : ''}" data-nav-flyout-trigger="${menu}" data-tip="${escapeHtml(repoLabel(repo, repositories))}" aria-expanded="${String(opened)}" aria-controls="nav-menu-${menu}" aria-label="Open ${escapeHtml(repo)} maps">${repoIconHtml(repo, 'sm')}</button>
-          <div class="menu nav-popover nav-flyout" id="nav-menu-${menu}" data-nav-menu="${menu}" aria-label="${escapeHtml(repo)} maps"${opened ? '' : ' hidden'}><div class="menu-label">${escapeHtml(repo)}</div><ul><li><a class="menu-item${current && page === 'repository' ? ' is-on' : ''}" href="${repoPath(repo)}">${iconName('graph')}<span class="grow">All maps</span>${mapCount}</a></li>${items}</ul></div></li>`;
+          <div class="menu nav-popover nav-flyout" id="nav-menu-${menu}" data-nav-menu="${menu}" aria-label="${escapeHtml(repo)} maps"${opened ? '' : ' hidden'}><div class="menu-label">${escapeHtml(repo)}</div><ul><li><a class="menu-item${current && page === 'repository' ? ' is-on' : ''}" href="${repoPath(repo)}">${iconName('map')}<span class="grow">All maps</span>${mapCount}</a></li>${items}</ul></div></li>`;
       })
       .join('');
   }
@@ -510,9 +510,9 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
       const autoMapItem = autoMap === null || current === null ? '' : `<li class="nav-auto-map">${autoMapMenuHtml(autoMap)}</li>`;
       const startItem = startNextItem === '' && autoMapItem === '' ? '' : `<ul>${startNextItem}${autoMapItem}</ul>`;
       const menuMaps = snapshot?.maps.length
-        ? `${startItem}<div class="menu-label">Maps in ${escapeHtml(repoLabel(repo, repositories))}</div><ul>${snapshot.maps.map((candidate) => `<li><a class="menu-item${candidate.number === currentMapNumber ? ' is-on' : ''}" href="${mapHref(repo, candidate, activeView)}"${candidate.number === currentMapNumber ? ' aria-current="page"' : ''}>${miniRing(candidate)}<span class="grow">#${String(candidate.number)} ${escapeHtml(candidate.title)}</span></a></li>`).join('')}<li><a class="menu-item nav-all-maps" href="${repoPath(repo)}">${iconName('graph')}<span class="grow">All maps</span></a></li></ul>`
+        ? `${startItem}<div class="menu-label">Maps in ${escapeHtml(repoLabel(repo, repositories))}</div><ul>${snapshot.maps.map((candidate) => `<li><a class="menu-item${candidate.number === currentMapNumber ? ' is-on' : ''}" href="${mapHref(repo, candidate, activeView)}"${candidate.number === currentMapNumber ? ' aria-current="page"' : ''}>${miniRing(candidate)}<span class="grow">#${String(candidate.number)} ${escapeHtml(candidate.title)}</span></a></li>`).join('')}<li><a class="menu-item nav-all-maps" href="${repoPath(repo)}">${iconName('map')}<span class="grow">All maps</span></a></li></ul>`
         : `<ul><li class="nav-tree-status">${snapshotRequests.has(repo) ? 'Loading maps…' : snapshotErrors.has(repo) ? 'Could not load maps.' : 'No maps yet'}</li></ul>`;
-      return `<div class="nav-scope-control"><button type="button" class="scope" data-nav-menu-trigger="${menuId}" aria-haspopup="true" aria-expanded="${String(openMenu === menuId)}" aria-controls="nav-menu-${menuId}"${snapshot?.maps.length ? '' : ' disabled'} aria-label="${escapeHtml(current === null ? label : `Choose a map, current is ${label}`)}" title="${escapeHtml(current === null ? label : `${label} · Choose a map`)}">${iconName('map')}<span class="t">${escapeHtml(label)}</span>${current === null || autoMap === null ? '' : autoMapMarkHtml(autoMap.enabled)}${iconName('chevron')}</button><div class="menu nav-popover" id="nav-menu-${menuId}" data-nav-menu="${menuId}" aria-label="Maps in ${escapeHtml(repo)}"${openMenu === menuId ? '' : ' hidden'}>${menuMaps}</div></div>`;
+      return `<div class="nav-scope-control"><button type="button" class="scope" data-nav-menu-trigger="${menuId}" aria-haspopup="true" aria-expanded="${String(openMenu === menuId)}" aria-controls="nav-menu-${menuId}"${snapshot?.maps.length ? '' : ' disabled'} aria-label="${escapeHtml(current === null ? label : `Choose a map, current is ${label}`)}" title="${escapeHtml(current === null ? label : `${label} · Choose a map`)}">${current === null ? '' : miniRing(current)}<span class="t">${escapeHtml(label)}</span>${current === null || autoMap === null ? '' : autoMapMarkHtml(autoMap.enabled)}${iconName('chevron')}</button><div class="menu nav-popover" id="nav-menu-${menuId}" data-nav-menu="${menuId}" aria-label="Maps in ${escapeHtml(repo)}"${openMenu === menuId ? '' : ' hidden'}>${menuMaps}</div></div>`;
     };
     const separator = '<span class="crumb-sep" aria-hidden="true">/</span>';
     if (page === 'map' && currentRepo !== null) {

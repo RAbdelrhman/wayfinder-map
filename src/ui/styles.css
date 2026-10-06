@@ -4592,6 +4592,7 @@ textarea.input {
   height: 30px;
   display: grid;
   place-items: center;
+  padding: 0;
   border: 0;
   border-radius: 8px;
   background: none;
