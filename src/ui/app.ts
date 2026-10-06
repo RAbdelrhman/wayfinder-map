@@ -221,7 +221,7 @@ let previousHandOffRecords: readonly HandOffStatusDto[] | null = null;
 const mapEventInbox = mountMapEventInbox((event) => {
   if (snapshot === null) pendingMapEvents.push(event);
   else void receiveMapEvent(event);
-});
+}, notificationInbox);
 let handOffRecords: readonly HandOffStatusDto[] = [];
 let handOffVisualKey = '';
 let notificationSettingsChanged = false;
@@ -241,7 +241,7 @@ document.addEventListener(NOTIFICATION_SETTINGS_EVENT, (event) => {
 async function publishNotification(notification: NewInboxNotification): Promise<boolean> {
   await notificationSettingsReady;
   if (!notificationSettings[notification.kind]) return false;
-  const added = notificationInbox.push(notification);
+  const added = await notificationInbox.push(notification);
   if (!added) return false;
   const saved = notificationInbox.list().find((item) => item.id === notification.id);
   if (saved !== undefined) {
@@ -308,6 +308,7 @@ handOffSurface.subscribe((records) => {
   previousHandOffRecords = records;
   notifyHandOffTransitions(previous ?? [], records);
   handOffRecords = records;
+  notificationInbox.reconcileHandOffs(records);
   const key = handOffVisualSignature(records);
   if (key === handOffVisualKey) return;
   handOffVisualKey = key;

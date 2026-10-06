@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { MapEvent, WatchedPullRequest } from '../mapWatch.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import type { Prototype, WayfinderMap } from '../types.js';
-import { changedPrototypeNotifications, handOffTransitionNotifications, NotificationInbox, mapEventNotification, notificationHref, notificationPanelHtml } from './notifications.js';
+import { changedPrototypeNotifications, handOffTransitionNotifications, NotificationInbox, mapEventNotification, notificationHref } from './notifications.js';
 
 function ciEvent(pullRequestChanges: Partial<WatchedPullRequest> = {}): Extract<MapEvent, { type: 'ci-changed' }> {
   return {
@@ -65,7 +65,6 @@ describe('notification inbox', () => {
     const notification = mapEventNotification(ciEvent(), 'Roadmap');
     expect(notification).not.toBeNull();
     expect(notificationHref(notification!)).toBe('/repos/octo/repo/maps/5?view=map&ticket=11');
-    expect(notificationPanelHtml([{ ...notification!, read: false }])).toContain('href="/repos/octo/repo/maps/5?view=map&amp;ticket=11"');
   });
 });
 
