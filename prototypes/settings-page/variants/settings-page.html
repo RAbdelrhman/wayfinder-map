@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wayfinder settings concept</title>
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="settings-page.css" />
+  </head>
+  <body class="viz-root settings-prototype">
+    <div class="settings-demo-shell">
+      <aside class="settings-demo-sidebar" aria-label="Wayfinder navigation">
+        <a class="settings-demo-brand" href="#" data-to="Home"><span data-icon="compass"></span>Wayfinder</a>
+        <button class="primary" type="button" data-to="Start a new map"><span data-icon="plus"></span>New map</button>
+        <a href="#" data-to="Home"><span data-icon="home"></span>Home</a>
+        <span class="eyebrow">Repositories</span>
+        <a href="#" data-to="wayfinder-map"><span data-icon="repo"></span>wayfinder-map</a>
+        <div class="settings-demo-footer"><span class="settings-demo-avatar" aria-hidden="true">D</span><span>demo-user</span><a href="#" aria-current="page"><span data-icon="gear"></span>Settings</a></div>
+      </aside>
+      <div class="settings-demo-main">
+        <header class="topbar"><span class="page-title">Settings</span><span class="topbar-spacer"></span><button type="button" class="iconbtn" data-to="Notifications" aria-label="Notifications"><span data-icon="bell"></span></button></header>
+        <main id="settings-content" class="settings-demo-page">
+          <header class="settings-demo-heading"><div><h1>Settings</h1><p>Make Wayfinder work your way.</p></div><span class="settings-demo-save" role="status"><span data-icon="check"></span>Changes save automatically</span></header>
+          <div class="settings-demo-layout"><nav id="settings-categories" aria-label="Settings categories"></nav><div id="settings-sections"></div></div>
+        </main>
+      </div>
+    </div>
+    <script src="../../canvas/kit/kit.js"></script>
+    <script src="settings-page.js"></script>
+  </body>
+</html>

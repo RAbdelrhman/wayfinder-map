@@ -9,7 +9,7 @@ import { autoMapMarkHtml, autoMapMenuHtml } from './autoMap.js';
 import type { AutoMapMenuState } from './autoMap.js';
 
 export type NavigationView = 'map' | 'table' | 'prototypes';
-export type NavigationPage = 'home' | 'repository' | 'new-map' | 'map';
+export type NavigationPage = 'home' | 'repository' | 'new-map' | 'map' | 'settings';
 
 export interface JumpDestination {
   kind: 'repository' | 'map' | 'ticket';
@@ -80,15 +80,13 @@ function iconName(name: string): string {
 
 /**
  * The sidebar's footer, shared by the open sidebar and the folded rail: the account, then
- * Updates, Theme and Settings. Settings holds the account panel and the app-wide preferences.
+ * Updates and Settings. Settings holds the account and app-wide preferences.
  */
 export function navFooterHtml(page: NavigationPage): string {
   return `<div class="nav-footer">
     <span class="rail-mark nav-account" id="account-mark" role="img" aria-label="GitHub account, loading" title="GitHub account">…</span><span class="nav-account-label grow" id="account-label">GitHub account</span>
-    ${page === 'map' ? `<button type="button" id="models" class="rail-btn" aria-label="Model defaults" data-tip="Model defaults" title="Pick a T3 Code model for each task tier">${iconName('sliders')}</button>` : ''}
     <button type="button" id="updater" class="rail-btn" aria-label="Check for updates" data-tip="Updates">${iconName('download')}</button>
-    <button type="button" id="theme" class="rail-btn" aria-label="Switch light and dark" data-tip="Theme">${iconName('moon')}</button>
-    <button type="button" id="settings" class="rail-btn" aria-label="Settings" data-tip="Settings">${iconName('gear')}</button>
+    <a href="/settings" id="settings" class="rail-btn${page === 'settings' ? ' is-on' : ''}" aria-label="Settings" data-tip="Settings"${page === 'settings' ? ' aria-current="page"' : ''}>${iconName('gear')}</a>
   </div>`;
 }
 
@@ -524,6 +522,8 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
       topbar.innerHTML = `<nav class="nav-scopes" aria-label="Repository">${repoScope('repo-scope', currentRepo, false)}</nav>`;
     } else if (page === 'new-map') {
       topbar.innerHTML = '<span class="page-title" aria-current="page">Start a new map</span>';
+    } else if (page === 'settings') {
+      topbar.innerHTML = '<span class="page-title" aria-current="page">Settings</span>';
     } else {
       topbar.innerHTML = '<span class="page-title" aria-current="page">Home</span>';
     }
