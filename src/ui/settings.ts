@@ -51,7 +51,7 @@ const CATEGORY_HINT: Record<SettingsCategory, string> = {
   progress: 'Set your daily goal and decide when a ticket counts as stalled.',
   account: 'Manage the GitHub account Wayfinder uses.',
 };
-const CATEGORY_ICON: Record<SettingsCategory, string> = { appearance: 'moon', tasks: 'sliders', notifications: 'bell', progress: 'graph', account: 'person' };
+const CATEGORY_ICON: Record<SettingsCategory, string> = { appearance: 'moon', tasks: 'sliders', notifications: 'bell', progress: 'map', account: 'person' };
 
 export function settingsCategory(value: string | null): SettingsCategory {
   return SETTINGS_CATEGORIES.find((category) => category === value) ?? 'appearance';

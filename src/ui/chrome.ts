@@ -32,7 +32,6 @@ export const PROGRESS_ORDER: TicketState[] = ['done', 'claimed', 'frontier', 'bl
 const STATIC_ICONS: Record<string, string> = {
   compass: icons.COMPASS,
   panel: icons.PANEL,
-  graph: icons.GRAPH,
   table: icons.TABLE,
   beaker: icons.BEAKER,
   sliders: icons.SLIDERS,

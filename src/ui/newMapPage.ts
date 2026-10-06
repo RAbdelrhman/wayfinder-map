@@ -115,7 +115,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
     <div class="new-map-visually-hidden" id="clone-announcement" role="status" aria-live="polite" aria-atomic="true"></div>
     <section class="new-map-examples" aria-labelledby="new-map-examples-title">
       <h2 id="new-map-examples-title">Try a goal</h2>
-      ${NEW_MAP_EXAMPLES.map((example) => `<button type="button" class="new-map-example" data-example="${escapeHtml(example)}">${icon(icons.GRAPH)}<span>${escapeHtml(example)}</span></button>`).join('')}
+      ${NEW_MAP_EXAMPLES.map((example) => `<button type="button" class="new-map-example" data-example="${escapeHtml(example)}">${icon(icons.MAP)}<span>${escapeHtml(example)}</span></button>`).join('')}
     </section>
   </div></div>`;
   paintIcons(main);
