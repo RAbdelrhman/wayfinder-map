@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.14](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.13...v0.2.14) (2026-10-06)
+
+
+### Features
+
+* add round 2 R-C filter remix and record round 1 picks ([#223](https://github.com/RAbdelrhman/wayfinder-map/issues/223)) ([f83567a](https://github.com/RAbdelrhman/wayfinder-map/commit/f83567a8081e10a599a3a935d040c7b75fa9b6d7))
+* match phone top-bar buttons to the desktop app ([#223](https://github.com/RAbdelrhman/wayfinder-map/issues/223)) ([2727ca6](https://github.com/RAbdelrhman/wayfinder-map/commit/2727ca6760c521ed0f521d0eb5a3ec0918dd56f8))
+* move global preferences to a dedicated Settings page ([#262](https://github.com/RAbdelrhman/wayfinder-map/issues/262)) ([284fb07](https://github.com/RAbdelrhman/wayfinder-map/commit/284fb07ae7491f1e06c293606944ae30d022c1ac))
+* prototype following a map on a phone ([#223](https://github.com/RAbdelrhman/wayfinder-map/issues/223)) ([d9be136](https://github.com/RAbdelrhman/wayfinder-map/commit/d9be13612a0179ed7c0f71f78161541c8659bec4))
+* prototype following a map on a phone ([#223](https://github.com/RAbdelrhman/wayfinder-map/issues/223)) ([a02dceb](https://github.com/RAbdelrhman/wayfinder-map/commit/a02dceb2a6b1320212046af0a33a3c3d90d1f5e8))
+* scaffold the Expo app in mobile/ with shared map code ([cb3f63e](https://github.com/RAbdelrhman/wayfinder-map/commit/cb3f63e95d3fd2b26c6c49f8c4ac45e669289791))
+* unify needs-you alerts and map activity in one inbox ([5e98ced](https://github.com/RAbdelrhman/wayfinder-map/commit/5e98ced8654cc4aa0d2520fa89cf7e3fd08d8c95))
+* unify needs-you alerts and map activity in one inbox ([088a1ec](https://github.com/RAbdelrhman/wayfinder-map/commit/088a1ec51853ccacdfc77bb6e6c543b5fbc9ad1f))
+
+
+### Bug Fixes
+
+* open only sample-data maps, 44px filter chips, literal frame src ([#223](https://github.com/RAbdelrhman/wayfinder-map/issues/223)) ([28303fd](https://github.com/RAbdelrhman/wayfinder-map/commit/28303fdabed7d4e04725bdbc04c21997ab21232c))
+* preserve inbox alerts and unread state across updates ([81f7e32](https://github.com/RAbdelrhman/wayfinder-map/commit/81f7e32631507a7f98b3419cd6d37f53e8236e08))
+* render inbox rows through safe DOM nodes ([12af02c](https://github.com/RAbdelrhman/wayfinder-map/commit/12af02c534f250b4b1f1d05cee693ca51647081f))
+
 ## [0.2.13](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.12...v0.2.13) (2026-10-05)
 
 
