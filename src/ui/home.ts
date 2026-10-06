@@ -3,7 +3,7 @@ import type { AuthFlowState } from '../authFlow.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import { draftMapPath, mapPath, normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import type { MapSnapshot, WayfinderMap } from '../types.js';
-import { bindTheme, bindUpdater, paintIcons, paintRepoIcons, repoIconHtml, updateAccountMark } from './chrome.js';
+import { bindUpdater, paintIcons, paintRepoIcons, repoIconHtml, updateAccountMark } from './chrome.js';
 import type { AccountMark, AccountProfile } from './chrome.js';
 import * as icons from './icons.js';
 import { loadCatalog } from './models.js';
@@ -17,7 +17,7 @@ import { draftToMapPath, initialRepository, isNewMapHandOff } from './newMap.js'
 import type { NewMapHandOff } from './newMap.js';
 import { renderNewMapPage } from './newMapPage.js';
 import { mountNavigation } from './navigation.js';
-import { mountSettings, NOTIFICATION_SETTINGS_EVENT } from './settings.js';
+import { NOTIFICATION_SETTINGS_EVENT } from './settings.js';
 import { syncServerSettings } from './settingsSync.js';
 import type { NavigationController, NavigationPage } from './navigation.js';
 import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
@@ -740,9 +740,7 @@ async function show(refresh = false): Promise<void> {
   setSyncBusy(false);
 }
 paintIcons();
-bindTheme(need('theme'));
 bindUpdater(need('updater'), toast);
-mountSettings(need('settings'), toast);
 void syncServerSettings();
 syncedButton().addEventListener('click', () => void show(true));
 document.addEventListener('visibilitychange', () => draftAutoRefresh?.visibilityChanged());

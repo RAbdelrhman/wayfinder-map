@@ -1434,11 +1434,13 @@ export async function startServer({
 
     const pageRoute = parseRepoPagePath(path);
     const file =
-      path === '/' || path === '/new-map' || pageRoute?.mapNumber === null
-        ? 'home.html'
-        : pageRoute !== null
-          ? 'index.html'
-          : path.replace(/^\/+/, '');
+      path === '/settings'
+        ? 'settings.html'
+        : path === '/' || path === '/new-map' || pageRoute?.mapNumber === null
+          ? 'home.html'
+          : pageRoute !== null
+            ? 'index.html'
+            : path.replace(/^\/+/, '');
     if (file.includes('..')) {
       json(response, 400, { error: 'Bad path' });
       return;

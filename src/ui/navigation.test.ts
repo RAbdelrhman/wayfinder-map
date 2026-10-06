@@ -163,11 +163,14 @@ describe('loadingMapRows', () => {
 });
 
 describe('sidebar footer', () => {
-  it('puts a labelled Settings button beside Updates and Theme on every page', () => {
-    for (const page of ['home', 'repository', 'new-map', 'map'] as const) {
+  it('links every page to Settings and consolidates theme and model defaults there', () => {
+    for (const page of ['home', 'repository', 'new-map', 'map', 'settings'] as const) {
       const html = navFooterHtml(page);
-      expect(html).toContain('id="settings" class="rail-btn" aria-label="Settings" data-tip="Settings"');
-      expect(html.indexOf('id="theme"')).toBeLessThan(html.indexOf('id="settings"'));
+      expect(html).toContain('href="/settings" id="settings"');
+      expect(html).toContain('aria-label="Settings"');
+      expect(html).not.toContain('id="theme"');
+      expect(html).not.toContain('id="models"');
+      expect(html.includes('aria-current="page"')).toBe(page === 'settings');
     }
   });
 });
