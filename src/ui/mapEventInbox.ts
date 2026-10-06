@@ -4,6 +4,32 @@ import type { MapSnapshot } from '../types.js';
 import { escapeHtml } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
+import { KIND_LABEL, NOTIFICATIONS_CHANGED, mapEventNotification, notificationHref, withInboxLock } from './notifications.js';
+import type { NotificationInboxController } from './notifications.js';
+import { filterInbox, inboxCounts, mergeInbox } from './unifiedInbox.js';
+import type { InboxFilter, InboxRow } from './unifiedInbox.js';
+import type { InboxSnapshot } from './notifications.js';
+import { readNotificationSettings } from '../notificationTypes.js';
+import type { NotificationSettings } from '../notificationTypes.js';
+
+export type MapInboxEvent = MapEvent & { read?: boolean };
+
+function eventKey(event: MapEvent): string {
+  return `${event.repo.toLowerCase()}#${String(event.mapNumber)}:${String(event.id)}`;
+}
+
+export function markMapInboxEventRead(storage: InboxStorage, key: string): void {
+  const events = readMapInboxEvents(storage).map((event) => eventKey(event) === key ? { ...event, read: true } : event);
+  try { storage.setItem(MAP_EVENT_INBOX_KEY, JSON.stringify(events)); } catch { /* Leave the saved count unchanged on failure. */ }
+}
+
+export async function recoverMapInboxNotifications(storage: InboxStorage, settings: NotificationSettings, notifications: Pick<NotificationInboxController, 'push' | 'reconcileEvent'>): Promise<void> {
+  for (const event of readMapInboxEvents(storage).sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.id - b.id)) {
+    await notifications.reconcileEvent(event);
+    const notice = mapEventNotification(event, 'Map #' + String(event.mapNumber));
+    if (notice !== null && notice.kind !== 'unblocked' && settings[notice.kind]) await notifications.push({ ...notice, read: event.read === true });
+  }
+}
 
 export const MAP_WATCH_SET_KEY = 'wayfinder-map:opened-map-watch-set:v1';
 export const MAP_EVENT_INBOX_KEY = 'wayfinder-map:event-inbox:v1';
@@ -78,7 +104,7 @@ function isMapEvent(value: unknown): value is MapEvent {
     typeof (ticket as Record<string, unknown>)['title'] === 'string';
 }
 
-export function readMapInboxEvents(storage: InboxStorage): MapEvent[] {
+export function readMapInboxEvents(storage: InboxStorage): MapInboxEvent[] {
   try {
     const raw: unknown = JSON.parse(storage.getItem(MAP_EVENT_INBOX_KEY) ?? 'null');
     return Array.isArray(raw) ? raw.filter(isMapEvent).slice(0, MAX_INBOX_EVENTS) : [];
@@ -96,16 +122,19 @@ export function saveMapInboxEvent(storage: InboxStorage, event: MapEvent): boole
   if (current === undefined || event.id <= current.lastEventId) return false;
   const duplicate = readMapInboxEvents(storage).some((item) => item.repo.toLowerCase() === event.repo.toLowerCase() && item.mapNumber === event.mapNumber && item.id === event.id);
   watches[index] = { ...current, lastEventId: event.id };
+  let persisted = duplicate;
   try {
     if (!duplicate) {
       const events = [event, ...readMapInboxEvents(storage)].slice(0, MAX_INBOX_EVENTS);
       storage.setItem(MAP_EVENT_INBOX_KEY, JSON.stringify(events));
+      persisted = true;
     }
     storage.setItem(MAP_WATCH_SET_KEY, JSON.stringify(watches));
   } catch {
-    return false;
+    return persisted;
   }
-  return !duplicate;
+  // A duplicate with an old cursor may have survived an interrupted two-write save.
+  return true;
 }
 
 function eventSummary(event: MapEvent): string {
@@ -130,7 +159,7 @@ export function mapInboxItemHtml(event: MapEvent): string {
   const repoAndMap = `${event.repo} · Map #${String(event.mapNumber)}`;
   const date = new Date(event.at);
   const timestamp = Number.isNaN(date.valueOf()) ? '' : date.toLocaleString();
-  return `<article class="map-inbox-item"><a class="map-inbox-event" href="${escapeHtml(eventHref(event))}" data-map-inbox-event="${escapeHtml(`${event.repo.toLowerCase()}#${String(event.mapNumber)}:${String(event.id)}`)}"><span class="map-inbox-event-title">${escapeHtml(eventSummary(event))}</span><span class="map-inbox-event-scope">${escapeHtml(repoAndMap)}</span></a>${away}<time class="map-inbox-time" datetime="${escapeHtml(event.at)}">${escapeHtml(timestamp)}</time></article>`;
+  return `<article class="map-inbox-item${(event as MapInboxEvent).read === true ? ' is-read' : ''}"><a class="map-inbox-event" href="${escapeHtml(eventHref(event))}" data-map-inbox-event="${escapeHtml(eventKey(event))}"><span class="map-inbox-event-title">${escapeHtml(eventSummary(event))}</span><span class="map-inbox-event-scope">${escapeHtml(repoAndMap)}</span></a>${away}<time class="map-inbox-time" datetime="${escapeHtml(event.at)}">${escapeHtml(timestamp)}</time></article>`;
 }
 
 export class MapEventInbox {
@@ -139,12 +168,14 @@ export class MapEventInbox {
   private source: MapEventStream | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private started = false;
+  private snapshotTimes = new Map<string, number>();
 
   constructor(
     private readonly storage: InboxStorage,
     private readonly createStream: MapEventStreamFactory = (url) => new EventSource(url),
     private readonly fetcher: typeof fetch = fetch,
     private readonly onChange: () => void = () => undefined,
+    private readonly onSnapshot: (snapshot: InboxSnapshot) => void = () => undefined,
   ) {
     this.watches = readMapWatchSet(storage);
   }
@@ -168,7 +199,12 @@ export class MapEventInbox {
     return () => this.eventListeners.delete(listener);
   }
 
-  reconcileSnapshot(snapshot: Pick<MapSnapshot, 'repo' | 'maps'>): void {
+  reconcileSnapshot(snapshot: InboxSnapshot): void {
+    const repo = snapshot.repo.toLowerCase();
+    const at = snapshot.fetchedAt === undefined ? 0 : Date.parse(snapshot.fetchedAt);
+    if (at < (this.snapshotTimes.get(repo) ?? 0)) return;
+    this.snapshotTimes.set(repo, at);
+    this.onSnapshot(snapshot);
     const active = new Set(snapshot.maps.filter((map) => map.open && map.settled === null).map((map) => map.number));
     const removed = this.watches.filter((watch) => watch.repo.toLowerCase() === snapshot.repo.toLowerCase() && !active.has(watch.mapNumber));
     if (removed.length === 0) return;
@@ -181,13 +217,14 @@ export class MapEventInbox {
     this.connect();
   }
 
-  clear(): void {
+  clear(): boolean {
     try {
       this.storage.setItem(MAP_EVENT_INBOX_KEY, '[]');
     } catch {
-      // Clearing is best effort.
+      return false;
     }
     this.onChange();
+    return true;
   }
 
   refreshFromStorage(): void {
@@ -224,16 +261,20 @@ export class MapEventInbox {
       } catch {
         return;
       }
-      if (!isMapEvent(parsed) || !saveMapInboxEvent(this.storage, parsed)) return;
-      this.watches = readMapWatchSet(this.storage);
-      this.onChange();
-      for (const listener of this.eventListeners) {
-        try {
-          listener(parsed);
-        } catch {
-          // A notification consumer must not interrupt the map activity inbox.
+      if (!isMapEvent(parsed)) return;
+      const event = parsed;
+      const receive = (): void => {
+        if (!saveMapInboxEvent(this.storage, event)) return;
+        const repo = event.repo.toLowerCase();
+        this.snapshotTimes.set(repo, Math.max(this.snapshotTimes.get(repo) ?? 0, Date.parse(event.at)));
+        this.watches = readMapWatchSet(this.storage);
+        this.onChange();
+        for (const listener of this.eventListeners) {
+          try { listener(event); } catch { /* Other consumers still receive the event. */ }
         }
-      }
+      };
+      if (typeof navigator !== 'undefined' && navigator.locks !== undefined) void withInboxLock(receive);
+      else receive();
     });
     source.addEventListener('watch-ended', (rawEvent) => {
       const data = (rawEvent as MessageEvent<string>).data;
@@ -280,29 +321,92 @@ function watchKey(repo: string, mapNumber: number): string {
   return `${repo.toLowerCase()}#${String(mapNumber)}`;
 }
 
-function renderInbox(root: HTMLElement, inbox: MapEventInbox, trigger: HTMLButtonElement, panel: HTMLElement): void {
+function createInboxRow(row: InboxRow): HTMLElement {
+  const article = document.createElement('article');
+  const link = document.createElement('a');
+  const title = document.createElement('span');
+  const scope = document.createElement('span');
+  const time = document.createElement('time');
+  article.className = 'map-inbox-item';
+  link.className = 'map-inbox-event';
+  title.className = 'map-inbox-event-title';
+  scope.className = 'map-inbox-event-scope';
+  time.className = 'map-inbox-time';
+  if (row.type === 'activity') {
+    const event = row.event;
+    article.classList.toggle('is-read', event.read === true);
+    link.href = eventHref(event);
+    link.dataset.mapInboxEvent = eventKey(event);
+    title.textContent = eventSummary(event);
+    scope.textContent = `${event.repo} · Map #${String(event.mapNumber)}`;
+    if (event.whileYouWereAway === true) {
+      const away = document.createElement('span');
+      away.className = 'map-inbox-away';
+      away.textContent = 'While you were away';
+      article.append(away);
+    }
+  } else {
+    const item = row.notification;
+    article.classList.toggle('is-read', item.read);
+    article.classList.toggle('map-inbox-needs', row.type === 'needs');
+    link.href = notificationHref(item);
+    link.dataset.mapInboxEvent = item.id;
+    if (row.type === 'needs') {
+      const kind = document.createElement('span');
+      kind.className = 'map-inbox-kind';
+      kind.textContent = KIND_LABEL[item.kind];
+      link.append(kind);
+    }
+    title.textContent = `#${String(item.ticketNumber)} ${item.ticketTitle}${row.type === 'legacyActivity' ? ' is ready to start' : ''}`;
+    scope.textContent = `${item.repo} · Map #${String(item.mapNumber)} ${item.mapTitle}`;
+  }
+  link.append(title, scope);
+  article.prepend(link);
+  time.dateTime = row.at;
+  const date = new Date(row.at);
+  time.textContent = Number.isNaN(date.valueOf()) ? '' : date.toLocaleString();
+  article.append(time);
+  return article;
+}
+
+function renderInbox(root: HTMLElement, notifications: NotificationInboxController, filter: InboxFilter, trigger: HTMLButtonElement, panel: HTMLElement): void {
   const body = root.querySelector<HTMLElement>('#map-inbox-body');
   const count = root.querySelector<HTMLElement>('#map-inbox-count');
   const summary = root.querySelector<HTMLElement>('#map-inbox-summary');
   if (body === null || count === null || summary === null) return;
-  const events = readMapInboxEvents(localStorage);
+  const rows = mergeInbox(readMapInboxEvents(localStorage), notifications.list());
+  const counts = inboxCounts(rows);
+  const visible = filterInbox(rows, filter);
   const scrollTop = body.scrollTop;
   const focused = body.contains(document.activeElement) && document.activeElement instanceof HTMLElement
     ? document.activeElement.getAttribute('data-map-inbox-event')
     : null;
-  body.innerHTML = events.length === 0
-    ? '<p class="map-inbox-empty">No map changes yet.</p>'
-    : events.map(mapInboxItemHtml).join('');
+  if (visible.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'map-inbox-empty';
+    empty.textContent = filter === 'needs' ? 'Nothing needs you.' : 'Nothing yet on maps you have opened.';
+    body.replaceChildren(empty);
+  } else {
+    body.replaceChildren(...visible.map(createInboxRow));
+  }
   body.scrollTop = scrollTop;
   if (focused !== null) body.querySelector<HTMLElement>(`[data-map-inbox-event="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
-  count.textContent = events.length > 99 ? '99+' : String(events.length);
-  count.hidden = events.length === 0;
-  summary.textContent = events.length === 0 ? 'Changes on maps you have opened' : `${String(events.length)} saved change${events.length === 1 ? '' : 's'}`;
-  trigger.setAttribute('aria-label', events.length === 0 ? 'Map activity inbox, empty' : `Map activity inbox, ${String(events.length)} changes`);
+  count.textContent = counts.total > 99 ? '99+' : String(counts.total);
+  count.hidden = counts.total === 0;
+  summary.textContent = counts.summary;
+  trigger.setAttribute('aria-label', counts.accessibleName);
+  const needsCount = root.querySelector<HTMLElement>('#map-inbox-needs-count');
+  const activeNeeds = rows.filter((row) => row.type === 'needs').length;
+  if (needsCount !== null) { needsCount.textContent = String(activeNeeds); needsCount.hidden = activeNeeds === 0; }
+  for (const chip of root.querySelectorAll<HTMLButtonElement>('[data-inbox-filter]')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.inboxFilter === filter));
+  }
+  const clear = root.querySelector<HTMLButtonElement>('#map-inbox-clear');
+  if (clear !== null) clear.hidden = !rows.some((row) => row.type !== 'needs');
   trigger.setAttribute('aria-expanded', String(!panel.hidden));
 }
 
-export function mountMapEventInbox(onEvent?: (event: MapEvent) => void): MapEventInbox {
+export function mountMapEventInbox(onEvent: ((event: MapEvent) => void) | undefined, notifications: NotificationInboxController): MapEventInbox {
   const root = document.getElementById('map-inbox-anchor');
   const trigger = document.getElementById('map-inbox-trigger');
   const panel = document.getElementById('map-inbox-list');
@@ -313,17 +417,62 @@ export function mountMapEventInbox(onEvent?: (event: MapEvent) => void): MapEven
     empty.start();
     return empty;
   }
-  const inbox = new MapEventInbox(localStorage, undefined, undefined, () => renderInbox(root, inbox, trigger, panel));
+  let filter: InboxFilter = 'all';
+  const draw = (): void => renderInbox(root, notifications, filter, trigger, panel);
+  const inbox = new MapEventInbox(localStorage, undefined, undefined, draw, (snapshot) => notifications.reconcileSnapshot(snapshot));
+  inbox.subscribe((event) => notifications.reconcileEvent(event));
+  document.addEventListener(NOTIFICATIONS_CHANGED, draw);
+  // Recover an interrupted event delivery into the local inbox, without replaying OS alerts.
+  void fetch('/api/notification-settings').then(async (response) => {
+    if (response.ok) await recoverMapInboxNotifications(localStorage, readNotificationSettings(await response.json()), notifications);
+  }).catch(() => undefined);
+  root.addEventListener('click', (event) => {
+    if (!(event.target instanceof Element)) return;
+    const link = event.target.closest<HTMLAnchorElement>('[data-map-inbox-event]');
+    const key = link?.dataset.mapInboxEvent;
+    if (key !== undefined) {
+      const href = link?.href;
+      const navigate = event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
+      if (navigate) event.preventDefault();
+      void (async () => {
+        const storedEvent = readMapInboxEvents(localStorage).find((item) => eventKey(item) === key);
+        await withInboxLock(() => markMapInboxEventRead(localStorage, key));
+        await notifications.markRead(key);
+        if (storedEvent !== undefined) {
+          const notice = mapEventNotification(storedEvent, '');
+          if (notice !== null) await notifications.markRead(notice.id);
+        }
+        if (navigate && href !== undefined) window.location.assign(href);
+      })();
+    }
+    const chip = event.target.closest<HTMLButtonElement>('[data-inbox-filter]');
+    if (chip === null) return;
+    filter = chip.dataset.inboxFilter === 'needs' ? 'needs' : 'all';
+    draw();
+  });
   if (onEvent !== undefined) inbox.subscribe(onEvent);
   const setOpen = (open: boolean, returnFocus = false): void => {
     panel.hidden = !open;
     trigger.setAttribute('aria-expanded', String(open));
-    if (open) close.focus();
+    if (open) {
+      close.focus();
+      void fetch('/api/desktop/notifications/read', { method: 'POST' }).catch(() => undefined);
+    }
     else if (returnFocus) trigger.focus();
   };
   trigger.addEventListener('click', () => setOpen(panel.hidden));
   close.addEventListener('click', () => setOpen(false, true));
-  clear.addEventListener('click', () => inbox.clear());
+  clear.addEventListener('click', () => {
+    void withInboxLock(() => {
+      const activityCleared = inbox.clear();
+      const noticesCleared = notifications.clearActivity();
+      if (!activityCleared || !noticesCleared) {
+        const toast = document.getElementById('toast');
+        if (toast !== null) { toast.textContent = 'Could not clear all activity. Browser storage is unavailable.'; toast.hidden = false; }
+      }
+      draw();
+    });
+  });
   document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -341,8 +490,12 @@ export function mountMapEventInbox(onEvent?: (event: MapEvent) => void): MapEven
   });
   window.addEventListener('pagehide', () => inbox.close(), { once: true });
   inbox.start();
-  renderInbox(root, inbox, trigger, panel);
-  const iconHost = trigger.querySelector<HTMLElement>('[data-icon="inbox"]');
-  if (iconHost !== null) iconHost.innerHTML = icon(icons.INBOX);
+  draw();
+  const iconHost = trigger.querySelector<HTMLElement>('[data-icon="bell"]');
+  if (iconHost !== null) {
+    const svg = icon(icons.BELL).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+    const bell = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
+    iconHost.replaceChildren(document.importNode(bell, true));
+  }
   return inbox;
 }

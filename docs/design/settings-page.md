@@ -6,6 +6,10 @@ in the ticket panel.
 
 The design canvas has two options on its Settings page:
 
+The independent board is `prototypes/settings-page/index.html`. It retains both
+options and the user's recorded choice. The existing `prototypes/canvas` board
+keeps the mobile design from main, with no Settings options added to it.
+
 - A shows one category at a time with a category menu.
 - B stacks all settings on a single page with section jump links.
 
@@ -51,7 +55,7 @@ Mounted-page tests additionally cover every direct category URL, invalid-query
 fallback, category clicks, history events and hostile account/model strings.
 The four scanner annotations are limited to fixed demo/category markup and the
 escaped Settings HTML builders; no raw query, account or catalog text is inserted.
-All 1,173 Vitest tests across 93 files passed with two workers and a 15-second
+All 1,194 Vitest tests across 94 files passed with two workers and a 15-second
 test timeout. The unrestricted run hit two existing tests' five-second timeouts;
 a focused rerun passed the desktop test but timed out a different server test.
 Installed Electron behavior, real account switching, screen readers and forced

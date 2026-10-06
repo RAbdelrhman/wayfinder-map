@@ -1,17 +1,21 @@
 /*
-  Wayfinder design canvas: Settings page and the original ticket #207 viewer shell.
+  Wayfinder's canvas for ticket #223: following a map on a phone.
   Paths are relative to index.html. Check with: node prototypes/canvas/tools/check.mjs
 */
 
+// Every frame is the whole phone app; src stays a literal so Wayfinder can read each direction's page.
+const PHONE = { width: 390, height: 844, boardWidth: 300 };
+
 window.CANVAS = {
-  title: 'Wayfinder design canvas',
+  ticket: 223,
+  title: 'Following a map on a phone',
   question:
-    'What should opening a canvas inside Wayfinder look like: an overlay, a route, or a pane; how it opens from the tile and closes back; what the toolbar holds; and how Esc or Back returns you to the exact place on the map?',
+    'What should following a map look like on a phone: GitHub sign-in, the repo and map lists, a map view with ticket states, and ticket detail?',
   sampleState:
-    'Fake map #300 "Offline drafts". #211 is a design canvas waiting on a pick in #218, with two pages (Directions A/B/C, States S1/S2). #206 is an old snapshot that was decided. Every frame is live: open a canvas from the Prototypes board (the Canvas button or a variant tile) or from the ticket panel\'s tile on the Map view (select #211 or #206). The canvas inside is a stand-in that speaks the #206 bridge. The dashed Prototype bar switches the window between the desktop app and a localhost browser tab, slows the open down to show the poster, and turns the bridge off to show the view-only fallback. In the browser frame, the arrows by the address bar are the browser\'s Back and Forward; Alt+← and Alt+→ work in both frames.',
+    'Signed in as @RAbdelrhman. Map #217 "A Wayfinder mobile app" with 18 tickets: 2 done, 2 claimed, 2 next up, 12 blocked (states are fake). Each frame is a whole clickable app in one direction (A, B or C), opened at the screen its section is about, so you can tap through sign-in → repos → map → ticket in any frame. Directions can be mixed per screen.',
 
   base: {
-    stylesheets: ['../../src/ui/styles.css'],
+    stylesheets: ['../../src/ui/styles.css', 'variants/mobile.css'],
     bodyClass: 'viz-root',
     surfaces: {
       plane: 'var(--plane)',
@@ -24,445 +28,220 @@ window.CANVAS = {
 
   pages: [
     {
-      id: 'settings-page',
-      title: 'Settings page',
-      round: 1,
-      question: 'Should Settings show one category at a time, or all settings on one scrolling page?',
-      sampleState: 'Safe demo account and model choices. Every preference changes only this preview. No GitHub changes or T3 tasks are started. Both layouts move theme and model defaults into Settings and remove their separate sidebar buttons.',
-      sections: [
-        {
-          title: 'A dedicated page for Settings',
-          note: 'Same Wayfinder styles and settings in both options. Open each full size, switch categories, change theme, and expand Calibration.',
-          items: [
-            {
-              id: 'settings-A',
-              name: 'A · Categories',
-              src: 'variants/settings-page.html',
-              width: 1280,
-              height: 900,
-              boardWidth: 600,
-              note: {
-                idea: 'A dedicated Settings page with a category menu. Tasks & models combines the default tier, concurrency limit, per-tier model choices and Auto rating. Appearance, Notifications, Progress and Account each get their own section. Changes save as you go; Calibration sits under Advanced.',
-                pros: ['Shorter pages with a clear place for every setting', 'Room for model choices without squeezing controls into the modal', 'Category links can open a specific part of Settings directly'],
-                cons: ['Changing preferences across categories takes another click', 'A second menu sits beside the main application sidebar'],
-                disposition: 'keep',
-                feedback: 'The user chose A: "I like A". Implement the category layout as a dedicated Settings page.',
-              },
-            },
-            {
-              id: 'settings-B',
-              name: 'B · One scrolling page',
-              src: 'variants/settings-page.html?layout=single',
-              width: 1280,
-              height: 900,
-              boardWidth: 600,
-              note: {
-                idea: 'A dedicated Settings page with all categories stacked in one column. The links at the top jump to a section. Appearance comes first, then task defaults and models, notifications, progress and the account.',
-                pros: ['Every preference is on the same page', 'Easy to browse or use browser Find', 'No second vertical menu'],
-                cons: ['A long page once model defaults and notifications are included', 'Account and progress require scrolling or a jump link'],
-              },
-            },
-            {
-              id: 'settings-review',
-              kind: 'note',
-              name: 'Design review',
-              text: 'Sources inspected: src/ui/settings.ts, settings.test.ts, chrome.ts, navigation.ts, home.html, startNext.ts, progress.ts and styles.css. Uses the actual Wayfinder stylesheet, semantic colour tokens, segmented controls and buttons. Existing cap choices (2, 4, 6, 8) and goals (3, 5, 8) are retained. All demo changes stay in the page.\n\nChecked in Chromium: both layouts in light and dark mode; theme and tier selection; model-rating picker; Calibration expansion and shadow-model picker; notification checkboxes; all five categories at 900×620 and 390×844 with no horizontal overflow; visible keyboard focus; desktop screenshots at 1280×900 and a mobile screenshot. Canvas config and 14 canvas tests passed. Typecheck, lint and 92 Vitest files with 1,157 tests passed.\n\nNo new colour tokens were added. Text uses the existing palette; a fresh contrast audit was not run. Not checked: installed Electron app, screen reader output, forced colours, real saving and API failures. This is a design preview; the application Settings modal has not been replaced yet.',
-            },
-          ],
-        },
-      ],
-    },
-    {
       title: 'Directions',
-      ticket: 207,
       round: 1,
       sections: [
         {
-          title: 'A · Overlay',
-          note: 'The canvas grows out of the tile and covers the whole window, rail and top bar included. The app stays mounted underneath, inert.',
+          title: 'Sign in with GitHub',
+          note: 'GitHub OAuth device flow (decided on #217): the phone shows a code, you approve it on github.com. Tap through each frame.',
           items: [
             {
-              id: 'A',
-              name: 'Overlay, desktop app, from the board',
-              src: 'variants/viewer-a.html?frame=desktop&view=prototypes',
+              id: 'S-A',
+              name: 'A · Button, then code',
+              src: 'variants/mobile.html?v=A&screen=signin', ...PHONE,
               note: {
-                idea:
-                  'Click the Canvas button or a variant tile and its picture grows to fill the window. The tile\'s picture is the poster, so there is no blank frame. The canvas fades in over it when the bridge says ready. One toolbar across the top: Close (Esc), the title, the canvas page menu, Board · A · B · C (an option opens full size), ← → while one is open, and the branch on GitHub. Close or Esc shrinks it back into the tile it came from and puts focus back on that tile. Opening adds one history entry (?canvas=211), so Back closes it too. Switching options or pages only replaces the hash: Back never steps through options.',
-                pros: [
-                  'Exact return for free: the map or board never unmounts, so scroll, pan, zoom and selection cannot drift',
-                  'The biggest canvas: only one 52 px bar of chrome',
-                  'The grow-from-tile transition reads clearly, because the target is the whole window',
-                  'Keeping the iframe mounted after close is natural: the overlay is just hidden',
-                ],
-                cons: [
-                  'Hides the app: hand-offs, Next and the map are out of sight while a canvas is open',
-                  'A modal: it needs a focus trap, inert app and aria-modal, and the rail can\'t be used to jump elsewhere without closing first',
-                  'Feels like a lightbox rather than a place in the app; a deep link opens an overlay over a page you have not seen yet',
-                ],
-                disposition: 'combine',
-                feedback: 'Combine with C (round 2, AC). The user wrote: "They all look great could we default to A with option to go smaller like in C. We could even have a setting to make default canvas size pane or full."',
-              },
-            },
-            {
-              id: 'A-browser',
-              name: 'Overlay, localhost browser, from the ticket panel',
-              src: 'variants/viewer-a.html?frame=browser&view=map',
-              note: {
-                idea:
-                  'The same overlay on the localhost page. Select #211 on the map and click its tile in the ticket panel. The address bar shows ?ticket=211&canvas=211#directions/B; the browser\'s Back closes the overlay and leaves the map exactly as it was.',
-                pros: ['Back is the browser\'s own button, and a copied URL reopens the same canvas and option'],
-                cons: ['The browser tab\'s own chrome plus the overlay bar: two rows of controls above the canvas'],
-              },
-            },
-          ],
-        },
-        {
-          title: 'B · Canvas route',
-          note: 'The canvas is a page in the app. The rail stays; the top bar becomes the viewer\'s toolbar. The map view is unmounted and restored from saved state.',
-          items: [
-            {
-              id: 'B',
-              name: 'Route, desktop app, from the board',
-              src: 'variants/viewer-b.html?frame=desktop&view=prototypes',
-              note: {
-                idea:
-                  'The tile grows into the content area, beside the rail. The top bar turns into the viewer\'s bar: ← Prototypes (or ← Map, wherever you came from), the map name, the title, the page menu, Board · A · B · C, and GitHub. It is a real route, /repos/…/maps/300/canvas/211#directions/B, so Back, a reload and a shared link all land on the canvas. Leaving restores the view\'s scroll, pan, zoom and selection from what was saved on the way in.',
-                pros: [
-                  'Feels like a place in the app: the rail stays, so Home, Jump to and other maps are one click away',
-                  'Deep links and reloads behave like every other Wayfinder page',
-                  'One bar of chrome, because the toolbar replaces the top bar rather than stacking under it',
-                ],
-                cons: [
-                  'Exact return depends on saving and restoring state: map pan, zoom and selection have to be captured on the way in, and anything missed drifts',
-                  'The map unmounts, so its own redraw costs time on the way back',
-                  'The top bar\'s usual controls (hand-offs, Synced, Next) disappear while you look at a canvas',
-                  'Needs a new route and its routing tests',
-                ],
-              },
-            },
-            {
-              id: 'B-browser',
-              name: 'Route, localhost browser, from the ticket panel',
-              src: 'variants/viewer-b.html?frame=browser&view=map',
-              note: {
-                idea:
-                  'The same route on the localhost page, opened from #211\'s tile in the ticket panel. The address bar shows the canvas path. Back returns to /maps/300?ticket=211 with the map where you left it; Forward reopens the canvas instantly, because the frame stayed mounted.',
-                pros: ['The URL is the clearest of the three: the canvas has its own path'],
-                cons: ['A reload on the canvas route has to fetch the map too before ← Map can restore anything'],
-              },
-            },
-          ],
-        },
-        {
-          title: 'C · Side pane',
-          note: 'The canvas opens in a wide pane beside the map or board. Expand fills the app the way B does.',
-          items: [
-            {
-              id: 'C',
-              name: 'Pane, desktop app, from the map',
-              src: 'variants/viewer-c.html?frame=desktop&view=map',
-              note: {
-                idea:
-                  'The tile slides out into a pane on the right (60% of the window, up to 820 px), under the top bar, replacing the ticket panel. The map stays live on the left: you can pan it, and the ticket you came from stays selected. The pane has two rows: the title with GitHub, Expand and Close, then the page menu and Board · A · B · C. Expand grows it to the whole content area. Close or Esc slides it back into the tile.',
-                pros: [
-                  'Keeps context: the map, its ticket and the pick ticket stay in view while you compare options',
-                  'Exact return for free in pane mode: the map never unmounts',
-                  'Expand gives a full-size canvas when you need it, so one direction covers both needs',
-                ],
-                cons: [
-                  'Cramped at the default size: on a 1320 px window the canvas gets about 790 px, and at the 900 px minimum about 540 px',
-                  'Two sizes and two layouts to build, test and polish (pane and expanded)',
-                  'Two scrolling surfaces side by side, the map and the canvas, so wheel and drag can go to the wrong one',
-                  'It takes the ticket panel\'s place, so the selected ticket\'s details are hidden while it is open',
-                ],
-                disposition: 'combine',
-                feedback: 'Combine with A (round 2, AC): A\'s overlay by default, C\'s pane as the smaller size. The user wrote: "They all look great could we default to A with option to go smaller like in C. We could even have a setting to make default canvas size pane or full."',
-              },
-            },
-            {
-              id: 'C-browser',
-              name: 'Pane, localhost browser, from the board',
-              src: 'variants/viewer-c.html?frame=browser&view=prototypes',
-              note: {
-                idea:
-                  'The same pane on the localhost page, opened from the Prototypes board. The board keeps the left side, so the other prototype cards stay in view. Opening adds ?canvas=211 to the URL; Back closes the pane.',
-                pros: ['You can open another card\'s canvas from the left without closing first'],
-                cons: ['The board\'s variant strip squeezes into the narrow left side'],
-              },
-            },
-          ],
-        },
-      ],
-    },
-    {
-      title: 'A + C remix',
-      ticket: 207,
-      round: 2,
-      question:
-        'Round 2, from your feedback on round 1: open as A\'s overlay by default, shrink to C\'s side pane when you want the map beside it, and a setting for which size a canvas opens at. Does this combination work?',
-      sections: [
-        {
-          title: 'AC · Overlay that shrinks to a pane',
-          note: 'Opens full window like A. A Shrink button in the toolbar turns it into C\'s pane beside a live map or board; Fill the window turns it back. Settings › Preferences picks the size a canvas opens at. The dashed Prototype bar\'s "Setting: open as" switches it here.',
-          items: [
-            {
-              id: 'AC',
-              name: 'Overlay that shrinks to a pane, desktop app, from the board',
-              src: 'variants/viewer-ac.html?frame=desktop&view=prototypes',
-              note: {
-                basedOn: ['A', 'C'],
-                idea:
-                  'Click Canvas on #211: it grows out of the tile into A\'s overlay, with A\'s one-row toolbar and a Shrink button at the right end. Shrink slides it into C\'s pane (60% of the window, up to 820 px) under the top bar. The overlay\'s scrim and modal go away, so the board or map on the left is live again. In the pane, Fill the window brings the overlay back. Close, Esc or Back closes from either size, back into the tile, and focus returns to the tile. Size changes do not add history entries, so Back always closes. The map stays mounted at both sizes, so you return to the exact place without saving and restoring state. C\'s third size, filling the content area beside the rail, is dropped: full window already covers it.',
-                pros: [
-                  'A\'s strengths by default: the biggest canvas, the clearest grow-from-tile transition, exact return for free',
-                  'C\'s context when you want it: the map, its tickets and the pick ticket stay visible beside the options',
-                  'Two sizes, not C\'s three: overlay and pane are the only layouts to build and test',
-                  'People who always want the pane set it once',
-                ],
-                cons: [
-                  'Two layouts and two toolbars (A\'s row and C\'s two rows), plus the switch between them, all need building and testing',
-                  'The viewer is a modal dialog at one size and a region at the other, so focus handling and screen reader semantics change when you resize',
-                  'In the pane, the ticket panel is hidden and two scroll surfaces sit side by side, as in C',
-                  'Open question: should Shrink and Fill the window only last for this open, or update the setting (remember the last size)? Built here as this-open-only.',
-                ],
-                disposition: 'change',
-                feedback: 'Change: add a floating window size (round 3, ACF). Keep the open-in-browser button at full window and side pane; drop it when floating. The user wrote: "looks amazing could you have a floating window option? Like this [screenshot of the viewer as a small window floating over another app]. When fullscreen or half view i want the open in browser button. but when floating that button could go away"',
-              },
-            },
-            {
-              id: 'AC-browser',
-              name: 'Overlay that shrinks to a pane, localhost browser, from the ticket panel',
-              src: 'variants/viewer-ac.html?frame=browser&view=map',
-              note: {
-                basedOn: ['A-browser', 'C'],
-                idea:
-                  'The same viewer on the localhost page, opened from #211\'s tile in the ticket panel. The URL gets ?canvas=211 at both sizes, so the browser\'s Back closes it. Shrink it to pan the map while the canvas stays open.',
-                pros: ['In the pane, the browser chrome and one toolbar sit above a map you can still use'],
-                cons: ['At full window, the tab\'s chrome plus the overlay bar still means two rows of controls, as in A'],
-              },
-            },
-            {
-              id: 'AC-pane',
-              name: 'Setting on "Side pane": opens straight into the pane',
-              src: 'variants/viewer-ac.html?frame=desktop&view=map&size=pane',
-              note: {
-                basedOn: ['A', 'C'],
-                idea:
-                  'The same viewer with the setting on Side pane. Select #211 on the map and click its tile: it opens straight into the pane, and Fill the window grows it to the overlay.',
-                pros: ['Opening matches how you work, with no extra click each time'],
-                cons: ['A setting has to be found first: until someone changes it, everyone gets the overlay'],
-              },
-            },
-            {
-              id: 'AC-setting',
-              kind: 'components',
-              name: 'The setting, in Settings › Preferences',
-              width: 640,
-              columns: 1,
-              items: [
-                {
-                  label: 'Settings › Preferences, a new row under the existing ones (same segmented control as Theme)',
-                  html: '<section class="settings-section" aria-labelledby="ac-prefs"><h3 id="ac-prefs">Preferences</h3><div class="settings-row"><span class="grow">Theme</span><span class="segmented" role="group" aria-label="Theme"><button type="button" class="seg" aria-pressed="false">Light</button><button type="button" class="seg is-on" aria-pressed="true">Dark</button></span></div><div class="settings-row"><span class="grow">Open canvases<span class="hint">How big a prototype canvas is when you open it. You can still resize it from its toolbar.</span></span><span class="segmented" role="group" aria-label="Open canvases"><button type="button" class="seg is-on" aria-pressed="true">Full window</button><button type="button" class="seg" aria-pressed="false">Side pane</button></span></div></section>',
-                },
-              ],
-              note: {
-                basedOn: ['A', 'C'],
-                idea:
-                  'One new row in the Preferences section of the existing Settings dialog, using the same segmented control as Theme and Default model tier. Full window is the default. This is the only place the default is set: the viewer\'s Shrink and Fill the window buttons change the open canvas only.',
-                pros: ['Reuses the existing Settings dialog and control, so no new kind of UI'],
-                cons: ['One more preference in a list that is already growing'],
-              },
-            },
-          ],
-        },
-      ],
-    },
-    {
-      title: 'Floating window',
-      ticket: 207,
-      round: 3,
-      question:
-        'Round 3, from your feedback on AC: add a floating window as a third size. Full window and Side pane keep the ↗ button; the floating window drops it. Does this work?',
-      sections: [
-        {
-          title: 'ACF · Full window, side pane or floating',
-          note: 'AC with a third size. One size switch (Full window · Side pane · Floating) sits in every size\'s toolbar and replaces AC\'s Shrink and Fill the window buttons. The floating window moves by its title row and resizes from its bottom-right corner. Settings › Preferences gets the third choice too. The dashed Prototype bar\'s "Setting: open as" switches it here.',
-          items: [
-            {
-              id: 'ACF',
-              name: 'Full, pane or floating, desktop app, from the board',
-              src: 'variants/viewer-acf.html?frame=desktop&view=prototypes',
-              note: {
-                basedOn: ['AC'],
-                idea:
-                  'Click Canvas on #211: it opens full window as in AC. The size switch at the right end of the toolbar has three icons: Full window, Side pane, Floating. Floating shrinks it into a 560 × 380 window in the bottom-right corner, with rounded corners and a shadow, over a board or map you can still use. Drag its title row to move it and its corner to resize it (at least 360 × 240). It stays where you left it the next time it floats. The floating toolbar keeps the title, the size switch, Close, and on a second row the page menu and Board · A · B · C. It has no ↗ button. Esc, Close or Back closes it from any size, back into the tile.',
-                pros: [
-                  'Compare the canvas with the map or another ticket at whatever size and place suits you, without a fixed split',
-                  'One size switch instead of separate Shrink and Fill buttons, so every size is one click from every other',
-                  'The floating toolbar is smaller, with nothing in it you need less often',
-                ],
-                cons: [
-                  'Three layouts to build and test, plus moving, resizing and keeping the window inside the app',
-                  'A small floating window shows the canvas scaled down: at 560 px wide, a canvas page is hard to read until you resize it or go full window',
-                  'Moving and resizing are pointer only here. Keyboard users get the size switch but cannot move or resize the floating window yet',
-                  'The floating window covers part of the map, and nothing moves the map out of its way',
-                ],
-                disposition: 'change',
-                feedback: 'Change: resize from every corner, with a subtler handle (round 4, ACF4). Otherwise it looks and feels good. The user wrote: "Add adjusting sizing to every corner. Besides that looks and feels good can make the adjuster more subltle."',
-              },
-            },
-            {
-              id: 'ACF-float',
-              name: 'Setting on "Floating": opens straight into the floating window',
-              src: 'variants/viewer-acf.html?frame=desktop&view=map&size=float',
-              note: {
-                basedOn: ['AC'],
-                idea:
-                  'The setting on Floating. Select #211 on the map and click its tile: it opens as the floating window in the corner, and the map stays usable behind it. The size switch grows it to the pane or full window.',
-                pros: ['Suits people who keep a canvas open while they work through the map'],
-                cons: ['Opening into a small window first means an extra click for anyone who wants to read the canvas closely'],
-              },
-            },
-            {
-              id: 'ACF-browser',
-              name: 'Full, pane or floating, localhost browser, from the ticket panel',
-              src: 'variants/viewer-acf.html?frame=browser&view=map',
-              note: {
-                basedOn: ['AC-browser'],
-                idea:
-                  'The same viewer in the localhost tab, opened from #211\'s tile in the ticket panel. The URL gets ?canvas=211 at every size; changing size adds no history, so the browser\'s Back still closes it.',
-                pros: ['The floating window keeps the canvas in reach without leaving the tab'],
-                cons: ['At full window, the tab\'s chrome plus the viewer\'s bar is still two rows of controls, as in A'],
-              },
-            },
-            {
-              id: 'ACF-setting',
-              kind: 'components',
-              name: 'The setting, with a third choice',
-              width: 640,
-              columns: 1,
-              items: [
-                {
-                  label: 'Settings › Preferences, the same row as round 2 with Floating added',
-                  html: '<section class="settings-section" aria-labelledby="acf-prefs"><h3 id="acf-prefs">Preferences</h3><div class="settings-row"><span class="grow">Theme</span><span class="segmented" role="group" aria-label="Theme"><button type="button" class="seg" aria-pressed="false">Light</button><button type="button" class="seg is-on" aria-pressed="true">Dark</button></span></div><div class="settings-row"><span class="grow">Open canvases<span class="hint">How big a prototype canvas is when you open it. You can still resize it from its toolbar.</span></span><span class="segmented" role="group" aria-label="Open canvases"><button type="button" class="seg is-on" aria-pressed="true">Full window</button><button type="button" class="seg" aria-pressed="false">Side pane</button><button type="button" class="seg" aria-pressed="false">Floating</button></span></div></section>',
-                },
-              ],
-              note: {
-                basedOn: ['AC-setting'],
-                idea:
-                  'The round 2 row with a third choice, Floating. Full window stays the default. This is my guess: you asked for a floating option, not for it in the setting.',
-                pros: ['Every size can be the one a canvas opens at'],
-                cons: ['Three choices in a row that already sits in a long list'],
-              },
-            },
-            {
-              id: 'ACF-questions',
-              kind: 'note',
-              name: 'Two calls I made (resolved)',
-              text:
-                'Open in browser: resolved. The user confirmed it is the existing ↗ button, which opens the prototype branch on GitHub. It shows at full window and side pane, not when floating. No new button.\n\nThe setting: Floating is a third choice in Settings › Preferences. The user kept round 4 with this in place.',
-            },
-          ],
-        },
-      ],
-    },
-    {
-      title: 'Corner resizing',
-      ticket: 207,
-      round: 4,
-      question:
-        'Round 4, from your feedback on ACF: the floating window resizes from all four corners, and the handles are quieter. Is this right?',
-      sections: [
-        {
-          title: 'ACF4 · Resize from every corner',
-          note: 'ACF unchanged except for resizing. Both open straight into the floating window (the setting on Floating). Hover the window to see the corners.',
-          items: [
-            {
-              id: 'ACF4',
-              name: 'Floating, resizable from every corner, desktop app, on the map',
-              src: 'variants/viewer-acf4.html?frame=desktop&view=map&size=float',
-              note: {
-                basedOn: ['ACF'],
-                idea:
-                  'Select #211 on the map and click its tile. Every corner of the floating window resizes it: each corner moves its own two edges, and the opposite corner stays put. The window keeps at least 360 × 240 and stays inside the app. Round 3\'s striped grip is gone. With the pointer away, the corners show nothing. Over the window, a faint 1.5 px arc follows each rounded corner (30% of the muted text colour). Over a corner, or while dragging, that arc firms up, and the pointer becomes a diagonal resize arrow.',
-                pros: [
-                  'Resize from whichever corner is nearest, like a desktop window, so the window grows towards whatever you want to cover',
-                  'Nothing extra to look at until you reach for it',
-                ],
-                cons: [
-                  'Hidden until hover, so it is less discoverable: someone who never hovers a corner may not know the window resizes',
-                  'The top corners sit near the size switch and Close; the 14 px corner areas stop short of them but leave little margin',
-                  'Still pointer only: no keyboard way to resize or move it',
-                ],
+                idea: 'A plain welcome with one "Sign in with GitHub" button. The next screen shows the code and "Copy code and open GitHub". Back in the app, a "Waiting for GitHub…" state moves on by itself once you approve.',
+                pros: ['Familiar: looks like every other "Sign in with" app', 'The code only appears when you asked for it'],
+                cons: ['Three screens for one sign-in', 'Says nothing about what the app does'],
                 disposition: 'keep',
-                feedback: 'Keep: the chosen direction. The user wrote: "Beautiful its perfect and yes it was the open in github button you can get rid of it. It\'s ready though we don\'t need more rounds"',
+                feedback: 'Picked for sign-in (round 1).',
               },
             },
             {
-              id: 'ACF4-browser',
-              name: 'Floating, resizable from every corner, localhost browser, on the board',
-              src: 'variants/viewer-acf4.html?frame=browser&view=prototypes&size=float',
+              id: 'S-B',
+              name: 'B · Welcome, then steps',
+              src: 'variants/mobile.html?v=B&screen=signin', ...PHONE,
               note: {
-                basedOn: ['ACF-browser'],
-                idea: 'The same window in the localhost tab, opened from the Prototypes board\'s Canvas button.',
-                pros: ['Drag the top-left corner up to cover the board card you came from, or down to uncover it'],
-                cons: ['On a narrow tab, the 360 px minimum leaves little of the board visible'],
+                idea: 'A welcome screen lists what the app does (follow maps, start tickets, alerts). "Continue with GitHub" copies the code and shows a three-step checklist: Code copied ✓ → Approve on GitHub → You’re in.',
+                pros: ['First run explains the app', 'The checklist shows where you are in the device flow'],
+                cons: ['The welcome promises starting tickets and pushes before those exist', 'Most copy to maintain'],
+              },
+            },
+            {
+              id: 'S-C',
+              name: 'C · Code on the first screen',
+              src: 'variants/mobile.html?v=C&screen=signin', ...PHONE,
+              note: {
+                idea: 'One screen. The code is already copied and shown big, with "Open GitHub" and "Copy code again". After you approve, it moves on.',
+                pros: ['Fewest taps: one button', 'Nothing to explain: this is a personal build for one user'],
+                cons: ['A code on launch can feel abrupt', 'Copying to the clipboard unasked can surprise people'],
               },
             },
           ],
         },
-      ],
-    },
-    {
-      title: 'Shared states',
-      ticket: 207,
-      round: 1,
-      question: 'States every direction has to handle, shown in one direction each. Every frame\'s Prototype bar can switch them on in any direction.',
-      sections: [
         {
-          title: 'Loading, fallback and snapshots',
+          title: 'Repos and maps',
+          note: 'Where you land after sign-in, and how you get to a map.',
           items: [
             {
-              id: 'S1',
-              name: 'Cold open: poster, then the canvas',
-              src: 'variants/viewer-c.html?frame=desktop&view=prototypes&cold=1',
+              id: 'R-A',
+              name: 'A · Repos, then maps',
+              src: 'variants/mobile.html?v=A&screen=repos', ...PHONE,
               note: {
-                idea:
-                  'With the branch not cached yet (here, a 1.2 s delay), the pane shows the tile\'s picture as a poster and "Loading the canvas…" in the toolbar. The canvas fades in when the wrapper says ready. Click Canvas on #211 to see it; open it a second time and it is instant, because the frame stayed mounted.',
-                pros: ['Never a blank white frame, warm or cold'],
-                cons: ['The poster is the tile\'s picture, so a canvas opened on page 2 briefly shows page 1'],
+                idea: 'Mirrors the desktop: Home lists repositories with map counts. Tap one to see its maps, each with a progress bar in the state colours.',
+                pros: ['Same shape as desktop Home → Repository', 'Scales to many repos with search'],
+                cons: ['Two taps before you see any map', 'Repos with no maps add noise'],
               },
             },
             {
-              id: 'S2',
-              name: 'No bridge: view only',
-              src: 'variants/viewer-a.html?frame=desktop&view=prototypes&bridge=0',
+              id: 'R-B',
+              name: 'B · Following',
+              src: 'variants/mobile.html?v=B&screen=repos', ...PHONE,
               note: {
-                idea:
-                  'When the wrapper never answers (the research\'s fourth fallback), the canvas still opens in-app, after a short wait. The page menu and Board · A · B · C are replaced by a "View only" chip whose tooltip says why. The canvas still works inside the frame.',
-                pros: ['Nothing breaks: the user still sees the canvas inside Wayfinder'],
-                cons: [
-                  'Esc pressed while focus is inside the canvas cannot reach Wayfinder without the bridge; only the toolbar, Back or Alt+← close it',
-                ],
+                idea: 'Home is the maps you follow, as cards with a progress ring and the next ticket ready to start. "Follow another map" browses repositories and stars maps.',
+                pros: ['Matches "follow your maps" in the map’s destination', 'The next ticket is visible without opening the map'],
+                cons: ['Adds a follow state the desktop doesn’t have, and somewhere to store it', 'Empty until you follow something'],
               },
             },
             {
-              id: 'S3',
-              name: 'A snapshot (#206)',
-              src: 'variants/viewer-b.html?frame=desktop&view=prototypes',
+              id: 'R-C',
+              name: 'C · All maps, one list',
+              src: 'variants/mobile.html?v=C&screen=repos', ...PHONE,
               note: {
-                idea:
-                  'Click Canvas on #206. A snapshot is one page without a canvas engine, so the wrapper reports source "page". The toolbar shows a Snapshot chip and no page menu or options.',
-                pros: ['Old prototypes (#8, #17) open in-app the same way as canvases'],
-                cons: ['The variant strip\'s option letters can\'t be switched inside a snapshot'],
+                idea: 'One list of every map from every repo, most recently active first, with search and repository filter chips.',
+                pros: ['One tap to any map', 'No new concept: just filtering'],
+                cons: ['Long once there are many repos', 'Old finished maps sit next to live ones'],
               },
             },
+          ],
+        },
+        {
+          title: 'Map view',
+          note: 'How a map and its ticket states read on a 390px screen. States use the desktop’s words and icons: Next up, Claimed, Blocked, Done.',
+          items: [
+            {
+              id: 'M-A',
+              name: 'A · Grouped by state',
+              src: 'variants/mobile.html?v=A&screen=map', ...PHONE,
+              note: {
+                idea: 'The destination and a progress bar on top, then tickets grouped Next up / Claimed / Blocked / Done (Done collapsed). Blocked rows say what they need.',
+                pros: ['Answers "what can I do now?" first', 'Plain list: fast, accessible, works one-handed'],
+                cons: ['Loses the dependency picture the desktop map is built on'],
+              },
+            },
+            {
+              id: 'M-B',
+              name: 'B · Graph, like the desktop',
+              src: 'variants/mobile.html?v=B&screen=map', ...PHONE,
+              note: {
+                idea: 'A small version of the desktop graph: drag to pan, +/− to zoom, tap a card to highlight its edges. A peek bar at the bottom shows the selected ticket; tap it to open the detail sheet.',
+                pros: ['Same mental model as the desktop', 'Dependencies are visible'],
+                cons: ['Small text and lots of panning on a phone', 'Hardest to make accessible and to build in React Native'],
+              },
+            },
+            {
+              id: 'M-C',
+              name: 'C · Path, Tickets, Brief',
+              src: 'variants/mobile.html?v=C&screen=map', ...PHONE,
+              note: {
+                idea: 'Three tabs. Path lays tickets out in dependency steps from top to bottom (step 1 can start now, step 2 waits on step 1…). Tickets is a flat list with state filters. Brief shows destination, decisions, fog and out of scope.',
+                pros: ['Keeps the dependency order without a graph', 'The brief is readable on the phone'],
+                cons: ['Three views to learn and build', 'Steps flatten a graph, so "needs" is text rather than lines'],
+                disposition: 'keep',
+                feedback: 'Picked for the map view (round 1).',
+              },
+            },
+          ],
+        },
+        {
+          title: 'Ticket detail',
+          note: 'Read-only here. The Start control is #224’s, so each frame holds a dashed slot for it.',
+          items: [
+            {
+              id: 'T-A',
+              name: 'A · Full page',
+              src: 'variants/mobile.html?v=A&screen=ticket', ...PHONE,
+              note: {
+                idea: 'A pushed page: type, number and state, the title, the same state banner the desktop panel shows, the body (Question, Done when), then Needs and Unblocks as tappable pills. Open on GitHub sits in the top bar; the Start slot is pinned to the bottom.',
+                pros: ['All on one scroll', 'Pills move along the chain one ticket at a time'],
+                cons: ['You lose sight of the map while reading'],
+              },
+            },
+            {
+              id: 'T-B',
+              name: 'B · Sheet over the map',
+              src: 'variants/mobile.html?v=B&screen=ticket', ...PHONE,
+              note: {
+                idea: 'The ticket opens as a half-height sheet over the map; tap the handle for full height, tap outside or × to close. Pills open the next ticket in the same sheet.',
+                pros: ['Keeps map context', 'Fast to flick through tickets'],
+                cons: ['Two sheet heights to get right', 'Less room for long bodies at half height'],
+              },
+            },
+            {
+              id: 'T-C',
+              name: 'C · Tabs: Overview, Links, Activity',
+              src: 'variants/mobile.html?v=C&screen=ticket', ...PHONE,
+              note: {
+                idea: 'A full page with tabs: Overview (banner and body), Links (needs / unblocks), Activity (the issue’s comments, where closing evidence and decisions land).',
+                pros: ['Comments are readable on the phone', 'Each tab stays short'],
+                cons: ['Needs/unblocks hide behind a tab', 'Comments add GitHub API calls'],
+                disposition: 'keep',
+                feedback: 'Picked for ticket detail (round 1).',
+              },
+            },
+          ],
+        },
+        {
+          title: 'Edge states',
+          note: 'The same edge states in every direction; shown here in the direction that makes them most visible.',
+          items: [
+            { id: 'X-expired', name: 'Code expired', src: 'variants/mobile.html?v=A&screen=signin&state=expired', ...PHONE, note: { idea: 'The device code timed out (15 minutes). One button gets a new code.', pros: ['Clear recovery'], cons: ['Doesn’t say if you denied it rather than let it lapse'] } },
+            { id: 'X-offline', name: 'Offline, cached', src: 'variants/mobile.html?v=A&screen=map&state=offline', ...PHONE, note: { idea: 'No network: the last data GitHub sent is shown, with its age.', pros: ['Following works on the train'], cons: ['Needs a local cache'] } },
+            { id: 'X-empty', name: 'No maps', src: 'variants/mobile.html?v=C&screen=repos&state=empty', ...PHONE, note: { idea: 'Signed in, but none of your repos has a map yet. Points you to the desktop, since starting a map is out of scope on the phone.', pros: ['Explains the out-of-scope rule'], cons: [] } },
+            { id: 'X-loading', name: 'Loading', src: 'variants/mobile.html?v=B&screen=repos&state=loading', ...PHONE, note: { idea: 'Skeleton rows while GitHub answers.', pros: ['Shows layout before data'], cons: [] } },
+          ],
+        },
+        {
+          title: 'Review',
+          items: [
             {
               id: 'review',
               kind: 'note',
               name: 'Design review',
-              text:
-                'Sources inspected: src/ui/styles.css (tokens, .wf-proto, .wf-strip, .proto-tile, .topbar, .segmented, .ghost, .iconbtn, .chip), src/ui/prototypeBoard.ts and prototypeTile.ts (the board and tile markup copied here), src/ui/app.ts (routing via ?view= and pushState), src/desktop/main.ts (window 1320×860, minimum 900×620, setWindowOpenHandler), src/repoRoutes.ts, and docs/design/in-app-canvas-viewer.md (#206). The app chrome uses the real stylesheet and classes; the viewer adds only viewer.css, which uses existing tokens.\n\nChecked: dark (system) and light (?theme=light). In A, B and C: open from the tile, Esc to close, Alt+← to close and Alt+→ to reopen, with focus returning to the tile that opened the canvas (keys sent as scripted keydown events, not a physical keyboard). The browser frame’s Back and Forward buttons in B. Map scroll and selection after closing: B restored 120,60 with #211 selected; C kept 90,40 through Expand and Esc. The view-only fallback (bridge off) and a snapshot (#206). Layout at 1280×800 and at the desktop minimum of 900×620, where the toolbar drops its labels to icons and still fits. Contrast of the new colours, computed: address-bar host 4.92:1 (light) and 6.74:1 (dark), the sample canvas’s muted text 5.49:1 and 7.84:1, its warning text 5.02:1 and 10.51:1, the kbd hint 5.28:1. Semantics by reading the markup: A is role=dialog with aria-modal and an inert app behind it; B and C are labelled regions; the page menu is a menu of menuitemradio items; option buttons use aria-pressed; icon-only buttons have labels.\n\nRound 2 (AC) reuses A’s and C’s code paths and adds the Shrink and Fill the window toggle and the setting row (the real .settings-section, .settings-row and .segmented classes from src/ui/settings.ts). Round 2 checked in headless Chromium, dark and light: it opens full window by default as a dialog with an inert app; Shrink gives a 768 px region at 1280 px and a 540 px one at the 900×620 minimum, with the app live and focus on Fill the window; Fill the window brings the dialog back with focus on Shrink; Esc closes from either size, with focus back on the tile; browser Back closes from the pane and the URL returns to ?ticket=211; with the setting on Side pane it opens straight into the pane. Round 2 finding: in the pane, the board’s #211 card is narrow enough that its title wraps word by word (C’s cramped con, still there). Round 3 (ACF), headless Chromium, dark and light: the size switch moves between full window (dialog, ↗ shown), side pane (region, ↗ shown) and floating (region, 560×380 bottom right, no ↗), with the pressed size marked by aria-pressed and focus staying on the switch; dragging the title row moved it by −320,−258 and the corner resized it by +100,+60; the app behind stayed usable (the Map tab switched views under it); Esc and browser Back closed it from floating; with the setting on Floating it reopened where it was left; at 900×620 it fits all three sizes with no toolbar overflow. Round 3 findings: moving and resizing are pointer only, with no keyboard equivalent; at 900×620 the side pane covers the map’s Key and zoom controls (also true of C). Round 4 (ACF4), headless Chromium, dark and light: four resize corners; dragging nw, ne, sw and se each moved only that corner’s two edges, clamped to the app and to 360×240; the drag state held through every drag, with the frame ignoring the pointer. Corner marks: opacity 0 with the pointer away, 0.3 over the window, 0.85 over a corner (computed). Fixed while checking: the corner marks’ borders were overridden by a broader rule, and the default floating spot sat under the dashed Prototype bar, so it now starts 64 px up. Round 4 finding: the faint marks are decorative and rely on hover; there is no keyboard resize. Not checked for round 2: screen reader announcement when the role switches between dialog and region; the Settings row inside the real Settings dialog (shown as a component sheet only).\n\nFindings: in every direction the toolbar’s option letters rely on a title tooltip for the option name (the presented option’s name shows beside the arrows). The engine on today’s canvas branches sets location.hash itself when you click a frame, which pushes history entries; inside the viewer that would make Back step through options before closing. The stand-in canvas here uses location.replace. The build has to stop that in the wrapper or accept it (open question).\n\nNot checked: screen reader output (no NVDA or VoiceOver run); Tab trapping in A and arrow keys in the page menu (written, not exercised); real Electron framing and the mouse back button in Electron; real timing against the 300 ms warm-open bar; 60 fps of the transition on a real board; Windows High Contrast; touch.',
+              text: [
+                'Sources: src/ui/styles.css tokens (surfaces, text, state and accent colours, light + dark), src/ui/chrome.ts STATE_LOOKS (Next up / Claimed / Blocked / Done words and icons), src/ui/icons.ts (state and type icons), app.ts ticket panel (state banner copy, Needs/Unblocks). No mobile design system exists yet; mobile.css builds phone parts on those tokens.',
+                'Checked: dark theme on A map, B map and B ticket sheet; light theme on C map and the board’s sign-in row (390×844 viewport). Touch targets: rows, buttons, pills and the Done toggle are 44px or more; segmented tabs are 40px (46px with track). State is never colour alone: each has an icon and a word. Fixed during review: dimmed Done tiles/nodes used opacity, which dropped muted text under 4.5:1, now a plain surface with secondary text; pills and the Show toggle were 32–36px tall.',
+                'Findings left open: B’s graph is small (12px text at 0.8 zoom) and pan-heavy; B’s sheet does not move or trap focus; C’s tabs are role=tab without arrow-key handling; the canvas board wraps the S-A style ids onto two lines.',
+                'Round 2 (R-C2), checked headless at 390×844 in dark and light: list, open sheet and filtered list. The Filter by button is 44px tall and its label names the current filter. Opening the sheet moves focus to the selected option; picking an option, tapping outside or pressing Escape closes it and returns focus to the button. The list sorts latest first (12 min, yesterday, 2 days, 3 weeks). Open: the sheet does not trap focus and has no slide animation. Top bar: back and Open on GitHub buttons moved from blue iOS link style to the desktop’s neutral look (src/ui/styles.css .ghost and .iconbtn: text-secondary, hairline, 9px radius), drawn at 34px inside a 44px hit area with a visible focus ring; checked on map and ticket screens in dark and light. This bar is shared, so every frame on the Directions page shows the new buttons too.',
+                'PR review fixes (Sourcery on #263): map rows other than #217 used to open #217 under their own name; only #217 has sample tickets, so the others now show a toast saying so. The state and repo filter chips grew from 36px to 44px. Frame src values are literal strings so Wayfinder’s board can read each direction’s page. Not changed: safe-area insets (frames run in canvas iframes, not on a device; still Not checked).',
+                'Not checked: every screen in both themes one by one, screen readers (VoiceOver/TalkBack), real devices and safe areas, dynamic type / large text, React Native feasibility of each option, landscape.',
+              ].join('\n\n'),
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title: 'Repos and maps, round 2',
+      round: 2,
+      sections: [
+        {
+          title: 'R-C with a Filter by button',
+          note: 'Round 1 picks: S-A sign-in, M-C map view, T-C ticket detail. For repos and maps you asked for R-C, starting with repos, then: "maybe a filter by button but default to all maps/latest maps". Tap through: the map and ticket screens behind it are M-C and T-C. The round 1 options stay on the Directions page.',
+          items: [
+            {
+              id: 'R-C2',
+              name: 'R-C2 · All maps, Filter by',
+              src: 'variants/mobile.html?v=C&screen=repos&remix=filter', ...PHONE,
+              note: {
+                idea: 'Opens on every map from every repo, latest activity first. The repo chips are gone. One "Filter by: All maps" button opens a sheet that narrows the list to one repository.',
+                pros: ['Lands on the latest maps in one tap, as asked', 'One button scales to many repos; chips did not', 'The button always says what is showing'],
+                cons: ['Picking a repo takes two taps instead of one chip', 'The repo list hides inside a sheet'],
+                basedOn: ['R-C', 'R-A'],
+                disposition: 'keep',
+                feedback: 'Looks great. Restyle the back (Maps) and Open on GitHub buttons to match the app: done in round 2, neutral hairline buttons like the desktop .ghost and .iconbtn.',
+              },
+            },
+            {
+              id: 'R-C2-sheet',
+              name: 'R-C2 · Filter sheet open',
+              src: 'variants/mobile.html?v=C&screen=repos&remix=filter&picker=1', ...PHONE,
+              note: {
+                idea: 'The Filter by sheet: "All maps" first, then each repository that has maps, with its map count. The current choice has a check. Tap one to filter; tap outside, the handle or Escape to close.',
+                pros: ['Keeps R-A’s repos-then-maps path as a choice, not a step', 'Map counts show where the work is'],
+                cons: ['Repos without maps are left out, so dotfiles never shows'],
+                basedOn: ['R-C', 'R-A'],
+              },
             },
           ],
         },
