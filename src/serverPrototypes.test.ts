@@ -194,6 +194,24 @@ describe('prototypes on a repository-scoped server', () => {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }
   });
+
+  it('routes independent boards to distinct branch files with the same sandbox policy', async () => {
+    const running = await serve();
+    try {
+      for (const board of ['prototypes/canvas/index.html', 'prototypes/9-x/index.html']) {
+        const response = await fetch(`${running.url}/proto/octo/two/prototype%2F9-x/${board}`);
+        expect(response.status).toBe(200);
+        expect(response.headers.get('content-security-policy')).toContain('sandbox');
+        expect(response.headers.get('content-security-policy')).not.toContain('allow-same-origin');
+        expect(fetchBranchFile).toHaveBeenCalledWith('octo/two', 'prototype/9-x', board);
+        await response.arrayBuffer();
+      }
+      const blocked = await fetch(`${running.url}/proto/octo/two/feature%2F9-x/prototypes/9-x/index.html`);
+      expect(blocked.status).toBe(404);
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
 });
 
 describe('the app page policy', () => {

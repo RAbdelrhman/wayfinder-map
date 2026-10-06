@@ -73,6 +73,19 @@ function prototype(
 }
 
 describe('prototype decision state', () => {
+  it('keeps every canvas reachable and fallback variants in the primary canvas', () => {
+    const canvases = ['prototypes/canvas/index.html', 'prototypes/43-design/index.html'];
+    const proto = prototype(43, {
+      canvases,
+      preview: canvases[1] ?? null,
+      files: ['prototypes/canvas/variants/a-unrelated.html', 'prototypes/43-design/variants/a-home.html'],
+      openable: ['prototypes/canvas/variants/a-unrelated.html', 'prototypes/43-design/variants/a-home.html'],
+    });
+    expect(prototypeVariants(proto)).toEqual([{ id: 'A', title: 'Home', imageFile: null, pageFile: 'prototypes/43-design/variants/a-home.html' }]);
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(43, 'Home', 'prototype', 'frontier')]), [proto]);
+    for (const board of canvases) expect(html).toContain(`href="/proto/octo/wayfinder/prototype%2F43-design/${board}"`);
+    expect(html).not.toContain('a-unrelated.html');
+  });
   it('treats a related open grilling ticket as waiting on a pick', () => {
     const mapView = map([
       ticket(43, 'Prototype three views', 'prototype', 'blocked', [47]),

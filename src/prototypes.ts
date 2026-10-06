@@ -42,29 +42,37 @@ export function isSelfContained(html: string): boolean {
  * prototype is a canvas, that board is the thing to open, not one of the pages inside it.
  */
 export function canvasEntry(openable: readonly string[], files: readonly string[]): string | null {
+  return canvasEntries(openable, files)[0] ?? null;
+}
+
+/** All independent canvas boards, retaining their own file paths. */
+export function canvasEntries(openable: readonly string[], files: readonly string[]): string[] {
   const all = new Set(files);
-  return openable.find((file) => /(?:^|\/)index\.html$/i.test(file) && all.has(file.replace(/index\.html$/i, 'config.js'))) ?? null;
+  return [...new Set(openable.filter((file) => /(?:^|\/)index\.html$/i.test(file) && all.has(file.replace(/index\.html$/i, 'config.js'))))];
 }
 
 /**
  * Canvas boards the branch changed without touching their `index.html`. The canvas engine
  * lives on the default branch, so a prototype usually only edits `config.js` and its pages,
- * and the diff never lists the board. These are worth reading off the branch directly.
+ * and the diff never lists the board. Variant-only and asset-only edits count too.
+ * These are candidates: callers must verify the board and its adjacent config exist.
  */
 export function unlistedCanvasBoards(files: readonly string[]): string[] {
   const all = new Set(files);
-  return files
-    .filter((file) => /(?:^|\/)config\.js$/.test(file))
-    .map((file) => file.replace(/config\.js$/, 'index.html'))
-    .filter((board) => !all.has(board));
+  return [...new Set(files.flatMap((file) => {
+    if (/(?:^|\/)config\.js$/.test(file)) return [file.replace(/config\.js$/, 'index.html')];
+    const content = /^(.*?)\/(?:variants|assets)\/.+/.exec(file);
+    return content === null ? [] : [`${content[1] ?? ''}/index.html`];
+  }))].filter((board) => !all.has(board));
 }
 
 /**
  * The page a prototype shows running: its design canvas when it has one, then its saved
  * snapshot, which is built to run anywhere, otherwise the first HTML file that stands alone.
  */
-export function pickPreview(hasSnapshot: boolean, openable: readonly string[], files: readonly string[] = []): string | null {
-  const canvas = canvasEntry(openable, files);
+export function pickPreview(hasSnapshot: boolean, openable: readonly string[], files: readonly string[] = [], preferredCanvas?: string): string | null {
+  const canvases = canvasEntries(openable, files);
+  const canvas = preferredCanvas !== undefined && canvases.includes(preferredCanvas) ? preferredCanvas : canvases[0] ?? null;
   if (canvas !== null) return canvas;
   if (hasSnapshot) return PROTOTYPE_SNAPSHOT_FILE;
   return openable[0] ?? null;
