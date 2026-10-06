@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Window } from 'happy-dom';
 import {
   CanvasRouting,
+  isCanvasClick,
   canvasFrameHtml,
   canvasOptionForFile,
   canvasToolbarHtml,
@@ -20,6 +22,12 @@ const route = {
 };
 
 describe('canvas routing', () => {
+  it('leaves modified and non-primary canvas clicks to the browser', () => {
+    const click = { button: 0, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false };
+    expect(isCanvasClick(click)).toBe(true);
+    for (const key of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey'] as const) expect(isCanvasClick({ ...click, [key]: true })).toBe(false);
+    expect(isCanvasClick({ ...click, button: 1 })).toBe(false);
+  });
   it('continues closing when Back traverses a child document without a parent popstate', () => {
     vi.useFakeTimers();
     try {
@@ -78,6 +86,18 @@ describe('canvas routing', () => {
 });
 
 describe('approved ACF4 shell', () => {
+  it('renders hostile canvas metadata as text without executable HTML', async () => {
+    const browser = new Window();
+    try {
+      const hostile = '<img src=x onerror="alert(1)"><script>alert(2)</script>';
+      browser.document.body.innerHTML = canvasToolbarHtml({ ...route, title: hostile }, 'full', [{ id: hostile, title: hostile, options: [{ id: hostile, name: hostile, file: null }] }], hostile, hostile, 'dom', true);
+      expect(browser.document.querySelector('script, img, [onerror], [onclick]')).toBeNull();
+      expect(browser.document.querySelector('.vw-title-t')?.textContent).toBe(hostile);
+      expect(browser.document.querySelector('[data-go]:not([data-go=""])')?.getAttribute('data-go')).toBe(hostile);
+    } finally {
+      await browser.happyDOM.abort();
+    }
+  });
   it('creates the viewer iframe with only the existing opaque-origin sandbox capability', () => {
     const html = canvasFrameHtml({ ...route, title: 'Untrusted <title>' });
     expect(html).toContain('sandbox="allow-scripts"');

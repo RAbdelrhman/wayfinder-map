@@ -211,7 +211,7 @@ function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string
       const title = variants.length === 1 && variant.title.startsWith('Variant ') ? ticketTitle : variant.title;
       const href = variant.page ?? variant.image ?? canvas;
       const marker = isPicked ? '<span data-icon="check" aria-hidden="true"></span><span class="sr-only">Picked winner:</span>' : '';
-      return `<a class="wf-var decision-variant${stateClass}" role="listitem" href="${escapeHtml(href)}" ${canvasEntryAttrs(repo, prototype, ticketTitle, variant.page)} aria-label="Open variant ${escapeHtml(variant.id)}: ${escapeHtml(title)}${isPicked ? ' (picked)' : ''}">${variantFrame(variant)}<span class="lbl">${marker}${escapeHtml(`${variant.id} · ${title}`)}</span></a>`;
+      return `<a class="wf-var decision-variant${stateClass}" role="listitem" href="${escapeHtml(href)}" ${canvasEntryAttrs(repo, prototype, ticketTitle, variant.page, variant.page ? null : variant.image)} aria-label="Open variant ${escapeHtml(variant.id)}: ${escapeHtml(title)}${isPicked ? ' (picked)' : ''}">${variantFrame(variant)}<span class="lbl">${marker}${escapeHtml(`${variant.id} · ${title}`)}</span></a>`;
     })
     .join('');
   const pickAction = decision.pickTicket === null

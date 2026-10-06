@@ -15,6 +15,9 @@ export interface CanvasPage {
   title: string;
   options: { id: string; name: string; file: string | null }[];
 }
+export function isCanvasClick(event: Pick<MouseEvent, 'button' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'>): boolean {
+  return event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
+}
 /** Every viewer frame retains the existing opaque-origin capabilities. */
 export function canvasFrameHtml(route: CanvasRoute): string {
   return `<iframe class="vw-frame" sandbox="allow-scripts" title="Canvas: ${escapeHtml(route.title)}" src="${escapeHtml(route.url)}"></iframe>`;
@@ -34,6 +37,7 @@ export type CanvasMessage =
   | { wf: 1; type: 'ready'; source: 'dom' | 'engine' | 'page'; pages: CanvasPage[] }
   | { wf: 1; type: 'state'; page: string | null; option: string | null; presenting: boolean }
   | { wf: 1; type: 'back' }
+  | { wf: 1; type: 'document'; id: string }
   | { wf: 1; type: 'key'; key: 'Escape' };
 
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -42,6 +46,7 @@ const textOrNull = (value: unknown): value is string | null => value === null ||
 export function readCanvasMessage(value: unknown): CanvasMessage | null {
   if (!record(value) || value['wf'] !== 1) return null;
   if (value['type'] === 'back') return { wf: 1, type: 'back' };
+  if (value['type'] === 'document' && typeof value['id'] === 'string') return { wf: 1, type: 'document', id: value['id'] };
   if (value['type'] === 'key' && value['key'] === 'Escape') return value as CanvasMessage;
   if (value['type'] === 'state' && textOrNull(value['page']) && textOrNull(value['option']) && typeof value['presenting'] === 'boolean')
     return value as CanvasMessage;
@@ -232,6 +237,7 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
   let scrolls: { element: HTMLElement; selector: string | null; left: number; top: number }[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pendingFile: string | null = null;
+  let documentIds: string[] = [], documentIndex = -1;
   const findOrigin = (): HTMLElement | null => {
     if (origin?.isConnected) return origin;
     return (
@@ -287,6 +293,8 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
   const openFrame = (route: CanvasRoute): void => {
     pendingFile = route.file;
     if (mountedUrl !== route.url) {
+      documentIds = [];
+      documentIndex = -1;
       mountedUrl = route.url;
       pages = [];
       pageId = null;
@@ -409,6 +417,7 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
   document.addEventListener(
     'click',
     (event) => {
+      if (!isCanvasClick(event)) return;
       const target = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-canvas-url]') : null;
       if (!target) return;
       const route = readCanvasRoute(
@@ -472,6 +481,16 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
     if (!frame || event.source !== frame.contentWindow) return;
     const message = readCanvasMessage(event.data);
     if (!message) return;
+    if (message.type === 'document') {
+      const index = documentIds.indexOf(message.id);
+      if (index >= 0) {
+        if (index < documentIndex && routing.current) routing.close();
+        documentIndex = index;
+      } else {
+        documentIds = documentIds.slice(0, documentIndex + 1);
+        documentIndex = documentIds.push(message.id) - 1;
+      }
+    }
     if (message.type === 'ready') {
       pages = message.pages;
       source = message.source;

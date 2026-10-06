@@ -6,27 +6,31 @@ import { readCanvasMessage } from './ui/canvasViewer.js';
 import ts from 'typescript';
 
 describe('sandboxed canvas bridge', () => {
-  it('reports document-history traversal and relays it only from an actual child frame', () => {
+  it('distinguishes child Back from Forward and ignores spoofed document messages', () => {
     const listeners = new Map<string, (event: unknown) => void>();
     const parent = { postMessage: vi.fn() };
     const child = {};
     runInNewContext(CANVAS_BRIDGE_SCRIPT, {
       window: { addEventListener: (name: string, fn: (event: unknown) => void) => listeners.set(name, fn) },
       parent,
-      performance: { getEntriesByType: () => [{ type: 'back_forward' }] },
       location: { href: 'http://localhost/proto/o/r/prototype%2F1/option.html', hash: '' },
       document: { readyState: 'interactive', querySelector: () => null, querySelectorAll: () => [{ contentWindow: child }], addEventListener: vi.fn() },
       URL,
     });
-    expect(parent.postMessage).toHaveBeenCalledWith({ wf: 1, type: 'back' }, '*');
+    const visit = (id: string, source: object = child): void => listeners.get('message')?.({ source, data: { wf: 1, type: 'document', id } });
     parent.postMessage.mockClear();
-    listeners.get('message')?.({ source: {}, data: { wf: 1, type: 'back' } });
+    visit('old');
+    visit('new');
     expect(parent.postMessage).not.toHaveBeenCalled();
-    listeners.get('message')?.({ source: child, data: { wf: 1, type: 'back' } });
-    expect(parent.postMessage).toHaveBeenCalledOnce();
-    parent.postMessage.mockClear();
-    listeners.get('pageshow')?.({ persisted: true });
+    visit('old', {});
+    expect(parent.postMessage).not.toHaveBeenCalled();
+    visit('old');
     expect(parent.postMessage).toHaveBeenCalledWith({ wf: 1, type: 'back' }, '*');
+    parent.postMessage.mockClear();
+    visit('new');
+    expect(parent.postMessage).not.toHaveBeenCalled();
+    listeners.get('pageshow')?.({ persisted: true });
+    expect(parent.postMessage.mock.calls[0]?.[0]).toMatchObject({ wf: 1, type: 'document' });
   });
   it('uses replacement navigation for option-page anchor tabs and client-side routers', () => {
     const listeners = new Map<string, (event: unknown) => void>();
@@ -64,7 +68,7 @@ describe('sandboxed canvas bridge', () => {
     expect(replace).toHaveBeenCalledWith(click.target.href);
     window.history.pushState({ tab: 2 }, '', '#tab-2');
     expect(pushState).not.toHaveBeenCalled();
-    expect(replaceState).toHaveBeenCalledWith({ tab: 2 }, '', '#tab-2');
+    expect(replaceState).toHaveBeenCalledWith(expect.objectContaining({ tab: 2, wfDocument: expect.any(String) }), '', '#tab-2');
     replace.mockClear();
     preventDefault.mockClear();
     listeners.get('click')?.({ ...click, target: new Anchor('https://example.com/') });
@@ -116,7 +120,7 @@ describe('sandboxed canvas bridge', () => {
       document: { readyState: 'interactive', querySelector: () => null, addEventListener: vi.fn() },
       URL,
     });
-    const message: unknown = parent.postMessage.mock.calls[0]?.[0];
+    const message: unknown = parent.postMessage.mock.calls.find(([value]) => value.type === 'ready')?.[0];
     expect(readCanvasMessage(message)).not.toBeNull();
     expect(message).toMatchObject({
       type: 'ready',
@@ -159,7 +163,7 @@ describe('sandboxed canvas bridge', () => {
       URL,
     });
     listeners.get('DOMContentLoaded')?.();
-    expect(parent.postMessage.mock.calls[0]?.[0]).toMatchObject({
+    expect(parent.postMessage.mock.calls.find(([message]) => message.type === 'ready')?.[0]).toMatchObject({
       wf: 1,
       type: 'ready',
       source: 'dom',

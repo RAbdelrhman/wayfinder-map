@@ -17,7 +17,7 @@ export const PROTOTYPE_SNAPSHOT_FILE = 'prototype-snapshot.html';
 /** Where the page serves a file off a prototype branch. */
 export const PROTOTYPE_ROUTE = '/proto/';
 /** Bump when the injected bridge or served engine adaptation changes. */
-export const PROTOTYPE_HOST_VERSION = 'viewer-3';
+export const PROTOTYPE_HOST_VERSION = 'viewer-4';
 
 /** The ticket a prototype branch belongs to, or null when the name does not follow the convention. */
 export function prototypeTicketNumber(branch: string): number | null {

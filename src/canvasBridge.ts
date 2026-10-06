@@ -1,10 +1,14 @@
 /** Runs in the prototype's opaque origin. No API or privileged operation is exposed. */
 function canvasBridge(): void {
+  const historyState = window.history?.state as Record<string, unknown> | null;
+  const documentId = typeof historyState?.['wfDocument'] === 'string' ? historyState['wfDocument'] : `${Date.now()}-${Math.random()}`;
+  if (window.history) window.history.replaceState({ ...historyState, wfDocument: documentId }, '');
+  const childHistory = new Map<MessageEventSource, { ids: string[]; index: number }>();
   // Nested documents share the browser's joint session history. Anchor tabs and
   // client-side page routers must replace their entry, just like engine options.
   if (window.history)
     window.history.pushState = (data: unknown, unused: string, url?: string | URL | null): void => {
-      window.history.replaceState(data, unused, url);
+      window.history.replaceState({ ...(typeof data === 'object' && data !== null ? data : {}), wfDocument: documentId }, unused, url);
     };
   document.addEventListener(
     'click',
@@ -76,8 +80,7 @@ function canvasBridge(): void {
     });
   };
   const ready = (): void => {
-    if (typeof performance !== 'undefined' && performance.getEntriesByType('navigation').some((entry) => (entry as PerformanceNavigationTiming).type === 'back_forward'))
-      post({ type: 'back' });
+    post({ type: 'document', id: documentId });
     post({
       type: 'ready',
       source: pages().length ? 'dom' : 'page',
@@ -99,6 +102,19 @@ function canvasBridge(): void {
     if (event.source !== parent) {
       // Escape from an option document does not bubble through an iframe.
       const child = [...document.querySelectorAll('iframe')].some((frame) => frame.contentWindow === event.source);
+      if (child && event.source && message['wf'] === 1 && message['type'] === 'document' && typeof message['id'] === 'string') {
+        const trail = childHistory.get(event.source) ?? { ids: [], index: -1 };
+        const index = trail.ids.indexOf(message['id']);
+        if (index >= 0) {
+          if (index < trail.index) post({ type: 'back' });
+          trail.index = index;
+        } else {
+          trail.ids = trail.ids.slice(0, trail.index + 1);
+          trail.index = trail.ids.push(message['id']) - 1;
+        }
+        childHistory.set(event.source, trail);
+        return;
+      }
       if (child && message['wf'] === 1 && message['type'] === 'back') {
         post({ type: 'back' });
         return;
@@ -117,7 +133,7 @@ function canvasBridge(): void {
   });
   window.addEventListener('hashchange', state);
   window.addEventListener('pageshow', (event) => {
-    if (event.persisted) post({ type: 'back' });
+    if (event.persisted) post({ type: 'document', id: documentId });
   });
   window.addEventListener('canvas:change', state);
   document.addEventListener(
