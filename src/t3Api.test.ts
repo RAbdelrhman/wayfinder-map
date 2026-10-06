@@ -156,7 +156,7 @@ describe('threadCommands', () => {
 });
 
 describe('T3 shell stream', () => {
-  it('resumes after a sequence, forwards chunks, and reports a dropped connection', async () => {
+  it.each([1, 2])('resumes on protocol %i, forwards chunks, and reports a dropped connection', async (version) => {
     const sockets: Array<{
       url: URL;
       sent: string[];
@@ -188,6 +188,7 @@ describe('T3 shell stream', () => {
     }
     vi.stubGlobal('WebSocket', TestSocket as unknown as typeof WebSocket);
     const api = new T3Api('http://127.0.0.1:3773', { exe: 't3', script: 'server.mjs' });
+    vi.spyOn(api, 'environment').mockResolvedValue({ orchestrationProtocolVersion: version });
     vi.spyOn(api as unknown as { request: (path: string, body?: unknown) => Promise<unknown> }, 'request').mockResolvedValue({
       ticket: 'short-lived-ticket',
     });
@@ -202,6 +203,7 @@ describe('T3 shell stream', () => {
       socket?.onopen?.(new Event('open'));
       const stop = await subscribing;
       expect(socket?.url.searchParams.get('wsTicket')).toBe('short-lived-ticket');
+      expect(socket?.url.searchParams.get('orchestrationProtocol')).toBe(version === 2 ? '2' : null);
       expect(JSON.parse(socket?.sent[0] ?? '{}')).toMatchObject({
         tag: 'orchestration.subscribeShell',
         payload: { afterSequence: 23, requestCompletionMarker: true },

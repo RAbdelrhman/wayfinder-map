@@ -97,6 +97,7 @@ export interface T3Snapshot {
 export class T3Api {
   private session: Promise<{ id: string; token: string }> | null = null;
   private issuedId: string | null = null;
+  private protocol: Promise<1 | 2> | null = null;
   private readonly streams = new Set<WebSocket>();
 
   constructor(
@@ -159,17 +160,39 @@ export class T3Api {
     return this.request('/api/orchestration/dispatch', command);
   }
 
+  /** V2 requires a protocol query parameter before it will upgrade the socket. */
+  private async webSocketUrl(): Promise<URL> {
+    this.protocol ??= this.environment().catch(() => {
+      // A failed probe must not pin a v2 server to v1 until Wayfinder restarts.
+      this.protocol = null;
+      return null;
+    }).then((raw) => {
+      const version = (raw as { orchestrationProtocolVersion?: unknown } | null)?.orchestrationProtocolVersion;
+      // Older servers may not expose the descriptor or its version field.
+      if (version === undefined || version === 1) return 1;
+      if (version === 2) return 2;
+      throw new Error(`Unsupported T3 Code orchestration protocol: ${String(version)}`);
+    }).catch((error: unknown) => {
+      this.protocol = null;
+      throw error;
+    });
+    const version = await this.protocol;
+    const { ticket } = (await this.request('/api/auth/websocket-ticket', {}, false, 20_000)) as { ticket?: unknown };
+    if (typeof ticket !== 'string') throw new Error('T3 Code issued no WebSocket ticket');
+    const url = new URL('/ws', this.origin);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.searchParams.set('wsTicket', ticket);
+    if (version === 2) url.searchParams.set('orchestrationProtocol', '2');
+    return url;
+  }
+
   /**
    * One call over T3 Code's WebSocket RPC, for what the HTTP API does not expose
    * (the provider and model list lives only there). The socket authenticates with a
    * short-lived ticket minted over HTTP, since a WebSocket cannot carry a bearer header.
    */
   async rpc(tag: string, payload: unknown = {}): Promise<unknown> {
-    const { ticket } = (await this.request('/api/auth/websocket-ticket', {})) as { ticket?: unknown };
-    if (typeof ticket !== 'string') throw new Error('T3 Code issued no WebSocket ticket');
-    const url = new URL('/ws', this.origin);
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.searchParams.set('wsTicket', ticket);
+    const url = await this.webSocketUrl();
 
     return new Promise<unknown>((resolve, reject) => {
       const socket = new WebSocket(url);
@@ -201,12 +224,7 @@ export class T3Api {
     onValue: (value: unknown) => void,
     onClose: () => void,
   ): Promise<() => void> {
-    const ticketResult = await this.request('/api/auth/websocket-ticket', {}, false, 20_000);
-    const ticket = (ticketResult as { ticket?: unknown } | null)?.ticket;
-    if (typeof ticket !== 'string') throw new Error('T3 Code issued no WebSocket ticket');
-    const url = new URL('/ws', this.origin);
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.searchParams.set('wsTicket', ticket);
+    const url = await this.webSocketUrl();
 
     return new Promise<() => void>((resolve, reject) => {
       const socket = new WebSocket(url);
