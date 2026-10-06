@@ -202,6 +202,7 @@ describe('prototype decision board states', () => {
     expect(html).toContain('A · Variant A');
     expect(html).toContain('B · Variant B');
     expect(html).toContain('/proto/octo/wayfinder/prototype%2F43-design/prototypes/canvas/assets/protos/43-A.jpg');
+    expect(html).toContain('data-canvas-url="/proto/octo/wayfinder/prototype%2F43-design/prototypes/canvas/assets/protos/43-A.jpg"');
   });
 
   it('marks a winner, dims the other variants, and leaves each variant link active', () => {

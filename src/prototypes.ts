@@ -16,6 +16,8 @@ export const PROTOTYPE_SNAPSHOT_FILE = 'prototype-snapshot.html';
 
 /** Where the page serves a file off a prototype branch. */
 export const PROTOTYPE_ROUTE = '/proto/';
+/** Bump when the injected bridge or served engine adaptation changes. */
+export const PROTOTYPE_HOST_VERSION = 'viewer-4';
 
 /** The ticket a prototype branch belongs to, or null when the name does not follow the convention. */
 export function prototypeTicketNumber(branch: string): number | null {
@@ -83,24 +85,33 @@ export function pickPreview(hasSnapshot: boolean, openable: readonly string[], f
  * because a page can be looking at any repository, not only the one Wayfinder launched in.
  * Owner, name and branch are one encoded segment each, so relative links resolve under them.
  */
-export function prototypeFileUrl(repo: string, branch: string, file: string): string {
+export function prototypeFileUrl(repo: string, branch: string, file: string, sha?: string): string {
   const [owner = '', name = ''] = repo.split('/', 2);
   const prefix = `${PROTOTYPE_ROUTE}${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
-  return `${prefix}/${encodeURIComponent(branch)}/${file.split('/').map(encodeURIComponent).join('/')}`;
+  return `${prefix}/${encodeURIComponent(branch)}/${sha && /^[a-f0-9]{40}$/.test(sha) ? sha + '/' + PROTOTYPE_HOST_VERSION + '/' : ''}${file.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+/** Config page URLs carry runtime query/hash options separately from the repo file path. */
+export function prototypePageUrl(repo: string, branch: string, page: string, sha?: string): string {
+  const suffixAt = page.search(/[?#]/);
+  return suffixAt < 0 ? prototypeFileUrl(repo, branch, page, sha)
+    : prototypeFileUrl(repo, branch, page.slice(0, suffixAt), sha) + page.slice(suffixAt);
 }
 
 /** What a `/proto/...` path asks for, or null for anything off a prototype branch or climbing out of it. */
-export function parsePrototypeFilePath(pathname: string): { repo: string; branch: string; file: string } | null {
+export function parsePrototypeFilePath(pathname: string): { repo: string; branch: string; file: string; sha?: string; renderVersion?: string } | null {
   if (!pathname.startsWith(PROTOTYPE_ROUTE)) return null;
   const [rawOwner, rawName, rawBranch, ...rawFile] = pathname.slice(PROTOTYPE_ROUTE.length).split('/');
   try {
     const repo = normalizeRepo(`${decodeURIComponent(rawOwner ?? '')}/${decodeURIComponent(rawName ?? '')}`);
     const branch = decodeURIComponent(rawBranch ?? '');
     const parts = rawFile.map(decodeURIComponent);
+    const sha = /^[a-f0-9]{40}$/.test(parts[0] ?? '') ? parts.shift() : undefined;
+    const renderVersion = sha && parts[0] === PROTOTYPE_HOST_VERSION ? parts.shift() : undefined;
     if (repo === null) return null;
     if (!branch.startsWith(PROTOTYPE_BRANCH_PREFIX) || branch.includes('..')) return null;
     if (parts.length === 0 || parts.some((part) => part === '' || part === '.' || part === '..')) return null;
-    return { repo, branch, file: parts.join('/') };
+    return { repo, branch, file: parts.join('/'), ...(sha ? { sha } : {}), ...(renderVersion ? { renderVersion } : {}) };
   } catch {
     return null;
   }

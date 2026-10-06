@@ -4798,7 +4798,7 @@ textarea.input {
   line-height: 1.45;
 }
 
-/* "Loading maps…" holds one map row's height, so a one-map repository opens without a jump */
+/* "Loading mapsâ€¦" holds one map row's height, so a one-map repository opens without a jump */
 .kids .nav-tree-status {
   display: flex;
   align-items: center;
@@ -7492,6 +7492,377 @@ textarea.input {
   color: var(--text-secondary) !important;
 }
 
+/* Canvas viewer, approved #207 ACF4. */
+
+
+.vw {
+  position: absolute;
+  z-index: 30;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--plane);
+}
+
+/* A: over everything inside the window, rail and top bar included. */
+.vw.is-a {
+  inset: 0;
+}
+/* C: a pane under the top bar, beside the map or board. */
+.vw.is-c {
+  top: 56px;
+  right: 0;
+  bottom: 0;
+  width: var(--vw-pane);
+  border-left: 1px solid var(--hairline);
+  box-shadow: var(--shadow);
+}
+
+/* ACF: a floating window over the app, which stays live around it. */
+.vw.is-f {
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.vw.is-f .vw-drag {
+  cursor: grab;
+  user-select: none;
+}
+
+.vw.is-dragging,
+.vw.is-dragging .vw-drag {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.vw.is-dragging .vw-frame {
+  pointer-events: none;
+}
+
+.vw-grip {
+  display: none;
+}
+
+.vw.is-f .vw-grip {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.vw-grip[data-corner='se'] {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+.vw-grip[data-corner='sw'] {
+  left: 0;
+  bottom: 0;
+  cursor: nesw-resize;
+}
+
+.vw-grip[data-corner='ne'] {
+  right: 0;
+  top: 0;
+  cursor: nesw-resize;
+}
+
+.vw-grip[data-corner='nw'] {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+
+/* Round 4: every corner, and quiet. Nothing shows until the pointer is over the window; then
+   a faint arc follows each rounded corner, and the corner under the pointer firms up. */
+.vw.is-f.has-corner-grips .vw-grip {
+  width: 14px;
+  height: 14px;
+}
+
+.vw.is-f.has-corner-grips .vw-grip::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 0 solid var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+
+.vw.is-f.has-corner-grips .vw-grip[data-corner='se']::after {
+  right: 3px;
+  bottom: 3px;
+  border-right-width: 1.5px;
+  border-bottom-width: 1.5px;
+  border-bottom-right-radius: 7px;
+}
+
+.vw.is-f.has-corner-grips .vw-grip[data-corner='sw']::after {
+  left: 3px;
+  bottom: 3px;
+  border-left-width: 1.5px;
+  border-bottom-width: 1.5px;
+  border-bottom-left-radius: 7px;
+}
+
+.vw.is-f.has-corner-grips .vw-grip[data-corner='ne']::after {
+  right: 3px;
+  top: 3px;
+  border-right-width: 1.5px;
+  border-top-width: 1.5px;
+  border-top-right-radius: 7px;
+}
+
+.vw.is-f.has-corner-grips .vw-grip[data-corner='nw']::after {
+  left: 3px;
+  top: 3px;
+  border-left-width: 1.5px;
+  border-top-width: 1.5px;
+  border-top-left-radius: 7px;
+}
+
+.vw.is-f.has-corner-grips:hover .vw-grip::after {
+  opacity: 0.3;
+}
+
+.vw.is-f.has-corner-grips .vw-grip:hover::after,
+.vw.is-f.has-corner-grips.is-dragging .vw-grip::after {
+  opacity: 0.85;
+}
+
+.vw-sizes .seg {
+  min-width: 30px;
+  padding: 0 6px;
+}
+
+.vw-stage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.vw > .vw-stage {
+  padding: 0;
+}
+
+.vw-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+
+.vw-frame.is-ready {
+  opacity: 1;
+}
+
+/* ---------- toolbar ---------- */
+
+.vw-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--hairline);
+  font-size: 13px;
+}
+
+.vw-bar.is-a {
+  height: 52px;
+  padding: 0 12px;
+}
+
+.vw-bar.is-b {
+  padding: 0 10px 0 12px;
+}
+
+.vw-bar.is-c {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.vw-c-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.vw-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-weight: 650;
+}
+
+.vw-title .i {
+  color: var(--text-muted);
+}
+
+.vw-title-t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vw-crumbs {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.vw-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--hairline);
+  flex: none;
+}
+
+.vw-bar .ghost {
+  height: 32px;
+  white-space: nowrap;
+}
+
+.vw-bar kbd {
+  padding: 0 5px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font: 11px ui-monospace, Consolas, monospace;
+}
+
+.vw-bar .seg {
+  height: 28px;
+  min-width: 32px;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.vw-bar .seg .i {
+  width: 14px;
+  height: 14px;
+}
+
+.vw-bar .seg.is-on {
+  color: var(--text-primary);
+}
+
+.vw-bar .seg:focus-visible,
+.vw-bar .ghost:focus-visible,
+.vw-bar .iconbtn:focus-visible,
+.vw-menu button:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 1px;
+}
+
+.vw-step {
+  width: 30px;
+  height: 30px;
+}
+
+.vw-optname {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.vw-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.vw-status .i {
+  animation: spin 0.8s linear infinite;
+}
+
+.vw-menu-anchor {
+  position: relative;
+}
+
+.vw-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: grid;
+  min-width: 200px;
+  padding: 4px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+}
+
+.vw-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  text-align: left;
+}
+
+.vw-menu button:hover {
+  background: var(--wash);
+}
+
+.vw-menu .i {
+  width: 14px;
+  height: 14px;
+}
+
+.vw-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Narrow windows: icons only. */
+@media (max-width: 1180px) {
+  .vw-bar .vw-lbl,
+  .vw-optname,
+  .vw-crumbs {
+    display: none;
+  }
+}
+
+/* ---------- poster and ghost: the tile's picture, never a blank frame ---------- */
+.vw { position: fixed; z-index: 100; --vw-pane: min(60vw, 820px); transform-origin: top left; }
+.vw[hidden], .vw-menu[hidden] { display: none; }
+.vw.is-a .vw-bar { flex-wrap: nowrap; }
+.vw-bar .vw-title { flex: 1 1 160px; }
+.vw.is-a .vw-title { max-width: 240px; }
+.vw-bar .vw-close, .vw-bar .vw-sizes, .vw-bar .iconbtn, .vw-menu-anchor { flex-shrink: 0; }
+.vw-c-row { flex-wrap: nowrap; }
+.vw-options { min-width: 0; flex: 1 1 auto; overflow-x: auto; }
+.vw-options .seg { flex-shrink: 0; }
+.vw.is-f .vw-optname { display: none; }
+.vw.is-c { top: 56px; }
+.app.has-canvas-pane .main > :not(.topbar) { margin-right: min(60vw, 820px); }
+.app.has-canvas-pane .inspector { display: none; }
+.app.has-canvas-pane .body { grid-template-columns: minmax(0, 1fr); }
+.vw-poster-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.vw-close-ghost { position: fixed; z-index: 101; background: var(--plane); border: 1px solid var(--hairline); pointer-events: none; transform-origin: top left; }
+.vw-close-ghost img { width: 100%; height: 100%; object-fit: contain; }
+.vw-flip { display: inline-flex; transform: scaleX(-1); }
+@media (prefers-reduced-motion: reduce) { .vw-frame, .vw-grip::after { transition: none; } }
 .map-inbox-filters {
   display: flex;
   gap: 6px;

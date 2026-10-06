@@ -31,6 +31,7 @@ import type { NewInboxNotification } from './notifications.js';
 import { DEFAULT_NOTIFICATION_SETTINGS, readNotificationSettings } from '../notificationTypes.js';
 import type { NotificationSettings } from '../notificationTypes.js';
 import type { MapEvent } from '../mapWatch.js';
+import { mountCanvasViewer } from './canvasViewer.js';
 
 function need<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -44,6 +45,7 @@ const els = {
 };
 
 const handOffSurface = mountHandOffs();
+mountCanvasViewer(need('app'));
 const notificationInbox = mountNotificationInbox();
 mountMapEventInbox((event: MapEvent) => {
   const openMap = repositoryPageCards?.repo.toLowerCase() === event.repo.toLowerCase()

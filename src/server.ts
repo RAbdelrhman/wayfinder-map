@@ -26,6 +26,8 @@ import type { MapEvent } from './mapWatch.js';
 import { listRepositories, loadHomeState, readAccount } from './home.js';
 import type { HomeState } from './home.js';
 import { fetchAllPrototypes, fetchBranchFile, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, fetchTicketWithParent, gh } from './github.js';
+import { viewerPrototypeBytes } from './canvasBridge.js';
+import { PrototypeFileCache } from './prototypeFileCache.js';
 import { AuthFlow } from './authFlow.js';
 import { normalizeRepo, parseRepoPagePath } from './repoRoutes.js';
 import type { ScopedApiAction } from './repoRoutes.js';
@@ -283,6 +285,30 @@ export async function startServer({
   following,
 }: ServeOptions): Promise<RunningServer> {
   const detect = t3.detect ?? detectT3;
+  const prototypeFiles = new PrototypeFileCache(fetchBranchFile);
+  const warmedPrototypes = new Set<string>();
+  const warmQueue: { repo: string; branch: string; sha: string; file: string }[] = [];
+  let warming = 0;
+  const warmFiles = (): void => {
+    while (warming < 3 && warmQueue.length) {
+      const entry = warmQueue.shift()!;
+      warming++;
+      void prototypeFiles.get(entry.repo, entry.branch, entry.file, entry.sha).catch(() => undefined).finally(() => { warming--; warmFiles(); });
+    }
+  };
+  const warmPrototypes = (forRepo: string, prototypes: readonly Prototype[]): void => {
+    for (const prototype of prototypes) {
+      if (!prototype.sha || !prototype.preview) continue;
+      const key = `${forRepo}@${prototype.sha}`;
+      if (warmedPrototypes.has(key)) continue;
+      warmedPrototypes.add(key);
+      if (warmedPrototypes.size > 256) warmedPrototypes.delete(warmedPrototypes.values().next().value!);
+      const dir = prototype.preview.replace(/[^/]+$/, '');
+      const files = [...new Set([prototype.preview, ...(/(?:^|\/)index\.html$/.test(prototype.preview) ? ['canvas.js', 'canvas.css', 'config.js', 'kit/kit.js', 'kit/kit.css'].map((file) => dir + file) : []), ...prototype.files.filter((file) => /\.(?:html?|css|js|svg|png|jpe?g|webp)$/i.test(file) && !/(?:^|\/)(?:tools|assets\/protos)\//.test(file))])].slice(0, 64);
+      for (const file of files) warmQueue.push({ repo: forRepo, branch: prototype.branch, sha: prototype.sha, file });
+    }
+    warmFiles();
+  };
   const defaultUpdater: UpdaterService = {
     async check(): Promise<UpdaterStatus> {
       const currentVersion = WAYFINDER_VERSION;
@@ -440,6 +466,7 @@ export async function startServer({
       ? repositories.snapshot(forRepo, false, snapshot.maps.map((candidate) => candidate.number)).then((loaded) => fetchAllPrototypes(forRepo, loaded.maps))
       : fetchPrototypes(forRepo, map);
     prototypeCache.set(key, { at: Date.now(), list });
+    void list.then((prototypes) => warmPrototypes(forRepo, prototypes), () => undefined);
     list.catch(() => prototypeCache.delete(key));
     return list;
   };
@@ -1368,12 +1395,12 @@ export async function startServer({
         return;
       }
       try {
-        const bytes = await fetchBranchFile(prototypeFile.repo, prototypeFile.branch, prototypeFile.file);
+        const bytes = viewerPrototypeBytes(prototypeFile.file, await prototypeFiles.get(prototypeFile.repo, prototypeFile.branch, prototypeFile.file, prototypeFile.sha));
         response.writeHead(200, {
           'content-type': MIME[extensionOf(prototypeFile.file)] ?? 'application/octet-stream',
           'content-security-policy': PROTOTYPE_CSP,
           'x-content-type-options': 'nosniff',
-          'cache-control': 'no-store',
+          'cache-control': prototypeFile.sha && prototypeFile.renderVersion ? 'public, max-age=31536000, immutable' : 'no-store',
         });
         response.end(bytes);
       } catch (error) {

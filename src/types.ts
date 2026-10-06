@@ -161,6 +161,8 @@ export interface TicketPullRequest extends PullRequestState {
 /** A prototype branch belonging to one of a map's tickets. */
 export interface Prototype {
   branch: string;
+  /** Immutable commit used by the viewer and its relative assets. */
+  sha?: string;
   ticketNumber: number;
   /** The map whose ticket this prototype answers. */
   mapNumber: number;

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PROTOTYPE_HOST_VERSION } from '../prototypes.js';
 
 import type { Prototype } from '../types.js';
 import { previewUrl, prototypeTileHtml, verdictGist } from './prototypeTile.js';
@@ -35,8 +36,13 @@ describe('verdictGist', () => {
 describe('prototypeTileHtml', () => {
   it('links every independent board without changing the primary sandboxed preview', () => {
     const canvases = ['prototypes/canvas/index.html', 'prototypes/8-home/index.html'];
-    const html = prototypeTileHtml('octo/one', { ...base, canvases, preview: canvases[1] ?? null }, { eyebrow: '#8', title: 'Home page' });
-    for (const board of canvases) expect(html).toContain(`href="/proto/octo/one/prototype%2F8-home/${board}"`);
+    const sha = 'a'.repeat(40);
+    const html = prototypeTileHtml('octo/one', { ...base, sha, canvases, preview: canvases[1] ?? null }, { eyebrow: '#8', title: 'Home page' });
+    for (const board of canvases) {
+      const url = `/proto/octo/one/prototype%2F8-home/${sha}/${PROTOTYPE_HOST_VERSION}/${board}`;
+      expect(html).toContain(`href="${url}" data-canvas-url="${url}"`);
+    }
+    expect(html).not.toContain('target="_blank"');
     expect(html).toContain('aria-label="Canvases for #8"');
     expect(html).toContain('sandbox="allow-scripts"');
     expect(html).not.toContain('allow-same-origin');
@@ -46,7 +52,8 @@ describe('prototypeTileHtml', () => {
     const url = previewUrl('octo/one', base);
     expect(url).toBe('/proto/octo/one/prototype%2F8-home/prototype-snapshot.html');
     expect(html).toContain(`<iframe src="${url ?? ''}" sandbox="allow-scripts"`);
-    expect(html).toContain(`href="${url ?? ''}" target="_blank"`);
+    expect(html).toContain(`href="${url ?? ''}" data-canvas-url="${url ?? ''}"`);
+    expect(html).not.toContain('target="_blank"');
   });
 
   it('says so plainly when nothing can be shown, instead of a broken frame', () => {

@@ -21,6 +21,16 @@ function view(patch: Partial<SettingsView> = {}): SettingsView {
 }
 
 describe('Settings page', () => {
+  it('offers the approved opening-size preference only in Appearance', () => {
+    const html = settingsBodyHtml(view(), 'appearance');
+    expect(html.match(/data-settings-canvas=/g)).toHaveLength(3);
+    expect(html).toContain('data-settings-canvas="full" aria-pressed="true"');
+    expect(html).toContain('data-settings-canvas="pane"');
+    expect(html).toContain('data-settings-canvas="float"');
+    expect(settingsBodyHtml(view(), 'tasks')).not.toContain('data-settings-canvas');
+    const control = { getAttribute: (name: string) => name === 'data-settings-canvas' ? 'pane' : null } as unknown as Element;
+    expect(focusKeyOf(control)).toBe('[data-settings-canvas="pane"]');
+  });
   it('opens valid category links and falls back to Appearance for invalid input', () => {
     expect(settingsCategory('tasks')).toBe('tasks');
     expect(settingsCategory(null)).toBe('appearance');

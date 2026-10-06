@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
     closeRuntime: vi.fn(async () => undefined),
     install: vi.fn<() => Promise<void>>(),
     stopUpdates: vi.fn(),
+    openExternal: vi.fn(),
     app: {
       isPackaged: false,
       setAppUserModelId: vi.fn(),
@@ -47,7 +48,7 @@ vi.mock('electron', () => ({
   nativeImage: { createFromPath: () => mocks.image, createFromBuffer: () => mocks.image },
   session: { defaultSession: { setPermissionRequestHandler: vi.fn() } },
   dialog: {},
-  shell: {},
+  shell: { openExternal: mocks.openExternal },
 }));
 vi.mock('../runtime.js', () => ({
   startWayfinder: async () => ({ url: 'http://127.0.0.1:4479/', close: mocks.closeRuntime }),
@@ -71,6 +72,13 @@ vi.mock('./updater.js', () => ({
 it('keeps the desktop runtime and tray after installer refusal, then cleans them on Electron quit', async () => {
   await import('./main.js');
   await vi.waitFor(() => expect(mocks.install.getMockImplementation()).toBeDefined());
+  const open = mocks.window.webContents.setWindowOpenHandler.mock.calls[0]?.[0] as (details: { url: string }) => { action: string };
+  for (const path of ['/proto/octo/repo/prototype%2F1/index.html', '/proto/octo/repo/prototype%2F1/prototype-snapshot.html']) {
+    expect(open({ url: 'http://127.0.0.1:4479' + path })).toEqual({ action: 'deny' });
+  }
+  expect(mocks.openExternal).not.toHaveBeenCalled();
+  open({ url: 'https://github.com/octo/repo' });
+  expect(mocks.openExternal).toHaveBeenCalledWith('https://github.com/octo/repo');
   await expect(mocks.install()).rejects.toThrow('Installer refused');
   expect(mocks.closeRuntime).not.toHaveBeenCalled();
   expect(mocks.tray.destroy).not.toHaveBeenCalled();

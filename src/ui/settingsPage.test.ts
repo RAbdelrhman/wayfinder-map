@@ -47,6 +47,16 @@ function open(section: string): HTMLElement {
 }
 
 describe('mounted Settings page', () => {
+  it('saves the canvas opening size from Appearance and retains it after a redraw', () => {
+    const root = open('appearance');
+    root.querySelector<HTMLButtonElement>('[data-settings-canvas="pane"]')!.click();
+    expect(root.querySelector('[data-settings-canvas="pane"]')?.getAttribute('aria-pressed')).toBe('true');
+    root.querySelector<HTMLAnchorElement>('[data-settings-category="tasks"]')!.click();
+    expect(root.querySelector('[data-settings-canvas]')).toBeNull();
+    root.querySelector<HTMLAnchorElement>('[data-settings-category="appearance"]')!.click();
+    expect(root.querySelector('[data-settings-canvas="pane"]')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it.each([
     ['appearance', 'Appearance', '[data-settings-theme]'],
     ['tasks', 'Tasks & models', '[data-settings-tier]'],
