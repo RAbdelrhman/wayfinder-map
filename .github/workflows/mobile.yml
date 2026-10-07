@@ -7,20 +7,12 @@ on:
     paths:
       - 'mobile/**'
       - 'src/**'
-      - 'scripts/**'
-      - 'package.json'
-      - 'bun.lockb'
-      - 'eslint.config.mjs'
       - '.github/workflows/mobile.yml'
   push:
     branches: [main]
     paths:
       - 'mobile/**'
       - 'src/**'
-      - 'scripts/**'
-      - 'package.json'
-      - 'bun.lockb'
-      - 'eslint.config.mjs'
       - '.github/workflows/mobile.yml'
 
 permissions:
@@ -49,23 +41,3 @@ jobs:
       - run: bun run test
       # Proves Metro resolves the shared code in ../src for both platforms.
       - run: bun run check:bundle
-
-  desktop:
-    name: Desktop typecheck and test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.1.0
-
-      - run: bun install --frozen-lockfile --ignore-scripts
-      - run: bun run lint
-      - run: bun run typecheck
-      - run: bun run test
-      - run: bun run build

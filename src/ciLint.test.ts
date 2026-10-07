@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 describe('root lint CI coverage', () => {
-  it.each(['mobile.yml', 'release-windows.yml'])('gates each root install in %s with lint before typecheck', (name) => {
+  it.each(['ci.yml', 'release-windows.yml'])('gates each root install in %s with lint before typecheck', (name) => {
     const workflow = readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), 'utf8');
     const lines = workflow.split(/\r?\n/);
     const installs = lines.flatMap((line, index) => line.includes('run: bun install --frozen-lockfile --ignore-scripts') ? [index] : []);
@@ -13,11 +13,12 @@ describe('root lint CI coverage', () => {
     }
   });
 
-  it('runs PR checks for every directory and config used by root lint', () => {
-    const workflow = readFileSync(new URL('../.github/workflows/mobile.yml', import.meta.url), 'utf8');
+  it('runs root PR checks without path filters or mobile working-directory defaults', () => {
+    const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
     const triggers = workflow.slice(0, workflow.indexOf('\npermissions:'));
-    for (const path of ['src/**', 'scripts/**', 'package.json', 'bun.lockb', 'eslint.config.mjs']) {
-      expect(triggers.split(`- '${path}'`)).toHaveLength(3);
-    }
+    expect(triggers).toMatch(/^ {2}pull_request:\s*$/m);
+    expect(triggers).toContain('branches: [main]');
+    expect(triggers).not.toMatch(/^\s*paths(?:-ignore)?:/m);
+    expect(workflow).not.toContain('working-directory:');
   });
 });

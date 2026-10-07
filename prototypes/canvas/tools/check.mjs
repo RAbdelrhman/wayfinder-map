@@ -1,16 +1,65 @@
 #!/usr/bin/env node
 /*
   Validate the canvas before sharing it: config shape, pages, ids, styles, and every file it
-  points at. Also flags pages that won't run when served sandboxed (opaque origin).
+  points at. Also flags pages that won't run when served sandboxed (opaque origin), and
+  prototype-local copies of the shared engine and kit.
   Usage: node <canvas>/tools/check.mjs   (exits 1 on errors)
 */
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import vm from 'node:vm';
 
 export const KINDS = ['page', 'compose', 'components', 'swatches', 'type', 'image', 'note'];
 const LAYERS = ['image', 'text', 'rect', 'html'];
+const SHARED_FILES = [
+  { label: 'canvas engine', path: 'canvas.js' },
+  { label: 'canvas kit', path: 'kit/kit.js' },
+];
+
+function displayPath(path) {
+  return path.split('\\').join('/');
+}
+
+/** Reserve the canonical runtime paths; also catch byte-identical copies under other names. */
+export function checkSharedCanvasCopies(prototypesDir) {
+  const sharedDir = join(prototypesDir, 'canvas');
+  const sharedFiles = SHARED_FILES.map((file) => {
+    const source = join(sharedDir, file.path);
+    return { ...file, source, content: readFileSync(source) };
+  });
+  const errors = [];
+
+  for (const entry of readdirSync(prototypesDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === 'canvas') continue;
+    const prototypeDir = join(prototypesDir, entry.name);
+    const files = listFiles(prototypeDir);
+
+    for (const file of files) {
+      const size = statSync(file).size;
+      for (const sharedFile of sharedFiles) {
+        const canonicalCopy = join(prototypeDir, sharedFile.path);
+        if (file !== canonicalCopy && (size !== sharedFile.content.length || !readFileSync(file).equals(sharedFile.content))) continue;
+
+        const sharedPath = displayPath(relative(dirname(file), sharedFile.source));
+        const copiedPath = displayPath(relative(prototypesDir, file));
+        errors.push(`${copiedPath}: do not copy the shared ${sharedFile.label}; load "${sharedPath}" instead`);
+      }
+    }
+  }
+
+  return errors;
+}
+
+function listFiles(directory) {
+  const files = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...listFiles(path));
+    else if (entry.isFile()) files.push(path);
+  }
+  return files;
+}
 
 /** Local file part of a path, or null for remote URLs. */
 function localPath(path) {
@@ -177,6 +226,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     exists: (path) => existsSync(join(dir, path)),
     read: (path) => readFileSync(join(dir, path), 'utf8'),
   });
+  result.errors.push(...checkSharedCanvasCopies(dirname(dir)));
   for (const warning of result.warnings) console.log(`warn  ${warning}`);
   for (const error of result.errors) console.log(`error ${error}`);
   console.log(result.errors.length === 0 ? 'Canvas config OK.' : `${result.errors.length} error(s).`);

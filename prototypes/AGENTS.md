@@ -13,7 +13,7 @@ bun run canvas:create <task-id>
 bun run canvas:create <ticket>-<title-slug> --ticket <ticket>
 ```
 
-The command copies the existing canvas engine, creates fresh content, and refuses
+The command loads the shared canvas engine, creates fresh content, and refuses
 to overwrite any existing directory. If the ID is already taken, inspect the
 canvas. Continue there only when it is the same task; otherwise use a new ID.
 For iterations of the same task, preserve baseline pages, feedback, and lineage.
