@@ -32,6 +32,7 @@
     "prepare": "node scripts/build.mjs"
   },
   "devDependencies": {
+    "@eslint-community/eslint-utils": "^4.10.1",
     "@eslint/js": "^9.39.5",
     "@types/node": "^22.10.2",
     "electron": "44.4.3",
