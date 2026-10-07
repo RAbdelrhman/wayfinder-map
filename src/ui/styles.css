@@ -5109,6 +5109,15 @@ textarea.input {
   min-width: 0;
 }
 
+/* Titles may shrink, but the scope group must still fit both icons and padding. */
+.nav-map-scopes {
+  min-width: 94px;
+}
+
+.nav-map-scopes .scope:not(.is-quiet) {
+  min-width: 34px;
+}
+
 .nav-map-strip {
   display: flex;
   align-items: center;
@@ -5349,6 +5358,36 @@ textarea.input {
 }
 
 @container map-topbar (max-width: 480px) {
+  .nav-map-scopes {
+    min-width: 58px;
+  }
+
+  .nav-map-scopes .crumb-sep {
+    display: none;
+  }
+
+  .nav-map-scopes .scope.is-quiet,
+  .nav-map-scopes .scope:not(.is-quiet) {
+    padding-inline: 3px;
+    min-width: 24px;
+  }
+
+  .nav-map-scopes .scope .c-automark {
+    margin-left: 0;
+  }
+
+  .nav-map-tabs {
+    margin-left: 4px;
+  }
+
+  .topbar-spacer {
+    min-width: 0;
+  }
+
+  .nav-map-tabs .seg {
+    padding-inline: 4px;
+  }
+
   .map-inbox-label {
     display: none;
   }
@@ -5497,6 +5536,13 @@ textarea.input {
     justify-content: center;
   }
 
+}
+
+@media (max-width: 480px) {
+  .map-topbar {
+    gap: 2px;
+    padding-inline: 4px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

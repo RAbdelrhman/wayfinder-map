@@ -1457,7 +1457,12 @@ describe('local clone for a hand-off', () => {
       const watcherWhere = (numbers: number[]) => {
         const reads: MapRead[] = [wasBlocked('blocked', numbers), wasBlocked('frontier', numbers)];
         const readMap = vi.fn(async (): Promise<MapRead> => reads.shift() ?? { status: 'unchanged', rateLimit: null, pollIntervalSeconds: null });
-        return { readMap, mapWatcher: new MapWatcher({ readMap, readPullRequests: noPullRequests }, { intervalMs: 10 }) };
+        // GitHub shows them blocked too until the watcher's second read, so turning the map on finds nothing next yet.
+        const fetcher = async () => ({
+          maps: [{ ...startMap, tickets: startMap.tickets.map((item) => (readMap.mock.calls.length < 2 && item.state === 'frontier' ? { ...item, state: 'blocked' as const } : item)) }],
+          warnings: [],
+        });
+        return { readMap, fetcher, mapWatcher: new MapWatcher({ readMap, readPullRequests: noPullRequests }, { intervalMs: 10 }) };
       };
       const autoMap = async (url: string, body: unknown = { repo: 'octo/one', map: 5, op: 'enable' }) => post(url, '/api/auto-map/map', body);
       const view = async (url: string) =>
@@ -1469,8 +1474,8 @@ describe('local clone for a hand-off', () => {
 
       it('starts a ticket that becomes next with no page open', async () => {
         const { server, startThread } = liveT3();
-        const { mapWatcher } = watcherWhere([12]);
-        const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        const { mapWatcher, fetcher } = watcherWhere([12]);
+        const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher, changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
         try {
           // The page turns it on, then goes away. Nothing listens to the event stream from here on.
           expect((await autoMap(running.url)).status).toBe(200);
@@ -1485,10 +1490,23 @@ describe('local clone for a hand-off', () => {
         }
       });
 
+      it('starts the tickets that were next already when the map is turned on', async () => {
+        const { server, startThread } = liveT3();
+        const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher: new MapWatcher({ readMap: async () => wasBlocked('frontier', [11, 12, 13]), readPullRequests: noPullRequests }, { intervalMs: 10 }), t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        try {
+          expect((await autoMap(running.url)).status).toBe(200);
+          const batch = await settledBatch(running.url, (current) => current.items.every((item) => item.status === 'started'));
+          expect(batch.items.map((item) => item.ticketNumber)).toEqual([11, 12, 13]);
+          expect(startThread).toHaveBeenCalledTimes(3);
+        } finally {
+          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        }
+      });
+
       it('starts nothing for a map whose auto map is off, even while its map is read', async () => {
         const { server, startThread } = liveT3();
-        const { readMap, mapWatcher } = watcherWhere([12]);
-        const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        const { readMap, mapWatcher, fetcher } = watcherWhere([12]);
+        const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher, changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
         try {
           // Something else watches the map, so it is read, but its auto map is off.
           const stop = mapWatcher.watch('octo/one', 5, () => undefined);
@@ -1503,15 +1521,15 @@ describe('local clone for a hand-off', () => {
 
       it('keeps going after a restart: a map that was on is watched again with no page', async () => {
         const store = memoryAutoMapStore();
-        const first = await serve({ autoMapStore: store, t3, mapWatcher: watcherWhere([12]).mapWatcher, fetcher: async () => ({ maps: [startMap], warnings: [] }) });
+        const first = await serve({ autoMapStore: store, t3, ...(({ mapWatcher, fetcher }) => ({ mapWatcher, fetcher }))(watcherWhere([12])) });
         try {
           await autoMap(first.url, { repo: 'octo/one', map: 5, op: 'enable', tier: 'hard' });
         } finally {
           await new Promise<void>((resolve) => first.server.close(() => resolve()));
         }
         const { server, startThread } = liveT3();
-        const { readMap, mapWatcher } = watcherWhere([12]);
-        const second = await serve({ autoMapStore: store, startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        const { readMap, mapWatcher, fetcher } = watcherWhere([12]);
+        const second = await serve({ autoMapStore: store, startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher, changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
         try {
           expect((await view(second.url)).maps).toMatchObject([{ repo: 'octo/one', mapNumber: 5, enabled: true, tier: 'hard' }]);
           await vi.waitFor(() => expect(readMap).toHaveBeenCalled());
@@ -1534,8 +1552,8 @@ describe('local clone for a hand-off', () => {
           }),
         };
         const desktop = vi.fn();
-        const { readMap, mapWatcher } = watcherWhere([11, 12]);
-        const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, onDesktopNotification: desktop, t3: limited, fetcher: async () => ({ maps: [startMap], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        const { readMap, mapWatcher, fetcher } = watcherWhere([11, 12]);
+        const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, onDesktopNotification: desktop, t3: limited, fetcher, changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
         try {
           expect((await post(running.url, '/api/auto-map/settings', { cap })).status).toBe(200);
           await autoMap(running.url);

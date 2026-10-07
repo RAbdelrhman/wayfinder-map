@@ -14,6 +14,16 @@ afterEach(() => {
 });
 
 describe('shared icon alignment', () => {
+  it('keeps the progress-ring scope group from shrinking underneath view tabs', async () => {
+    const style = document.createElement('style');
+    style.textContent = await readFile(resolve('src/ui/styles.css'), 'utf8');
+    document.head.append(style);
+    setTrustedHtml(document.body, '<div class="nav-map-strip"><nav class="nav-map-scopes"><button class="scope"><span class="mini-ring"></span></button></nav><nav class="nav-map-tabs"></nav></div>');
+    const scopes = document.querySelector('.nav-map-scopes');
+    expect(scopes).not.toBeNull();
+    expect(getComputedStyle(scopes!).minWidth).toBe('94px');
+  });
+
   it('centers hydrated icons without baseline space across shared controls', async () => {
     const style = document.createElement('style');
     style.textContent = await readFile(resolve('src/ui/styles.css'), 'utf8');
