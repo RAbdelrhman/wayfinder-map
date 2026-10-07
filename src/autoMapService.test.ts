@@ -50,8 +50,8 @@ function ticket(number: number, extra: Partial<Ticket> = {}): Ticket {
   } as Ticket;
 }
 
-function mapOf(tickets: Ticket[]): WayfinderMap {
-  return { number: 5, title: 'Roadmap v1', tickets } as WayfinderMap;
+function mapOf(tickets: Ticket[], extra: Partial<WayfinderMap> = {}): WayfinderMap {
+  return { number: 5, title: 'Roadmap v1', open: true, settled: null, tickets, ...extra } as WayfinderMap;
 }
 
 function prediction(tier: 'simple' | 'mid' | 'hard' | null, status: MethodPrediction['status'] = 'ok'): MethodPrediction {
@@ -92,6 +92,8 @@ function harness(extra: Partial<AutoMapServiceDeps> = {}, tickets: Ticket[] = [t
   const desktop: DesktopNotification[] = [];
   const reply = { ok: true, error: null as string | null };
   const store = memoryAutoMapStore();
+  // Until an event says a ticket became next, the map shows it blocked, so turning the map on finds nothing next yet.
+  let emitted = false;
   const service = new AutoMapService({
     store,
     watcher: {
@@ -102,7 +104,7 @@ function harness(extra: Partial<AutoMapServiceDeps> = {}, tickets: Ticket[] = [t
       },
       catchUp: async (repo) => void catchUps.push(repo ?? ''),
     },
-    loadMap: async () => mapOf(tickets),
+    loadMap: async () => mapOf(emitted ? tickets : tickets.map((item) => ({ ...item, state: 'blocked' }))),
     submit: async (repo, body) => {
       submits.push({ repo, body });
       return reply;
@@ -116,7 +118,11 @@ function harness(extra: Partial<AutoMapServiceDeps> = {}, tickets: Ticket[] = [t
     batchMs: 0,
     ...extra,
   });
-  return { service, store, watching, catchUps, submits, desktop, reply, emit: (event) => watching.get(`${event.repo}#${String(event.mapNumber)}`)?.listener(event) };
+  return { service, store, watching, catchUps, submits, desktop, reply, emit: (event) => {
+      emitted = true;
+      watching.get(`${event.repo}#${String(event.mapNumber)}`)?.listener(event);
+    },
+  };
 }
 
 describe('AutoMapService', () => {
@@ -170,6 +176,73 @@ describe('AutoMapService', () => {
       expect(h.watching.size).toBe(0);
       await h.service.change('octo/one', 6, { op: 'enable' });
       expect(h.watching.size).toBe(0);
+    });
+  });
+
+  describe('starting what is next already', () => {
+    it('starts every ticket that was next when the map was turned on', async () => {
+      const h = harness({ loadMap: async () => mapOf([ticket(11), ticket(12, { state: 'blocked' }), ticket(13, { type: 'prototype' })]) });
+      await h.service.change('octo/one', 5, { op: 'enable', tier: 'hard' });
+      await vi.waitFor(() => expect(h.submits).toHaveLength(1));
+      expect(h.submits[0]?.body.tickets.map((item) => [item.ticket, item.tier])).toEqual([[11, 'hard'], [13, 'hard']]);
+    });
+
+    it('starts nothing again when a map that is on is turned on, or after a restart', async () => {
+      const h = harness({ loadMap: async () => mapOf([ticket(11)]) });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      await vi.waitFor(() => expect(h.submits).toHaveLength(1));
+      await h.service.change('octo/one', 5, { op: 'enable', tier: 'hard' });
+      const restarted = harness({ loadMap: async () => mapOf([ticket(11)]) });
+      await restarted.store.save(await h.store.load());
+      await restarted.service.init();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(h.submits).toHaveLength(1);
+      expect(restarted.submits).toEqual([]);
+    });
+
+    it('reads the map again when the first read fails', async () => {
+      let reads = 0;
+      const h = harness({ retryMs: 0, loadMap: async () => { reads += 1; if (reads === 1) throw new Error('offline'); return reads === 2 ? null : mapOf([ticket(11)]); } });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      await vi.waitFor(() => expect(h.submits).toHaveLength(1));
+      expect(h.submits[0]?.body.tickets.map((item) => item.ticket)).toEqual([11]);
+    });
+
+    it('still starts them when saving the setting fails', async () => {
+      const store = memoryAutoMapStore();
+      store.save = async () => Promise.reject(new Error('disk full'));
+      const h = harness({ store, loadMap: async () => mapOf([ticket(11)]) });
+      await expect(h.service.change('octo/one', 5, { op: 'enable' })).rejects.toThrow('disk full');
+      await vi.waitFor(() => expect(h.submits).toHaveLength(1));
+    });
+
+    it.each([{ open: false }, { settled: { at: '2026-10-01T09:00:00.000Z' } }])('starts nothing on a map that is closed or settled: %o', async (extra) => {
+      const h = harness({ loadMap: async () => mapOf([ticket(11)], extra as Partial<WayfinderMap>) });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(h.submits).toEqual([]);
+    });
+
+    it('still starts them, on the new tier, when the tier changes before the map is read', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const h = harness({ loadMap: async () => { await gate; return mapOf([ticket(11)]); } });
+      await h.service.change('octo/one', 5, { op: 'enable', tier: 'mid' });
+      await h.service.change('octo/one', 5, { op: 'tier', tier: 'hard' });
+      release();
+      await vi.waitFor(() => expect(h.submits).toHaveLength(1));
+      expect(h.submits[0]?.body.tickets.map((item) => [item.ticket, item.tier])).toEqual([[11, 'hard']]);
+    });
+
+    it('starts nothing when the map is turned off before it is read', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const h = harness({ loadMap: async () => { await gate; return mapOf([ticket(11)]); } });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      await h.service.change('octo/one', 5, { op: 'disable' });
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(h.submits).toEqual([]);
     });
   });
 
