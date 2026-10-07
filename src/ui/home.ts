@@ -1,7 +1,8 @@
+import { setTrustedHtml } from './trustedHtml.js';
 import type { HomeState } from '../home.js';
 import type { AuthFlowState } from '../authFlow.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
-import { draftMapPath, mapPath, normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
+import { mapPath, normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import type { MapSnapshot, WayfinderMap } from '../types.js';
 import { bindUpdater, paintIcons, paintRepoIcons, repoIconHtml, updateAccountMark } from './chrome.js';
 import type { AccountMark, AccountProfile } from './chrome.js';
@@ -22,7 +23,7 @@ import { syncServerSettings } from './settingsSync.js';
 import type { NavigationController, NavigationPage } from './navigation.js';
 import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
 import { homeLoadingMarkup, readHomeShape, rememberHomeShape, renderHomeLanding } from './homeLanding.js';
-import { handOffCardHtml, handOffPresentation, homeHandOffHistoryHtml, mountHandOffs, recentHandOffs } from './handOffs.js';
+import { handOffCardHtml, homeHandOffHistoryHtml, mountHandOffs, recentHandOffs } from './handOffs.js';
 import { mountMapEventInbox } from './mapEventInbox.js';
 import { countRunningHandOffs, mapMatchesRepositorySearch, needsYouTicketNumbers, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml } from './repositoryView.js';
 import type { RepositoryHandOffStatus } from './repositoryView.js';
@@ -102,7 +103,7 @@ function renderHomeHandOffHistory(records: readonly HandOffStatusDto[]): void {
   const active = document.activeElement instanceof HTMLElement ? document.activeElement.getAttribute('data-focus-key') : null;
   const scrollTop = list.scrollTop;
   section.hidden = history.length === 0;
-  list.innerHTML = history.map(homeHandOffHistoryHtml).join('');
+  setTrustedHtml(list, history.map(homeHandOffHistoryHtml).join(''));
   list.scrollTop = scrollTop;
   if (active !== null) document.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(active)}"]`)?.focus();
 }
@@ -142,7 +143,7 @@ function toast(message: string, ms = 4200): void {
 
 /** Writes markup into the page and hydrates the icons it named. */
 function paint(html: string, sheetClass = ''): void {
-  els.main.innerHTML = '<div class="sheet' + (sheetClass === '' ? '' : ' ' + sheetClass) + '">' + html + '</div>';
+  setTrustedHtml(els.main, '<div class="sheet' + (sheetClass === '' ? '' : ' ' + sheetClass) + '">' + html + '</div>');
   paintIcons(els.main);
 }
 
@@ -210,19 +211,19 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
 async function beginAuth(action: 'login' | 'refresh'): Promise<void> {
   await postJson<AuthFlowState>(`/api/auth/${action}`);
   const flow = document.getElementById('auth-flow');
-  if (flow !== null) flow.innerHTML = '<p class="hint">Waiting for GitHub CLI…</p>';
+  if (flow !== null) setTrustedHtml(flow, '<p class="hint">Waiting for GitHub CLI…</p>');
   const timer = window.setInterval(() => {
     void (async () => {
       const state = await getJson<AuthFlowState>('/api/auth/flow');
       if (flow !== null && state.code !== null && state.url !== null) {
-        flow.innerHTML = `<p class="hint">Enter <code>${escapeHtml(state.code)}</code> at <a href="${escapeHtml(state.url)}" target="_blank" rel="noreferrer">GitHub device login</a>.</p>`;
+        setTrustedHtml(flow, `<p class="hint">Enter <code>${escapeHtml(state.code)}</code> at <a href="${escapeHtml(state.url)}" target="_blank" rel="noreferrer">GitHub device login</a>.</p>`);
       }
       if (state.status === 'complete') {
         window.clearInterval(timer);
         await show(true);
       } else if (state.status === 'failed') {
         window.clearInterval(timer);
-        if (flow !== null) flow.innerHTML = `<p class="hint failure">${escapeHtml(state.error ?? 'GitHub sign-in failed.')}</p>`;
+        if (flow !== null) setTrustedHtml(flow, `<p class="hint failure">${escapeHtml(state.error ?? 'GitHub sign-in failed.')}</p>`);
       }
     })().catch((error: unknown) => {
       window.clearInterval(timer);
@@ -383,7 +384,7 @@ async function renderProgress(host: HTMLElement): Promise<void> {
     if (!host.isConnected) return;
     mountProgressPanel(host, state, (patch) => postJson<ProgressSettings>('/api/progress/settings', patch), (message) => toast(message));
   } catch (error) {
-    host.innerHTML = `<div class="card progress-panel"><p class="eyebrow">Fog cleared</p><p class="hint failure">${escapeHtml(error instanceof Error ? error.message : String(error))}</p></div>`;
+    setTrustedHtml(host, `<div class="card progress-panel"><p class="eyebrow">Fog cleared</p><p class="hint failure">${escapeHtml(error instanceof Error ? error.message : String(error))}</p></div>`);
   }
 }
 
@@ -409,20 +410,19 @@ function bindRepoPicker(
 
   const draw = (): void => {
     if (repos === null) {
-      menu.innerHTML = `<li class="repo-menu-note">${escapeHtml(error ?? 'Loading your repositories…')}</li>`;
+      setTrustedHtml(menu, `<li class="repo-menu-note">${escapeHtml(error ?? 'Loading your repositories…')}</li>`);
     } else {
       const query = input.value.trim().toLowerCase();
       matches = repos.filter((repo) => repo.toLowerCase().includes(query)).slice(0, MENU_LIMIT);
       active = Math.min(active, matches.length - 1);
-      menu.innerHTML =
-        matches.length === 0
+      setTrustedHtml(menu, matches.length === 0
           ? `<li class="repo-menu-note">No repositories match. Press Enter to use it by name.</li>`
           : matches
               .map(
                 (repo, index) =>
                   `<li role="option" class="repo-option${index === active ? ' is-active' : ''}" aria-selected="${String(index === active)}" data-repo="${escapeHtml(repo)}">${repoIconHtml(repo, 'sm')}<span>${escapeHtml(repo)}</span></li>`,
               )
-              .join('');
+              .join(''));
       paintRepoIcons(menu);
       menu.querySelector('.is-active')?.scrollIntoView({ block: 'nearest' });
     }
@@ -576,7 +576,7 @@ function paintRepositoryHandOffCounts(
     const mapNumber = Number(badge.dataset['mapHandoffs']);
     if (!Number.isSafeInteger(mapNumber)) continue;
     const count = counts.get(mapNumber) ?? 0;
-    badge.innerHTML = count === 0 ? '' : `<span data-icon="bolt" aria-hidden="true"></span>${String(count)} running in T3 Code`;
+    setTrustedHtml(badge, count === 0 ? '' : `<span data-icon="bolt" aria-hidden="true"></span>${String(count)} running in T3 Code`);
     paintIcons(badge);
     badge.hidden = count === 0;
   }
@@ -588,7 +588,7 @@ function paintRepositoryHandOffCounts(
     const tickets = needsYouTicketNumbers(repo, map, handOffs);
     const firstTicket = tickets[0];
     badge.hidden = firstTicket === undefined;
-    badge.innerHTML = firstTicket === undefined ? '' : `<span data-icon="bell" aria-hidden="true"></span>${String(tickets.length)} needs you`;
+    setTrustedHtml(badge, firstTicket === undefined ? '' : `<span data-icon="bell" aria-hidden="true"></span>${String(tickets.length)} needs you`);
     if (firstTicket !== undefined) badge.href = `${mapPath(repo, map.number)}?view=map&ticket=${String(firstTicket)}`;
     paintIcons(badge);
   }

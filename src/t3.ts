@@ -148,7 +148,7 @@ export interface HandOffSteps {
  */
 export async function handOff(input: HandOffInput, steps: HandOffSteps): Promise<HandOffResult> {
   const plain = input.prompt(null);
-  let notice: string | null = null;
+  let notice: string | null;
 
   if (input.workspaceRoot === null) {
     notice = 'T3 Code needs a local clone of this repo to start a thread.';

@@ -28,18 +28,22 @@
     "test:canvas": "node --test prototypes/canvas/tools/check.test.mjs",
     "canvas:create": "node scripts/create-canvas.mjs",
     "capture:prototype-thumbnails": "node prototypes/canvas/tools/capture-thumbnails.mjs",
-    "lint": "tsc --noEmit",
+    "lint": "eslint src/ scripts/",
     "prepare": "node scripts/build.mjs"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "^22.10.2",
     "electron": "44.4.3",
     "electron-builder": "26.16.1",
     "electron-updater": "6.8.9",
     "esbuild": "^0.25.0",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0",
     "happy-dom": "^20.14.5",
     "sharp": "0.35.4",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.1",
     "vitest": "^4.1.11"
   },
   "repository": {

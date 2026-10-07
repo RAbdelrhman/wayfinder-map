@@ -1,3 +1,4 @@
+import { setTrustedHtml } from './trustedHtml.js';
 import type { MapSnapshot, WayfinderMap } from '../types.js';
 import { mapPath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { escapeHtml } from './markdown.js';
@@ -243,8 +244,8 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   let expanded = readExpandedPreference(page);
   /** The tree scrolls to your location once, then keeps wherever the user scrolls it. */
   let revealedLocation = page === 'home' || page === 'new-map';
-  let mapSnapshots = new Map<string, MapSnapshot>();
-  let snapshotErrors = new Set<string>();
+  const mapSnapshots = new Map<string, MapSnapshot>();
+  const snapshotErrors = new Set<string>();
   const snapshotRequests = new Map<string, Promise<MapSnapshot | null>>();
   const expandedRepos = new Set<string>();
   const mapCounts = readMapCounts();
@@ -269,9 +270,9 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   const dialog = document.createElement('dialog');
   dialog.className = 'jump-dialog';
   dialog.setAttribute('aria-labelledby', 'jump-title');
-  dialog.innerHTML = `<div class="jump-dialog-head"><div><h2 id="jump-title">Jump to</h2><p id="jump-help">Search repositories, maps, and tickets.</p></div><kbd>Esc</kbd></div>
+  setTrustedHtml(dialog, `<div class="jump-dialog-head"><div><h2 id="jump-title">Jump to</h2><p id="jump-help">Search repositories, maps, and tickets.</p></div><kbd>Esc</kbd></div>
     <label class="jump-search"><span data-icon="lens" aria-hidden="true"></span><input id="jump-query" type="search" role="combobox" aria-label="Search repositories, maps, and tickets" aria-autocomplete="list" aria-controls="jump-results" aria-expanded="true" aria-describedby="jump-help" placeholder="Search repositories, maps, tickets…" autocomplete="off" spellcheck="false" /></label>
-    <p class="jump-status" id="jump-status" aria-live="polite"></p><div class="jump-results" id="jump-results" role="listbox" aria-label="Navigation results"></div>`;
+    <p class="jump-status" id="jump-status" aria-live="polite"></p><div class="jump-results" id="jump-results" role="listbox" aria-label="Navigation results"></div>`);
   document.body.append(dialog);
   const announcement = document.createElement('div');
   announcement.className = 'sr-only';
@@ -459,7 +460,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     const treeScroll = sidebar.querySelector<HTMLElement>('.tree')?.scrollTop ?? null;
     const railScroll = sidebar.querySelector<HTMLElement>('.mini-repos')?.scrollTop ?? null;
     const logo = '<img class="app-logo" src="/wayfinder-icon.svg" alt="" width="30" height="30" />';
-    sidebar.innerHTML = `<nav class="navigation" aria-label="Primary">
+    setTrustedHtml(sidebar, `<nav class="navigation" aria-label="Primary">
       <div class="nav-open-content side" id="nav-content"${expanded ? '' : ' hidden'}>
         <div class="side-head"><a class="nav-brand" href="/" aria-label="Wayfinder Home">${logo}</a><b>Wayfinder</b><button class="fold" type="button" id="nav-fold" aria-expanded="true" aria-controls="nav-content" aria-label="Fold the sidebar" title="Fold the sidebar">${iconName('panel')}</button></div>
         <div class="side-actions">
@@ -481,7 +482,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
         <ul class="mini-repos" aria-label="Repositories">${compactMarks}</ul>
       </div>
       ${navFooterHtml(page)}
-    </nav>`;
+    </nav>`);
     if (existingFooter !== null) sidebar.querySelector('.nav-footer')?.replaceWith(existingFooter);
     const tree = sidebar.querySelector<HTMLElement>('.tree');
     const rail = sidebar.querySelector<HTMLElement>('.mini-repos');
@@ -517,15 +518,15 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     const separator = '<span class="crumb-sep" aria-hidden="true">/</span>';
     if (page === 'map' && currentRepo !== null) {
       const repo = currentRepo;
-      topbar.innerHTML = `<div class="nav-map-strip"><nav class="nav-map-scopes" aria-label="Map location">${repoScope('repo-scope', repo, true)}${separator}${mapScope('map-scope', repo, map)}</nav><nav class="segmented nav-map-tabs" aria-label="Map views">${VIEWS.map((view) => `<a class="seg${activeView === view ? ' is-on' : ''}" href="${map ? mapHref(repo, map, view) : '#'}" data-nav-view="${view}" title="${VIEW_LABEL[view]}"${activeView === view ? ' aria-current="page"' : ''}>${iconName(VIEW_ICON[view])}<span class="seg-label">${VIEW_LABEL[view]}</span>${view === 'prototypes' ? prototypeCountBadge(prototypeCount) : ''}</a>`).join('')}</nav></div>`;
+      setTrustedHtml(topbar, `<div class="nav-map-strip"><nav class="nav-map-scopes" aria-label="Map location">${repoScope('repo-scope', repo, true)}${separator}${mapScope('map-scope', repo, map)}</nav><nav class="segmented nav-map-tabs" aria-label="Map views">${VIEWS.map((view) => `<a class="seg${activeView === view ? ' is-on' : ''}" href="${map ? mapHref(repo, map, view) : '#'}" data-nav-view="${view}" title="${VIEW_LABEL[view]}"${activeView === view ? ' aria-current="page"' : ''}>${iconName(VIEW_ICON[view])}<span class="seg-label">${VIEW_LABEL[view]}</span>${view === 'prototypes' ? prototypeCountBadge(prototypeCount) : ''}</a>`).join('')}</nav></div>`);
     } else if (page === 'repository' && currentRepo !== null) {
-      topbar.innerHTML = `<nav class="nav-scopes" aria-label="Repository">${repoScope('repo-scope', currentRepo, false)}</nav>`;
+      setTrustedHtml(topbar, `<nav class="nav-scopes" aria-label="Repository">${repoScope('repo-scope', currentRepo, false)}</nav>`);
     } else if (page === 'new-map') {
-      topbar.innerHTML = '<span class="page-title" aria-current="page">Start a new map</span>';
+      setTrustedHtml(topbar, '<span class="page-title" aria-current="page">Start a new map</span>');
     } else if (page === 'settings') {
-      topbar.innerHTML = '<span class="page-title" aria-current="page">Settings</span>';
+      setTrustedHtml(topbar, '<span class="page-title" aria-current="page">Settings</span>');
     } else {
-      topbar.innerHTML = '<span class="page-title" aria-current="page">Home</span>';
+      setTrustedHtml(topbar, '<span class="page-title" aria-current="page">Home</span>');
     }
     paintIcons(topbar);
     const startTicket = map?.tickets.find((ticket) => ticket.state === 'frontier');
@@ -548,11 +549,11 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     const snapshots = [...mapSnapshots.values()];
     const destinations = createJumpDestinations(repositories, snapshots, paletteQuery);
     activeResult = destinations.length === 0 ? -1 : Math.min(Math.max(activeResult, 0), destinations.length - 1);
-    resultsElement.innerHTML = destinations
+    setTrustedHtml(resultsElement, destinations
       .map((destination, index) => `<button type="button" class="jump-option${activeResult === index ? ' is-active' : ''}" role="option" id="jump-option-${String(index)}" aria-selected="${String(activeResult === index)}" data-jump-href="${escapeHtml(destination.href)}">
         <span class="jump-option-kind">${destination.kind === 'repository' ? 'Repository' : destination.kind === 'map' ? 'Map' : 'Ticket'}</span><span class="jump-option-copy"><strong>${escapeHtml(destination.label)}</strong><span>${escapeHtml(destination.detail)}</span></span>${iconName('chevron')}
       </button>`)
-      .join('');
+      .join(''));
     if (activeResult < 0) queryInput.removeAttribute('aria-activedescendant');
     else queryInput.setAttribute('aria-activedescendant', `jump-option-${String(activeResult)}`);
     statusElement.textContent = paletteQuery.trim().length === 0

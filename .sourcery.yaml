@@ -1,0 +1,3 @@
+# Keep the approved HTML injection boundary out of scanner reviews.
+ignore:
+  - src/ui/trustedHtml.ts

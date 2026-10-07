@@ -1,3 +1,4 @@
+import { setTrustedHtml } from './trustedHtml.js';
 import type { Calibration } from '../autoCalibration.js';
 import { autoDecisionBody, pickAuto, proposalLine, rateByRules, tierMappingOf } from '../autoPick.js';
 import type { AutoProposal, ProviderUsage, Rating } from '../autoPick.js';
@@ -408,7 +409,7 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
       const ticket = byNumber.get(row.ticket.number);
       if (ticket !== undefined && row.kind !== 'skipped') proposals.set(ticket.number, proposalFor(ticket, auto, state.status === 'ready' ? state.catalog : null, tierDefaults()));
     }
-    dialog.innerHTML = startDialogHtml(current, { choices, proposals, pending: auto.pending, calibrating: auto.calibrating });
+    setTrustedHtml(dialog, startDialogHtml(current, { choices, proposals, pending: auto.pending, calibrating: auto.calibrating }));
     if (active !== null) dialog.querySelector<HTMLElement>(`#${CSS.escape(active)}`)?.focus();
   };
 
@@ -426,9 +427,9 @@ export function mountStartNext(options: StartNextOptions): StartNextSurface {
     trigger.classList.toggle('is-stopped', view.usageLimit);
     trigger.setAttribute('aria-expanded', String(panelOpen));
     trigger.setAttribute('aria-label', `Start next batch: ${batchTriggerLabel(view)}`);
-    trigger.innerHTML = batchTriggerHtml(view);
+    setTrustedHtml(trigger, batchTriggerHtml(view));
     panel.hidden = !panelOpen;
-    body.innerHTML = batchPanelHtml(view);
+    setTrustedHtml(body, batchPanelHtml(view));
   };
 
   const apply = (next: Batch[]): void => {

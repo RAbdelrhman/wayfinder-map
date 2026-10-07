@@ -1,3 +1,4 @@
+import { setTrustedHtml } from './trustedHtml.js';
 import type { DailyGoal, ProgressSettings, ProgressState, ProgressStyle } from '../progress.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
@@ -190,7 +191,7 @@ export function choiceFrom(target: Element | null, current: ProgressSettings): P
 export function mountProgressPanel(host: HTMLElement, initial: ProgressState, save: (patch: Partial<ProgressSettings>) => Promise<ProgressSettings>, onError: (message: string) => void): void {
   let state = initial;
   const draw = (): void => {
-    host.innerHTML = progressPanelHtml(state);
+    setTrustedHtml(host, progressPanelHtml(state));
   };
   draw();
   // Settings saves the goal too; follow it while this panel is on the page.

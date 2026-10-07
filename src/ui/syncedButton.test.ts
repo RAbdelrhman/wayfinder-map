@@ -1,10 +1,11 @@
+import { setTrustedHtml } from './trustedHtml.js';
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setSyncedBusy, setSyncedLabel } from './syncedButton.js';
 
 function button(): HTMLButtonElement {
   const element = document.createElement('button');
-  element.innerHTML = '<span class="synced-icon"><svg></svg></span><span class="synced-label"></span>';
+  setTrustedHtml(element, '<span class="synced-icon"><svg></svg></span><span class="synced-label"></span>');
   return element;
 }
 

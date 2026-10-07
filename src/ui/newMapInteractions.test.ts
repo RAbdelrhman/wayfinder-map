@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { normalizeRepo } from '../repoRoutes.js';
 import { escapeHtml } from './markdown.js';
+import { setTrustedHtml } from './trustedHtml.js';
 import { repositoryOptions } from './newMap.js';
 
 const source = readFileSync(new URL('./newMapPage.ts', import.meta.url), 'utf8');
@@ -12,6 +13,7 @@ const parsed = ts.createSourceFile('newMapPage.ts', source, ts.ScriptTarget.Late
 
 /** Run the actual nested composer functions and event handlers with controlled browser dependencies. */
 function bindings(context: Record<string, unknown>, names: string[], listeners: string[] = []): void {
+  Object.assign(context, { setTrustedHtml });
   const snippets: string[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isFunctionDeclaration(node) && names.includes(node.name?.text ?? '')) snippets.push(node.getText(parsed));

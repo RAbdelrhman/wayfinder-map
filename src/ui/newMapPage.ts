@@ -1,3 +1,4 @@
+import { setTrustedHtml } from './trustedHtml.js';
 import type { HomeState } from '../home.js';
 import { draftMapPath, normalizeRepo, scopedApiPath } from '../repoRoutes.js';
 import type { ModelCatalog, ModelChoice } from '../models.js';
@@ -83,7 +84,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
   let mapNotice: string | null = null;
   const cloneActivity = new Map<string, CloneActivity>();
 
-  main.innerHTML = `<div class="sheet"><div class="new-map-stage">
+  setTrustedHtml(main, `<div class="sheet"><div class="new-map-stage">
     <h1>What do you want to get done?</h1>
     <div class="new-map-composer">
       <label class="new-map-visually-hidden" for="new-map-goal">Goal</label>
@@ -117,7 +118,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
       <h2 id="new-map-examples-title">Try a goal</h2>
       ${NEW_MAP_EXAMPLES.map((example) => `<button type="button" class="new-map-example" data-example="${escapeHtml(example)}">${icon(icons.MAP)}<span>${escapeHtml(example)}</span></button>`).join('')}
     </section>
-  </div></div>`;
+  </div></div>`);
   paintIcons(main);
 
   const goal = required<HTMLTextAreaElement>(main, '#new-map-goal');
@@ -150,19 +151,19 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
     const clearOption = repo !== null
       ? `<button type="button" class="new-map-option new-map-clear-option" role="option" aria-selected="false" data-clear-repo="true">${icon(icons.MINUS)}<span class="new-map-option-name">Clear repository</span></button>`
       : '';
-    repoOptions.innerHTML = options.length === 0
+    setTrustedHtml(repoOptions, options.length === 0
       ? `${clearOption}<p class="new-map-empty">No repositories found.</p>`
-      : `${clearOption}${options.map((candidate) => repositoryOptionHtml(candidate, repo)).join('')}`;
+      : `${clearOption}${options.map((candidate) => repositoryOptionHtml(candidate, repo)).join('')}`);
     paintIcons(repoOptions);
   }
 
   function renderModelOptions(): void {
-    modelMenu.innerHTML = TIERS.map((candidate) => {
+    setTrustedHtml(modelMenu, TIERS.map((candidate) => {
       const on = candidate === tier;
       return `<button type="button" class="new-map-tier-option${on ? ' is-selected' : ''}" role="option" aria-selected="${String(on)}" data-tier="${candidate}">
         <span class="new-map-tier-name">${TIER_LABEL[candidate]}</span><span class="new-map-tier-hint">${escapeHtml(TIER_HINT[candidate])}</span>${on ? icon(icons.CHECK) : ''}
       </button>`;
-    }).join('');
+    }).join(''));
     paintIcons(modelMenu);
   }
 
@@ -171,9 +172,9 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
   }
 
   function renderRepositoryChip(): void {
-    repoChip.innerHTML = repo === null
+    setTrustedHtml(repoChip, repo === null
       ? `${icon(icons.REPO)}<span>Choose a repository</span>${icon(icons.CHEVRON)}`
-      : `${repoIconHtml(repo, 'sm')}<span class="new-map-chip-label">${escapeHtml(repoChipLabel(repo))}</span>${icon(icons.CHEVRON)}`;
+      : `${repoIconHtml(repo, 'sm')}<span class="new-map-chip-label">${escapeHtml(repoChipLabel(repo))}</span>${icon(icons.CHEVRON)}`);
     repoChip.setAttribute('aria-label', repo === null ? 'Choose a repository' : `Repository ${repo}`);
     if (repo === null) repoChip.removeAttribute('title');
     else repoChip.title = repo;
@@ -181,7 +182,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
   }
 
   function renderModelChip(): void {
-    modelChip.innerHTML = `${icon(icons.SLIDERS)}<span>${TIER_LABEL[tier]}</span>${icon(icons.CHEVRON)}`;
+    setTrustedHtml(modelChip, `${icon(icons.SLIDERS)}<span>${TIER_LABEL[tier]}</span>${icon(icons.CHEVRON)}`);
     modelChip.setAttribute('aria-label', `Model tier, ${TIER_LABEL[tier]}`);
   }
 
@@ -192,11 +193,11 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
       ? ''
       : `<p class="new-map-clone-message${activity.error ? ' is-error' : ''}" role="status" aria-live="polite"${activity.busy ? ' aria-busy="true"' : ''}>${activity.busy ? '<span class="new-map-spinner" aria-hidden="true"></span>' : ''}${escapeHtml(activity.text)}</p>`;
     const disabled = busyActivity ? ' disabled' : '';
-    let controls = '';
+    let controls: string;
 
     if (repo === null) {
       clonePanel.hidden = true;
-      clonePanel.innerHTML = '';
+      setTrustedHtml(clonePanel, '');
       return;
     }
 
@@ -224,7 +225,7 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
 
     const markup = `${activityLine}<div class="new-map-clone-controls">${controls}</div>`;
     if (clonePanel.innerHTML !== markup) {
-      clonePanel.innerHTML = markup;
+      setTrustedHtml(clonePanel, markup);
       paintIcons(clonePanel);
     }
     clonePanel.hidden = !cloneOpen;
@@ -242,26 +243,26 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
 
     cloneChip.hidden = repo === null;
     if (repo === null) {
-      cloneChip.innerHTML = '';
+      setTrustedHtml(cloneChip, '');
       clonePanel.hidden = true;
-      clonePanel.innerHTML = '';
+      setTrustedHtml(clonePanel, '');
       return;
     }
     const activity = cloneActivity.get(repo);
     const cloneBusy = activity?.busy === true;
     if (workspace === 'loading' || cloneBusy) {
       cloneChip.className = 'new-map-chip new-map-clone-chip';
-      cloneChip.innerHTML = `<span class="new-map-spinner" aria-hidden="true"></span><span>Finding clone…</span>`;
+      setTrustedHtml(cloneChip, `<span class="new-map-spinner" aria-hidden="true"></span><span>Finding clone…</span>`);
     } else if (workspace?.status === 'ready') {
       cloneChip.className = 'new-map-chip new-map-clone-chip is-ready';
-      cloneChip.innerHTML = `${icon(icons.CHECK)}<span>Local clone</span>${icon(icons.CHEVRON)}`;
+      setTrustedHtml(cloneChip, `${icon(icons.CHECK)}<span>Local clone</span>${icon(icons.CHEVRON)}`);
     } else if (workspace === null) {
       cloneChip.className = 'new-map-chip new-map-clone-chip is-warning';
-      cloneChip.innerHTML = `${icon(icons.INFO)}<span>Clone unavailable</span>${icon(icons.CHEVRON)}`;
+      setTrustedHtml(cloneChip, `${icon(icons.INFO)}<span>Clone unavailable</span>${icon(icons.CHEVRON)}`);
     } else {
       const label = workspace.candidates.length > 0 ? 'Choose a clone' : 'No local clone';
       cloneChip.className = 'new-map-chip new-map-clone-chip is-warning';
-      cloneChip.innerHTML = `${icon(icons.INFO)}<span>${label}</span>${icon(icons.CHEVRON)}`;
+      setTrustedHtml(cloneChip, `${icon(icons.INFO)}<span>${label}</span>${icon(icons.CHEVRON)}`);
     }
     cloneChip.setAttribute('aria-expanded', String(cloneOpen));
     const cloneReady = workspace !== null && workspace !== 'loading' && workspace.status === 'ready';

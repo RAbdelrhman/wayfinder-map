@@ -1,3 +1,4 @@
+import { setTrustedHtml } from './trustedHtml.js';
 import { describe, expect, it, vi } from 'vitest';
 import { Window } from 'happy-dom';
 import {
@@ -90,7 +91,7 @@ describe('approved ACF4 shell', () => {
     const browser = new Window();
     try {
       const hostile = '<img src=x onerror="alert(1)"><script>alert(2)</script>';
-      browser.document.body.innerHTML = canvasToolbarHtml({ ...route, title: hostile }, 'full', [{ id: hostile, title: hostile, options: [{ id: hostile, name: hostile, file: null }] }], hostile, hostile, 'dom', true);
+      setTrustedHtml(browser.document.body, canvasToolbarHtml({ ...route, title: hostile }, 'full', [{ id: hostile, title: hostile, options: [{ id: hostile, name: hostile, file: null }] }], hostile, hostile, 'dom', true));
       expect(browser.document.querySelector('script, img, [onerror], [onclick]')).toBeNull();
       expect(browser.document.querySelector('.vw-title-t')?.textContent).toBe(hostile);
       expect(browser.document.querySelector('[data-go]:not([data-go=""])')?.getAttribute('data-go')).toBe(hostile);

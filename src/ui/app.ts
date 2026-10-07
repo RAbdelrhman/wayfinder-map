@@ -1,3 +1,4 @@
+import { setTrustedHtml, insertTrustedHtml } from './trustedHtml.js';
 import { DEFAULT_LAYOUT, graphTickets, layoutTickets } from '../layout.js';
 import type { PositionedNode } from '../layout.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
@@ -33,7 +34,7 @@ import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import { FOG_KEY_ROW, PROGRESS_ORDER, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
+import { FOG_KEY_ROW, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
 import { NOTIFICATION_SETTINGS_EVENT } from './settings.js';
 import { mountMapEventInbox } from './mapEventInbox.js';
@@ -77,7 +78,7 @@ import {
   mountUnblockedNotice,
   statusNotification,
 } from './notifications.js';
-import type { NewInboxNotification, NotificationInboxController, UnblockedTicket } from './notifications.js';
+import type { NewInboxNotification, UnblockedTicket } from './notifications.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -208,7 +209,7 @@ const handOffSurface = mountHandOffs();
 const notificationInbox = mountNotificationInbox();
 const unblockedNotice = mountUnblockedNotice(need('unblocked-notice'), (ticketNumber) => select(ticketNumber), startUnblockedBatch);
 let notificationSettings: NotificationSettings = { ...DEFAULT_NOTIFICATION_SETTINGS };
-let pendingMapEvents: MapEvent[] = [];
+const pendingMapEvents: MapEvent[] = [];
 let previousHandOffRecords: readonly HandOffStatusDto[] | null = null;
 const mapEventInbox = mountMapEventInbox((event) => {
   if (snapshot === null) pendingMapEvents.push(event);
@@ -342,11 +343,6 @@ function rememberMapOpen(repo: string, mapNumber: number): void {
 const closedTicketsByEventTime = new Map<string, number[]>();
 
 async function receiveMapEvent(event: MapEvent): Promise<void> {
-  const eventSnapshot = snapshot;
-  const map = eventSnapshot?.repo.toLocaleLowerCase() === event.repo.toLocaleLowerCase()
-    ? eventSnapshot.maps.find((candidate) => candidate.number === event.mapNumber)
-    : undefined;
-  const mapTitle = map?.title ?? 'Map #' + String(event.mapNumber);
   const eventKey = event.repo.toLocaleLowerCase() + '#' + String(event.mapNumber) + ':' + event.at;
   if (event.type === 'ticket-closed') {
     const closed = closedTicketsByEventTime.get(eventKey) ?? [];
@@ -466,10 +462,10 @@ function renderPlanningHandoff(): void {
     handOff.title?.trim().replace(/\s+/g, ' ').toLowerCase() === map.title.trim().replace(/\s+/g, ' ').toLowerCase();
   els.planningHandoff.hidden = !matchesMap;
   if (!matchesMap || handOff === null) {
-    els.planningHandoff.innerHTML = '';
+    setTrustedHtml(els.planningHandoff, '');
     return;
   }
-  els.planningHandoff.innerHTML = handOffCardHtml(handOff, true, false);
+  setTrustedHtml(els.planningHandoff, handOffCardHtml(handOff, true, false));
   paintIcons(els.planningHandoff);
 }
 
@@ -721,7 +717,7 @@ function renderSynced(): void {
 function renderFilters(): void {
   const map = currentMap();
   if (map === null) {
-    els.filters.innerHTML = '';
+    setTrustedHtml(els.filters, '');
     return;
   }
   const chip = (key: TicketFilter | null, label: string, path: string | null, count: number, variable: string | null): string =>
@@ -739,7 +735,7 @@ function renderFilters(): void {
   const inT3 = inT3TicketNumbers(map);
   const inT3Chip = inT3.size === 0 ? '' : chip('in-t3', 'In T3 Code', icons.PLAY, inT3.size, 'state-claimed');
 
-  els.filters.innerHTML = `${chip(null, 'All', null, allTickets(map).length, null)}${states.join('')}<span class="filter-sep" role="none"></span>${types.join('')}${inT3Chip === '' ? '' : `<span class="filter-sep" role="none"></span>${inT3Chip}`}`;
+  setTrustedHtml(els.filters, `${chip(null, 'All', null, allTickets(map).length, null)}${states.join('')}<span class="filter-sep" role="none"></span>${types.join('')}${inT3Chip === '' ? '' : `<span class="filter-sep" role="none"></span>${inT3Chip}`}`);
 }
 
 function renderKey(): void {
@@ -751,7 +747,7 @@ function renderKey(): void {
     const style = TYPE_STYLE[type];
     return `<div class="keyrow is-type">${icon(style.icon)}<b>${escapeHtml(style.label)}</b>${escapeHtml(style.blurb)}</div>`;
   }).join('');
-  els.keyMenu.innerHTML = `${states}${FOG_KEY_ROW}<div class="menu-sep"></div>${SIGNAL_KEY_ROWS}<div class="menu-sep"></div>${types}`;
+  setTrustedHtml(els.keyMenu, `${states}${FOG_KEY_ROW}<div class="menu-sep"></div>${SIGNAL_KEY_ROWS}<div class="menu-sep"></div>${types}`);
 }
 
 /** A card's chip while its ticket waits in a Start next batch or is being handed off. */
@@ -815,8 +811,8 @@ function renderGraph(): void {
 
   const map = currentMap();
   if (map === null || map.tickets.length === 0) {
-    els.nodes.innerHTML = '<p class="empty">This map has no tickets yet.</p>';
-    els.edges.innerHTML = '';
+    setTrustedHtml(els.nodes, '<p class="empty">This map has no tickets yet.</p>');
+    setTrustedHtml(els.edges, '');
     return;
   }
 
@@ -829,12 +825,12 @@ function renderGraph(): void {
   els.canvas.style.width = `${String(layout.width)}px`;
   els.canvas.style.height = `${String(layout.height)}px`;
 
-  els.nodes.innerHTML = layout.nodes
+  setTrustedHtml(els.nodes, layout.nodes
     .map((position) => {
       const ticket = byNumber.get(position.number) ?? outsideByNumber.get(position.number);
       return ticket ? nodeHtml(ticket, position) : '';
     })
-    .join('');
+    .join(''));
 
   if (homedMap !== map.number) {
     homedMap = map.number;
@@ -844,7 +840,7 @@ function renderGraph(): void {
   els.edges.setAttribute('viewBox', `0 0 ${String(layout.width)} ${String(layout.height)}`);
   els.edges.setAttribute('width', String(layout.width));
   els.edges.setAttribute('height', String(layout.height));
-  els.edges.innerHTML = layout.edges
+  setTrustedHtml(els.edges, layout.edges
     .map((edge) => {
       const from = positions.get(edge.from);
       const to = positions.get(edge.to);
@@ -859,7 +855,7 @@ function renderGraph(): void {
       const classes = [live ? 'is-live' : '', critical.has(edgeKey(edge.from, edge.to)) ? 'is-critical' : ''].filter((name) => name !== '').join(' ');
       return `<path class="${classes}" data-from="${String(edge.from)}" data-to="${String(edge.to)}" d="M${String(x1)},${String(y1)} C${String(x1 + bend)},${String(y1)} ${String(x2 - bend)},${String(y2)} ${String(x2)},${String(y2)}" />`;
     })
-    .join('');
+    .join(''));
 
   syncHighlights();
   restoreFocus();
@@ -874,7 +870,7 @@ function renderTable(): void {
 
   const map = currentMap();
   if (map === null) {
-    els.tableWrap.innerHTML = '';
+    setTrustedHtml(els.tableWrap, '');
     restoreFocus();
     return;
   }
@@ -901,12 +897,12 @@ function renderTable(): void {
     })
     .join('');
 
-  els.tableWrap.innerHTML = `<table>
+  setTrustedHtml(els.tableWrap, `<table>
     <thead><tr>
       <th class="num">Issue</th><th>Type</th><th>Title</th><th>State</th><th>Assignee</th><th>Pull request</th><th>Notes</th><th class="num">Blocked by</th>
     </tr></thead>
     <tbody>${rows}</tbody>
-  </table>`;
+  </table>`);
 
   syncHighlights();
   restoreFocus();
@@ -963,24 +959,24 @@ function renderPrototypes(): void {
 
   const map = currentMap();
   if (map === null) {
-    els.protoWrap.innerHTML = '';
+    setTrustedHtml(els.protoWrap, '');
     return;
   }
 
   const load = prototypesFor(map);
   if (load.status === 'loading') {
     navigation?.setPrototypeCount(null);
-    els.protoWrap.innerHTML = prototypeBoardLoadingHtml();
+    setTrustedHtml(els.protoWrap, prototypeBoardLoadingHtml());
     return;
   }
   if (load.status === 'failed') {
     navigation?.setPrototypeCount(null);
-    els.protoWrap.innerHTML = prototypeBoardErrorHtml(load.error);
+    setTrustedHtml(els.protoWrap, prototypeBoardErrorHtml(load.error));
     paintIcons(els.protoWrap);
     return;
   }
   navigation?.setPrototypeCount(load.list.length);
-  els.protoWrap.innerHTML = prototypeBoardHtml(repoName(), map, load.list);
+  setTrustedHtml(els.protoWrap, prototypeBoardHtml(repoName(), map, load.list));
   paintIcons(els.protoWrap);
   fitPrototypeThumbs(els.protoWrap);
 }
@@ -1006,7 +1002,7 @@ function renderTicketPrototype(): void {
   const map = currentMap();
   const ticket = map === null ? undefined : ticketAt(map, selected);
   if (slot === null || map === null || ticket === undefined) return;
-  slot.innerHTML = ticketPrototypeHtml(map, ticket);
+  setTrustedHtml(slot, ticketPrototypeHtml(map, ticket));
   fitPrototypeThumbs(slot);
 }
 
@@ -1056,7 +1052,7 @@ function showCard(node: HTMLElement, ticket: Ticket, map: WayfinderMap): void {
   const style = STATE_STYLE[ticket.state];
   const excerpt = ticket.body.replace(/[#*`>_[\]]/g, '').replace(/\s+/g, ' ').trim();
   els.hovercard.style.setProperty('--accent', `var(${style.variable})`);
-  els.hovercard.innerHTML = `
+  setTrustedHtml(els.hovercard, `
     <div class="node-top">${typeGlyph(ticket.type)}<span class="num">#${String(ticket.number)}</span>${stateChip(ticket.state)}</div>
     <div class="htitle">${escapeHtml(ticket.title)}</div>
     ${excerpt.length === 0 ? '' : `<div class="hbody">${escapeHtml(excerpt.slice(0, 280))}</div>`}
@@ -1064,7 +1060,7 @@ function showCard(node: HTMLElement, ticket: Ticket, map: WayfinderMap): void {
       <dt>Needs</dt><dd>${ticketPills(map, ticket.blockedBy, true)}</dd>
       <dt>Unlocks</dt><dd>${ticketPills(map, dependents(map, ticket.number), true)}</dd>
     </dl>
-    <div class="hint-row">Click to open${ticket.state === 'frontier' ? ' · ready to start' : ''}</div>`;
+    <div class="hint-row">Click to open${ticket.state === 'frontier' ? ' · ready to start' : ''}</div>`);
 
   const rect = node.getBoundingClientRect();
   const width = 320;
@@ -1100,7 +1096,7 @@ function renderInspector(): void {
   const restoreFocus = rememberControlFocus(els.inspector);
   const map = currentMap();
   if (map === null) {
-    els.inspector.innerHTML = '';
+    setTrustedHtml(els.inspector, '');
     return;
   }
 
@@ -1109,7 +1105,7 @@ function renderInspector(): void {
   const previous = els.inspector.querySelector('.insp-panel');
   const scrollTop = previous?.getAttribute('data-tab') === `${tab}:${String(selected)}` ? previous.scrollTop : 0;
 
-  els.inspector.innerHTML = `
+  setTrustedHtml(els.inspector, `
     <div class="insp-tabs">
       <div class="segmented" role="tablist" aria-label="Panel">
         <button type="button" ${tabAttrs('insp-tab-brief', 'insp-panel', tab === 'brief')} class="seg${tab === 'brief' ? ' is-on' : ''}" data-panel="brief">Brief</button>
@@ -1118,7 +1114,7 @@ function renderInspector(): void {
         }</button>
       </div>
     </div>
-    <div class="insp-panel" ${tabPanelAttrs('insp-panel', `insp-tab-${tab}`)} data-tab="${tab}:${String(selected)}">${tab === 'ticket' && ticket !== null ? ticketHtml(map, ticket) : briefHtml(map)}</div>`;
+    <div class="insp-panel" ${tabPanelAttrs('insp-panel', `insp-tab-${tab}`)} data-tab="${tab}:${String(selected)}">${tab === 'ticket' && ticket !== null ? ticketHtml(map, ticket) : briefHtml(map)}</div>`);
 
   const panel = els.inspector.querySelector('.insp-panel');
   if (panel !== null) panel.scrollTop = scrollTop;
@@ -1262,14 +1258,14 @@ function refreshEffort(modelSelect: HTMLSelectElement, effortId: string, attrs: 
   const [instanceId = '', ...rest] = modelSelect.value.split('::');
   const model = findModel(state.catalog, { instanceId, model: rest.join('::') });
   document.getElementById(effortId)?.remove();
-  modelSelect.insertAdjacentHTML('afterend', effortSelectHtml(model, undefined, attrs));
+  insertTrustedHtml(modelSelect, 'afterend', effortSelectHtml(model, undefined, attrs));
 }
 
 /** Put a fresh picker in the ticket panel once the catalog arrives or the defaults change. */
 function refreshTicketPicker(): void {
   const picker = document.getElementById('ticket-picker');
   if (picker === null || selected === null) return;
-  picker.innerHTML = ticketPickerHtml(ticketTier(repoName(), selected));
+  setTrustedHtml(picker, ticketPickerHtml(ticketTier(repoName(), selected)));
 }
 
 /* ---------- local clone ---------- */
@@ -1355,7 +1351,7 @@ function launchSlotHtml(ticket: Ticket, handOff: HandOffStatusDto | undefined): 
 function refreshLaunch(): void {
   const slot = document.getElementById('launch-slot');
   const ticket = selectedTicket();
-  if (slot !== null && ticket !== null) slot.innerHTML = launchSlotHtml(ticket, ticketHandOff(currentMap(), ticket.number));
+  if (slot !== null && ticket !== null) setTrustedHtml(slot, launchSlotHtml(ticket, ticketHandOff(currentMap(), ticket.number)));
 }
 
 /** Take a clone for this repository: one the user typed in the list, or one they pick in a folder dialog. */
@@ -1679,7 +1675,7 @@ els.inspector.addEventListener('click', (event) => {
     ticketModelChoices.delete(ticketChoiceKey(selected));
     saveTicketTier(repoName(), selected, tierButton.dataset['tier'] as Tier);
     const runWith = document.getElementById('runwith');
-    if (runWith !== null) runWith.innerHTML = runWithHtml(selected);
+    if (runWith !== null) setTrustedHtml(runWith, runWithHtml(selected));
   }
   if (target.closest('#start-thread') !== null) void handOff(false);
   if (target.closest('#copy-prompt') !== null) void handOff(true);

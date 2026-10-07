@@ -1,3 +1,4 @@
+import { setTrustedHtml } from './trustedHtml.js';
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -34,11 +35,11 @@ function openInbox(shown: InboxTicket[]): void {
 describe('acknowledging hand-offs from the Inbox', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    document.body.innerHTML = '';
+    setTrustedHtml(document.body, '');
   });
 
   it('settles an Inbox opened before the first load once the hand-offs arrive', async () => {
-    document.body.innerHTML = '<span id="handoff-announcement"></span>';
+    setTrustedHtml(document.body, '<span id="handoff-announcement"></span>');
     let release: () => void = () => undefined;
     const loaded = new Promise<void>((resolve) => { release = resolve; });
     const acknowledged: string[] = [];
@@ -61,7 +62,7 @@ describe('acknowledging hand-offs from the Inbox', () => {
   });
 
   it('leaves a finished hand-off the Inbox does not show', async () => {
-    document.body.innerHTML = '<span id="handoff-announcement"></span>';
+    setTrustedHtml(document.body, '<span id="handoff-announcement"></span>');
     const acknowledged: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       if (url === '/api/hand-offs/acknowledge') {

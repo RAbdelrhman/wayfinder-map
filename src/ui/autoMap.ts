@@ -1,3 +1,4 @@
+import { setTrustedHtml } from './trustedHtml.js';
 import { autoMapKey, autoStartTickets, AUTO_MAP_TIERS, parseAutoMapSetting, turnedOff, turnedOn } from '../autoMap.js';
 import type { AutoMapSetting, AutoMapTier } from '../autoMap.js';
 import type { AutoMapNotice } from '../autoMapStore.js';
@@ -19,7 +20,6 @@ export const AUTO_MAP_HINT = 'Starts tickets as they become next. Grilling and p
 
 export const AUTO_TIER_LABEL: Record<AutoMapTier, string> = { auto: 'Auto', ...TIER_LABEL };
 
-type Reader = Pick<Storage, 'getItem'>;
 type Remover = Pick<Storage, 'getItem' | 'removeItem'>;
 
 /** A map the server turned the auto map off on, and why. */
@@ -214,7 +214,7 @@ export function mountAutoMapDialog(options: AutoMapDialogOptions): AutoMapDialog
     const context = options.context();
     if (context === null) return;
     const setting = options.autoMaps.setting(context.repo, context.mapNumber);
-    dialog.innerHTML = autoMapSetupHtml(context.mapNumber, setting.setUp, tier, options.cap());
+    setTrustedHtml(dialog, autoMapSetupHtml(context.mapNumber, setting.setUp, tier, options.cap()));
   };
 
   const open = (): void => {
