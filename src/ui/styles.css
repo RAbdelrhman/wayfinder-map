@@ -118,6 +118,17 @@ a {
   width: 16px;
   height: 16px;
   flex: none;
+  vertical-align: middle;
+}
+
+/* Icon placeholders must not add a text baseline/descender around the SVG.
+   Keep this shared: chips, buttons, search and visibility labels all use it. */
+[data-icon] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  flex: none;
 }
 
 .num {
