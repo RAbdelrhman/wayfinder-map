@@ -49,7 +49,9 @@ function open(section: string): HTMLElement {
 describe('mounted Settings page', () => {
   it('keeps an optimistic goal edit when the initial progress read finishes during its save', async () => {
     vi.stubGlobal('sessionStorage', browser.sessionStorage);
-    document.head.innerHTML = '<meta name="wayfinder-cache-scope" content="account-a">';
+    const scope = document.createElement('meta');
+    scope.name = 'wayfinder-cache-scope'; scope.content = 'account-a';
+    document.head.append(scope);
     const { routeData } = await import('./routeData.js');
     const original = fetch;
     let finishRead: (value: Response) => void = () => undefined;
