@@ -174,14 +174,19 @@ export class AutoMapService {
 
   /** Turning a map on also starts what is next on it already: no event will ever say those tickets became next. */
   private async startAlreadyNext(repo: string, mapNumber: number, setting: AutoMapSetting): Promise<void> {
+    // A tier change replaces the setting but keeps the map on; only turning it off, or on again, ends this read.
+    const stillOn = (): boolean => {
+      const current = this.setting(repo, mapNumber);
+      return current.enabled && current.enabledAt === setting.enabledAt;
+    };
     let map: WayfinderMap | null = null;
     for (let attempt = 0; map === null && attempt < READ_ATTEMPTS; attempt += 1) {
       if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, this.deps.retryMs ?? RETRY_MS).unref());
-      if (this.closed || this.setting(repo, mapNumber) !== setting) return;
+      if (this.closed || !stillOn()) return;
       map = await this.deps.loadMap(repo, mapNumber).catch(() => null);
     }
     // The watcher drops a closed or settled map, so the auto map starts nothing on one either.
-    if (map === null || !map.open || map.settled !== null || this.closed || this.setting(repo, mapNumber) !== setting || setting.enabledAt === null) return;
+    if (map === null || !map.open || map.settled !== null || this.closed || !stillOn() || setting.enabledAt === null) return;
     for (const ticket of map.tickets) {
       if (ticket.state !== 'frontier') continue;
       this.take({ type: 'ticket-next', from: ticket.state, ticket: { number: ticket.number, title: ticket.title }, id: ticket.number, repo, mapNumber, at: setting.enabledAt });

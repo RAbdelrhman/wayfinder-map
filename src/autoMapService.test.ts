@@ -223,6 +223,17 @@ describe('AutoMapService', () => {
       expect(h.submits).toEqual([]);
     });
 
+    it('still starts them, on the new tier, when the tier changes before the map is read', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const h = harness({ loadMap: async () => { await gate; return mapOf([ticket(11)]); } });
+      await h.service.change('octo/one', 5, { op: 'enable', tier: 'mid' });
+      await h.service.change('octo/one', 5, { op: 'tier', tier: 'hard' });
+      release();
+      await vi.waitFor(() => expect(h.submits).toHaveLength(1));
+      expect(h.submits[0]?.body.tickets.map((item) => [item.ticket, item.tier])).toEqual([[11, 'hard']]);
+    });
+
     it('starts nothing when the map is turned off before it is read', async () => {
       let release!: () => void;
       const gate = new Promise<void>((resolve) => { release = resolve; });
