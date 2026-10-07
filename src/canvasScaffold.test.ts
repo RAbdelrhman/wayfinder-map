@@ -36,9 +36,19 @@ describe('canvas:create', () => {
     expect(await readFile(legacy, 'utf8')).toBe(before);
     expect(await readdir(join(first, 'variants'))).toEqual([]);
     expect(await readdir(join(first, 'assets'))).toEqual([]);
+    for (const board of [first, second]) {
+      const files = await readdir(board);
+      expect(files).not.toContain('canvas.js');
+      expect(files).not.toContain('canvas.css');
+      expect(files).not.toContain('kit');
+      const index = await readFile(join(board, 'index.html'), 'utf8');
+      expect(index).toContain('src="../canvas/canvas.js"');
+      expect(index).toContain('href="../canvas/canvas.css"');
+      expect(await readFile(join(board, 'README.md'), 'utf8')).toContain('../../canvas/kit/kit.js');
+    }
     await run(process.execPath, [join(first, 'tools/check.mjs')], { cwd: root });
     await run(process.execPath, [join(second, 'tools/check.mjs')], { cwd: root });
-  });
+  }, 30000);
 
   it('refuses to overwrite an existing task or the legacy canvas', async () => {
     const root = await fixture();
@@ -48,7 +58,7 @@ describe('canvas:create', () => {
     await expect(run(process.execPath, [script, 'onboarding'], { cwd: root })).rejects.toThrow();
     expect(await readFile(config, 'utf8')).toBe('My approved options');
     await expect(run(process.execPath, [script, 'canvas'], { cwd: root })).rejects.toThrow('legacy canvas is reserved');
-  });
+  }, 30000);
 
   it('rejects traversal, absolute paths, invalid IDs, and invalid ticket metadata before writing', async () => {
     const root = await fixture();
