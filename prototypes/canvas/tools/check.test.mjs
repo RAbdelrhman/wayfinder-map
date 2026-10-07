@@ -1,12 +1,13 @@
 // Run with: node --test <canvas>/tools/check.test.mjs
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
-import { checkCanvas, checkPageHtml, loadConfig } from './check.mjs';
+import { checkCanvas, checkPageHtml, checkSharedCanvasCopies, loadConfig } from './check.mjs';
 import { THUMBNAIL_SOURCES, VIEWPORT } from './capture-thumbnails.mjs';
 
 const CANVAS_DIR = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -175,6 +176,49 @@ test('base and style stylesheets must exist', () => {
   const { errors } = checkCanvas(cfg, disk);
   assert.equal(errors.length, 1);
   assert.match(errors[0], /base.stylesheets\[0\]: "missing.css" does not exist/);
+});
+
+test('prototype-local canvas engine and kit copies are rejected without blocking variant scripts', () => {
+  const prototypesDir = mkdtempSync(join(tmpdir(), 'wayfinder-canvas-check-'));
+  try {
+    mkdirSync(join(prototypesDir, 'canvas', 'kit'), { recursive: true });
+    const engine = readFileSync(join(CANVAS_DIR, 'canvas.js'));
+    const kit = readFileSync(join(CANVAS_DIR, 'kit', 'kit.js'));
+    writeFileSync(join(prototypesDir, 'canvas', 'canvas.js'), engine);
+    writeFileSync(join(prototypesDir, 'canvas', 'kit', 'kit.js'), kit);
+
+    mkdirSync(join(prototypesDir, 'copied', 'kit'), { recursive: true });
+    writeFileSync(join(prototypesDir, 'copied', 'canvas.js'), engine);
+    writeFileSync(join(prototypesDir, 'copied', 'kit', 'kit.js'), kit);
+    const copyErrors = [
+      'copied/canvas.js: do not copy the shared canvas engine; load "../canvas/canvas.js" instead',
+      'copied/kit/kit.js: do not copy the shared canvas kit; load "../../canvas/kit/kit.js" instead',
+    ];
+    assert.deepEqual(checkSharedCanvasCopies(prototypesDir), copyErrors);
+
+    // Canonical paths stay forbidden even when someone edits their copied runtime.
+    writeFileSync(join(prototypesDir, 'copied', 'canvas.js'), `${engine}\n// local edit`);
+    writeFileSync(join(prototypesDir, 'copied', 'kit', 'kit.js'), `${kit}\n// local edit`);
+    assert.deepEqual(checkSharedCanvasCopies(prototypesDir), copyErrors);
+
+    mkdirSync(join(prototypesDir, 'copied', 'variants'), { recursive: true });
+    writeFileSync(join(prototypesDir, 'copied', 'variants', 'renamed-engine.js'), engine);
+    writeFileSync(join(prototypesDir, 'copied', 'variants', 'renamed-kit.js'), kit);
+    assert.deepEqual(checkSharedCanvasCopies(prototypesDir).sort(), [
+      ...copyErrors,
+      'copied/variants/renamed-engine.js: do not copy the shared canvas engine; load "../../canvas/canvas.js" instead',
+      'copied/variants/renamed-kit.js: do not copy the shared canvas kit; load "../../canvas/kit/kit.js" instead',
+    ].sort());
+
+    mkdirSync(join(prototypesDir, 'normal', 'variants'), { recursive: true });
+    writeFileSync(join(prototypesDir, 'normal', 'variants', 'page.js'), 'const variant = true;');
+    writeFileSync(join(prototypesDir, 'normal', 'index.html'), '<script src="../canvas/canvas.js"></script>');
+    writeFileSync(join(prototypesDir, 'normal', 'variants', 'page.html'), '<script src="../../canvas/kit/kit.js"></script>');
+    rmSync(join(prototypesDir, 'copied'), { recursive: true, force: true });
+    assert.deepEqual(checkSharedCanvasCopies(prototypesDir), []);
+  } finally {
+    rmSync(prototypesDir, { recursive: true, force: true });
+  }
 });
 
 function jpegDimensions(buffer) {

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-import { accessSync, cpSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { accessSync, cpSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-// Copy only the engine. An existing project's config and variants belong to that project.
-const ENGINE = ['index.html', 'canvas.js', 'canvas.css', 'README.md', 'kit', 'tools'];
+// Each board owns its content and tools, but loads the shared runtime.
+const BOARD_FILES = ['README.md', 'tools'];
+const SHARED_FILES = ['index.html', 'canvas.js', 'canvas.css', 'kit/kit.js'];
 
 try {
   const [taskId, flag, rawTicket, ...extra] = process.argv.slice(2);
@@ -19,10 +20,16 @@ try {
   const prototypes = join(root, 'prototypes');
   if (realpathSync(prototypes) !== prototypes) throw new Error('The prototypes directory must be inside this checkout, without symlinks.');
   const target = resolve(prototypes, taskId);
-  for (const name of ENGINE) accessSync(join(prototypes, 'canvas', name));
+  for (const name of [...BOARD_FILES, ...SHARED_FILES]) accessSync(join(prototypes, 'canvas', name));
   // Non-recursive mkdir refuses every existing directory, file, or symlink before writing.
   mkdirSync(target);
-  for (const name of ENGINE) cpSync(join(prototypes, 'canvas', name), join(target, name), { recursive: true });
+  for (const name of BOARD_FILES) cpSync(join(prototypes, 'canvas', name), join(target, name), { recursive: true });
+  const index = readFileSync(join(prototypes, 'canvas', 'index.html'), 'utf8')
+    .replace('href="canvas.css"', 'href="../canvas/canvas.css"')
+    .replace('src="canvas.js"', 'src="../canvas/canvas.js"');
+  writeFileSync(join(target, 'index.html'), index);
+  const readme = readFileSync(join(target, 'README.md'), 'utf8').replaceAll('../kit/kit.js', '../../canvas/kit/kit.js');
+  writeFileSync(join(target, 'README.md'), readme);
   mkdirSync(join(target, 'variants'));
   mkdirSync(join(target, 'assets'));
   const title = taskId.replace(/-/g, ' ');
