@@ -188,7 +188,12 @@ export function choiceFrom(target: Element | null, current: ProgressSettings): P
  * Draws the panel into `host` and keeps it live: a choice redraws at once and is saved for the
  * signed-in user, and a failed save puts the old choice back.
  */
+const panelListeners = new WeakMap<HTMLElement, AbortController>();
+
 export function mountProgressPanel(host: HTMLElement, initial: ProgressState, save: (patch: Partial<ProgressSettings>) => Promise<ProgressSettings>, onError: (message: string) => void): void {
+  panelListeners.get(host)?.abort();
+  const controller = new AbortController();
+  panelListeners.set(host, controller);
   let state = initial;
   const draw = (): void => {
     setTrustedHtml(host, progressPanelHtml(state));
@@ -199,7 +204,7 @@ export function mountProgressPanel(host: HTMLElement, initial: ProgressState, sa
     if (!host.isConnected || !(event instanceof CustomEvent)) return;
     state = { ...state, settings: event.detail as ProgressSettings };
     draw();
-  });
+  }, { signal: controller.signal });
   host.addEventListener('click', (event) => {
     const patch = choiceFrom(event.target instanceof Element ? event.target : null, state.settings);
     if (patch === null) return;
@@ -209,14 +214,16 @@ export function mountProgressPanel(host: HTMLElement, initial: ProgressState, sa
     if (state.login === null) return;
     save(patch).then(
       (settings) => {
+        if (controller.signal.aborted) return;
         state = { ...state, settings };
         draw();
       },
       (error: unknown) => {
+        if (controller.signal.aborted) return;
         state = before;
         draw();
         onError(error instanceof Error ? error.message : String(error));
       },
     );
-  });
+  }, { signal: controller.signal });
 }

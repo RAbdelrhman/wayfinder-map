@@ -1,6 +1,18 @@
 import { expect, it, vi } from 'vitest';
 import { PrototypeFileCache } from './prototypeFileCache.js';
 
+it('does not refill a cleared account cache from an older pending download', async () => {
+  let finish: (value: Buffer) => void = () => undefined;
+  const read = vi.fn().mockImplementationOnce(() => new Promise<Buffer>((resolve) => { finish = resolve; })).mockResolvedValue(Buffer.from('new account'));
+  const cache = new PrototypeFileCache(read);
+  const old = cache.get('o/r', 'prototype/1', 'index.html', 'abc');
+  cache.clear();
+  finish(Buffer.from('old account'));
+  await old;
+  expect(await cache.get('o/r', 'prototype/1', 'index.html', 'abc')).toEqual(Buffer.from('new account'));
+  expect(read).toHaveBeenCalledTimes(2);
+});
+
 it('coalesces SHA reads, separates revisions and retries failures', async () => {
   const read = vi.fn(async (_repo: string, ref: string, _file: string) => Buffer.from(ref));
   const cache = new PrototypeFileCache(read);

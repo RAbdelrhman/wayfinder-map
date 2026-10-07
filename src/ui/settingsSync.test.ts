@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { AutoMapMachineSettings } from '../autoMapStore.js';
 import type { ModelChoice } from '../models.js';
 import { AUTO_RATER_KEY, CALIBRATION_KEY, TIER_DEFAULTS_KEY } from './models.js';
-import { adoptSettings, readLocalSettings, reconcileSettings } from './settingsSync.js';
+import { adoptSettings, readLocalSettings, reconcileSettings, syncServerSettings } from './settingsSync.js';
 import { CAP_KEY } from './startNext.js';
 
 const SOL: ModelChoice = { instanceId: 'codex', model: 'gpt-5.6-sol' };
@@ -48,6 +48,19 @@ describe('reconcileSettings', () => {
 });
 
 describe('adoptSettings', () => {
+  it('keeps an edit made while the server settings are loading', async () => {
+    let finish: (value: Response) => void = () => undefined;
+    const request = new Promise<Response>((resolve) => { finish = resolve; });
+    const storage = memoryStorage({ [CAP_KEY]: '2' });
+    vi.stubGlobal('fetch', vi.fn(() => request));
+    try {
+      const pending = syncServerSettings(storage);
+      storage.setItem(CAP_KEY, '6');
+      finish(new Response(JSON.stringify({ settings: { ...NOTHING, cap: 4 } })));
+      await pending;
+      expect(readLocalSettings(storage).cap).toBe(6);
+    } finally { vi.unstubAllGlobals(); }
+  });
   it('writes what the server holds into the browser’s own keys', () => {
     const storage = memoryStorage();
     adoptSettings(storage, { cap: 2, tierModels: { mid: SOL }, rater: { kind: 'logic' }, calibration: { kind: 'shadow', choice: SOL } });

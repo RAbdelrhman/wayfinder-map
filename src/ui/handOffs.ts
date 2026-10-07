@@ -1,4 +1,5 @@
 import type { ModelChangeReason } from '../autoDecision.js';
+import { readRouteJson, routeData } from './routeData.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import type { TicketState } from '../types.js';
 import { draftMapPath, mapPath, repoPath } from '../repoRoutes.js';
@@ -340,9 +341,7 @@ export function mountHandOffs(): HandOffSurface {
     if (refreshInFlight !== null) return refreshInFlight;
     refreshInFlight = (async () => {
       try {
-        const response = await fetch('/api/hand-offs');
-        if (!response.ok) return;
-        const snapshot = (await response.json()) as { handOffs?: HandOffStatusDto[] };
+        const snapshot = await readRouteJson<{ handOffs?: HandOffStatusDto[] }>('/api/hand-offs', true);
         if (!Array.isArray(snapshot.handOffs)) return;
         const viewKey = (item: HandOffStatusDto): string => `${handOffPresentation(item).state}:${handOffPresentation(item).report}:${String(item.stale)}`;
         const previous = new Map(records.map((item) => [item.id, viewKey(item)]));
@@ -386,11 +385,13 @@ export function mountHandOffs(): HandOffSurface {
     });
     const result = (await response.json()) as { error?: string };
     if (!response.ok) throw new Error(result.error ?? 'The hand-off action failed.');
+    routeData().invalidate('/api/hand-offs');
   };
 
   const acknowledge = async (id: string): Promise<void> => {
     await post('/api/hand-offs/acknowledge', id);
     records = records.map((item) => item.id === id ? { ...item, acknowledged: true } : item);
+    routeData().remember('/api/hand-offs', { handOffs: records });
     render();
   };
 

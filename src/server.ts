@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 import { buildAutoDecision, MODEL_CHANGE_REASONS } from './autoDecision.js';
 import { AutoMapService, parseAutoMapChange } from './autoMapService.js';
@@ -24,7 +25,7 @@ import type { MapSnapshot, Prototype, Ticket, WayfinderMap } from './types.js';
 import { markPullRequests } from './mapWatch.js';
 import type { MapEvent } from './mapWatch.js';
 import { listRepositories, loadHomeState, readAccount } from './home.js';
-import type { HomeState } from './home.js';
+import type { HomeAccount, HomeState } from './home.js';
 import { fetchAllPrototypes, fetchBranchFile, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, fetchTicketWithParent, gh } from './github.js';
 import { viewerPrototypeBytes } from './canvasBridge.js';
 import { PrototypeFileCache } from './prototypeFileCache.js';
@@ -32,6 +33,7 @@ import { AuthFlow } from './authFlow.js';
 import { normalizeRepo, parseRepoPagePath } from './repoRoutes.js';
 import type { ScopedApiAction } from './repoRoutes.js';
 import { RepositoryStore } from './repositoryStore.js';
+import { RepositorySnapshotCache } from './repositorySnapshotCache.js';
 import type { RepositoryChangeChecker, RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './workspaces.js';
 import type { WorkspaceState } from './workspaces.js';
@@ -119,6 +121,7 @@ export interface ServeOptions {
   fetcher?: RepositoryFetcher;
   changeChecker?: RepositoryChangeChecker;
   homeLoader?: (labels: readonly string[]) => Promise<HomeState>;
+  accountReader?: () => Promise<HomeAccount>;
   /** Every repository the account can open, for Home's picker. */
   repoLister?: () => Promise<string[]>;
   onShutdown?: () => void;
@@ -198,7 +201,7 @@ export interface RunningServer {
   url: string;
 }
 
-function json(response: ServerResponse, status: number, body: unknown): void {
+function writeJson(response: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -264,6 +267,7 @@ export async function startServer({
   fetcher,
   changeChecker,
   homeLoader,
+  accountReader = readAccount,
   repoLister = listRepositories,
   onShutdown,
   uiDir = join(process.cwd(), 'src', 'ui'),
@@ -345,8 +349,53 @@ export async function startServer({
   };
   const loadHome = homeLoader ?? ((labels: readonly string[]) => loadHomeState(labels));
   let homeState: HomeState | null = null;
+  let homeRead: Promise<HomeState> | null = null;
+  let cacheRevision = Date.now();
+  let cacheScope = `${String(cacheRevision)}-${randomUUID()}`;
+  const json = (response: ServerResponse, status: number, body: unknown): void => {
+    response.setHeader('x-wayfinder-cache-scope', cacheScope);
+    writeJson(response, status, body);
+  };
+  let lastAccount: HomeAccount | null = null;
+  let accountRead: Promise<HomeAccount> | null = null;
+  let accountAt = 0;
+  const signedInAccount = (force = false): Promise<HomeAccount> => {
+    if (!force && accountRead === null && homeState !== null) {
+      accountRead = Promise.resolve(homeState.account);
+      accountAt = Date.now();
+    }
+    if (accountRead === null || force || Date.now() - accountAt >= 30_000) {
+      const read = accountReader().then((account) => {
+        if (accountRead === read) observeAccount(account);
+        return account;
+      });
+      accountRead = read;
+      accountAt = Date.now();
+      void read.catch(() => { if (accountRead === read) accountRead = null; });
+    }
+    return accountRead;
+  };
+  const clearAccountCaches = (response?: ServerResponse): void => {
+    cacheRevision = Math.max(Date.now(), cacheRevision + 1);
+    cacheScope = `${String(cacheRevision)}-${randomUUID()}`;
+    response?.setHeader('x-wayfinder-cache-scope', cacheScope);
+    homeState = null;
+    homeRead = null;
+    accountRead = null;
+    repoList = null;
+    repositories.clear();
+    prototypeCache.clear();
+    prototypeFiles.clear();
+    warmedPrototypes.clear();
+    warmQueue.length = 0;
+  };
+  const observeAccount = (account: HomeAccount): void => {
+    const previous = lastAccount ?? homeState?.account;
+    if (previous !== undefined && previous !== null && (previous.host !== account.host || previous.login !== account.login || previous.status !== account.status)) clearAccountCaches();
+    lastAccount = account;
+  };
   const signedInLogin = async (): Promise<string | null> => {
-    const account = homeState?.account ?? (await readAccount());
+    const account = await signedInAccount();
     return account.status === 'ready' ? account.login : null;
   };
   const follow: Following | null = following ?? (fetcher === undefined ? { login: signedInLogin, store: new FollowStore() } : null);
@@ -360,6 +409,13 @@ export async function startServer({
     typePrefix: config.typePrefix,
     ...(fetcher === undefined ? {} : { fetcher }),
     ...(changeChecker === undefined ? {} : { changeChecker }),
+    ...(fetcher === undefined ? {
+      persistence: new RepositorySnapshotCache(),
+      identity: async () => {
+        const account = await signedInAccount();
+        return account.status === 'ready' && account.login !== null ? `${account.host}/${account.login}` : null;
+      },
+    } : {}),
     ...(settle === null
       ? {}
       : {
@@ -466,8 +522,8 @@ export async function startServer({
       ? repositories.snapshot(forRepo, false, snapshot.maps.map((candidate) => candidate.number)).then((loaded) => fetchAllPrototypes(forRepo, loaded.maps))
       : fetchPrototypes(forRepo, map);
     prototypeCache.set(key, { at: Date.now(), list });
-    void list.then((prototypes) => warmPrototypes(forRepo, prototypes), () => undefined);
-    list.catch(() => prototypeCache.delete(key));
+    void list.then((prototypes) => { if (prototypeCache.get(key)?.list === list) warmPrototypes(forRepo, prototypes); }, () => undefined);
+    list.catch(() => { if (prototypeCache.get(key)?.list === list) prototypeCache.delete(key); });
     return list;
   };
 
@@ -572,7 +628,7 @@ export async function startServer({
       if (batch.auto) void autoMaps.usageStopped(batch).catch(() => undefined);
     },
     startTicket: async ({ repo: batchRepo, mapNumber, item }) => {
-      const found = find(await repositories.snapshot(batchRepo, false, [mapNumber]), mapNumber, item.ticketNumber);
+      const found = find(await repositories.currentForAction(batchRepo, [mapNumber]), mapNumber, item.ticketNumber);
       if (found === null) return { kind: 'skipped', reason: `#${String(item.ticketNumber)} is not on the map any more.` };
       if (found.ticket.state !== 'frontier') return { kind: 'skipped', reason: `#${String(item.ticketNumber)} is ${found.ticket.state}, not next.` };
       const reply = await startTicketHandOff(batchRepo, found.map, found.ticket, { model: item.model, tier: item.tier, auto: item.auto ?? null, threadOnly: true });
@@ -592,7 +648,7 @@ export async function startServer({
     }
     // An auto map starts a ticket the moment it became next, which the cached snapshot may not show yet.
     const auto = body.auto === true;
-    const read = auto ? await repositories.refreshIfChanged(requestedRepo, [mapNumber]) : await repositories.snapshot(requestedRepo, false, [mapNumber]);
+    const read = auto ? await repositories.refreshIfChanged(requestedRepo, [mapNumber]) : await repositories.currentForAction(requestedRepo, [mapNumber]);
     const map = read.maps.find((candidate) => candidate.number === mapNumber);
     if (map === undefined) return { status: 404, body: { error: 'No such map.' } };
     if ((await clones.resolve(requestedRepo)) === null) {
@@ -661,6 +717,7 @@ export async function startServer({
 
     const requestUrl = new URL(request.url ?? '/', url);
     const path = requestUrl.pathname;
+    response.setHeader('x-wayfinder-cache-scope', cacheScope);
 
     if (path.startsWith('/api/')) {
       if (!originAllowed(request, port)) {
@@ -769,10 +826,19 @@ export async function startServer({
       }
 
       if (path === '/api/home') {
+        if (homeLoader === undefined) await signedInAccount(true);
         const force = requestUrl.searchParams.get('refresh') === '1';
         if (force || homeState === null) {
           const labels = config.mapLabel === 'wayfinder:map' ? [config.mapLabel] : ['wayfinder:map', config.mapLabel];
-          homeState = await loadHome(labels);
+          const scope = cacheScope;
+          const read = force ? (homeRead = loadHome(labels)) : (homeRead ??= loadHome(labels));
+          try {
+            const next = await read;
+            if (scope !== cacheScope) throw new Error('GitHub account changed during discovery.');
+            if (homeRead !== read) throw new Error('Home discovery was replaced by a newer refresh.');
+            observeAccount(next.account);
+            homeState = next;
+          } finally { if (homeRead === read) homeRead = null; }
         }
         json(response, 200, homeState);
         return;
@@ -850,8 +916,9 @@ export async function startServer({
       }
 
       if (path === '/api/auth/status') {
-        const account = await readAccount();
-        if (account.status === 'ready') homeState = null;
+        // Identity reads are live; an unchanged mark leaves discovery and snapshots intact.
+        const account = await signedInAccount(true);
+        response.setHeader('x-wayfinder-cache-scope', cacheScope);
         json(response, 200, account);
         return;
       }
@@ -862,16 +929,18 @@ export async function startServer({
       }
 
       if (path === '/api/auth/login' && request.method === 'POST') {
+        clearAccountCaches(response);
         json(response, 202, authFlow.start(['auth', 'login', '--web', '--hostname', 'github.com', '--git-protocol', 'https', '--skip-ssh-key']));
         return;
       }
 
       if (path === '/api/auth/refresh' && request.method === 'POST') {
-        const account = await readAccount();
+        const account = await signedInAccount(true);
         if (account.login === null || account.missingScopes.length === 0) {
           json(response, 409, { error: 'There are no missing scopes to grant.' });
           return;
         }
+        clearAccountCaches(response);
         json(response, 202, authFlow.start(['auth', 'refresh', '-h', account.host, '-s', account.missingScopes.join(',')]));
         return;
       }
@@ -879,30 +948,26 @@ export async function startServer({
       if (path === '/api/auth/switch' && request.method === 'POST') {
         const body = (await readBody(request)) as { login?: unknown };
         const login = typeof body.login === 'string' ? body.login : '';
-        const account = await readAccount();
+        const account = await signedInAccount(true);
         if (!account.accounts.includes(login)) {
           json(response, 400, { error: 'That account is not available in GitHub CLI.' });
           return;
         }
         await gh(['auth', 'switch', '-h', account.host, '-u', login]);
-        homeState = null;
-        repoList = null;
-        repositories.clear();
-        json(response, 200, await readAccount());
+        clearAccountCaches(response);
+        json(response, 200, await signedInAccount(true));
         return;
       }
 
       if (path === '/api/auth/logout' && request.method === 'POST') {
-        const account = await readAccount();
+        const account = await signedInAccount(true);
         if (account.login === null) {
           json(response, 409, { error: 'No GitHub account is signed in.' });
           return;
         }
         await gh(['auth', 'logout', '-h', account.host, '-u', account.login]);
-        homeState = null;
-        repoList = null;
-        repositories.clear();
-        json(response, 200, await readAccount());
+        clearAccountCaches(response);
+        json(response, 200, await signedInAccount(true));
         return;
       }
 
@@ -1129,6 +1194,7 @@ export async function startServer({
             return;
           }
           await follow.store.set(login, requestedRepo, mapNumber, body.followed);
+          repositories.invalidate(requestedRepo);
           json(response, 200, await repositories.snapshot(requestedRepo, true));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });
@@ -1315,7 +1381,7 @@ export async function startServer({
           auto?: unknown;
         };
 
-        const snapshot = await repositories.snapshot(requestedRepo, false, Number.isSafeInteger(Number(body.map)) ? [Number(body.map)] : []);
+        const snapshot = await repositories.currentForAction(requestedRepo, Number.isSafeInteger(Number(body.map)) ? [Number(body.map)] : []);
         let map: WayfinderMap | null = null;
         let ticket: Ticket | null = null;
 
@@ -1366,7 +1432,7 @@ export async function startServer({
           json(response, 400, { error: 'Choose a map, its tickets and a model to rate with.' });
           return;
         }
-        const map = (await repositories.snapshot(requestedRepo, false, [mapNumber])).maps.find((candidate) => candidate.number === mapNumber);
+        const map = (await repositories.currentForAction(requestedRepo, [mapNumber])).maps.find((candidate) => candidate.number === mapNumber);
         if (map === undefined) {
           json(response, 404, { error: 'No such map.' });
           return;
@@ -1454,7 +1520,7 @@ export async function startServer({
         'cache-control': 'no-store',
         'content-security-policy': PAGE_CSP,
       });
-      response.end(bytes);
+      response.end(extension === '.html' ? bytes.toString('utf8').replace('<head>', `<head><meta name="wayfinder-cache-scope" content="${cacheScope}">`) : bytes);
     } catch {
       response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
       response.end('Not found');

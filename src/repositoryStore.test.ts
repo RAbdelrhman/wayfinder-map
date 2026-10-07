@@ -204,6 +204,54 @@ describe('RepositoryStore settling', () => {
     expect(await cache.settle('owner/repo', 1, null)).toBeNull();
   });
 
+  it('does not merge delayed ticket details into a replacement account cache', async () => {
+    const details = deferred<FetchResult>();
+    const detailer = vi.fn<MapDetailFetcher>(() => details.promise);
+    const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher: async () => ({ maps: [map(2, closed, false)], warnings: [] }), detailer });
+    await cache.snapshot('owner/repo');
+    const opened = cache.snapshot('owner/repo', false, [2]);
+    const rejected = expect(opened).rejects.toThrow('Repository cache changed');
+    await vi.waitFor(() => expect(detailer).toHaveBeenCalledTimes(1));
+    cache.clear();
+    await cache.snapshot('owner/repo');
+    details.resolve({ maps: [map(2, closed, true)], warnings: [] });
+    await rejected;
+    expect(cache.cached('owner/repo')?.maps[0]?.ticketsLoaded).toBe(false);
+  });
+
+  it('rejects an action read when its repository is invalidated during the live fetch', async () => {
+    const listing = deferred<FetchResult>();
+    const cache = store(() => listing.promise);
+    const pending = cache.currentForAction('owner/repo');
+    const rejected = expect(pending).rejects.toThrow('Repository cache changed');
+    cache.clear();
+    listing.resolve({ maps: [], warnings: [] });
+    await rejected;
+    expect(cache.cached('owner/repo')).toBeNull();
+  });
+
+  it('preserves a settlement made while a restored snapshot refreshes', async () => {
+    const listing = deferred<FetchResult>();
+    const saved = { repo: 'owner/repo', fetchedAt: new Date().toISOString(), maps: [map(2, null, true)], hiddenMaps: 0, publicMaps: [], warnings: [] };
+    const persistence = { load: async () => saved, save: vi.fn(async () => undefined) };
+    const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', identity: async () => 'a', persistence, fetcher: () => listing.promise });
+    await cache.snapshot('owner/repo');
+    const settled = { reason: 'manual' as const, since: '2026-10-07T00:00:00Z' };
+    await cache.settle('owner/repo', 2, settled);
+    listing.resolve({ maps: [map(2, null, true)], warnings: [] });
+    await vi.waitFor(() => expect(cache.cached('owner/repo')?.maps[0]?.settled).toEqual(settled));
+    await cache.currentForAction('owner/repo');
+    expect(cache.cached('owner/repo')?.maps[0]?.settled).toEqual(settled);
+    expect(persistence.save).not.toHaveBeenCalled();
+  });
+
+  it('persists ticket details loaded after the repository listing', async () => {
+    const persistence = { load: async () => null, save: vi.fn(async () => undefined) };
+    const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', identity: async () => 'a', persistence, fetcher: async () => ({ maps: [map(2, closed, false)], warnings: [] }), detailer: async () => ({ maps: [map(2, closed, true)], warnings: [] }) });
+    await cache.snapshot('owner/repo', false, [2]);
+    expect(persistence.save).toHaveBeenLastCalledWith(expect.objectContaining({ maps: [expect.objectContaining({ ticketsLoaded: true })] }), expect.any(String));
+  });
+
   it.each([null, { reason: 'manual', since: '2026-09-27T00:00:00.000Z' } satisfies MapSettlement])(
     'keeps a newer settle choice when delayed ticket details return: %j',
     async (settled) => {

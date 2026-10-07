@@ -1,4 +1,5 @@
 import { setTrustedHtml, insertTrustedHtml } from './trustedHtml.js';
+import { readRouteJson, routeData } from './routeData.js';
 import type { HomeAccount } from '../home.js';
 import type { DailyGoal, ProgressSettings, ProgressState } from '../progress.js';
 import { STALL_DAY_CHOICES } from '../types.js';
@@ -233,11 +234,16 @@ function postJson<T>(url: string, body?: unknown): Promise<T> {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  }).then((response) => readJson<T>(response));
+  }).then(async (response) => {
+    const value = await readJson<T>(response);
+    if (url.startsWith('/api/auth/')) routeData().adoptScope(response);
+    else routeData().invalidate(url === '/api/progress/settings' ? '/api/progress' : url);
+    return value;
+  });
 }
 
 /** Mount the dedicated Settings page. Categories have URLs and follow browser history. */
-export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms?: number) => void): void {
+export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms?: number) => void): () => void {
   setTrustedHtml(root, `<header class="settings-page-heading"><div><h1>Settings</h1><p>Make Wayfinder work your way.</p></div><span class="settings-save-note"><span data-icon="check" aria-hidden="true"></span>Changes save automatically</span></header><div class="settings-page-layout"><nav class="settings-categories" aria-label="Settings categories"></nav><div><div id="settings-load-status" role="status"></div><header class="settings-category-heading"><h2 id="settings-category-title"></h2><p id="settings-category-hint"></p></header><div id="settings-body"></div></div></div>`);
   const body = root.querySelector<HTMLElement>('#settings-body')!;
   const nav = root.querySelector<HTMLElement>('.settings-categories')!;
@@ -245,6 +251,9 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
   let category = settingsCategory(new URLSearchParams(location.search).get('section'));
   let calibrationOpen = false;
   let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), rater: autoRater(), calibration: calibrationMode(), models: currentCatalog(), tierModels: tierDefaults(), cap: handOffCap(), progress: null, stalls: null, notifications: null, busy: null };
+  view.progress = routeData().peek<ProgressState>('/api/progress')?.settings ?? null;
+  view.stalls = routeData().peek<StallSettings>('/api/stall-settings');
+  view.notifications = routeData().peek<NotificationSettings>('/api/notification-settings');
 
   const draw = (): void => {
     const focusKey = document.activeElement instanceof HTMLElement && body.contains(document.activeElement) ? focusKeyOf(document.activeElement) : null;
@@ -260,22 +269,20 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
     if (focusKey !== null) body.querySelector<HTMLElement>(focusKey)?.focus();
   };
 
+  let loadSequence = 0;
   const load = async (): Promise<void> => {
-    const [account, progress, stalls, notifications] = await Promise.allSettled([
-      fetch('/api/auth/status').then((response) => readJson<HomeAccount>(response)),
-      fetch('/api/progress').then((response) => readJson<ProgressState>(response)),
-      fetch('/api/stall-settings').then((response) => readJson<StallSettings>(response)),
-      fetch('/api/notification-settings').then((response) => readJson<NotificationSettings>(response)),
+    const sequence = ++loadSequence;
+    const before = view;
+    const current = (): boolean => sequence === loadSequence && root.isConnected;
+    const results = await Promise.allSettled([
+      readRouteJson<HomeAccount>('/api/auth/status', true).then((account) => { if (!current()) return; view = { ...view, account }; draw(); }),
+      readRouteJson<ProgressState>('/api/progress', true).then((progress) => { if (!current() || before.progress !== view.progress) return; view = { ...view, progress: progress.login === null ? null : progress.settings }; draw(); }),
+      readRouteJson<StallSettings>('/api/stall-settings', true).then((stalls) => { if (!current() || before.stalls !== view.stalls) return; view = { ...view, stalls }; draw(); }),
+      readRouteJson<NotificationSettings>('/api/notification-settings', true).then((notifications) => { if (!current() || before.notifications !== view.notifications) return; view = { ...view, notifications }; draw(); }),
     ]);
-    view = {
-      ...view,
-      account: account.status === 'fulfilled' ? account.value : { status: 'unavailable', host: 'github.com', login: null, accounts: [], missingScopes: [], tokenSource: null, message: 'GitHub account information is unavailable.' },
-      progress: progress.status === 'fulfilled' && progress.value.login !== null ? progress.value.settings : null,
-      stalls: stalls.status === 'fulfilled' ? stalls.value : view.stalls,
-      notifications: notifications.status === 'fulfilled' ? notifications.value : view.notifications,
-    };
-    setTrustedHtml(loadStatus, [account, progress, stalls, notifications].some((result) => result.status === 'rejected') ? '<p class="hint failure">Some settings could not be loaded. <button type="button" class="linkish" data-settings-retry>Try again</button></p>' : '');
-    draw();
+    if (!current()) return;
+    setTrustedHtml(loadStatus, results.some((result) => result.status === 'rejected') ? '<p class="hint failure">Some settings could not be loaded. <button type="button" class="linkish" data-settings-retry>Try again</button></p>' : '');
+
   };
 
   const accountAction = async (busy: 'switch' | 'logout', work: () => Promise<HomeAccount>, done: string): Promise<void> => {
@@ -494,6 +501,11 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
   paintIcons(root);
   void load();
   loadModels();
+  return () => {
+    view = { ...view, tierModels: tierDefaults(), cap: handOffCap(), rater: autoRater(), calibration: calibrationMode() };
+    draw();
+  };
+
 }
 
 /** A selector that finds the same control after a redraw, so keyboard focus stays put. */

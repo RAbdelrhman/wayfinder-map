@@ -1,6 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { autoRater, calibrationMode, defaultTier, saveAutoRater, saveCalibrationMode, saveDefaultTier } from './models.js';
+import { autoRater, calibrationMode, currentCatalog, defaultTier, loadCatalog, saveAutoRater, saveCalibrationMode, saveDefaultTier } from './models.js';
+import * as routeCache from './routeData.js';
+
+it('refreshes a saved catalog after using it for immediate display', async () => {
+  const unavailable = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
+  const cache = new routeCache.RouteDataCache('', unavailable, unavailable);
+  const saved = { providers: [] };
+  vi.spyOn(cache, 'peek').mockReturnValue(saved);
+  vi.spyOn(routeCache, 'routeData').mockReturnValue(cache);
+  const read = vi.spyOn(routeCache, 'readRouteJson').mockResolvedValue({ providers: [] });
+  try {
+    expect(currentCatalog()).toEqual({ status: 'ready', catalog: saved });
+    await loadCatalog();
+    expect(read).toHaveBeenCalledWith('/api/models', true);
+  } finally { vi.restoreAllMocks(); }
+});
 
 function memoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
   const values = new Map<string, string>();

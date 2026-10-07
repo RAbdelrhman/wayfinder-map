@@ -1,4 +1,5 @@
 import { setTrustedHtml, insertTrustedHtml } from './trustedHtml.js';
+import { readRouteJson, routeData } from './routeData.js';
 import { DEFAULT_LAYOUT, graphTickets, layoutTickets } from '../layout.js';
 import type { PositionedNode } from '../layout.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
@@ -542,6 +543,7 @@ const startNext = mountStartNext({
 
 let toastTimer: number | undefined;
 let loadInFlight: Promise<boolean> | null = null;
+let loadMode: 'initial' | 'manual' | 'background' | null = null;
 
 function toast(message: string, ms = 4200): void {
   els.toast.textContent = message;
@@ -555,54 +557,25 @@ function toast(message: string, ms = 4200): void {
 /* ---------- data ---------- */
 
 async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean> {
-  if (loadInFlight !== null) return loadInFlight;
+  if (loadInFlight !== null) return mode === 'manual' && loadMode !== 'manual' ? loadInFlight.then(() => load('manual')) : loadInFlight;
+  loadMode = mode;
   const query = mode === 'manual' ? '?refresh=1' : mode === 'background' ? '?check=1' : '';
   if (mode === 'manual') setSyncedBusy(syncedButton(), true);
 
   loadInFlight = (async () => {
     try {
       const endpoint = pageRoute === null ? '/api/snapshot' : scopedApiPath(pageRoute.repo, 'snapshot');
+      const cached = mode === 'initial' ? routeData().peek<MapSnapshot>(endpoint) : null;
+      const cachedMap = cached?.maps.find((map) => map.number === pageRoute?.mapNumber);
+      if (cached !== null && cachedMap?.ticketsLoaded === true) applySnapshot(cached, snapshot === null, true);
       // A settled map's tickets are read only once its page asks for them.
       const routedMapNumber = parseRepoPagePath(window.location.pathname)?.mapNumber ?? null;
       const params = new URLSearchParams(query.slice(1));
+      if (cached !== null && mode === 'initial') params.set('check', '1');
       if (routedMapNumber !== null) params.set('map', String(routedMapNumber));
       const search = params.toString();
-      const response = await fetch(`${endpoint}${search === '' ? '' : `?${search}`}`);
-      const body: unknown = await response.json();
-      if (!response.ok) {
-        const message = (body as { error?: string }).error ?? 'Could not read the maps.';
-        if (mode !== 'background' || snapshot === null) {
-          toast(message, 12000);
-        }
-        return false;
-      }
-      const nextSnapshot = body as MapSnapshot;
-      if (snapshot !== null) notifyNewStalls(snapshot, nextSnapshot);
-      snapshot = nextSnapshot;
-      mapEventInbox.reconcileSnapshot(snapshot);
-      const currentRoute = parseRepoPagePath(window.location.pathname);
-      const routedMap = currentRoute?.mapNumber === null
-        ? -1
-        : snapshot.maps.findIndex((candidate) => candidate.number === currentRoute?.mapNumber);
-      if (currentRoute?.mapNumber !== null && currentRoute?.mapNumber !== undefined && routedMap < 0) {
-        window.location.replace(repoPath(snapshot.repo));
-        return true;
-      }
-      activeMap = routedMap >= 0 ? routedMap : Math.min(activeMap, Math.max(0, snapshot.maps.length - 1));
-      navigation?.setSnapshot(snapshot, currentMap()?.number ?? null);
-      navigation?.setActiveView(view);
-      if (mode === 'initial') {
-        const openedMap = currentMap();
-        if (openedMap !== null) rememberMapOpen(snapshot.repo, openedMap.number);
-        if (initialRouteTicketPending) {
-          initialRouteTicketPending = false;
-          const ticket = routedTicketNumber === null || openedMap === null ? undefined : ticketAt(openedMap, routedTicketNumber);
-          selected = ticket?.number ?? null;
-        }
-        inspectorTab = selected === null ? 'brief' : 'ticket';
-      }
-      render();
-      flushPendingMapEvents();
+      const nextSnapshot = await readRouteJson<MapSnapshot>(`${endpoint}${search === '' ? '' : `?${search}`}`, true);
+      applySnapshot(nextSnapshot, mode === 'initial' && (snapshot === null || initialRouteTicketPending));
       // The page reloads on its own while open, which is when it hears of a notice the server left.
       if (mode === 'background') void autoMaps.refresh();
       if (planningHandOffId !== null) void loadPlanningHandoff();
@@ -621,10 +594,41 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       return false;
     } finally {
       loadInFlight = null;
+      loadMode = null;
       setSyncedBusy(syncedButton(), false);
     }
   })();
   return loadInFlight;
+}
+
+/** Paint cached reads immediately; only live reads reconcile alerts. */
+function applySnapshot(nextSnapshot: MapSnapshot, initial: boolean, cached = false): void {
+  if (!cached && snapshot !== null) notifyNewStalls(snapshot, nextSnapshot);
+  snapshot = nextSnapshot;
+  if (!cached) mapEventInbox.reconcileSnapshot(snapshot);
+  const currentRoute = parseRepoPagePath(window.location.pathname);
+  const routedMap = currentRoute?.mapNumber === null
+    ? -1
+    : snapshot.maps.findIndex((candidate) => candidate.number === currentRoute?.mapNumber);
+  if (currentRoute?.mapNumber !== null && currentRoute?.mapNumber !== undefined && routedMap < 0) {
+    if (!cached) window.location.replace(repoPath(snapshot.repo));
+    return;
+  }
+  activeMap = routedMap >= 0 ? routedMap : Math.min(activeMap, Math.max(0, snapshot.maps.length - 1));
+  navigation?.setSnapshot(snapshot, currentMap()?.number ?? null);
+  navigation?.setActiveView(view);
+  if (initial) {
+    const openedMap = currentMap();
+    if (openedMap !== null) rememberMapOpen(snapshot.repo, openedMap.number);
+    if (initialRouteTicketPending) {
+      const ticket = routedTicketNumber === null || openedMap === null ? undefined : ticketAt(openedMap, routedTicketNumber);
+      if (!cached || ticket !== undefined) initialRouteTicketPending = false;
+      selected = ticket?.number ?? null;
+    }
+    inspectorTab = selected === null ? 'brief' : 'ticket';
+  }
+  render();
+  if (!cached) flushPendingMapEvents();
 }
 
 /* ---------- small builders ---------- */
@@ -917,26 +921,22 @@ const prototypeLoads = new Map<number, PrototypeLoad>();
 function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
   const existing = prototypeLoads.get(map.number);
   if (existing !== undefined && !force) return existing;
-  const previous = existing?.status === 'ready' ? existing.list : null;
-  const loading: PrototypeLoad = { status: 'loading' };
+  const endpoint = `${scopedApiPath(repoName(), 'prototypes')}?map=${String(map.number)}`;
+  const previous = existing?.status === 'ready' ? existing.list : routeData().peek<Prototype[]>(endpoint);
+  const loading: PrototypeLoad = previous === null ? { status: 'loading' } : { status: 'ready', list: previous };
   prototypeLoads.set(map.number, loading);
   void (async () => {
     let next: PrototypeLoad;
     try {
-      const response = await fetch(`${scopedApiPath(repoName(), 'prototypes')}?map=${String(map.number)}${force ? '&refresh=1' : ''}`);
-      const body: unknown = await response.json();
-      if (!response.ok) {
-        const error = typeof body === 'object' && body !== null && 'error' in body && typeof body.error === 'string'
-          ? body.error
-          : 'Could not read the prototypes.';
-        next = { status: 'failed', error };
-      } else if (!Array.isArray(body)) {
+      const body: unknown = await readRouteJson<Prototype[]>(`${endpoint}${force ? '&refresh=1' : ''}`, true);
+      if (!Array.isArray(body)) {
         next = { status: 'failed', error: 'The prototype response was invalid.' };
       } else {
         next = { status: 'ready', list: body as Prototype[] };
       }
     } catch (error) {
-      next = { status: 'failed', error: (error as Error).message };
+      next = previous === null ? { status: 'failed', error: (error as Error).message } : { status: 'ready', list: previous };
+      if (previous !== null && force) toast((error as Error).message, 8000);
     }
     if (prototypeLoads.get(map.number) !== loading) return;
     if (force && previous !== null && next.status === 'ready') {
@@ -1450,6 +1450,7 @@ async function handOff(copyOnly: boolean): Promise<void> {
 /* ---------- interaction ---------- */
 
 function select(number: number | null): void {
+  initialRouteTicketPending = false;
   selected = number;
   inspectorTab = number === null ? 'brief' : 'ticket';
   hideCard();
