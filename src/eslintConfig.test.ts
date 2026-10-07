@@ -14,12 +14,20 @@ describe('HTML injection lint boundary', () => {
     'el.innerHTML += x;',
     "el['innerHTML'] = x;",
     "el['outerHTML'] = x;",
+    'el[`innerHTML`] = x;',
+    'el[`outerHTML`] = x;',
+    'el[`innerHTML`] += x;',
+    'el[`inn\\u0065rHTML`] = x;',
     "el.insertAdjacentHTML('beforeend', x);",
     "el['insertAdjacentHTML']('beforeend', x);",
+    'el[`insertAdjacentHTML`]("beforeend", x);',
+    'const insert = el[`insertAdjacentHTML`];',
     'const insert = el.insertAdjacentHTML;',
     'document.write(x);',
     "document['write'](x);",
+    'document[`write`](x);',
     'window.document.write(x);',
+    'window.document[`write`](x);',
   ])('rejects %s in production code, tests, and scripts', async (code) => {
     for (const filePath of ['src/ui/lintProbe.ts', 'src/ui/lintProbe.test.ts', 'scripts/lintProbe.mjs']) {
       const results = await eslint.lintText(code, { filePath });
@@ -30,12 +38,12 @@ describe('HTML injection lint boundary', () => {
   });
 
   it('permits direct HTML injection only in the sink module', async () => {
-    const results = await eslint.lintText('el.innerHTML = x; el.insertAdjacentHTML("beforeend", x);', { filePath: 'src/ui/trustedHtml.ts' });
+    const results = await eslint.lintText('el.innerHTML = x; el.insertAdjacentHTML("beforeend", x); el[`innerHTML`] = x; el[`insertAdjacentHTML`]("beforeend", x);', { filePath: 'src/ui/trustedHtml.ts' });
     expect(results[0]?.messages.filter((message) => message.ruleId === 'no-restricted-syntax')).toEqual([]);
   });
 
   it('permits HTML reads and calls to the trusted sink', async () => {
-    const results = await eslint.lintText('setTrustedHtml(el, el.innerHTML); insertTrustedHtml(el, "beforeend", x);', { filePath: 'src/ui/lintProbe.ts' });
+    const results = await eslint.lintText('setTrustedHtml(el, el.innerHTML); setTrustedHtml(el, el[`innerHTML`]); el[`textContent`] = x; insertTrustedHtml(el, "beforeend", x);', { filePath: 'src/ui/lintProbe.ts' });
     expect(results[0]?.messages.filter((message) => message.ruleId === 'no-restricted-syntax')).toEqual([]);
   });
 });

@@ -38,11 +38,23 @@ export default defineConfig([
           message: sinkMessage,
         },
         {
+          selector: 'AssignmentExpression > MemberExpression.left[computed=true] > TemplateLiteral.property[expressions.length=0] > TemplateElement[value.cooked=/^(innerHTML|outerHTML)$/]',
+          message: sinkMessage,
+        },
+        {
           selector: 'MemberExpression[computed=false][property.name="insertAdjacentHTML"], MemberExpression[computed=true][property.value="insertAdjacentHTML"]',
           message: sinkMessage,
         },
         {
+          selector: 'MemberExpression[computed=true] > TemplateLiteral.property[expressions.length=0] > TemplateElement[value.cooked="insertAdjacentHTML"]',
+          message: sinkMessage,
+        },
+        {
           selector: 'MemberExpression[computed=false][object.name="document"][property.name="write"], MemberExpression[computed=true][object.name="document"][property.value="write"], MemberExpression[computed=false][object.property.name="document"][property.name="write"], MemberExpression[computed=true][object.property.name="document"][property.value="write"]',
+          message: sinkMessage,
+        },
+        {
+          selector: 'MemberExpression[computed=true]:matches([object.name="document"], [object.property.name="document"]) > TemplateLiteral.property[expressions.length=0] > TemplateElement[value.cooked="write"]',
           message: sinkMessage,
         },
       ],
