@@ -92,6 +92,8 @@ function harness(extra: Partial<AutoMapServiceDeps> = {}, tickets: Ticket[] = [t
   const desktop: DesktopNotification[] = [];
   const reply = { ok: true, error: null as string | null };
   const store = memoryAutoMapStore();
+  // Until an event says a ticket became next, the map shows it blocked, so turning the map on finds nothing next yet.
+  let emitted = false;
   const service = new AutoMapService({
     store,
     watcher: {
@@ -102,7 +104,7 @@ function harness(extra: Partial<AutoMapServiceDeps> = {}, tickets: Ticket[] = [t
       },
       catchUp: async (repo) => void catchUps.push(repo ?? ''),
     },
-    loadMap: async () => mapOf(tickets),
+    loadMap: async () => mapOf(emitted ? tickets : tickets.map((item) => ({ ...item, state: 'blocked' }))),
     submit: async (repo, body) => {
       submits.push({ repo, body });
       return reply;
@@ -116,7 +118,11 @@ function harness(extra: Partial<AutoMapServiceDeps> = {}, tickets: Ticket[] = [t
     batchMs: 0,
     ...extra,
   });
-  return { service, store, watching, catchUps, submits, desktop, reply, emit: (event) => watching.get(`${event.repo}#${String(event.mapNumber)}`)?.listener(event) };
+  return { service, store, watching, catchUps, submits, desktop, reply, emit: (event) => {
+      emitted = true;
+      watching.get(`${event.repo}#${String(event.mapNumber)}`)?.listener(event);
+    },
+  };
 }
 
 describe('AutoMapService', () => {
@@ -170,6 +176,39 @@ describe('AutoMapService', () => {
       expect(h.watching.size).toBe(0);
       await h.service.change('octo/one', 6, { op: 'enable' });
       expect(h.watching.size).toBe(0);
+    });
+  });
+
+  describe('starting what is next already', () => {
+    it('starts every ticket that was next when the map was turned on', async () => {
+      const h = harness({ loadMap: async () => mapOf([ticket(11), ticket(12, { state: 'blocked' }), ticket(13, { type: 'prototype' })]) });
+      await h.service.change('octo/one', 5, { op: 'enable', tier: 'hard' });
+      await vi.waitFor(() => expect(h.submits).toHaveLength(1));
+      expect(h.submits[0]?.body.tickets.map((item) => [item.ticket, item.tier])).toEqual([[11, 'hard'], [13, 'hard']]);
+    });
+
+    it('starts nothing again when a map that is on is turned on, or after a restart', async () => {
+      const h = harness({ loadMap: async () => mapOf([ticket(11)]) });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      await vi.waitFor(() => expect(h.submits).toHaveLength(1));
+      await h.service.change('octo/one', 5, { op: 'enable', tier: 'hard' });
+      const restarted = harness({ loadMap: async () => mapOf([ticket(11)]) });
+      await restarted.store.save(await h.store.load());
+      await restarted.service.init();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(h.submits).toHaveLength(1);
+      expect(restarted.submits).toEqual([]);
+    });
+
+    it('starts nothing when the map is turned off before it is read', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const h = harness({ loadMap: async () => { await gate; return mapOf([ticket(11)]); } });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      await h.service.change('octo/one', 5, { op: 'disable' });
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(h.submits).toEqual([]);
     });
   });
 

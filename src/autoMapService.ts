@@ -164,6 +164,17 @@ export class AutoMapService {
       this.unwatch(id);
     }
     await this.persist();
+    if (change.op === 'enable' && !current.enabled) void this.startAlreadyNext(repo, mapNumber, next).catch(() => undefined);
+  }
+
+  /** Turning a map on also starts what is next on it already: no event will ever say those tickets became next. */
+  private async startAlreadyNext(repo: string, mapNumber: number, setting: AutoMapSetting): Promise<void> {
+    const map = await this.deps.loadMap(repo, mapNumber);
+    if (map === null || this.setting(repo, mapNumber) !== setting || setting.enabledAt === null) return;
+    for (const ticket of map.tickets) {
+      if (ticket.state !== 'frontier') continue;
+      this.take({ type: 'ticket-next', from: ticket.state, ticket: { number: ticket.number, title: ticket.title }, id: ticket.number, repo, mapNumber, at: setting.enabledAt });
+    }
   }
 
   /** Save the machine-wide settings the trigger reads. Returns false when the patch held nothing usable. */
