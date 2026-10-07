@@ -62,10 +62,16 @@ export function adoptSettings(storage: Writer, adopt: Partial<AutoMapMachineSett
 /** At page load: take the server's machine settings, and send up any this browser holds that the server does not. */
 export async function syncServerSettings(storage: Writer = localStorage): Promise<void> {
   try {
+    const before = readLocalSettings(storage);
     const response = await fetch('/api/auto-map');
     if (!response.ok) return;
     const { settings } = (await response.json()) as { settings: AutoMapMachineSettings };
-    const { adopt, push } = reconcileSettings(readLocalSettings(storage), settings);
+    const current = readLocalSettings(storage);
+    const { adopt, push } = reconcileSettings(current, settings);
+    // Settings are already interactive while this read is in flight. Preserve any edits made since it began.
+    for (const key of ['cap', 'tierModels', 'rater', 'calibration'] as const) {
+      if (JSON.stringify(before[key]) !== JSON.stringify(current[key])) delete adopt[key];
+    }
     adoptSettings(storage, adopt);
     if (Object.keys(push).length > 0) pushServerSettings(push);
   } catch {

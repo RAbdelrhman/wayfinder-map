@@ -17,6 +17,7 @@ export interface NewMapPageContext {
   recents: readonly string[];
   catalog: ModelCatalog | null;
   t3Unavailable: string | null;
+  ready?: Promise<Pick<NewMapPageContext, 'homeState' | 'catalog' | 't3Unavailable'>>;
   getJson<T>(url: string): Promise<T>;
   postJson<T>(url: string, body?: unknown): Promise<T>;
   remember(repo: string): void;
@@ -66,7 +67,8 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
   menuController?.abort();
   menuController = new AbortController();
   const { signal } = menuController;
-  const { main, recents, catalog, t3Unavailable } = context;
+  const { main, recents } = context;
+  let { catalog, t3Unavailable } = context;
   const initialRepo = initialRepository(repositoryQuery);
   const initialGoal = initialRepo === '' ? '' : (consumeNewMapRetryGoal(initialRepo) ?? '');
   const knownRepos = Array.from(
@@ -629,6 +631,14 @@ export async function renderNewMapPage(context: NewMapPageContext, repositoryQue
   renderRepoOptions();
   renderModelChip();
   sync();
+  void context.ready?.then((ready) => {
+    if (signal.aborted) return;
+    catalog = ready.catalog;
+    t3Unavailable = ready.t3Unavailable;
+    for (const candidate of ready.homeState?.repositories ?? []) if (!knownRepos.includes(candidate)) knownRepos.push(candidate);
+    renderRepoOptions();
+    sync();
+  });
   if (repo !== null) void loadWorkspace();
   goal.focus();
 }

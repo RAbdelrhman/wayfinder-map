@@ -28,6 +28,7 @@ export interface HomeLandingOptions {
   refresh: boolean;
   storage: HomeStorage;
   getJson: GetJson;
+  peekJson?: <T>(url: string) => T | null;
   paint: (html: string) => void;
   bindRepoPicker: (input: HTMLInputElement, menu: HTMLUListElement) => void;
   accountPanel: (state: HomeState) => string;
@@ -43,8 +44,9 @@ async function loadHomeSnapshots(
   repositories: readonly string[],
   refresh: boolean,
   getJson: GetJson,
+  snapshots: Map<string, MapSnapshot | null>,
+  changed: () => void,
 ): Promise<Map<string, MapSnapshot | null>> {
-  const snapshots = new Map<string, MapSnapshot | null>();
   let next = 0;
   const workers = Array.from({ length: Math.min(4, repositories.length) }, async () => {
     while (next < repositories.length) {
@@ -54,8 +56,9 @@ async function loadHomeSnapshots(
         const url = `${scopedApiPath(repo, 'snapshot')}${refresh ? '?refresh=1' : ''}`;
         snapshots.set(repo.toLocaleLowerCase(), await getJson<MapSnapshot>(url));
       } catch {
-        snapshots.set(repo.toLocaleLowerCase(), null);
+        if (!snapshots.has(repo.toLocaleLowerCase())) snapshots.set(repo.toLocaleLowerCase(), null);
       }
+      changed();
     }
   });
   await Promise.all(workers);
@@ -315,128 +318,156 @@ export async function renderHomeLanding(options: HomeLandingOptions): Promise<vo
     ...(recency.lastOpenedMap === null ? [] : [recency.lastOpenedMap.repo]),
     ...recentWorkRepos,
   ])).slice(0, 18);
-  const snapshots = accountReady ? await loadHomeSnapshots(snapshotRepos, options.refresh, options.getJson) : new Map<string, MapSnapshot | null>();
-  const availableSnapshots = [...snapshots.values()].filter((snapshot): snapshot is MapSnapshot => snapshot !== null);
-  const continueDestination = accountReady ? chooseContinueDestination(recency.lastOpenedMap, handOffs, availableSnapshots) : null;
-  const workItems = accountReady ? buildHomeWorkItems(handOffs, availableSnapshots) : [];
-  const summaries = new Map<string, RepositorySummary | null>(repositories.map((repo) => {
-    const snapshot = snapshots.get(repo.toLocaleLowerCase());
-    return [repo.toLocaleLowerCase(), snapshot === undefined || snapshot === null ? null : summarizeRepository(repo, snapshot)];
-  }));
-  const warning = state.warning === null
-    ? ''
-    : `<div class="panel is-warning home-alert"><span class="grow">${escapeHtml(state.warning)}</span><button type="button" class="ghost" data-refresh-home>Retry</button></div>`;
-  const rows = repositories.map((repo, index) => repositoryRowMarkup(
-    repo,
-    index,
-    summaries.get(repo.toLocaleLowerCase()) ?? null,
-    recency.repositoryOpenedAt[repo.toLocaleLowerCase()],
-    accountReady,
-  )).join('');
-  const emptyRepositories = accountReady
-    ? '<p class="wf-quiet">Repositories you open show up here, most recent first.</p>'
-    : '<p class="wf-quiet">Sign in to load the repositories that hold Wayfinder maps.</p>';
-  const handOffNotice = handOffError ? `<p class="wf-quiet is-warning" role="status">Couldn't load hand-off status. Refresh to try again.</p>` : '';
-  const needsYou = workItems.filter((item) => item.lane === 'needs-you');
-  const running = workItems.filter((item) => item.lane === 'running');
-  const hiddenWork = needsYou.length > LANE_LIMIT || running.length > LANE_LIMIT;
-  const seeAll = workItems.length > 5 || hiddenWork ? `<button type="button" class="linkish" data-home-see-all aria-expanded="false">See all ${String(workItems.length)}</button>` : '';
-  const showAll = repositories.length > HOME_REPOSITORY_LIMIT ? `<button type="button" class="wf-more" data-home-show-all>Show all ${String(repositories.length)}</button>` : '';
-
-  options.paint(`<div class="wf-home">
-    ${options.accountPanel(state)}${warning}
-    <div class="wf-cols"><div class="wf-left">
-      <section aria-label="Continue">${homeContinueCardMarkup(continueDestination, accountReady)}</section>
-      <section aria-labelledby="home-inflight-heading"><div class="wf-label"><span id="home-inflight-heading">In flight</span><span class="grow"></span>${seeAll}</div>${handOffNotice}
-        ${accountReady ? `<div class="wf-lanes">${inFlightLaneMarkup('Needs you', 'hand', 'needs-you', needsYou)}${inFlightLaneMarkup('Running in T3 Code', 'bolt', 'running', running)}</div>` : '<div class="wf-none">Needs GitHub. Sign in to see what’s waiting on you and what T3 Code is running.</div>'}</section>
-      ${handOffHistorySection()}
-      <section aria-labelledby="home-repositories-heading"><div class="wf-label"><span id="home-repositories-heading">Repositories</span><span class="grow"></span><button type="button" class="wf-icon-btn" data-refresh-home aria-label="Refresh Home" title="Refresh Home"><span data-icon="refresh" aria-hidden="true"></span></button></div>
-        <form class="wf-find" id="repo-entry" role="search"><label class="search repo-picker"><span data-icon="lens" aria-hidden="true"></span><span class="sr-only">Find a repository</span><input id="repo-name" name="repo" type="search" placeholder="Search your repositories, or type owner/name" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="repo-menu" aria-autocomplete="list" /><ul class="repo-menu" id="repo-menu" role="listbox" hidden></ul></label></form>
-        <div class="wf-node wf-list" id="home-repo-list">${rows === '' ? emptyRepositories : `${rows}<p class="wf-quiet" data-home-repo-no-match hidden>No recent repository matches. Press Enter to open it as owner/name.</p>${showAll}`}</div>
-      </section>
-    </div><aside class="wf-side" id="progress-host" aria-label="Progress">${progressSkeletonMarkup(readHomeShape(options.storage).progressHeight)}</aside></div>
-  </div>`);
-
-  const form = document.getElementById('repo-entry');
-  if (!(form instanceof HTMLFormElement)) throw new Error('Missing repository search form.');
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const repo = normalizeRepo(String(new FormData(form).get('repo') ?? ''));
-    if (repo === null) {
-      const input = document.getElementById('repo-name');
-      if (!(input instanceof HTMLInputElement)) return;
-      input.setCustomValidity('Use owner/name.');
-      input.reportValidity();
-      input.setCustomValidity('');
-      return;
-    }
-    window.location.assign(repoPath(repo));
-  });
-  const input = document.getElementById('repo-name');
-  const menu = document.getElementById('repo-menu');
-  if (!(input instanceof HTMLInputElement) || !(menu instanceof HTMLUListElement)) throw new Error('Missing repository search controls.');
-  const repoRows = [...document.querySelectorAll<HTMLElement>('[data-home-repo-row]')];
-  const noMatch = document.querySelector<HTMLElement>('[data-home-repo-no-match]');
-  const showAllButton = document.querySelector<HTMLButtonElement>('[data-home-show-all]');
-  let expanded = false;
-  const filterRows = (): void => {
-    const query = input.value.trim().toLocaleLowerCase();
-    let visible = 0;
-    for (const [index, row] of repoRows.entries()) {
-      const matches = row.dataset['repoSearch']?.includes(query) ?? false;
-      const show = matches && (query.length > 0 || expanded || index < HOME_REPOSITORY_LIMIT);
-      row.hidden = !show;
-      if (show) visible += 1;
-    }
-    if (noMatch !== null) noMatch.hidden = visible > 0 || repositories.length === 0;
-    if (showAllButton !== null) showAllButton.hidden = repositories.length <= HOME_REPOSITORY_LIMIT || expanded || query.length > 0;
-  };
-  input.addEventListener('input', filterRows);
-  options.bindRepoPicker(input, menu);
-  showAllButton?.addEventListener('click', async () => {
-    expanded = true;
-    filterRows();
-    if (showAllButton === null) return;
-    showAllButton.disabled = true;
-    showAllButton.textContent = 'Loading map activity…';
-    const missing = repositories.filter((repo) => !snapshots.has(repo.toLocaleLowerCase()));
-    const extraSnapshots = accountReady ? await loadHomeSnapshots(missing, false, options.getJson) : new Map<string, MapSnapshot | null>();
-    for (const [repo, snapshot] of extraSnapshots) {
-      snapshots.set(repo, snapshot);
-      const name = repositories.find((candidate) => candidate.toLocaleLowerCase() === repo) ?? repo;
-      summaries.set(repo, snapshot === null ? null : summarizeRepository(name, snapshot));
-    }
-    for (const row of repoRows) {
-      const repo = row.dataset['homeRepo'];
-      if (repo === undefined) continue;
-      setTrustedHtml(row, repositoryRowInner(repo, summaries.get(repo.toLocaleLowerCase()) ?? null, recency.repositoryOpenedAt[repo.toLocaleLowerCase()], accountReady));
-    }
-    paintIcons(document);
-    showAllButton.hidden = true;
-  });
-  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-open-handoff]')) {
-    button.addEventListener('click', async () => {
-      const id = button.dataset['openHandoff'];
-      if (id === undefined) return;
-      button.disabled = true;
-      try {
-        await options.focusHandOff(id);
-      } catch (error) {
-        options.toast(error instanceof Error ? error.message : String(error), 9000);
-      } finally {
-        button.disabled = false;
-      }
-    });
+  const snapshots = new Map<string, MapSnapshot | null>();
+  for (const repo of snapshotRepos) {
+    const saved = options.peekJson?.<MapSnapshot>(scopedApiPath(repo, 'snapshot')) ?? null;
+    if (saved !== null) snapshots.set(repo.toLocaleLowerCase(), saved);
   }
-  document.querySelector<HTMLButtonElement>('[data-home-see-all]')?.addEventListener('click', (event) => {
-    const button = event.currentTarget;
-    if (!(button instanceof HTMLButtonElement)) return;
-    const open = button.getAttribute('aria-expanded') === 'true';
-    button.setAttribute('aria-expanded', String(!open));
-    button.textContent = open ? `See all ${String(workItems.length)}` : 'Show less';
-    for (const row of document.querySelectorAll<HTMLElement>('.home-inflight-extra')) row.hidden = open;
-  });
-  const progressHost = document.getElementById('progress-host');
-  if (progressHost !== null) void options.renderProgress(progressHost);
+  let expanded = false;
+  let allWork = false;
+  let progressStarted = false;
+  const draw = (): void => {
+    const previousInput = document.getElementById('repo-name') as HTMLInputElement | null;
+    const query = previousInput?.value ?? '';
+    const focused = document.activeElement === previousInput;
+  const oldProgress = document.getElementById('progress-host');
+    const availableSnapshots = [...snapshots.values()].filter((snapshot): snapshot is MapSnapshot => snapshot !== null);
+    const continueDestination = accountReady ? chooseContinueDestination(recency.lastOpenedMap, handOffs, availableSnapshots) : null;
+    const workItems = accountReady ? buildHomeWorkItems(handOffs, availableSnapshots) : [];
+    const summaries = new Map<string, RepositorySummary | null>(repositories.map((repo) => {
+      const snapshot = snapshots.get(repo.toLocaleLowerCase());
+      return [repo.toLocaleLowerCase(), snapshot === undefined || snapshot === null ? null : summarizeRepository(repo, snapshot)];
+    }));
+    const warning = state.warning === null
+      ? ''
+      : `<div class="panel is-warning home-alert"><span class="grow">${escapeHtml(state.warning)}</span><button type="button" class="ghost" data-refresh-home>Retry</button></div>`;
+    const rows = repositories.map((repo, index) => repositoryRowMarkup(
+      repo,
+      index,
+      summaries.get(repo.toLocaleLowerCase()) ?? null,
+      recency.repositoryOpenedAt[repo.toLocaleLowerCase()],
+      accountReady,
+    )).join('');
+    const emptyRepositories = accountReady
+      ? '<p class="wf-quiet">Repositories you open show up here, most recent first.</p>'
+      : '<p class="wf-quiet">Sign in to load the repositories that hold Wayfinder maps.</p>';
+    const handOffNotice = handOffError ? `<p class="wf-quiet is-warning" role="status">Couldn't load hand-off status. Refresh to try again.</p>` : '';
+    const needsYou = workItems.filter((item) => item.lane === 'needs-you');
+    const running = workItems.filter((item) => item.lane === 'running');
+    const hiddenWork = needsYou.length > LANE_LIMIT || running.length > LANE_LIMIT;
+    const seeAll = workItems.length > 5 || hiddenWork ? `<button type="button" class="linkish" data-home-see-all aria-expanded="false">See all ${String(workItems.length)}</button>` : '';
+    const showAll = repositories.length > HOME_REPOSITORY_LIMIT ? `<button type="button" class="wf-more" data-home-show-all>Show all ${String(repositories.length)}</button>` : '';
+
+    options.paint(`<div class="wf-home">
+      ${options.accountPanel(state)}${warning}
+      <div class="wf-cols"><div class="wf-left">
+        <section aria-label="Continue">${homeContinueCardMarkup(continueDestination, accountReady)}</section>
+        <section aria-labelledby="home-inflight-heading"><div class="wf-label"><span id="home-inflight-heading">In flight</span><span class="grow"></span>${seeAll}</div>${handOffNotice}
+          ${accountReady ? `<div class="wf-lanes">${inFlightLaneMarkup('Needs you', 'hand', 'needs-you', needsYou)}${inFlightLaneMarkup('Running in T3 Code', 'bolt', 'running', running)}</div>` : '<div class="wf-none">Needs GitHub. Sign in to see what’s waiting on you and what T3 Code is running.</div>'}</section>
+        ${handOffHistorySection()}
+        <section aria-labelledby="home-repositories-heading"><div class="wf-label"><span id="home-repositories-heading">Repositories</span><span class="grow"></span><button type="button" class="wf-icon-btn" data-refresh-home aria-label="Refresh Home" title="Refresh Home"><span data-icon="refresh" aria-hidden="true"></span></button></div>
+          <form class="wf-find" id="repo-entry" role="search"><label class="search repo-picker"><span data-icon="lens" aria-hidden="true"></span><span class="sr-only">Find a repository</span><input id="repo-name" name="repo" type="search" placeholder="Search your repositories, or type owner/name" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="repo-menu" aria-autocomplete="list" /><ul class="repo-menu" id="repo-menu" role="listbox" hidden></ul></label></form>
+          <div class="wf-node wf-list" id="home-repo-list">${rows === '' ? emptyRepositories : `${rows}<p class="wf-quiet" data-home-repo-no-match hidden>No recent repository matches. Press Enter to open it as owner/name.</p>${showAll}`}</div>
+        </section>
+      </div><aside class="wf-side" id="progress-host" aria-label="Progress">${progressSkeletonMarkup(readHomeShape(options.storage).progressHeight)}</aside></div>
+    </div>`);
+
+    const form = document.getElementById('repo-entry');
+    if (!(form instanceof HTMLFormElement)) throw new Error('Missing repository search form.');
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const repo = normalizeRepo(String(new FormData(form).get('repo') ?? ''));
+      if (repo === null) {
+        const input = document.getElementById('repo-name');
+        if (!(input instanceof HTMLInputElement)) return;
+        input.setCustomValidity('Use owner/name.');
+        input.reportValidity();
+        input.setCustomValidity('');
+        return;
+      }
+      window.location.assign(repoPath(repo));
+    });
+    const input = document.getElementById('repo-name');
+    const menu = document.getElementById('repo-menu');
+    if (!(input instanceof HTMLInputElement) || !(menu instanceof HTMLUListElement)) throw new Error('Missing repository search controls.');
+    const repoRows = [...document.querySelectorAll<HTMLElement>('[data-home-repo-row]')];
+    const noMatch = document.querySelector<HTMLElement>('[data-home-repo-no-match]');
+    const showAllButton = document.querySelector<HTMLButtonElement>('[data-home-show-all]');
+    input.value = query;
+    if (focused) input.focus();
+    const filterRows = (): void => {
+      const query = input.value.trim().toLocaleLowerCase();
+      let visible = 0;
+      for (const [index, row] of repoRows.entries()) {
+        const matches = row.dataset['repoSearch']?.includes(query) ?? false;
+        const show = matches && (query.length > 0 || expanded || index < HOME_REPOSITORY_LIMIT);
+        row.hidden = !show;
+        if (show) visible += 1;
+      }
+      if (noMatch !== null) noMatch.hidden = visible > 0 || repositories.length === 0;
+      if (showAllButton !== null) showAllButton.hidden = repositories.length <= HOME_REPOSITORY_LIMIT || expanded || query.length > 0;
+    };
+    input.addEventListener('input', filterRows);
+    filterRows();
+    options.bindRepoPicker(input, menu);
+    showAllButton?.addEventListener('click', async () => {
+      expanded = true;
+      filterRows();
+      if (showAllButton === null) return;
+      showAllButton.disabled = true;
+      showAllButton.textContent = 'Loading map activity…';
+      const missing = repositories.filter((repo) => !snapshots.has(repo.toLocaleLowerCase()));
+      const extraSnapshots = accountReady ? await loadHomeSnapshots(missing, false, options.getJson, new Map(), () => undefined) : new Map<string, MapSnapshot | null>();
+      for (const [repo, snapshot] of extraSnapshots) {
+        snapshots.set(repo, snapshot);
+        const name = repositories.find((candidate) => candidate.toLocaleLowerCase() === repo) ?? repo;
+        summaries.set(repo, snapshot === null ? null : summarizeRepository(name, snapshot));
+      }
+      for (const row of repoRows) {
+        const repo = row.dataset['homeRepo'];
+        if (repo === undefined) continue;
+        setTrustedHtml(row, repositoryRowInner(repo, summaries.get(repo.toLocaleLowerCase()) ?? null, recency.repositoryOpenedAt[repo.toLocaleLowerCase()], accountReady));
+      }
+      paintIcons(document);
+      showAllButton.hidden = true;
+    });
+    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-open-handoff]')) {
+      button.addEventListener('click', async () => {
+        const id = button.dataset['openHandoff'];
+        if (id === undefined) return;
+        button.disabled = true;
+        try {
+          await options.focusHandOff(id);
+        } catch (error) {
+          options.toast(error instanceof Error ? error.message : String(error), 9000);
+        } finally {
+          button.disabled = false;
+        }
+      });
+    }
+    document.querySelector<HTMLButtonElement>('[data-home-see-all]')?.addEventListener('click', (event) => {
+      const button = event.currentTarget;
+      if (!(button instanceof HTMLButtonElement)) return;
+      const open = allWork;
+      allWork = !open;
+      button.setAttribute('aria-expanded', String(!open));
+      button.textContent = open ? `See all ${String(workItems.length)}` : 'Show less';
+      for (const row of document.querySelectorAll<HTMLElement>('.home-inflight-extra')) row.hidden = open;
+    });
+    const seeAllButton = document.querySelector<HTMLButtonElement>('[data-home-see-all]');
+    if (seeAllButton !== null && allWork) {
+      seeAllButton.setAttribute('aria-expanded', 'true');
+      seeAllButton.textContent = 'Show less';
+      for (const row of document.querySelectorAll<HTMLElement>('.home-inflight-extra')) row.hidden = false;
+    }
+    const progressHost = document.getElementById('progress-host');
+    if (oldProgress !== null && progressHost !== null) progressHost.replaceWith(oldProgress);
+    if (!progressStarted && (oldProgress ?? progressHost) !== null) {
+      progressStarted = true;
+      void options.renderProgress((oldProgress ?? progressHost)!);
+    }
+  };
+  draw();
+  if (accountReady) await loadHomeSnapshots(snapshotRepos, options.refresh, options.getJson, snapshots, draw);
 }
 

@@ -1,6 +1,7 @@
 import { findModel, liveChoice, parseAutoRater, parseCalibrationMode, TIERS } from '../models.js';
 import type { AutoRater, CalibrationMode, CatalogModel, ModelCatalog, ModelChoice, Tier } from '../models.js';
 import { pushServerSettings } from './serverSettings.js';
+import { readRouteJson, routeData } from './routeData.js';
 
 /* The model picker: what T3 Code can run, a default per task tier, and a tier per ticket. */
 
@@ -104,19 +105,22 @@ let catalogState: CatalogState = { status: 'loading' };
 let inFlight: Promise<CatalogState> | null = null;
 
 export function currentCatalog(): CatalogState {
+  if (catalogState.status === 'loading') {
+    const saved = routeData().peek<ModelCatalog>('/api/models');
+    if (saved !== null) catalogState = { status: 'ready', catalog: saved };
+  }
   return catalogState;
 }
 
 /** Ask the server for T3 Code's models. `force` re-reads, for when the user opens the settings. */
 export function loadCatalog(force = false): Promise<CatalogState> {
   if (!force && catalogState.status === 'ready') return Promise.resolve(catalogState);
-  inFlight ??= fetch('/api/models')
-    .then(async (response) => {
-      const body = (await response.json()) as ModelCatalog & { error?: string };
-      catalogState = response.ok ? { status: 'ready', catalog: body } : { status: 'unavailable', reason: body.error ?? 'T3 Code is not reachable.' };
+  inFlight ??= readRouteJson<ModelCatalog>('/api/models', force)
+    .then((body) => {
+      catalogState = { status: 'ready', catalog: body };
       return catalogState;
     })
-    .catch(() => (catalogState = { status: 'unavailable', reason: 'T3 Code is not reachable.' }))
+    .catch(() => (catalogState = currentCatalog().status === 'ready' ? catalogState : { status: 'unavailable', reason: 'T3 Code is not reachable.' }))
     .finally(() => {
       inFlight = null;
     });

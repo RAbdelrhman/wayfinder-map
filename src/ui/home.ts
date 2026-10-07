@@ -1,4 +1,5 @@
 import { setTrustedHtml } from './trustedHtml.js';
+import { readRouteJson, routeData } from './routeData.js';
 import type { HomeState } from '../home.js';
 import type { AuthFlowState } from '../authFlow.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
@@ -7,7 +8,7 @@ import type { MapSnapshot, WayfinderMap } from '../types.js';
 import { bindUpdater, paintIcons, paintRepoIcons, repoIconHtml, updateAccountMark } from './chrome.js';
 import type { AccountMark, AccountProfile } from './chrome.js';
 import * as icons from './icons.js';
-import { loadCatalog } from './models.js';
+import { currentCatalog, loadCatalog } from './models.js';
 import { syncedLabel } from './focus.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
@@ -191,10 +192,7 @@ function accountPanel(state: HomeState): string {
 }
 
 async function getJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
-  const body: unknown = await response.json();
-  if (!response.ok) throw new Error((body as { error?: string }).error ?? 'Request failed.');
-  return body as T;
+  return readRouteJson<T>(url);
 }
 
 async function postJson<T>(url: string, body?: unknown): Promise<T> {
@@ -205,6 +203,10 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
   });
   const value: unknown = await response.json();
   if (!response.ok) throw new Error((value as { error?: string }).error ?? 'Request failed.');
+  if (url.startsWith('/api/auth/')) routeData().adoptScope(response);
+  if (url.endsWith('/settle') || url.endsWith('/follow')) routeData().remember(url.replace(/\/(settle|follow)$/, '/snapshot'), value);
+  routeData().invalidate('/api/hand-offs');
+  if (url === '/api/progress/settings') routeData().invalidate('/api/progress');
   return value as T;
 }
 
@@ -264,7 +266,7 @@ interface HandOffSnapshot {
 
 let draftAutoRefresh: AutoRefresh | null = null;
 
-async function renderDraftPage(repo: string, draftId: string, refresh = false): Promise<boolean> {
+async function renderDraftPage(repo: string, draftId: string, refresh = false, force = refresh): Promise<boolean> {
   navigation?.setCurrentRepo(repo);
   if (refresh) setSyncBusy(true);
   let tracking: HandOffSnapshot;
@@ -281,23 +283,6 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
   }
   const draft = handOff as NewMapHandOff;
   let snapshot: MapSnapshot | null = null;
-  let snapshotWarning = '';
-  try {
-    snapshot = await getJson<MapSnapshot>(`${scopedApiPath(repo, 'snapshot')}?refresh=1`);
-  } catch {
-    snapshotWarning = `<div class="panel is-warning"><span class="grow">Couldn't check GitHub for the new map yet. Wayfinder will keep trying.</span></div>`;
-  }
-  if (snapshot !== null) {
-    navigation?.setSnapshot(snapshot, null);
-    const target = draftToMapPath(repo, draft, snapshot.maps);
-    if (target !== null) {
-      window.location.replace(target);
-      if (refresh) setSyncBusy(false);
-      return true;
-    }
-    const fetched = Date.parse(snapshot.fetchedAt);
-    setSynced(Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
-  }
 
   remember(repo);
   document.title = `${draft.title ?? 'New map'} - being planned - Wayfinder`;
@@ -306,7 +291,6 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
     ? `<div class="draft-recovery-actions"><button type="button" class="ghost" data-copy-draft-prompt>${icon(icons.COPY)}Copy prompt</button></div>`
     : '';
   paint(`<div class="draft-map-page">
-      ${snapshotWarning}
       <header class="draft-map-head">
         <span class="badge draft-map-badge">${badge}</span>
         <h1>${escapeHtml(draft.title ?? 'New map')}</h1>
@@ -339,9 +323,26 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
       button.disabled = false;
     }
   });
+  try {
+    snapshot = await readRouteJson<MapSnapshot>(`${scopedApiPath(repo, 'snapshot')}${force ? '?refresh=1' : '?check=1'}`, true);
+  } catch {
+    toast("Couldn't check GitHub for the new map yet. Wayfinder will keep trying.", 8000);
+  }
+  if (snapshot !== null) {
+    navigation?.setSnapshot(snapshot, null);
+    const target = draftToMapPath(repo, draft, snapshot.maps);
+    if (target !== null) {
+      window.location.replace(target);
+      if (refresh) setSyncBusy(false);
+      return true;
+    }
+    const fetched = Date.parse(snapshot.fetchedAt);
+    setSynced(Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
+  }
+
   if (draftAutoRefresh === null) {
     draftAutoRefresh = new AutoRefresh({
-      refresh: () => renderDraftPage(repo, draftId, true),
+      refresh: () => renderDraftPage(repo, draftId, true, false),
       isVisible: () => document.visibilityState === 'visible',
     });
     if (snapshot !== null) draftAutoRefresh.markSuccessfulSnapshot();
@@ -352,11 +353,11 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false): 
 }
 
 async function renderHome(refresh: boolean): Promise<void> {
-  await handOffSurface.refresh();
   await renderHomeLanding({
     refresh,
     storage: localStorage,
     getJson,
+    peekJson: <T>(url: string) => routeData().peek<T>(url),
     paint,
     bindRepoPicker,
     accountPanel,
@@ -379,11 +380,15 @@ async function renderHome(refresh: boolean): Promise<void> {
 
 /** Home's progress panel loads on its own, so a slow GitHub search never holds the page. */
 async function renderProgress(host: HTMLElement): Promise<void> {
+  const saved = routeData().peek<ProgressState>('/api/progress');
+  const mount = (state: ProgressState): void => mountProgressPanel(host, state, (patch) => postJson<ProgressSettings>('/api/progress/settings', patch), (message) => toast(message));
+  if (saved !== null) mount(saved);
   try {
-    const state = await getJson<ProgressState>('/api/progress');
+    const state = await readRouteJson<ProgressState>('/api/progress', true);
     if (!host.isConnected) return;
-    mountProgressPanel(host, state, (patch) => postJson<ProgressSettings>('/api/progress/settings', patch), (message) => toast(message));
+    mount(state);
   } catch (error) {
+    if (saved !== null) return;
     setTrustedHtml(host, `<div class="card progress-panel"><p class="eyebrow">Fog cleared</p><p class="hint failure">${escapeHtml(error instanceof Error ? error.message : String(error))}</p></div>`);
   }
 }
@@ -598,14 +603,17 @@ async function renderRepository(repo: string, refresh: boolean): Promise<void> {
   document.title = `${repo} · Wayfinder`;
   remember(repo);
   void syncAccountMark();
-  const snapshot = await getJson<MapSnapshot>(`${scopedApiPath(repo, 'snapshot')}${refresh ? '?refresh=1' : ''}`);
+  const endpoint = scopedApiPath(repo, 'snapshot');
+  const cached = routeData().peek<MapSnapshot>(endpoint);
+  if (!refresh && cached !== null) paintRepository(repo, cached, false, true);
+  const snapshot = await readRouteJson<MapSnapshot>(`${endpoint}${refresh ? '?refresh=1' : cached === null ? '' : '?check=1'}`, true);
   const fetched = Date.parse(snapshot.fetchedAt);
   setSynced(Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
   paintRepository(repo, snapshot, false);
 }
 
-function paintRepository(repo: string, snapshot: MapSnapshot, settledOpen: boolean): void {
-  notificationInbox.reconcileSnapshot(snapshot);
+function paintRepository(repo: string, snapshot: MapSnapshot, settledOpen: boolean, cached = false): void {
+  if (!cached) notificationInbox.reconcileSnapshot(snapshot);
   navigation?.setSnapshot(snapshot, null);
   paint(repositoryPageHtml(repo, snapshot), 'repository-sheet');
   bindRepositoryMaps(repo, snapshot.maps, settledOpen);
@@ -647,23 +655,22 @@ function bindPublicMaps(repo: string, snapshot: MapSnapshot, settledOpen: boolea
 async function renderNewMap(): Promise<void> {
   document.title = 'Start a new map · Wayfinder';
   setSynced('');
-  await syncAccountMark();
-
-  let homeState: HomeState | null = null;
-  try {
-    homeState = await getJson<HomeState>('/api/home');
-  } catch {
-    // The composer can still use a repository name when GitHub is unavailable.
-  }
-
+  void syncAccountMark();
   const repositoryQuery = new URLSearchParams(window.location.search).get('repo');
   const initialRepo = initialRepository(repositoryQuery);
   navigation?.setCurrentRepo(initialRepo || null);
-  const catalogState = await loadCatalog();
+  const homeState = routeData().peek<HomeState>('/api/home');
+  const catalogState = currentCatalog();
+  const ready = Promise.allSettled([getJson<HomeState>('/api/home'), loadCatalog()]).then(([home, models]) => ({
+    homeState: home.status === 'fulfilled' ? home.value : homeState,
+    catalog: models.status === 'fulfilled' && models.value.status === 'ready' ? models.value.catalog : null,
+    t3Unavailable: models.status === 'fulfilled' && models.value.status === 'unavailable' ? models.value.reason : null,
+  }));
   await renderNewMapPage(
     {
       main: els.main,
       homeState,
+      ready,
       recents: recentRepositories(),
       catalog: catalogState.status === 'ready' ? catalogState.catalog : null,
       t3Unavailable: catalogState.status === 'unavailable' ? catalogState.reason : null,
@@ -716,7 +723,9 @@ async function run(work: () => Promise<unknown> | unknown): Promise<void> {
     await work();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (page.kind === 'repository') {
+    if (page.kind === 'repository' && repositoryPageCards !== null) {
+      // A failed refresh leaves the last successful view usable.
+    } else if (page.kind === 'repository') {
       paint(repositoryLoadErrorHtml(message), 'repository-sheet');
     } else {
       paint('<div class="empty" role="alert"><strong>Wayfinder could not load this page</strong><p>' + escapeHtml(message) + '</p><button type="button" class="ghost" data-retry-page>Try again</button></div>');

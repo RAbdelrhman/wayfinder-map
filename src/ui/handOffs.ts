@@ -1,4 +1,5 @@
 import type { ModelChangeReason } from '../autoDecision.js';
+import { readRouteJson } from './routeData.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import type { TicketState } from '../types.js';
 import { draftMapPath, mapPath, repoPath } from '../repoRoutes.js';
@@ -340,9 +341,7 @@ export function mountHandOffs(): HandOffSurface {
     if (refreshInFlight !== null) return refreshInFlight;
     refreshInFlight = (async () => {
       try {
-        const response = await fetch('/api/hand-offs');
-        if (!response.ok) return;
-        const snapshot = (await response.json()) as { handOffs?: HandOffStatusDto[] };
+        const snapshot = await readRouteJson<{ handOffs?: HandOffStatusDto[] }>('/api/hand-offs', true);
         if (!Array.isArray(snapshot.handOffs)) return;
         const viewKey = (item: HandOffStatusDto): string => `${handOffPresentation(item).state}:${handOffPresentation(item).report}:${String(item.stale)}`;
         const previous = new Map(records.map((item) => [item.id, viewKey(item)]));

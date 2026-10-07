@@ -96,6 +96,39 @@ const sampleMap: WayfinderMap = {
 };
 
 describe('repository-scoped server', () => {
+  it('keeps discovery cached when the account mark is read and shares its scope across every document route', async () => {
+    const homeLoader = vi.fn(async () => home);
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader, accountReader: async () => home.account, fetcher: async () => ({ maps: [], warnings: [] }), handOffStore: new HandOffStore({ filePath: null }) });
+    try {
+      await fetch(`${running.url}/api/home`);
+      await fetch(`${running.url}/api/auth/status`);
+      await fetch(`${running.url}/api/home`);
+      expect(homeLoader).toHaveBeenCalledTimes(1);
+      const scopes: Array<string | undefined> = [];
+      for (const path of ['/', '/settings', '/new-map', '/repos/octo/one', '/repos/octo/one/maps/5', '/repos/octo/one/maps/draft-11111111-1111-4111-8111-111111111111']) {
+        const response = await fetch(running.url + path);
+        const html = await response.text();
+        scopes.push(html.match(/name="wayfinder-cache-scope" content="([^"]+)"/)?.[1]);
+        expect(response.status).toBe(200);
+      }
+      expect(scopes.every((scope) => scope !== undefined && scope === scopes[0])).toBe(true);
+    } finally { await new Promise<void>((resolve) => running.server.close(() => resolve())); }
+  });
+
+  it('deduplicates Home discovery and changes the cache scope when the GitHub identity changes', async () => {
+    let account = home.account;
+    const homeLoader = vi.fn(async () => ({ ...home, account }));
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader, accountReader: async () => account, fetcher: async () => ({ maps: [], warnings: [] }), handOffStore: new HandOffStore({ filePath: null }) });
+    try {
+      const [before] = await Promise.all([fetch(`${running.url}/api/home`), fetch(`${running.url}/api/home`)]);
+      expect(homeLoader).toHaveBeenCalledTimes(1);
+      account = { ...account, login: 'another' };
+      const changed = await fetch(`${running.url}/api/auth/status?refresh=1`);
+      expect(changed.headers.get('x-wayfinder-cache-scope')).not.toBe(before!.headers.get('x-wayfinder-cache-scope'));
+      await fetch(`${running.url}/api/home`);
+      expect(homeLoader).toHaveBeenCalledTimes(2);
+    } finally { await new Promise<void>((resolve) => running.server.close(() => resolve())); }
+  });
   it('serves a dedicated Settings document for direct category links', async () => {
     const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, fetcher: async () => ({ maps: [], warnings: [] }), handOffStore: new HandOffStore({ filePath: null }) });
     try {
@@ -290,7 +323,7 @@ describe('repository-scoped server', () => {
       { readMap, readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) },
       { intervalMs: 10 },
     );
-    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, mapWatcher });
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, mapWatcher, autoMapStore: memoryAutoMapStore(), handOffStore: new HandOffStore({ filePath: null }) });
 
     try {
       expect((await fetch(`${running.url}/api/repos/octo/one/events`)).status).toBe(400);
@@ -760,6 +793,12 @@ describe('repository-scoped server', () => {
   });
 
   it('provides default updater when none configured', async () => {
+    const actualFetch = globalThis.fetch;
+    const requests = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+      String(input) === 'https://api.github.com/repos/RAbdelrhman/wayfinder-map/releases/latest'
+        ? Promise.resolve(new Response(JSON.stringify({ tag_name: 'v0.0.0-dev', html_url: 'https://github.com/RAbdelrhman/wayfinder-map/releases' })))
+        : actualFetch(input, init),
+    );
     const running = await startServer({
       config,
       repo: null,
@@ -777,6 +816,7 @@ describe('repository-scoped server', () => {
       expect(data).toHaveProperty('currentVersion');
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      requests.mockRestore();
     }
   });
 });
