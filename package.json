@@ -32,13 +32,13 @@
     "prepare": "node scripts/build.mjs"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@eslint/js": "^9.39.5",
     "@types/node": "^22.10.2",
     "electron": "44.4.3",
     "electron-builder": "26.16.1",
     "electron-updater": "6.8.9",
     "esbuild": "^0.25.0",
-    "eslint": "^10.12.0",
+    "eslint": "^9.39.5",
     "globals": "^17.13.0",
     "happy-dom": "^20.14.5",
     "sharp": "0.35.4",

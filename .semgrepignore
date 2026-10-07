@@ -1,0 +1,2 @@
+# OpenGrep's native ignore file. ESLint bans these sinks everywhere else.
+src/ui/trustedHtml.ts

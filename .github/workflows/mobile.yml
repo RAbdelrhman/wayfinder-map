@@ -7,12 +7,20 @@ on:
     paths:
       - 'mobile/**'
       - 'src/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'bun.lockb'
+      - 'eslint.config.mjs'
       - '.github/workflows/mobile.yml'
   push:
     branches: [main]
     paths:
       - 'mobile/**'
       - 'src/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'bun.lockb'
+      - 'eslint.config.mjs'
       - '.github/workflows/mobile.yml'
 
 permissions:
@@ -57,6 +65,7 @@ jobs:
           bun-version: 1.1.0
 
       - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run lint
       - run: bun run typecheck
       - run: bun run test
       - run: bun run build
