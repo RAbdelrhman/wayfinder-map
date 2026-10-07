@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.15](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.14...v0.2.15) (2026-10-07)
+
+
+### Features
+
+* open canvases in the approved in-app viewer ([#266](https://github.com/RAbdelrhman/wayfinder-map/issues/266)) ([c1ad460](https://github.com/RAbdelrhman/wayfinder-map/commit/c1ad460a70d0184b4de0aaf10f72cf91a77d4013))
+* tidy the map topbar and fold it as it narrows ([#269](https://github.com/RAbdelrhman/wayfinder-map/issues/269)) ([13a1935](https://github.com/RAbdelrhman/wayfinder-map/commit/13a193592836600fbc28790afe49d4784ae45787))
+
+
+### Bug Fixes
+
+* discover models with both T3 orchestration protocols ([#268](https://github.com/RAbdelrhman/wayfinder-map/issues/268)) ([1cc411b](https://github.com/RAbdelrhman/wayfinder-map/commit/1cc411b839f2d3bf3a0ea5944f665c449082e273))
+* evaluate constant HTML sink property keys ([#275](https://github.com/RAbdelrhman/wayfinder-map/issues/275)) ([14583e9](https://github.com/RAbdelrhman/wayfinder-map/commit/14583e957313108951ee4afc16bdcb4b4075ef74))
+* isolate project design canvases by task ([#265](https://github.com/RAbdelrhman/wayfinder-map/issues/265)) ([8c325c6](https://github.com/RAbdelrhman/wayfinder-map/commit/8c325c68098c7d1d81b5a3bfa1599ac541387d74))
+* reject template-literal HTML sink keys ([#274](https://github.com/RAbdelrhman/wayfinder-map/issues/274)) ([983dd65](https://github.com/RAbdelrhman/wayfinder-map/commit/983dd65b0593b2b6ac5c6ad6661020a240a36124))
+
 ## [0.2.14](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.13...v0.2.14) (2026-10-06)
 
 
