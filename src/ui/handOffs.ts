@@ -7,6 +7,7 @@ import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
 import { INBOX_OPENED } from './notifications.js';
+import type { InboxTicket } from './notifications.js';
 
 export type HandOffUiState = 'starting' | 'working' | 'needs-you' | 'pr-ready' | 'merged' | 'done' | 'failed';
 
@@ -132,9 +133,16 @@ function t3PullRequests(handOff: HandOffStatusDto): HandOffStatusDto['pullReques
   return handOff.pullRequests.filter((pullRequest) => pullRequest.source === 't3');
 }
 
-/** Finished hand-offs the user has not acknowledged yet. Opening the Inbox acknowledges them, as the old topbar list did. */
-export function handOffsToAcknowledge(records: readonly HandOffStatusDto[]): HandOffStatusDto[] {
-  return records.filter((handOff) => handOff.threadId !== null && !handOff.acknowledged && handOffPresentation(handOff).terminal);
+/** Finished hand-offs the open Inbox shows a notification for, and so the user has now seen. */
+export function handOffsToAcknowledge(records: readonly HandOffStatusDto[], shown: readonly InboxTicket[]): HandOffStatusDto[] {
+  const key = (repo: string, mapNumber: number | null, ticketNumber: number | null): string => `${repo.toLowerCase()}#${String(mapNumber)}#${String(ticketNumber)}`;
+  const seen = new Set(shown.map((ticket) => key(ticket.repo, ticket.mapNumber, ticket.ticketNumber)));
+  return records.filter((handOff) =>
+    handOff.threadId !== null &&
+    !handOff.acknowledged &&
+    handOffPresentation(handOff).terminal &&
+    seen.has(key(handOff.repo, handOff.mapNumber, handOff.ticketNumber)),
+  );
 }
 
 export function handOffTime(handOff: HandOffStatusDto, now = Date.now()): string {
@@ -318,6 +326,9 @@ export function mountHandOffs(): HandOffSurface {
   }
 
   let records: HandOffStatusDto[] = [];
+  let loaded = false;
+  /** What the Inbox showed when it opened before the first load, settled once records arrive. */
+  let shownBeforeLoad: readonly InboxTicket[] | null = null;
   let refreshInFlight: Promise<void> | null = null;
   const listeners = new Set<(items: readonly HandOffStatusDto[]) => void>();
 
@@ -353,6 +364,11 @@ export function mountHandOffs(): HandOffSurface {
             : `${handOffTitle(item)}: ${handOffPresentation(item).report}${item.stale ? ' T3 Code status is stale; showing the last report.' : ''}`;
         }
         render();
+        loaded = true;
+        if (shownBeforeLoad !== null) {
+          acknowledgeSeen(shownBeforeLoad);
+          shownBeforeLoad = null;
+        }
       } catch {
         // A disconnected tracker keeps the last status on screen.
       }
@@ -441,8 +457,14 @@ export function mountHandOffs(): HandOffSurface {
     const link = target.closest<HTMLAnchorElement>('[data-handoff-ack]');
     if (link !== null) void acknowledge(link.dataset['handoffAck'] ?? '').catch(() => undefined);
   });
-  document.addEventListener(INBOX_OPENED, () => {
-    for (const item of handOffsToAcknowledge(records)) void acknowledge(item.id).catch(() => undefined);
+  function acknowledgeSeen(shown: readonly InboxTicket[]): void {
+    for (const item of handOffsToAcknowledge(records, shown)) void acknowledge(item.id).catch(() => undefined);
+  }
+
+  document.addEventListener(INBOX_OPENED, (event) => {
+    const shown = event instanceof CustomEvent && Array.isArray(event.detail) ? (event.detail as InboxTicket[]) : [];
+    if (loaded) acknowledgeSeen(shown);
+    else shownBeforeLoad = [...(shownBeforeLoad ?? []), ...shown];
   });
 
   void refresh();

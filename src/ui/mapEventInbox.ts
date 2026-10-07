@@ -8,7 +8,7 @@ import { INBOX_OPENED, KIND_LABEL, NOTIFICATIONS_CHANGED, mapEventNotification, 
 import type { NotificationInboxController } from './notifications.js';
 import { filterInbox, inboxCounts, mergeInbox } from './unifiedInbox.js';
 import type { InboxFilter, InboxRow } from './unifiedInbox.js';
-import type { InboxSnapshot } from './notifications.js';
+import type { InboxSnapshot, InboxTicket } from './notifications.js';
 import { readNotificationSettings } from '../notificationTypes.js';
 import type { NotificationSettings } from '../notificationTypes.js';
 
@@ -456,7 +456,8 @@ export function mountMapEventInbox(onEvent: ((event: MapEvent) => void) | undefi
     trigger.setAttribute('aria-expanded', String(open));
     if (open) {
       close.focus();
-      document.dispatchEvent(new Event(INBOX_OPENED));
+      const shown: InboxTicket[] = notifications.list().map(({ repo, mapNumber, ticketNumber }) => ({ repo, mapNumber, ticketNumber }));
+      document.dispatchEvent(new CustomEvent<InboxTicket[]>(INBOX_OPENED, { detail: shown }));
       void fetch('/api/desktop/notifications/read', { method: 'POST' }).catch(() => undefined);
     }
     else if (returnFocus) trigger.focus();

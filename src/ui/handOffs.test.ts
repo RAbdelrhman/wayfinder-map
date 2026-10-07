@@ -89,7 +89,8 @@ describe('hand-off presentation', () => {
     expect(handOffCardHtml(item)).not.toContain('Open PR #42');
   });
 
-  it('acknowledges only finished, tracked hand-offs not yet acknowledged when the Inbox opens', () => {
+  it('acknowledges the finished hand-offs the Inbox shows, and nothing it does not', () => {
+    const base = handOff();
     const items = [
       handOff({ id: 'failed', status: 'failed' }),
       handOff({ id: 'done', status: 'ready', ticketClosed: true }),
@@ -97,8 +98,11 @@ describe('hand-off presentation', () => {
       handOff({ id: 'needs-you', status: 'waiting' }),
       handOff({ id: 'seen', status: 'failed', acknowledged: true }),
       handOff({ id: 'untracked', status: 'failed', threadId: null }),
+      handOff({ id: 'not-in-inbox', status: 'failed', ticketNumber: 999 }),
     ];
-    expect(handOffsToAcknowledge(items).map((item) => item.id)).toEqual(['failed', 'done']);
+    const shown = [{ repo: base.repo.toUpperCase(), mapNumber: base.mapNumber ?? 0, ticketNumber: base.ticketNumber ?? 0 }];
+    expect(handOffsToAcknowledge(items, shown).map((item) => item.id)).toEqual(['failed', 'done']);
+    expect(handOffsToAcknowledge(items, [])).toEqual([]);
   });
 
   it('uses the repository, map and ticket for source links', () => {

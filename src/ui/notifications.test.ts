@@ -143,4 +143,10 @@ describe('hand-off status notifications', () => {
     ]);
     expect(handOffTransitionNotifications([waiting, failed, prototype], [waiting, failed, prototype], now)).toEqual([]);
   });
+
+  it('treats an interrupted hand-off as an error, once', () => {
+    const interrupted = handOff({ status: 'interrupted', updatedAt: new Date(now).toISOString() });
+    expect(handOffTransitionNotifications([handOff()], [interrupted], now).map(({ kind }) => kind)).toEqual(['handOffError']);
+    expect(handOffTransitionNotifications([interrupted], [handOff({ status: 'failed', updatedAt: new Date(now).toISOString() })], now)).toEqual([]);
+  });
 });
