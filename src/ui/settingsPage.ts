@@ -1,3 +1,4 @@
+import { setTrustedHtml } from './trustedHtml.js';
 import { bindAccountMark, bindUpdater } from './chrome.js';
 import { mountNavigation } from './navigation.js';
 import { mountSettingsPage } from './settings.js';
@@ -21,5 +22,5 @@ function toast(message: string, ms = 5000): void {
 mountNavigation({ shell: need('app'), sidebar: need('sidebar-shell'), topbar: need('nav-topbar'), topbarRoot: need('topbar'), page: 'settings', repo: null, mapNumber: null, view: 'map' });
 bindAccountMark(document.getElementById('account-mark'));
 bindUpdater(need('updater'), toast);
-need('main').innerHTML = '<p class="loading" role="status">Loading settings…</p>';
+setTrustedHtml(need('main'), '<p class="loading" role="status">Loading settings…</p>');
 void syncServerSettings().then(() => mountSettingsPage(need('main'), toast));

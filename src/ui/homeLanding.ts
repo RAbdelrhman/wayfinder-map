@@ -1,3 +1,4 @@
+import { setTrustedHtml } from './trustedHtml.js';
 import type { HomeState } from '../home.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import { normalizeRepo, repoPath, scopedApiPath } from '../repoRoutes.js';
@@ -195,7 +196,7 @@ function itemCount(value: unknown, max: number): number | null {
 }
 
 export function readHomeShape(storage: HomeStorage): HomeShape {
-  let stored: unknown = null;
+  let stored: unknown;
   try {
     stored = JSON.parse(storage.getItem(HOME_SHAPE_KEY) ?? 'null') as unknown;
   } catch {
@@ -408,7 +409,7 @@ export async function renderHomeLanding(options: HomeLandingOptions): Promise<vo
     for (const row of repoRows) {
       const repo = row.dataset['homeRepo'];
       if (repo === undefined) continue;
-      row.innerHTML = repositoryRowInner(repo, summaries.get(repo.toLocaleLowerCase()) ?? null, recency.repositoryOpenedAt[repo.toLocaleLowerCase()], accountReady);
+      setTrustedHtml(row, repositoryRowInner(repo, summaries.get(repo.toLocaleLowerCase()) ?? null, recency.repositoryOpenedAt[repo.toLocaleLowerCase()], accountReady));
     }
     paintIcons(document);
     showAllButton.hidden = true;

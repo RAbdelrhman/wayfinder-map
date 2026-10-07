@@ -1,3 +1,4 @@
+import { setTrustedHtml, insertTrustedHtml } from './trustedHtml.js';
 import type { HomeAccount } from '../home.js';
 import type { DailyGoal, ProgressSettings, ProgressState } from '../progress.js';
 import { STALL_DAY_CHOICES } from '../types.js';
@@ -237,7 +238,7 @@ function postJson<T>(url: string, body?: unknown): Promise<T> {
 
 /** Mount the dedicated Settings page. Categories have URLs and follow browser history. */
 export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms?: number) => void): void {
-  root.innerHTML = `<header class="settings-page-heading"><div><h1>Settings</h1><p>Make Wayfinder work your way.</p></div><span class="settings-save-note"><span data-icon="check" aria-hidden="true"></span>Changes save automatically</span></header><div class="settings-page-layout"><nav class="settings-categories" aria-label="Settings categories"></nav><div><div id="settings-load-status" role="status"></div><header class="settings-category-heading"><h2 id="settings-category-title"></h2><p id="settings-category-hint"></p></header><div id="settings-body"></div></div></div>`;
+  setTrustedHtml(root, `<header class="settings-page-heading"><div><h1>Settings</h1><p>Make Wayfinder work your way.</p></div><span class="settings-save-note"><span data-icon="check" aria-hidden="true"></span>Changes save automatically</span></header><div class="settings-page-layout"><nav class="settings-categories" aria-label="Settings categories"></nav><div><div id="settings-load-status" role="status"></div><header class="settings-category-heading"><h2 id="settings-category-title"></h2><p id="settings-category-hint"></p></header><div id="settings-body"></div></div></div>`);
   const body = root.querySelector<HTMLElement>('#settings-body')!;
   const nav = root.querySelector<HTMLElement>('.settings-categories')!;
   const loadStatus = root.querySelector<HTMLElement>('#settings-load-status')!;
@@ -250,7 +251,7 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
     calibrationOpen = body.querySelector<HTMLDetailsElement>('#settings-calibration')?.open ?? calibrationOpen;
     // The HTML builders escape account/catalog strings; hostile-field DOM tests cover this boundary.
     // nosemgrep: javascript.browser.security.insecure-document-method, javascript.browser.security.insecure-innerhtml
-    body.innerHTML = settingsBodyHtml(view, category);
+    setTrustedHtml(body, settingsBodyHtml(view, category));
     const details = body.querySelector<HTMLDetailsElement>('#settings-calibration');
     if (details !== null) details.open = calibrationOpen;
     root.querySelector<HTMLElement>('#settings-category-title')!.textContent = CATEGORY_LABEL[category];
@@ -273,7 +274,7 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
       stalls: stalls.status === 'fulfilled' ? stalls.value : view.stalls,
       notifications: notifications.status === 'fulfilled' ? notifications.value : view.notifications,
     };
-    loadStatus.innerHTML = [account, progress, stalls, notifications].some((result) => result.status === 'rejected') ? '<p class="hint failure">Some settings could not be loaded. <button type="button" class="linkish" data-settings-retry>Try again</button></p>' : '';
+    setTrustedHtml(loadStatus, [account, progress, stalls, notifications].some((result) => result.status === 'rejected') ? '<p class="hint failure">Some settings could not be loaded. <button type="button" class="linkish" data-settings-retry>Try again</button></p>' : '');
     draw();
   };
 
@@ -303,7 +304,7 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
     category = settingsCategory(new URLSearchParams(location.search).get('section'));
     // IDs, labels and icons come from the fixed category allowlist; query text is never interpolated.
     // nosemgrep: javascript.browser.security.insecure-document-method, javascript.browser.security.insecure-innerhtml
-    nav.innerHTML = settingsNavigationHtml(category);
+    setTrustedHtml(nav, settingsNavigationHtml(category));
     paintIcons(nav);
     draw();
   };
@@ -333,7 +334,7 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
       if (select.hasAttribute('data-settings-model')) {
         const [instanceId = '', ...rest] = select.value.split(RATER_SEPARATOR);
         body.querySelector(`#settings-effort-${tier}`)?.remove();
-        modelSelect.insertAdjacentHTML('afterend', effortSelectHtml(findModel(view.models.catalog, { instanceId, model: rest.join(RATER_SEPARATOR) }), undefined, `id="settings-effort-${tier}" data-settings-effort="${tier}"`));
+        insertTrustedHtml(modelSelect, 'afterend', effortSelectHtml(findModel(view.models.catalog, { instanceId, model: rest.join(RATER_SEPARATOR) }), undefined, `id="settings-effort-${tier}" data-settings-effort="${tier}"`));
       }
       saveTierDefault(tier as Tier, readChoice(view.models.catalog, modelSelect, body.querySelector<HTMLSelectElement>(`#settings-effort-${tier}`)));
       view = { ...view, tierModels: tierDefaults() };

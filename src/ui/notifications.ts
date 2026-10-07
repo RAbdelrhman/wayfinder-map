@@ -1,3 +1,4 @@
+import { setTrustedHtml } from './trustedHtml.js';
 import { mapPath } from '../repoRoutes.js';
 import { prototypeTicketNumber } from '../prototypes.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
@@ -418,13 +419,13 @@ export function mountUnblockedNotice(
     host.hidden = true;
     tickets.clear();
     closedTickets.clear();
-    host.innerHTML = '';
+    setTrustedHtml(host, '');
   };
   const render = (): void => {
     const ready = Array.from(tickets.values());
     if (ready.length === 0) {
       host.hidden = true;
-      host.innerHTML = '';
+      setTrustedHtml(host, '');
       return;
     }
     const startable = ready.filter((ticket) => ticket.type === 'task' || ticket.type === 'research');
@@ -432,11 +433,11 @@ export function mountUnblockedNotice(
     const readyText = ready.map((ticket) => '#' + String(ticket.number)).join(', ');
     const message = (closed === '' ? '' : closed + '. ') + readyText + (ready.length === 1 ? ' is ready.' : ' are ready.');
     const startLabel = startable.length === 1 ? 'Start' : 'Start ' + String(startable.length);
-    host.innerHTML = '<div class="unblocked-notice-card"><p>' + escapeHtml(message) + '</p>' +
+    setTrustedHtml(host, '<div class="unblocked-notice-card"><p>' + escapeHtml(message) + '</p>' +
       '<div class="unblocked-notice-actions"><button type="button" class="primary" data-notice-start' +
       (startable.length === 0 ? ' hidden disabled' : '') + '>' + startLabel + '</button>' +
       '<button type="button" class="ghost" data-notice-show>Show</button>' +
-      '<button type="button" class="ghost" data-notice-dismiss>Dismiss</button></div></div>';
+      '<button type="button" class="ghost" data-notice-dismiss>Dismiss</button></div></div>');
     host.hidden = false;
   };
   host.addEventListener('click', async (event) => {

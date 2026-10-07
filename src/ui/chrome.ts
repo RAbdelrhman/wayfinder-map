@@ -1,3 +1,4 @@
+import { setTrustedHtml } from './trustedHtml.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
@@ -70,7 +71,7 @@ const STATIC_ICONS: Record<string, string> = {
 export function paintIcons(root: ParentNode = document): void {
   for (const element of root.querySelectorAll<HTMLElement>('[data-icon]')) {
     const path = STATIC_ICONS[element.dataset['icon'] ?? ''];
-    if (path !== undefined) element.innerHTML = icon(path);
+    if (path !== undefined) setTrustedHtml(element, icon(path));
   }
   paintRepoIcons(root);
 }
@@ -257,7 +258,7 @@ export function updateAccountMark(
   if (!element) return;
   const login = profile?.login?.trim();
   const accountLabel = element.parentElement?.querySelector<HTMLElement>('#account-label') ?? null;
-  element.innerHTML = renderAccountMarkContent(profile);
+  setTrustedHtml(element, renderAccountMarkContent(profile));
   if (login) {
     element.title = `Signed in as ${login}`;
     element.setAttribute('aria-label', `GitHub account: ${login}`);

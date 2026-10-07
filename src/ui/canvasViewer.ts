@@ -1,3 +1,4 @@
+import { setTrustedHtml, insertTrustedHtml } from './trustedHtml.js';
 import { parsePrototypeFilePath } from '../prototypes.js';
 import { canvasSize, isCanvasSize } from './canvasPreference.js';
 import type { CanvasSize } from './canvasPreference.js';
@@ -215,11 +216,10 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
   viewer.id = 'canvas-viewer';
   viewer.hidden = true;
   viewer.setAttribute('aria-labelledby', 'vw-title');
-  viewer.innerHTML =
-    '<div id="vw-toolbar"></div><div class="vw-stage"></div>' +
+  setTrustedHtml(viewer, '<div id="vw-toolbar"></div><div class="vw-stage"></div>' +
     ['nw', 'ne', 'sw', 'se']
       .map((corner) => `<span class="vw-grip" data-corner="${corner}" title="Drag to resize" aria-hidden="true"></span>`)
-      .join('');
+      .join(''));
   document.body.append(viewer);
   const toolbar = viewer.querySelector<HTMLElement>('#vw-toolbar')!;
   const stage = viewer.querySelector<HTMLElement>('.vw-stage')!;
@@ -256,7 +256,7 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       document.activeElement instanceof HTMLElement && toolbar.contains(document.activeElement)
         ? [...document.activeElement.attributes].find((attr) => attr.name.startsWith('data-'))
         : undefined;
-    toolbar.innerHTML = canvasToolbarHtml(routing.current, size, pages, pageId, optionId, source, menu);
+    setTrustedHtml(toolbar, canvasToolbarHtml(routing.current, size, pages, pageId, optionId, source, menu));
     if (focused)
       [...toolbar.querySelectorAll<HTMLElement>(`[${focused.name}]`)]
         .find((el) => el.getAttribute(focused.name) === focused.value)
@@ -307,7 +307,7 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
         copy.className = 'vw-poster-image';
         stage.append(copy);
       }
-      stage.insertAdjacentHTML('beforeend', canvasFrameHtml(route));
+      insertTrustedHtml(stage, 'beforeend', canvasFrameHtml(route));
       frame = stage.querySelector<HTMLIFrameElement>('.vw-frame')!;
       frame.addEventListener('load', () => frame?.classList.add('is-ready'));
       clearTimeout(timer);

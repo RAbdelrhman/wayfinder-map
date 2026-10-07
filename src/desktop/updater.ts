@@ -64,6 +64,8 @@ export function startAutoUpdates({ window, enabled, prepareForRestart }: UpdateO
   let errorRevision = 0;
   let downloadedVersion: string | undefined;
   let cancelDownload: (() => void) | undefined;
+  // Startup callbacks can stop the updater before the polling timer is assigned.
+  // eslint-disable-next-line prefer-const
   let timer: ReturnType<typeof setInterval> | undefined;
   let installation: Promise<void> | null = null;
   let installing = false;

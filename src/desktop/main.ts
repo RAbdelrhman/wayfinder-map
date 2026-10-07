@@ -251,7 +251,7 @@ async function completeSmokeTest(homeUrl: string): Promise<void> {
   const markerPath = process.env.WAYFINDER_SMOKE_FILE;
   if (markerPath === undefined || runtime === null) return;
 
-  let homeStatus = 0;
+  let homeStatus: number;
   try {
     const response = await fetch(new URL('/api/home', homeUrl));
     homeStatus = response.status;

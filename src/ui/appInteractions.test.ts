@@ -8,12 +8,14 @@ import { STATE_STYLE } from './chrome.js';
 import { rememberControlFocus } from './controlFocus.js';
 import { effortSelectHtml, findModel, liveChoice, modelSelectHtml, readChoice } from './models.js';
 import { escapeHtml } from './markdown.js';
+import { setTrustedHtml, insertTrustedHtml } from './trustedHtml.js';
 
 const source = readFileSync(new URL('./app.ts', import.meta.url), 'utf8');
 const parsed = ts.createSourceFile('app.ts', source, ts.ScriptTarget.Latest, true);
 
 /** Execute the production functions and listener registrations without booting unrelated services. */
 function bindings(context: Record<string, unknown>, names: string[], listeners: string[] = []): void {
+  Object.assign(context, { setTrustedHtml, insertTrustedHtml });
   const snippets = parsed.statements.filter((statement) => {
     if (ts.isFunctionDeclaration(statement)) return names.includes(statement.name?.text ?? '');
     if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression)) return false;

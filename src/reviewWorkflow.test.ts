@@ -6,9 +6,9 @@ const review = readFileSync(new URL('../.github/workflows/claude-review.yml', im
 const release = readFileSync(new URL('../.github/workflows/release-please.yml', import.meta.url), 'utf8');
 
 function script(workflow: string): string {
-  const match = workflow.replace(/\r\n/g, '\n').match(/          script: \|\n((?:            .*\n|\n)+)/);
+  const match = workflow.replace(/\r\n/g, '\n').match(/ {10}script: \|\n((?: {12}.*\n|\n)+)/);
   if (!match?.[1]) throw new Error('Workflow script missing');
-  return match[1].replace(/^            /gm, '');
+  return match[1].replace(/^ {12}/gm, '');
 }
 
 function pullRequest() {

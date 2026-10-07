@@ -22,7 +22,7 @@ async function settle(): Promise<void> {
 
 describe('AutoRefresh', () => {
   it('polls visible pages every 30 seconds and never overlaps requests', async () => {
-    let visible = true;
+    const visible = true;
     let now = 0;
     const timers = new Map<number, Timer>();
     let nextTimer = 0;

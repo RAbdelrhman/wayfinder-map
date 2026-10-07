@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { SettingsFileWriter } from './settingsFile.js';
 import { applyNotificationSettings, DEFAULT_NOTIFICATION_SETTINGS, readNotificationSettings } from './notificationTypes.js';
-import type { DesktopNotification, NotificationSettings } from './notificationTypes.js';
+import type { NotificationSettings } from './notificationTypes.js';
 
 export { applyNotificationSettings, DEFAULT_NOTIFICATION_SETTINGS, parseDesktopNotification, readNotificationSettings } from './notificationTypes.js';
 export type { DesktopNotification, NotificationKind, NotificationSettings } from './notificationTypes.js';

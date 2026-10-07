@@ -43,10 +43,6 @@ export interface ContinueDestination {
   map: WayfinderMap | null;
 }
 
-function sameRepo(left: string, right: string): boolean {
-  return left.toLocaleLowerCase() === right.toLocaleLowerCase();
-}
-
 function timeValue(value: string): number {
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;

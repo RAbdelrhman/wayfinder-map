@@ -452,7 +452,7 @@ async function acquireStoreLock(lockPath: string): Promise<() => Promise<void>> 
         continue;
       }
       if (Date.now() - startedAt >= STORE_LOCK_TIMEOUT_MS) {
-        throw new Error(`Timed out waiting for hand-off store lock: ${lockPath}`);
+        throw new Error(`Timed out waiting for hand-off store lock: ${lockPath}`, { cause: error });
       }
       await wait(STORE_LOCK_RETRY_MS);
     }
@@ -1151,7 +1151,7 @@ export class HandOffTracker {
         this.checkedAt = this.now().toISOString();
         void this.discoverMissingPullRequests(observed.environmentId, observed.origin);
         void this.ensureStream(observed.environmentId, observed.origin, sequence);
-      } catch (error) {
+      } catch {
         this.online = false;
         this.checkedAt = this.now().toISOString();
         this.streamStop?.();

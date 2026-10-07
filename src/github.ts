@@ -18,6 +18,8 @@ delete ghEnv.GH_FORCE_TTY;
 
 /** GitHub CLI can still decorate piped output when launched from a terminal app. */
 export function plainGhOutput(output: string): string {
+  // ANSI escape sequences intentionally start with the ESC control character.
+  // eslint-disable-next-line no-control-regex
   return output.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '');
 }
 
