@@ -48,6 +48,17 @@ function contrast(a: string, b: string): number {
 }
 
 describe('styles.css', () => {
+  it('reserves icon space and compacts the tabs in the narrow topbar', async () => {
+    const blocks = topLevelBlocks(structure(await readFile(new URL('./styles.css', import.meta.url), 'utf8')));
+    const narrow = blocks.find((block) => block.startsWith('@container map-topbar (max-width: 480px)'));
+    expect(narrow).toBeDefined();
+    // Happy DOM does not perform container layout. Guard these overrides at the
+    // stylesheet boundary as well as the wide computed-style test.
+    expect(narrow).toMatch(/\.nav-map-scopes\s*\{\s*min-width:\s*58px;/);
+    expect(narrow).toMatch(/\.nav-map-tabs \.seg\s*\{\s*padding-inline:\s*4px;/);
+    expect(narrow).toMatch(/\.topbar-spacer\s*\{\s*min-width:\s*0;/);
+  });
+
   it('keeps text tokens at WCAG AA (4.5:1) on both surfaces in every theme', async () => {
     const css = await readFile(new URL('./styles.css', import.meta.url), 'utf8');
     const light = tokens(css, '.viz-root');
