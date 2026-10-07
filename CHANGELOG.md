@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.16](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.15...v0.2.16) (2026-10-07)
+
+
+### Bug Fixes
+
+* center shared icons without baseline offsets ([#276](https://github.com/RAbdelrhman/wayfinder-map/issues/276)) ([ca1d1b0](https://github.com/RAbdelrhman/wayfinder-map/commit/ca1d1b0b1be517042150841cd6700a8fe5865e62))
+* prevent narrow topbar tabs overlapping map progress ([#279](https://github.com/RAbdelrhman/wayfinder-map/issues/279)) ([1728711](https://github.com/RAbdelrhman/wayfinder-map/commit/1728711a1e9e9b8472b5979a23215f76c6b68fb2))
+* start tickets already next when the auto map is turned on ([#277](https://github.com/RAbdelrhman/wayfinder-map/issues/277)) ([21eb471](https://github.com/RAbdelrhman/wayfinder-map/commit/21eb471b17a0c2a227cf87fa0cde7f3c24191f3a))
+
+
+### Performance Improvements
+
+* restore cached data across every route ([#280](https://github.com/RAbdelrhman/wayfinder-map/issues/280)) ([b622eb7](https://github.com/RAbdelrhman/wayfinder-map/commit/b622eb77868a6f4dde8b2d478018170bd5321165))
+
 ## [0.2.15](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.14...v0.2.15) (2026-10-07)
 
 
