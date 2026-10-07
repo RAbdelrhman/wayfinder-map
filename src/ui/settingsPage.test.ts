@@ -47,6 +47,26 @@ function open(section: string): HTMLElement {
 }
 
 describe('mounted Settings page', () => {
+  it('keeps an optimistic goal edit when the initial progress read finishes during its save', async () => {
+    vi.stubGlobal('sessionStorage', browser.sessionStorage);
+    document.head.innerHTML = '<meta name="wayfinder-cache-scope" content="account-a">';
+    const { routeData } = await import('./routeData.js');
+    const original = fetch;
+    let finishRead: (value: Response) => void = () => undefined;
+    let finishSave: (value: Response) => void = () => undefined;
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/progress') return new Promise<Response>((resolve) => { finishRead = resolve; });
+      if (url === '/api/progress/settings') return new Promise<Response>((resolve) => { finishSave = resolve; });
+      return original(url, init);
+    }));
+    routeData().remember('/api/progress', { login: 'octo', settings: { style: 'trail', goal: 5 }, days: [1] });
+    const root = open('progress');
+    root.querySelector<HTMLButtonElement>('[data-settings-goal="8"]')!.click();
+    finishRead(new Response(JSON.stringify({ login: 'octo', settings: { style: 'trail', goal: 5 }, days: [99] })));
+    await vi.waitFor(() => expect(routeData().peek<{ days: number[] }>('/api/progress')?.days[0]).toBe(99));
+    expect(root.querySelector('[data-settings-goal="8"]')?.getAttribute('aria-pressed')).toBe('true');
+    finishSave(new Response(JSON.stringify({ style: 'trail', goal: 8 })));
+  });
   it('saves the canvas opening size from Appearance and retains it after a redraw', () => {
     const root = open('appearance');
     root.querySelector<HTMLButtonElement>('[data-settings-canvas="pane"]')!.click();

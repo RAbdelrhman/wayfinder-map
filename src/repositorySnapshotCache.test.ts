@@ -39,7 +39,9 @@ describe('repository snapshots after app restart', () => {
     const persistence = { load: vi.fn(async (_repo: string, _scope: string) => snapshot()), save: vi.fn(async () => undefined) };
     const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', identity: async () => 'github.com/account-a', viewer: async () => ({ login: 'a', follows: [42] }), choices: async () => ({ '42': { settled: true, at: '2026-10-01T00:00:00Z' } }), persistence, fetcher: async () => ({ maps: [], warnings: [] }) });
     await cache.snapshot('owner/repo');
-    expect(persistence.load.mock.calls[0]?.[1]).toContain('42');
+    const scope = JSON.parse(persistence.load.mock.calls[0]?.[1] ?? '[]') as unknown[];
+    expect(scope[3]).toEqual({ '42': { settled: true, at: '2026-10-01T00:00:00Z' } });
+    expect(scope[4]).toEqual({ login: 'a', follows: [42] });
     const signedOut = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', identity: async () => null, persistence, fetcher: async () => ({ maps: [], warnings: [] }) });
     await signedOut.snapshot('owner/repo');
     expect(persistence.load).toHaveBeenCalledTimes(1);
@@ -52,5 +54,24 @@ describe('repository snapshots after app restart', () => {
     expect(await cache.snapshot('owner/repo')).toEqual(saved);
     await expect(cache.currentForAction('owner/repo')).rejects.toThrow('GitHub offline');
     expect(cache.cached('owner/repo')).toEqual(saved);
+  });
+
+  it('orders two process reads by start time when the older request completes last', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'wayfinder-snapshot-')); roots.push(root);
+    const disk = new RepositorySnapshotCache(root);
+    const saves: Promise<void>[] = [];
+    const persistence = { load: async () => null, save: (value: MapSnapshot, scope: string) => { const saved = disk.save(value, scope); saves.push(saved); return saved; } };
+    const start = Date.now() - 1000;
+    let finish: (value: { maps: []; warnings: string[] }) => void = () => undefined;
+    const oldRead = new Promise<{ maps: []; warnings: string[] }>((resolve) => { finish = resolve; });
+    const common = { mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', identity: async () => 'a', persistence };
+    const older = new RepositoryStore({ ...common, now: () => new Date(start), fetcher: () => oldRead });
+    const newer = new RepositoryStore({ ...common, now: () => new Date(start + 500), fetcher: async () => ({ maps: [], warnings: ['newer'] }) });
+    const pending = older.snapshot('owner/repo');
+    await newer.snapshot('owner/repo');
+    finish({ maps: [], warnings: ['older'] });
+    await pending;
+    await Promise.all(saves);
+    expect((await disk.load('owner/repo', JSON.stringify(['a', 'wayfinder:map', 'wayfinder:', {}, null])))?.warnings).toEqual(['newer']);
   });
 });

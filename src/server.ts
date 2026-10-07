@@ -201,7 +201,7 @@ export interface RunningServer {
   url: string;
 }
 
-function json(response: ServerResponse, status: number, body: unknown): void {
+function writeJson(response: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -352,6 +352,11 @@ export async function startServer({
   let homeRead: Promise<HomeState> | null = null;
   let cacheRevision = Date.now();
   let cacheScope = `${String(cacheRevision)}-${randomUUID()}`;
+  const json = (response: ServerResponse, status: number, body: unknown): void => {
+    response.setHeader('x-wayfinder-cache-scope', cacheScope);
+    writeJson(response, status, body);
+  };
+  let lastAccount: HomeAccount | null = null;
   let accountRead: Promise<HomeAccount> | null = null;
   let accountAt = 0;
   const signedInAccount = (force = false): Promise<HomeAccount> => {
@@ -360,17 +365,20 @@ export async function startServer({
       accountAt = Date.now();
     }
     if (accountRead === null || force || Date.now() - accountAt >= 30_000) {
-      const read = accountReader();
+      const read = accountReader().then((account) => {
+        if (accountRead === read) observeAccount(account);
+        return account;
+      });
       accountRead = read;
       accountAt = Date.now();
       void read.catch(() => { if (accountRead === read) accountRead = null; });
     }
     return accountRead;
   };
-  const clearAccountCaches = (response: ServerResponse): void => {
+  const clearAccountCaches = (response?: ServerResponse): void => {
     cacheRevision = Math.max(Date.now(), cacheRevision + 1);
     cacheScope = `${String(cacheRevision)}-${randomUUID()}`;
-    response.setHeader('x-wayfinder-cache-scope', cacheScope);
+    response?.setHeader('x-wayfinder-cache-scope', cacheScope);
     homeState = null;
     homeRead = null;
     accountRead = null;
@@ -380,6 +388,11 @@ export async function startServer({
     prototypeFiles.clear();
     warmedPrototypes.clear();
     warmQueue.length = 0;
+  };
+  const observeAccount = (account: HomeAccount): void => {
+    const previous = lastAccount ?? homeState?.account;
+    if (previous !== undefined && previous !== null && (previous.host !== account.host || previous.login !== account.login || previous.status !== account.status)) clearAccountCaches();
+    lastAccount = account;
   };
   const signedInLogin = async (): Promise<string | null> => {
     const account = await signedInAccount();
@@ -813,14 +826,17 @@ export async function startServer({
       }
 
       if (path === '/api/home') {
+        if (homeLoader === undefined) await signedInAccount(true);
         const force = requestUrl.searchParams.get('refresh') === '1';
         if (force || homeState === null) {
           const labels = config.mapLabel === 'wayfinder:map' ? [config.mapLabel] : ['wayfinder:map', config.mapLabel];
           const scope = cacheScope;
-          const read = homeRead ??= loadHome(labels);
+          const read = force ? (homeRead = loadHome(labels)) : (homeRead ??= loadHome(labels));
           try {
             const next = await read;
             if (scope !== cacheScope) throw new Error('GitHub account changed during discovery.');
+            if (homeRead !== read) throw new Error('Home discovery was replaced by a newer refresh.');
+            observeAccount(next.account);
             homeState = next;
           } finally { if (homeRead === read) homeRead = null; }
         }
@@ -900,9 +916,8 @@ export async function startServer({
       }
 
       if (path === '/api/auth/status') {
-        const account = await signedInAccount(requestUrl.searchParams.get('refresh') === '1');
-        // An unchanged account mark must not discard repository discovery on every navigation.
-        if (homeState !== null && (account.login !== homeState.account.login || account.status !== homeState.account.status)) clearAccountCaches(response);
+        // Identity reads are live; an unchanged mark leaves discovery and snapshots intact.
+        const account = await signedInAccount(true);
         response.setHeader('x-wayfinder-cache-scope', cacheScope);
         json(response, 200, account);
         return;
@@ -1179,6 +1194,7 @@ export async function startServer({
             return;
           }
           await follow.store.set(login, requestedRepo, mapNumber, body.followed);
+          repositories.invalidate(requestedRepo);
           json(response, 200, await repositories.snapshot(requestedRepo, true));
         } catch (error) {
           json(response, 502, { error: (error as Error).message });

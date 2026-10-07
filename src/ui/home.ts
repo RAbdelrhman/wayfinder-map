@@ -248,6 +248,7 @@ async function syncAccountMark(): Promise<AccountMark | null> {
   try {
     const res = await fetch('/api/auth/status');
     if (res.ok) {
+      routeData().adoptScope(res);
       cachedAccount = (await res.json()) as AccountProfile;
       updateAccountMark(document.getElementById('account-mark'), cachedAccount);
       return cachedAccount;

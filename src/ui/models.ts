@@ -103,6 +103,7 @@ export type CatalogState = { status: 'loading' } | { status: 'ready'; catalog: M
 
 let catalogState: CatalogState = { status: 'loading' };
 let inFlight: Promise<CatalogState> | null = null;
+let catalogVerified = false;
 
 export function currentCatalog(): CatalogState {
   if (catalogState.status === 'loading') {
@@ -114,10 +115,11 @@ export function currentCatalog(): CatalogState {
 
 /** Ask the server for T3 Code's models. `force` re-reads, for when the user opens the settings. */
 export function loadCatalog(force = false): Promise<CatalogState> {
-  if (!force && catalogState.status === 'ready') return Promise.resolve(catalogState);
-  inFlight ??= readRouteJson<ModelCatalog>('/api/models', force)
+  if (!force && catalogVerified && catalogState.status === 'ready') return Promise.resolve(catalogState);
+  inFlight ??= readRouteJson<ModelCatalog>('/api/models', true)
     .then((body) => {
       catalogState = { status: 'ready', catalog: body };
+      catalogVerified = true;
       return catalogState;
     })
     .catch(() => (catalogState = currentCatalog().status === 'ready' ? catalogState : { status: 'unavailable', reason: 'T3 Code is not reachable.' }))

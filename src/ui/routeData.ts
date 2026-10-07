@@ -79,6 +79,7 @@ export class RouteDataCache {
   adoptScope(response: Response): void {
     const scope = response.headers.get('x-wayfinder-cache-scope');
     if (scope === null || scope === this.scope) return;
+    if (/^\d{13}-/.test(scope) && /^\d{13}-/.test(this.scope) && scope.slice(0, 13) < this.scope.slice(0, 13)) return;
     this.scope = scope;
     this.pending.clear();
     this.versions.clear();
@@ -118,6 +119,7 @@ export class RouteDataCache {
       const value: unknown = await response.json();
       if (!response.ok) throw new Error((value as { error?: string }).error ?? 'Request failed.');
       const nextScope = response.headers.get('x-wayfinder-cache-scope');
+      if (nextScope !== null && nextScope !== scope) this.adoptScope(response);
       if (scope !== '' && (scope !== this.scope || nextScope !== null && nextScope !== scope || this.sharedScopeChanged(scope))) throw new Error('The GitHub account changed. Reload this page.');
       if (version !== (this.versions.get(key) ?? 0)) throw new Error('This read was replaced by a newer change.');
       if (scope === this.scope) this.save(url, value);

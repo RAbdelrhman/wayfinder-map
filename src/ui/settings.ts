@@ -269,13 +269,18 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
     if (focusKey !== null) body.querySelector<HTMLElement>(focusKey)?.focus();
   };
 
+  let loadSequence = 0;
   const load = async (): Promise<void> => {
+    const sequence = ++loadSequence;
+    const before = view;
+    const current = (): boolean => sequence === loadSequence && root.isConnected;
     const results = await Promise.allSettled([
-      readRouteJson<HomeAccount>('/api/auth/status', true).then((account) => { view = { ...view, account }; draw(); }),
-      readRouteJson<ProgressState>('/api/progress', true).then((progress) => { view = { ...view, progress: progress.login === null ? null : progress.settings }; draw(); }),
-      readRouteJson<StallSettings>('/api/stall-settings', true).then((stalls) => { view = { ...view, stalls }; draw(); }),
-      readRouteJson<NotificationSettings>('/api/notification-settings', true).then((notifications) => { view = { ...view, notifications }; draw(); }),
+      readRouteJson<HomeAccount>('/api/auth/status', true).then((account) => { if (!current()) return; view = { ...view, account }; draw(); }),
+      readRouteJson<ProgressState>('/api/progress', true).then((progress) => { if (!current() || before.progress !== view.progress) return; view = { ...view, progress: progress.login === null ? null : progress.settings }; draw(); }),
+      readRouteJson<StallSettings>('/api/stall-settings', true).then((stalls) => { if (!current() || before.stalls !== view.stalls) return; view = { ...view, stalls }; draw(); }),
+      readRouteJson<NotificationSettings>('/api/notification-settings', true).then((notifications) => { if (!current() || before.notifications !== view.notifications) return; view = { ...view, notifications }; draw(); }),
     ]);
+    if (!current()) return;
     setTrustedHtml(loadStatus, results.some((result) => result.status === 'rejected') ? '<p class="hint failure">Some settings could not be loaded. <button type="button" class="linkish" data-settings-retry>Try again</button></p>' : '');
 
   };

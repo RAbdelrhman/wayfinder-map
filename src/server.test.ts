@@ -124,11 +124,44 @@ describe('repository-scoped server', () => {
       expect(homeLoader).toHaveBeenCalledTimes(1);
       account = { ...account, login: 'another' };
       const changed = await fetch(`${running.url}/api/auth/status?refresh=1`);
+      expect(changed.headers.get('x-wayfinder-cache-scope')).not.toBeNull();
       expect(changed.headers.get('x-wayfinder-cache-scope')).not.toBe(before!.headers.get('x-wayfinder-cache-scope'));
       await fetch(`${running.url}/api/home`);
       expect(homeLoader).toHaveBeenCalledTimes(2);
     } finally { await new Promise<void>((resolve) => running.server.close(() => resolve())); }
   });
+  it('rotates repository scope on a live host change even without Home discovery', async () => {
+    let account = home.account;
+    const fetcher = vi.fn(async () => ({ maps: [], warnings: [] }));
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, accountReader: async () => account, fetcher, handOffStore: new HandOffStore({ filePath: null }), autoMapStore: memoryAutoMapStore() });
+    try {
+      const before = await fetch(`${running.url}/api/auth/status`);
+      await fetch(`${running.url}/api/repos/octo/one/snapshot`);
+      account = { ...account, host: 'other.github.test' };
+      const changed = await fetch(`${running.url}/api/auth/status`);
+      expect(changed.headers.get('x-wayfinder-cache-scope')).not.toBeNull();
+      expect(changed.headers.get('x-wayfinder-cache-scope')).not.toBe(before.headers.get('x-wayfinder-cache-scope'));
+      await fetch(`${running.url}/api/repos/octo/one/snapshot`);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } finally { await new Promise<void>((resolve) => running.server.close(() => resolve())); }
+  });
+
+  it('starts fresh Home discovery for manual Sync and rejects the replaced read', async () => {
+    let finish: (value: HomeState) => void = () => undefined;
+    const pending = new Promise<HomeState>((resolve) => { finish = resolve; });
+    const homeLoader = vi.fn().mockImplementationOnce(() => pending).mockResolvedValue({ ...home, repositories: ['octo/fresh'] });
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader, fetcher: async () => ({ maps: [], warnings: [] }), handOffStore: new HandOffStore({ filePath: null }), autoMapStore: memoryAutoMapStore() });
+    try {
+      const old = fetch(`${running.url}/api/home`);
+      await vi.waitFor(() => expect(homeLoader).toHaveBeenCalledTimes(1));
+      const fresh = await fetch(`${running.url}/api/home?refresh=1`);
+      expect(await fresh.json()).toMatchObject({ repositories: ['octo/fresh'] });
+      finish(home);
+      expect((await old).ok).toBe(false);
+      expect(await (await fetch(`${running.url}/api/home`)).json()).toMatchObject({ repositories: ['octo/fresh'] });
+    } finally { finish(home); await new Promise<void>((resolve) => running.server.close(() => resolve())); }
+  });
+
   it('serves a dedicated Settings document for direct category links', async () => {
     const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, fetcher: async () => ({ maps: [], warnings: [] }), handOffStore: new HandOffStore({ filePath: null }) });
     try {

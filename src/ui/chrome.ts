@@ -1,4 +1,5 @@
 import { setTrustedHtml } from './trustedHtml.js';
+import { routeData } from './routeData.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
@@ -273,7 +274,11 @@ export function updateAccountMark(
 export function bindAccountMark(element: HTMLElement | null): void {
   if (!element) return;
   void fetch('/api/auth/status')
-    .then((response) => (response.ok ? (response.json() as Promise<AccountProfile>) : null))
+    .then((response) => {
+      if (!response.ok) return null;
+      routeData().adoptScope(response);
+      return response.json() as Promise<AccountProfile>;
+    })
     .then((profile) => {
       updateAccountMark(element, profile);
     })

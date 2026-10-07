@@ -98,11 +98,24 @@ describe('route data across navigation', () => {
 
   it('never caches authentication, workspace checks or action responses', async () => {
     const request = vi.fn<typeof fetch>().mockImplementation(async () => response({ state: 'ready' }));
-    const cache = new RouteDataCache('account-a', storage(), storage(), request);
+    const tab = storage();
+    const cache = new RouteDataCache('account-a', tab, storage(), request);
     for (const url of ['/api/auth/status', '/api/auth/flow', '/api/repos/owner/repo/workspace', '/api/repos/owner/repo/hand-off']) {
       await cache.read(url);
       expect(cache.peek(url)).toBeNull();
+      expect(tab.values.size).toBe(0);
     }
+  });
+
+  it('publishes a changed response scope and prevents old account cache reuse', async () => {
+    const shared = storage();
+    const tab = storage();
+    const cache = new RouteDataCache('account-a', tab, shared, vi.fn<typeof fetch>().mockImplementation(async () => response({ maps: ['b'] }, 'account-b')));
+    cache.remember(endpoint, { maps: ['a'] });
+    await expect(cache.read(endpoint, true)).rejects.toThrow('account changed');
+    expect(shared.getItem(ROUTE_SCOPE_KEY)).toBe('account-b');
+    expect(cache.peek(endpoint)).toBeNull();
+    await expect(cache.read(endpoint)).resolves.toEqual({ maps: ['b'] });
   });
 
   it('still loads normally when storage is unavailable', async () => {

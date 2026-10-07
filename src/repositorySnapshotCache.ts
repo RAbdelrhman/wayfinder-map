@@ -11,6 +11,7 @@ export interface SnapshotPersistence {
 
 /** Immutable files let concurrent app processes keep the newest read without sharing a mutable index. */
 export class RepositorySnapshotCache implements SnapshotPersistence {
+  private writeRevision = 0;
   constructor(private readonly root = join(homedir(), '.wayfinder-map', 'repository-cache-v1')) {}
 
   private directory(repo: string, scope: string): string {
@@ -38,7 +39,8 @@ export class RepositorySnapshotCache implements SnapshotPersistence {
     const at = Date.parse(snapshot.fetchedAt);
     if (!Number.isFinite(at)) return;
     const directory = this.directory(snapshot.repo, scope);
-    const path = join(directory, `${String(at)}-${randomUUID()}.json`);
+    this.writeRevision = Math.max(Date.now(), this.writeRevision + 1);
+    const path = join(directory, `${String(at)}-${String(this.writeRevision)}-${randomUUID()}.json`);
     const temporary = `${path}.tmp`;
     try {
       await mkdir(directory, { recursive: true });
