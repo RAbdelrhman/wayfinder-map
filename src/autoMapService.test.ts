@@ -50,8 +50,8 @@ function ticket(number: number, extra: Partial<Ticket> = {}): Ticket {
   } as Ticket;
 }
 
-function mapOf(tickets: Ticket[]): WayfinderMap {
-  return { number: 5, title: 'Roadmap v1', tickets } as WayfinderMap;
+function mapOf(tickets: Ticket[], extra: Partial<WayfinderMap> = {}): WayfinderMap {
+  return { number: 5, title: 'Roadmap v1', open: true, settled: null, tickets, ...extra } as WayfinderMap;
 }
 
 function prediction(tier: 'simple' | 'mid' | 'hard' | null, status: MethodPrediction['status'] = 'ok'): MethodPrediction {
@@ -198,6 +198,29 @@ describe('AutoMapService', () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
       expect(h.submits).toHaveLength(1);
       expect(restarted.submits).toEqual([]);
+    });
+
+    it('reads the map again when the first read fails', async () => {
+      let reads = 0;
+      const h = harness({ retryMs: 0, loadMap: async () => { reads += 1; if (reads === 1) throw new Error('offline'); return reads === 2 ? null : mapOf([ticket(11)]); } });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      await vi.waitFor(() => expect(h.submits).toHaveLength(1));
+      expect(h.submits[0]?.body.tickets.map((item) => item.ticket)).toEqual([11]);
+    });
+
+    it('still starts them when saving the setting fails', async () => {
+      const store = memoryAutoMapStore();
+      store.save = async () => Promise.reject(new Error('disk full'));
+      const h = harness({ store, loadMap: async () => mapOf([ticket(11)]) });
+      await expect(h.service.change('octo/one', 5, { op: 'enable' })).rejects.toThrow('disk full');
+      await vi.waitFor(() => expect(h.submits).toHaveLength(1));
+    });
+
+    it.each([{ open: false }, { settled: { at: '2026-10-01T09:00:00.000Z' } }])('starts nothing on a map that is closed or settled: %o', async (extra) => {
+      const h = harness({ loadMap: async () => mapOf([ticket(11)], extra as Partial<WayfinderMap>) });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(h.submits).toEqual([]);
     });
 
     it('starts nothing when the map is turned off before it is read', async () => {

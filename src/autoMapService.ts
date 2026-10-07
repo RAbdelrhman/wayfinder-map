@@ -22,6 +22,9 @@ import type { Ticket, WayfinderMap } from './types.js';
 /* The auto map's trigger, run in the server (#182): it keeps watching a map while no page is open, hands off what becomes next, and turns itself off on a usage limit. */
 
 const BATCH_MS = 400;
+/** How often turning a map on tries to read what is next on it, and how long it waits between tries. */
+const READ_ATTEMPTS = 3;
+const RETRY_MS = 5000;
 /** The most tickets one batch asks a model to rate, as the auto-rate route allows. */
 const MAX_RATED = 16;
 /** A notice the page has not picked up in this long is stale news. */
@@ -44,6 +47,7 @@ export interface AutoMapServiceDeps {
   desktop?: (notification: DesktopNotification) => void;
   now?: () => Date;
   batchMs?: number;
+  retryMs?: number;
 }
 
 /** What the page reads: every map's setting, the machine settings, and the notices to put in its inbox. */
@@ -163,14 +167,21 @@ export class AutoMapService {
     } else {
       this.unwatch(id);
     }
-    await this.persist();
+    // Before the save, which can fail after the map is already on and watched in memory.
     if (change.op === 'enable' && !current.enabled) void this.startAlreadyNext(repo, mapNumber, next).catch(() => undefined);
+    await this.persist();
   }
 
   /** Turning a map on also starts what is next on it already: no event will ever say those tickets became next. */
   private async startAlreadyNext(repo: string, mapNumber: number, setting: AutoMapSetting): Promise<void> {
-    const map = await this.deps.loadMap(repo, mapNumber);
-    if (map === null || this.setting(repo, mapNumber) !== setting || setting.enabledAt === null) return;
+    let map: WayfinderMap | null = null;
+    for (let attempt = 0; map === null && attempt < READ_ATTEMPTS; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, this.deps.retryMs ?? RETRY_MS).unref());
+      if (this.closed || this.setting(repo, mapNumber) !== setting) return;
+      map = await this.deps.loadMap(repo, mapNumber).catch(() => null);
+    }
+    // The watcher drops a closed or settled map, so the auto map starts nothing on one either.
+    if (map === null || !map.open || map.settled !== null || this.closed || this.setting(repo, mapNumber) !== setting || setting.enabledAt === null) return;
     for (const ticket of map.tickets) {
       if (ticket.state !== 'frontier') continue;
       this.take({ type: 'ticket-next', from: ticket.state, ticket: { number: ticket.number, title: ticket.title }, id: ticket.number, repo, mapNumber, at: setting.enabledAt });
