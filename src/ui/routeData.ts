@@ -38,6 +38,13 @@ export class RouteDataCache {
     try { return this.shared.getItem(ROUTE_SCOPE_KEY) === this.scope; } catch { return false; }
   }
 
+  private sharedScopeChanged(scope: string): boolean {
+    try {
+      const sharedScope = this.shared.getItem(ROUTE_SCOPE_KEY);
+      return sharedScope !== null && sharedScope !== scope;
+    } catch { return false; }
+  }
+
   private key(url: string): string {
     // A repository snapshot is shared by Home, the repository page and all map views.
     const parsed = new URL(url, 'http://localhost');
@@ -111,7 +118,7 @@ export class RouteDataCache {
       const value: unknown = await response.json();
       if (!response.ok) throw new Error((value as { error?: string }).error ?? 'Request failed.');
       const nextScope = response.headers.get('x-wayfinder-cache-scope');
-      if (scope !== '' && (scope !== this.scope || nextScope !== null && nextScope !== scope || !this.active())) throw new Error('The GitHub account changed. Reload this page.');
+      if (scope !== '' && (scope !== this.scope || nextScope !== null && nextScope !== scope || this.sharedScopeChanged(scope))) throw new Error('The GitHub account changed. Reload this page.');
       if (version !== (this.versions.get(key) ?? 0)) throw new Error('This read was replaced by a newer change.');
       if (scope === this.scope) this.save(url, value);
       return value as T;

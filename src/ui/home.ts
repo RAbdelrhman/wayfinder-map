@@ -269,12 +269,20 @@ let draftAutoRefresh: AutoRefresh | null = null;
 async function renderDraftPage(repo: string, draftId: string, refresh = false, force = refresh): Promise<boolean> {
   navigation?.setCurrentRepo(repo);
   if (refresh) setSyncBusy(true);
+  const savedTracking = routeData().peek<HandOffSnapshot>('/api/hand-offs');
+  const savedDraft = savedTracking?.handOffs.find((candidate) => candidate.id === draftId && candidate.repo.toLowerCase() === repo.toLowerCase());
+  if (!refresh && savedDraft !== undefined && isNewMapHandOff(savedDraft)) paintDraft(savedDraft);
   let tracking: HandOffSnapshot;
   try {
-    tracking = await getJson<HandOffSnapshot>('/api/hand-offs');
+    tracking = await readRouteJson<HandOffSnapshot>('/api/hand-offs', true);
   } catch (error) {
-    if (refresh) setSyncBusy(false);
-    throw error;
+    if (savedTracking !== null && savedDraft !== undefined && isNewMapHandOff(savedDraft)) {
+      tracking = savedTracking;
+      toast(error instanceof Error ? error.message : String(error), 8000);
+    } else {
+      if (refresh) setSyncBusy(false);
+      throw error;
+    }
   }
   const handOff = tracking.handOffs.find((candidate) => candidate.id === draftId && candidate.repo.toLowerCase() === repo.toLowerCase());
   if (handOff === undefined || !isNewMapHandOff(handOff)) {
@@ -284,7 +292,39 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false, f
   const draft = handOff as NewMapHandOff;
   let snapshot: MapSnapshot | null = null;
 
-  remember(repo);
+  paintDraft(draft);
+  try {
+    snapshot = await readRouteJson<MapSnapshot>(`${scopedApiPath(repo, 'snapshot')}${force ? '?refresh=1' : '?check=1'}`, true);
+  } catch {
+    toast("Couldn't check GitHub for the new map yet. Wayfinder will keep trying.", 8000);
+  }
+  if (snapshot !== null) {
+    navigation?.setSnapshot(snapshot, null);
+    const target = draftToMapPath(repo, draft, snapshot.maps);
+    if (target !== null) {
+      window.location.replace(target);
+      if (refresh) setSyncBusy(false);
+      return true;
+    }
+    const fetched = Date.parse(snapshot.fetchedAt);
+    setSynced(Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
+  }
+
+  if (draftAutoRefresh === null) {
+    draftAutoRefresh = new AutoRefresh({
+      refresh: () => renderDraftPage(repo, draftId, true, false),
+      isVisible: () => document.visibilityState === 'visible',
+    });
+    if (snapshot !== null) draftAutoRefresh.markSuccessfulSnapshot();
+    draftAutoRefresh.start();
+  }
+  if (refresh) setSyncBusy(false);
+  return snapshot !== null;
+}
+
+/** Paint planning independently of its GitHub discovery check. */
+function paintDraft(draft: NewMapHandOff): void {
+  remember(draft.repo);
   document.title = `${draft.title ?? 'New map'} - being planned - Wayfinder`;
   const badge = draft.threadId === null || draft.status === 'failed' || draft.status === 'interrupted' ? 'Needs attention' : 'Being planned';
   const recoveryActions = draft.threadId === null
@@ -323,33 +363,6 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false, f
       button.disabled = false;
     }
   });
-  try {
-    snapshot = await readRouteJson<MapSnapshot>(`${scopedApiPath(repo, 'snapshot')}${force ? '?refresh=1' : '?check=1'}`, true);
-  } catch {
-    toast("Couldn't check GitHub for the new map yet. Wayfinder will keep trying.", 8000);
-  }
-  if (snapshot !== null) {
-    navigation?.setSnapshot(snapshot, null);
-    const target = draftToMapPath(repo, draft, snapshot.maps);
-    if (target !== null) {
-      window.location.replace(target);
-      if (refresh) setSyncBusy(false);
-      return true;
-    }
-    const fetched = Date.parse(snapshot.fetchedAt);
-    setSynced(Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
-  }
-
-  if (draftAutoRefresh === null) {
-    draftAutoRefresh = new AutoRefresh({
-      refresh: () => renderDraftPage(repo, draftId, true, false),
-      isVisible: () => document.visibilityState === 'visible',
-    });
-    if (snapshot !== null) draftAutoRefresh.markSuccessfulSnapshot();
-    draftAutoRefresh.start();
-  }
-  if (refresh) setSyncBusy(false);
-  return snapshot !== null;
 }
 
 async function renderHome(refresh: boolean): Promise<void> {

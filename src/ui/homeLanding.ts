@@ -288,38 +288,32 @@ export function homeLoadingMarkup(shape: HomeShape = DEFAULT_HOME_SHAPE): string
 
 export async function renderHomeLanding(options: HomeLandingOptions): Promise<void> {
   document.title = 'Home · Wayfinder';
-  const [homeResult, handOffResult] = await Promise.allSettled([
-    options.getJson<HomeState>(`/api/home${options.refresh ? '?refresh=1' : ''}`),
-    options.getJson<HandOffSnapshot>('/api/hand-offs'),
-  ]);
-  if (homeResult.status === 'rejected') {
+  const homeRead = options.getJson<HomeState>(`/api/home${options.refresh ? '?refresh=1' : ''}`);
+  const handOffRead = options.getJson<HandOffSnapshot>('/api/hand-offs');
+  // Observe both rejections immediately, but let either source draw without waiting for the other.
+  const metadata = Promise.allSettled([homeRead, handOffRead]);
+  const savedHome = options.peekJson?.<HomeState>('/api/home') ?? null;
+  let state: HomeState;
+  try {
+    state = savedHome ?? await homeRead;
+  } catch (error) {
     const recency = readHomeRecency(options.storage);
-    await options.syncAccountMark();
-    const message = homeResult.reason instanceof Error ? homeResult.reason.message : String(homeResult.reason);
+    const message = error instanceof Error ? error.message : String(error);
     options.paint(homeErrorMarkup(message, recency.repositories));
     return;
   }
-
-  const state = homeResult.value;
-  const handOffs = handOffResult.status === 'fulfilled' ? handOffResult.value.handOffs : [];
-  const handOffError = handOffResult.status === 'rejected';
-  options.setAccount(state);
+  let handOffs = options.peekJson?.<HandOffSnapshot>('/api/hand-offs')?.handOffs ?? [];
+  let handOffError = false;
   options.setSynced('');
   const recency = readHomeRecency(options.storage);
-  const repositories = orderWayfinderRepositories({ mapRepositories: state.repositories, recency, handOffs });
-  const accountReady = state.account.status === 'ready';
-  const recentWorkRepos = handOffs
-    .slice()
-    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
-    .slice(0, 8)
-    .map((handOff) => handOff.repo);
-  const snapshotRepos = Array.from(new Set([
-    ...repositories.slice(0, HOME_INITIAL_SNAPSHOT_LIMIT),
+  const repositoryOrder = (): string[] => orderWayfinderRepositories({ mapRepositories: state.repositories, recency, handOffs });
+  const snapshotRepositories = (): string[] => Array.from(new Set([
+    ...repositoryOrder().slice(0, HOME_INITIAL_SNAPSHOT_LIMIT),
     ...(recency.lastOpenedMap === null ? [] : [recency.lastOpenedMap.repo]),
-    ...recentWorkRepos,
+    ...handOffs.slice().sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)).slice(0, 8).map((handOff) => handOff.repo),
   ])).slice(0, 18);
   const snapshots = new Map<string, MapSnapshot | null>();
-  for (const repo of snapshotRepos) {
+  for (const repo of snapshotRepositories()) {
     const saved = options.peekJson?.<MapSnapshot>(scopedApiPath(repo, 'snapshot')) ?? null;
     if (saved !== null) snapshots.set(repo.toLocaleLowerCase(), saved);
   }
@@ -330,7 +324,10 @@ export async function renderHomeLanding(options: HomeLandingOptions): Promise<vo
     const previousInput = document.getElementById('repo-name') as HTMLInputElement | null;
     const query = previousInput?.value ?? '';
     const focused = document.activeElement === previousInput;
-  const oldProgress = document.getElementById('progress-host');
+    const oldProgress = document.getElementById('progress-host');
+    const repositories = repositoryOrder();
+    const accountReady = state.account.status === 'ready';
+    options.setAccount(state);
     const availableSnapshots = [...snapshots.values()].filter((snapshot): snapshot is MapSnapshot => snapshot !== null);
     const continueDestination = accountReady ? chooseContinueDestination(recency.lastOpenedMap, handOffs, availableSnapshots) : null;
     const workItems = accountReady ? buildHomeWorkItems(handOffs, availableSnapshots) : [];
@@ -468,6 +465,15 @@ export async function renderHomeLanding(options: HomeLandingOptions): Promise<vo
     }
   };
   draw();
-  if (accountReady) await loadHomeSnapshots(snapshotRepos, options.refresh, options.getJson, snapshots, draw);
+  const initialRepos = state.account.status === 'ready' ? snapshotRepositories() : [];
+  const initialReads = loadHomeSnapshots(initialRepos, options.refresh, options.getJson, snapshots, draw);
+  const [homeResult, handOffResult] = await metadata;
+  if (homeResult.status === 'fulfilled') state = homeResult.value;
+  else options.toast(homeResult.reason instanceof Error ? homeResult.reason.message : String(homeResult.reason), 9000);
+  if (handOffResult.status === 'fulfilled') handOffs = handOffResult.value.handOffs;
+  else handOffError = true;
+  draw();
+  const additionalRepos = state.account.status === 'ready' ? snapshotRepositories().filter((repo) => !initialRepos.includes(repo)) : [];
+  await Promise.all([initialReads, loadHomeSnapshots(additionalRepos, options.refresh, options.getJson, snapshots, draw)]);
 }
 

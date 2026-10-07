@@ -20,6 +20,17 @@ const home: HomeState = { version: 'dev', account: { status: 'ready', host: 'git
 const snapshot: MapSnapshot = { repo: 'owner/fast', fetchedAt: new Date().toISOString(), maps: [], hiddenMaps: 0, publicMaps: [], warnings: [] };
 
 describe('routes remain usable during slow reads', () => {
+  it('restores Home while both discovery and T3 are pending', async () => {
+    let finishHome: (value: HomeState) => void = () => undefined;
+    let finishHandOffs: (value: { handOffs: [] }) => void = () => undefined;
+    const homeRead = new Promise<HomeState>((resolve) => { finishHome = resolve; });
+    const handOffRead = new Promise<{ handOffs: [] }>((resolve) => { finishHandOffs = resolve; });
+    const pending = renderHomeLanding({ refresh: false, storage: localStorage, peekJson: <T>(url: string): T | null => (url === '/api/home' ? home : url.endsWith('/snapshot') ? snapshot : null) as T | null, getJson: async <T>(url: string): Promise<T> => (url === '/api/home' ? await homeRead : url === '/api/hand-offs' ? await handOffRead : snapshot) as T, paint: (html) => setTrustedHtml(document.getElementById('main')!, html), bindRepoPicker: vi.fn(), accountPanel: () => '', setAccount: vi.fn(), syncAccountMark: async () => undefined, setSynced: vi.fn(), renderProgress: async () => undefined, focusHandOff: async () => undefined, toast: vi.fn() });
+    expect(document.querySelector('.wf-home')).not.toBeNull();
+    expect(document.querySelector('[data-home-repo="owner/fast"]')?.textContent).toContain('No maps yet');
+    finishHome(home); finishHandOffs({ handOffs: [] });
+    await pending;
+  });
   it('shows Home before every repository finishes and preserves search, focus, and progress on updates', async () => {
     let finish: (value: MapSnapshot) => void = () => undefined;
     const slow = new Promise<MapSnapshot>((resolve) => { finish = resolve; });

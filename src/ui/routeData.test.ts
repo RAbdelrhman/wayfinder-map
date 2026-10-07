@@ -107,7 +107,7 @@ describe('route data across navigation', () => {
 
   it('still loads normally when storage is unavailable', async () => {
     const broken = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); }, removeItem: () => { throw new Error('denied'); } };
-    const cache = new RouteDataCache('', broken, broken, vi.fn<typeof fetch>().mockResolvedValue(response({ maps: [] })));
+    const cache = new RouteDataCache('account-a', broken, broken, vi.fn<typeof fetch>().mockResolvedValue(response({ maps: [] })));
     await expect(cache.read(endpoint)).resolves.toEqual({ maps: [] });
   });
 });

@@ -195,12 +195,13 @@ export class RepositoryStore {
   private async withTickets(repo: string, snapshot: MapSnapshot, open: readonly number[]): Promise<MapSnapshot> {
     const unread = snapshot.maps.filter((map) => !map.ticketsLoaded && open.includes(map.number));
     if (unread.length === 0) return snapshot;
+    const entry = this.entries.get(repo);
     const { maps, warnings } = await this.detailer(
       { repo, mapLabel: this.options.mapLabel, typePrefix: this.options.typePrefix },
       unread,
     );
     const read = new Map(maps.map((map) => [map.number, map]));
-    const entry = this.touch(repo);
+    if (entry === undefined || this.entries.get(repo) !== entry) throw new Error('Repository cache changed while reading ticket details. Please retry.');
     const current = entry.snapshot ?? snapshot;
     const next = {
       ...current,
