@@ -149,12 +149,6 @@ export function edgeKey(from: number, to: number): string {
   return `${String(from)}>${String(to)}`;
 }
 
-/** The count after the view tabs. Null when nothing on the path is left, so there is no button. */
-export function criticalPathButtonHtml(path: CriticalPath): string | null {
-  if (path.remaining === 0) return null;
-  return `${icon(icons.ROUTE)}<span><b>${String(path.remaining)}</b> left on the critical path</span>`;
-}
-
 /** Key rows for the three signals, after the state and fog rows. */
 export const SIGNAL_KEY_ROWS = [
   `<div class="keyrow"><span class="key-path" aria-hidden="true"></span><b>Critical path</b>The chain most of what is left waits on</div>`,

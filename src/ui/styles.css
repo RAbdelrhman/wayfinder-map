@@ -1792,7 +1792,6 @@ tbody tr.is-selected {
 }
 
 @media (max-width: 1100px) {
-  .synced,
   .search kbd {
     display: none;
   }
@@ -4593,6 +4592,7 @@ textarea.input {
   height: 30px;
   display: grid;
   place-items: center;
+  padding: 0;
   border: 0;
   border-radius: 8px;
   background: none;
@@ -5191,11 +5191,168 @@ textarea.input {
 }
 
 .topbar .synced {
-  margin: 0 4px;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin: 0 2px;
+  padding: 0;
+  gap: 0;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-.topbar .synced-label:empty {
-  display: none;
+.topbar .synced .synced-icon {
+  width: 15px;
+  height: 15px;
+  transition: color 0.2s ease;
+}
+
+.topbar .synced .synced-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* The time sits in the tooltip and the accessible name; the button is just its icon. */
+.topbar .synced .synced-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- topbar: folding as it narrows ---------- */
+
+/* The map topbar gives way in order: the repository folds to its icon, then the map, then the view tabs. */
+.map-topbar {
+  container: map-topbar / inline-size;
+}
+
+.topbar span.i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.topbar span.i > svg {
+  width: 100%;
+  height: 100%;
+}
+
+.nav-topbar {
+  overflow: clip;
+  overflow-clip-margin: 4px;
+}
+
+.nav-map-scopes .nav-scope-control:first-child {
+  flex: none;
+}
+
+.nav-map-scopes .scope,
+.nav-map-tabs .seg {
+  transition: gap 0.2s ease, padding 0.2s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.nav-map-scopes .scope > .i[data-icon='chevron'] {
+  max-width: 13px;
+}
+
+.nav-map-scopes .scope .c-automark {
+  max-width: 60px;
+  overflow: hidden;
+}
+
+.nav-map-tabs .seg-label {
+  max-width: 100px;
+  overflow: hidden;
+}
+
+.nav-map-tabs .nav-map-tab-count {
+  max-width: 40px;
+  overflow: hidden;
+}
+
+.nav-map-scopes .scope .t,
+.nav-map-scopes .scope > .i[data-icon='chevron'],
+.nav-map-scopes .scope .c-automark,
+.nav-map-tabs .seg-label,
+.nav-map-tabs .nav-map-tab-count {
+  transition: max-width 0.2s ease, opacity 0.15s ease, padding 0.2s ease, border-width 0.2s ease;
+}
+
+@container map-topbar (max-width: 900px) {
+  .topbar .nav-topbar-jump {
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .nav-topbar-jump .ph,
+  .nav-topbar-jump kbd {
+    display: none;
+  }
+}
+
+@container map-topbar (max-width: 980px) {
+  .nav-map-scopes .scope.is-quiet {
+    gap: 0;
+    padding: 0 7px;
+  }
+
+  .nav-map-scopes .scope.is-quiet .t,
+  .nav-map-scopes .scope.is-quiet > .i[data-icon='chevron'] {
+    max-width: 0;
+    opacity: 0;
+  }
+}
+
+@container map-topbar (max-width: 620px) {
+  .nav-map-scopes .scope:not(.is-quiet) {
+    gap: 0;
+    padding: 0 8px;
+  }
+
+  .nav-map-scopes .scope:not(.is-quiet) .t,
+  .nav-map-scopes .scope:not(.is-quiet) > .i[data-icon='chevron'],
+  .nav-map-scopes .scope:not(.is-quiet) .c-automark {
+    max-width: 0;
+    opacity: 0;
+    padding-inline: 0;
+    border-width: 0;
+  }
+}
+
+@container map-topbar (max-width: 560px) {
+  .nav-map-tabs .seg {
+    gap: 0;
+    padding: 4px 8px;
+  }
+
+  .nav-map-tabs .seg-label,
+  .nav-map-tabs .nav-map-tab-count {
+    max-width: 0;
+    opacity: 0;
+    padding-inline: 0;
+    border-width: 0;
+  }
+}
+
+@container map-topbar (max-width: 480px) {
+  .map-inbox-label {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-map-scopes .scope,
+  .nav-map-tabs .seg,
+  .nav-map-scopes .scope .t,
+  .nav-map-scopes .scope > .i[data-icon='chevron'],
+  .nav-map-scopes .scope .c-automark,
+  .nav-map-tabs .seg-label,
+  .nav-map-tabs .nav-map-tab-count {
+    transition: none;
+  }
 }
 
 .nav-topbar-jump {
@@ -5295,10 +5452,6 @@ textarea.input {
     padding: 0 8px;
   }
 
-  .topbar .synced {
-    display: none;
-  }
-
   .unblocked-notice {
     right: 12px;
     bottom: 12px;
@@ -5313,22 +5466,6 @@ textarea.input {
 
   .unblocked-notice-actions {
     justify-content: flex-end;
-  }
-
-  .nav-map-strip {
-    flex: 1;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
-  }
-
-  .nav-map-scopes,
-  .nav-map-tabs {
-    flex: none;
-  }
-
-  .scope .t {
-    max-width: 180px;
   }
 
   .nav-topbar-jump {
@@ -6885,46 +7022,6 @@ textarea.input {
 
 .edges path.is-critical.is-dim {
   opacity: 0.12;
-}
-
-/* "N left on the critical path": a quiet button after the view tabs that focuses the path. */
-.critical-count {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  margin-left: 10px;
-  padding: 0 10px;
-  border: 1px solid var(--hairline);
-  border-radius: 8px;
-  background: none;
-  color: var(--text-secondary);
-  font-size: 12.5px;
-  white-space: nowrap;
-}
-
-.critical-count b {
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.critical-count .i {
-  width: 14px;
-  height: 14px;
-  color: currentColor;
-}
-
-.critical-count:hover,
-.critical-count[aria-pressed='true'] {
-  background: var(--wash);
-  color: var(--text-primary);
-  border-color: var(--baseline);
-}
-
-.critical-count:focus-visible {
-  outline: 2px solid var(--state-claimed);
-  outline-offset: 2px;
 }
 
 /* PR, checks and review on the card's meta line; each tone comes with its own icon and word. */

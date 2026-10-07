@@ -7,6 +7,14 @@ import type { MapSnapshot, Prototype, WayfinderMap } from '../types.js';
 import { escapeHtml } from './markdown.js';
 
 export const NOTIFICATIONS_CHANGED = 'wayfinder:notifications-changed';
+/** The Inbox opened. Its detail lists the tickets it shows, so their finished hand-offs count as seen. */
+export const INBOX_OPENED = 'wayfinder:inbox-opened';
+
+export interface InboxTicket {
+  repo: string;
+  mapNumber: number;
+  ticketNumber: number;
+}
 export const NOTIFICATIONS_KEY = 'wayfinder-map:notifications';
 const NOTIFICATION_LIMIT = 100;
 
@@ -161,7 +169,9 @@ export function handOffTransitionNotifications(
         updatedAt,
       ));
     }
-    if (handOff.status === 'failed' && was?.status !== 'failed' && (was !== undefined || recent)) {
+    const failed = handOff.status === 'failed' || handOff.status === 'interrupted';
+    const wasFailed = was?.status === 'failed' || was?.status === 'interrupted';
+    if (failed && !wasFailed && (was !== undefined || recent)) {
       notices.push(statusNotification(
         'handOffError',
         'handoff:' + handOff.id + ':failed:' + updatedAt,

@@ -90,6 +90,19 @@ describe('styles.css', () => {
     expect(preludes.filter((prelude) => prelude.includes('@') && !prelude.startsWith('@'))).toEqual([]);
   });
 
+  it('folds the map topbar in order: the repository, then the map, then the view tabs', async () => {
+    const blocks = topLevelBlocks(structure(await readFile(new URL('./styles.css', import.meta.url), 'utf8')));
+    const foldsAt = (selector: string): number => {
+      const block = blocks.find((candidate) => candidate.startsWith('@container map-topbar') && candidate.includes(`${selector} {`));
+      return Number(/max-width: (\d+)px/.exec(block ?? '')?.[1] ?? Number.NaN);
+    };
+    const repo = foldsAt('.nav-map-scopes .scope.is-quiet');
+    const map = foldsAt('.nav-map-scopes .scope:not(.is-quiet)');
+    const tabs = foldsAt('.nav-map-tabs .seg');
+    expect(repo).toBeGreaterThan(map);
+    expect(map).toBeGreaterThan(tabs);
+  });
+
   it('does not repeat a rule block word for word', async () => {
     const blocks = topLevelBlocks(structure(await readFile(new URL('./styles.css', import.meta.url), 'utf8')));
     const repeated = blocks.filter((block, index) => blocks.indexOf(block) !== index);
