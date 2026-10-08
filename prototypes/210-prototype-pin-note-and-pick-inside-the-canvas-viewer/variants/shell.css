@@ -258,3 +258,7 @@ label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom
 @media (prefers-reduced-motion: no-preference) {
   .vw, .pin, .ghcomment { transition: opacity .15s ease-out; }
 }
+.vw.is-f .vw-grip { display: block; }
+.vw.is-f .vw-grip[data-corner='nw'] { left: 0; top: 0; right: auto; bottom: auto; transform: rotate(180deg); }
+.vw.is-f .vw-grip[data-corner='ne'] { top: 0; bottom: auto; transform: rotate(-90deg); cursor: nesw-resize; }
+.vw.is-f .vw-grip[data-corner='sw'] { left: 0; right: auto; transform: rotate(90deg); cursor: nesw-resize; }

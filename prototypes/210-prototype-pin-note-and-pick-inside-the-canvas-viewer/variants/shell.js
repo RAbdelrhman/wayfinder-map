@@ -33,7 +33,7 @@ WF.Shell = (() => {
       '  <section class="vw is-a" role="dialog" aria-modal="true" aria-label="Canvas: Onboarding">' +
       '    <div class="vw-bar is-a" id="vwbar"></div>' +
       '    <div class="vw-stage"><div class="canvas-surface"></div></div>' +
-      '    <span class="vw-grip" data-corner="se" title="Drag to resize" aria-hidden="true"></span>' +
+      ['nw', 'ne', 'sw', 'se'].map(corner => `<span class="vw-grip" data-corner="${corner}" title="Drag to resize" aria-hidden="true"></span>`).join('') +
       '  </section>' +
       '</div>' +
       '<div class="demobar" role="group" aria-label="Prototype controls"></div>';
@@ -195,7 +195,7 @@ WF.Shell = (() => {
       if (btn.hasAttribute('data-go')) { st.presenting = btn.dataset.go || null; st.activePin = null; render(); return; }
     });
 
-    // float drag + se-resize
+    // Float drag and the approved four-corner resize.
     let drag = null;
     vw.addEventListener('pointerdown', (e) => {
       if (st.size !== 'float' || e.button !== 0) return;
@@ -204,7 +204,7 @@ WF.Shell = (() => {
       if (!onDrag && !onGrip) return;
       e.preventDefault();
       vw.setPointerCapture(e.pointerId);
-      drag = { mode: onGrip ? 'size' : 'move', x: e.clientX, y: e.clientY, start: { ...floatRect }, id: e.pointerId };
+      drag = { mode: onGrip ? 'size' : 'move', corner: onGrip?.dataset.corner, x: e.clientX, y: e.clientY, start: { ...floatRect }, id: e.pointerId };
     });
     vw.addEventListener('pointermove', (e) => {
       if (!drag || drag.id !== e.pointerId) return;
@@ -213,8 +213,14 @@ WF.Shell = (() => {
         floatRect.left = Math.max(0, Math.min(desk.clientWidth - floatRect.w, drag.start.left + dx));
         floatRect.top = Math.max(0, Math.min(desk.clientHeight - floatRect.h, drag.start.top + dy));
       } else {
-        floatRect.w = Math.max(360, Math.min(desk.clientWidth - floatRect.left, drag.start.w + dx));
-        floatRect.h = Math.max(240, Math.min(desk.clientHeight - floatRect.top, drag.start.h + dy));
+        const start = drag.start;
+        const right = start.left + start.w, bottom = start.top + start.h;
+        const west = drag.corner.includes('w'), north = drag.corner.includes('n');
+        const minW = Math.min(360, desk.clientWidth), minH = Math.min(240, desk.clientHeight);
+        floatRect.left = west ? Math.max(0, Math.min(right - minW, start.left + dx)) : start.left;
+        floatRect.top = north ? Math.max(0, Math.min(bottom - minH, start.top + dy)) : start.top;
+        floatRect.w = west ? right - floatRect.left : Math.max(minW, Math.min(desk.clientWidth - start.left, start.w + dx));
+        floatRect.h = north ? bottom - floatRect.top : Math.max(minH, Math.min(desk.clientHeight - start.top, start.h + dy));
       }
       vw.style.cssText = `left:${floatRect.left}px;top:${floatRect.top}px;width:${floatRect.w}px;height:${floatRect.h}px`;
     });
