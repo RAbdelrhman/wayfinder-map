@@ -21,6 +21,34 @@ async function settle(): Promise<void> {
 }
 
 describe('AutoRefresh', () => {
+  it('keeps a separate draft cadence through return checks, failures and recovery', async () => {
+    let now = 0;
+    let successful = false;
+    const timers = new Map<number, Timer>();
+    const refresh = new AutoRefresh({
+      intervalMs: 30_000,
+      refresh: async () => successful,
+      isVisible: () => true,
+      now: () => now,
+      setTimer: (callback, delay) => { timers.set(1, { callback, delay }); return 1; },
+      clearTimer: (id) => timers.delete(id),
+    });
+    refresh.markSuccessfulSnapshot();
+    refresh.start();
+    expect(timers.get(1)?.delay).toBe(30_000);
+    now = 5_000;
+    refresh.visibilityChanged();
+    expect(timers.get(1)?.delay).toBe(25_000);
+    refresh.visibilityChanged(true);
+    await settle();
+    expect(timers.get(1)?.delay).toBe(60_000);
+    successful = true;
+    refresh.visibilityChanged(true);
+    await settle();
+    expect(timers.get(1)?.delay).toBe(30_000);
+    refresh.stop();
+  });
+
   it('polls visible pages every five seconds and never overlaps requests', async () => {
     const visible = true;
     let now = 0;

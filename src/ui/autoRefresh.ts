@@ -4,6 +4,7 @@ export const MAX_RETRY_DELAY_MS = 5 * 60_000;
 export interface AutoRefreshOptions {
   refresh: () => Promise<boolean>;
   isVisible: () => boolean;
+  intervalMs?: number;
   now?: () => number;
   setTimer?: (callback: () => void, delay: number) => number;
   clearTimer?: (timer: number) => void;
@@ -18,13 +19,17 @@ export class AutoRefresh {
   private readonly now: () => number;
   private readonly setTimer: (callback: () => void, delay: number) => number;
   private readonly clearTimer: (timer: number) => void;
+  private readonly intervalMs: number;
   private timer: number | null = null;
   private running: Promise<void> | null = null;
   private lastSuccessfulSnapshot: number | null = null;
-  private nextDelay = REFRESH_INTERVAL_MS;
+  private nextDelay: number;
   private stopped = true;
 
   constructor(private readonly options: AutoRefreshOptions) {
+    this.intervalMs = options.intervalMs ?? REFRESH_INTERVAL_MS;
+    if (!Number.isFinite(this.intervalMs) || this.intervalMs <= 0 || this.intervalMs > MAX_RETRY_DELAY_MS) throw new Error('Invalid automatic refresh interval.');
+    this.nextDelay = this.intervalMs;
     this.now = options.now ?? Date.now;
     this.setTimer = options.setTimer ?? ((callback, delay) => window.setTimeout(callback, delay));
     this.clearTimer = options.clearTimer ?? ((timer) => window.clearTimeout(timer));
@@ -32,7 +37,7 @@ export class AutoRefresh {
 
   markSuccessfulSnapshot(): void {
     this.lastSuccessfulSnapshot = this.now();
-    this.nextDelay = REFRESH_INTERVAL_MS;
+    this.nextDelay = this.intervalMs;
   }
 
   start(): void {
@@ -48,12 +53,12 @@ export class AutoRefresh {
     }
 
     const age = this.lastSuccessfulSnapshot === null ? Infinity : this.now() - this.lastSuccessfulSnapshot;
-    if (checkNow || age >= REFRESH_INTERVAL_MS) {
+    if (checkNow || age >= this.intervalMs) {
       this.cancelTimer();
       void this.refresh();
       return;
     }
-    this.schedule(REFRESH_INTERVAL_MS - age);
+    this.schedule(this.intervalMs - age);
   }
 
   stop(): void {

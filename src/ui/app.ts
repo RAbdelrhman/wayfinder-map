@@ -547,6 +547,7 @@ let loadInFlight: Promise<boolean> | null = null;
 let loadMode: 'initial' | 'manual' | 'background' | null = null;
 let loadMapNumber: number | null = null;
 let lastCheckedAt: number | null = null;
+let backgroundSyncFailed = false;
 
 function toast(message: string, ms = 4200): void {
   els.toast.textContent = message;
@@ -600,10 +601,14 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       }
       // The repository is only known once the snapshot lands, and the clone lookup is keyed to it.
       if (!workspaceAsked) void loadWorkspace().then(refreshLaunch);
+      backgroundSyncFailed = false;
       return true;
     } catch (error) {
       if (mode !== 'background' || snapshot === null) {
         toast((error as Error).message || 'Could not read the maps.', 12000);
+      } else if (!backgroundSyncFailed) {
+        console.warn('Wayfinder automatic sync failed. Keeping the last successful map and retrying.', error);
+        backgroundSyncFailed = true;
       }
       return false;
     } finally {

@@ -315,6 +315,7 @@ async function renderDraftPage(repo: string, draftId: string, refresh = false, f
     draftAutoRefresh = new AutoRefresh({
       refresh: () => renderDraftPage(repo, draftId, true, false),
       isVisible: () => document.visibilityState === 'visible',
+      intervalMs: 30_000,
     });
     if (snapshot !== null) draftAutoRefresh.markSuccessfulSnapshot();
     draftAutoRefresh.start();

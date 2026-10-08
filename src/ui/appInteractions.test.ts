@@ -41,7 +41,8 @@ describe('automatic map syncing', () => {
     const map = { number: 205 };
     const snapshot = { maps: [map], fetchedAt: '2026-10-07T12:00:00Z' };
     const context: Record<string, unknown> = {
-      loadInFlight: null, loadMode: null, loadMapNumber: null, lastCheckedAt: null, snapshot,
+      loadInFlight: null, loadMode: null, loadMapNumber: null, lastCheckedAt: null, backgroundSyncFailed: false, snapshot,
+      console: { warn: vi.fn() },
       pageRoute: { repo: 'owner/repo', mapNumber: 205 }, view: 'map', selected: 210,
       window: { location: { pathname: '/repos/owner/repo/maps/205' } }, URLSearchParams,
       Date: { now: () => 123_456, parse: Date.parse },
@@ -76,6 +77,25 @@ describe('automatic map syncing', () => {
     context['readRouteJson'] = vi.fn(async () => { throw new Error('offline'); });
     expect(await (context['load'] as (mode: string) => Promise<boolean>)('background')).toBe(false);
     expect(context['lastCheckedAt']).toBe(123_456);
+    expect(context['toast']).not.toHaveBeenCalled();
+    expect((context['console'] as { warn: unknown }).warn).toHaveBeenCalledOnce();
+  });
+
+  it('logs one diagnostic per outage and allows a new diagnostic after recovery', async () => {
+    const context = fixture();
+    const load = context['load'] as (mode: string) => Promise<boolean>;
+    const read = context['readRouteJson'];
+    context['readRouteJson'] = vi.fn(async () => { throw new Error('offline'); });
+    await load('background');
+    await load('background');
+    const warn = (context['console'] as { warn: unknown }).warn;
+    expect(warn).toHaveBeenCalledOnce();
+    context['readRouteJson'] = read;
+    await load('background');
+    expect(context['backgroundSyncFailed']).toBe(false);
+    context['readRouteJson'] = vi.fn(async () => { throw new Error('offline again'); });
+    await load('background');
+    expect(warn).toHaveBeenCalledTimes(2);
     expect(context['toast']).not.toHaveBeenCalled();
   });
 
