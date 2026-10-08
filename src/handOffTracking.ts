@@ -152,12 +152,13 @@ export interface ThreadChange {
   ticketNumber: number | null;
 }
 
-/** The thread a shell `thread-upserted` event is about, or null for any other event. */
+/** The thread a v1 or v2 shell update is about, or null for any other event. */
 export function upsertedThreadId(value: unknown): string | null {
   const event = record(value);
   if (event === null) return null;
   const eventValue = record(event['value']);
-  if (firstText(event['kind'], event['type'], event['event'], event['_tag']) !== 'thread-upserted') return null;
+  const kind = firstText(event['kind'], event['type'], event['event'], event['_tag']);
+  if (kind !== 'thread-upserted' && kind !== 'thread.updated') return null;
   return text(record(event['thread'] ?? eventValue?.['thread'] ?? event['data'] ?? event['value'])?.['id']);
 }
 
@@ -274,20 +275,22 @@ export function mapT3Status(thread: unknown): MappedT3Thread | null {
 
   const session = record(item['session']);
   const latestTurn = record(item['latestTurn']);
-  const sessionStatus = firstText(session?.['status'], item['sessionStatus']);
-  const turnState = firstText(latestTurn?.['state'], item['latestTurnState']);
+  const sessionStatus = firstText(session?.['status'], item['sessionStatus'], item['status']);
+  const turnState = firstText(item['activityRunStatus'], latestTurn?.['state'], item['latestTurnState'], item['status']);
   const lastError = firstText(session?.['lastError'], item['lastError']);
-  const pendingApproval = flag(item['hasPendingApprovals']) || flag(item['pendingApproval']);
-  const pendingUserInput = flag(item['hasPendingUserInput']) || flag(item['pendingUserInput']);
+  const requestKind = text(record(item['pendingRuntimeRequest'])?.['kind']);
+  const pendingApproval = flag(item['hasPendingApprovals']) || flag(item['pendingApproval']) ||
+    (requestKind !== null && ['command', 'file-read', 'file-change', 'mcp-elicitation', 'permission'].includes(requestKind));
+  const pendingUserInput = flag(item['hasPendingUserInput']) || flag(item['pendingUserInput']) || requestKind === 'user_input';
   const background = record(item['backgroundLiveness']);
   const backgroundState = firstText(background?.['state'], background?.['status'], item['backgroundLiveness']);
 
   let status: MappedT3Thread['status'] = 'starting';
-  if (sessionStatus === 'error' || turnState === 'error' || lastError !== null) {
+  if (sessionStatus === 'error' || turnState === 'error' || turnState === 'failed' || lastError !== null) {
     status = 'failed';
-  } else if (turnState === 'interrupted' || sessionStatus === 'interrupted') {
+  } else if (turnState === 'interrupted' || sessionStatus === 'interrupted' || turnState === 'cancelled' || turnState === 'rolled_back') {
     status = 'interrupted';
-  } else if (pendingApproval || pendingUserInput) {
+  } else if (pendingApproval || pendingUserInput || turnState === 'waiting') {
     status = 'waiting';
   } else if (sessionStatus === 'starting') {
     status = 'starting';
@@ -300,7 +303,7 @@ export function mapT3Status(thread: unknown): MappedT3Thread | null {
     status = 'running';
   } else if (
     turnState === 'completed' &&
-    (text(latestTurn?.['settledAt']) !== null || flag(latestTurn?.['settledOverride']))
+    (text(latestTurn?.['settledAt']) !== null || flag(latestTurn?.['settledOverride']) || text(item['settledAt']) !== null || item['settledOverride'] === 'settled')
   ) {
     status = 'finished';
   } else if (sessionStatus === 'ready' || sessionStatus === 'idle' || sessionStatus === 'stopped' || turnState === 'completed') {
@@ -689,11 +692,18 @@ export class HandOffStore {
 
   private async applySnapshotCurrent(environmentId: string | null, origin: string, snapshot: unknown): Promise<void> {
     const shell = record(snapshot);
-    if (shell === null) return;
+    if (shell === null || !Array.isArray(shell['threads']) ||
+      (shell['archivedThreads'] !== undefined && !Array.isArray(shell['archivedThreads']))) {
+      throw new Error('T3 Code returned an incompatible orchestration shell');
+    }
     const sequence = finiteNumber(shell['snapshotSequence']);
-    const threads = Array.isArray(shell['threads']) ? shell['threads'] : [];
+    const threads = [
+      ...shell['threads'],
+      ...(Array.isArray(shell['archivedThreads']) ? shell['archivedThreads'] : []),
+    ];
     const byId = new Map<string, MappedT3Thread>();
     for (const raw of threads) {
+      if (text(record(raw)?.['id']) === null) throw new Error('T3 Code returned an incompatible orchestration thread');
       if (text(record(raw)?.['deletedAt']) !== null) continue;
       const parsed = mapT3Status(raw);
       if (parsed !== null) byId.set(parsed.id, parsed);
@@ -734,7 +744,10 @@ export class HandOffStore {
       await this.applySnapshotCurrent(environmentId, origin, snapshotWithSequence);
       return;
     }
-    if (kind === 'thread-removed') {
+    if (kind === 'thread-removed' || kind === 'thread.removed') {
+      // V2 uses the same removal event for archive moves and deletions.
+      // Reconcile with a complete shell before dropping a saved hand-off.
+      if (kind === 'thread.removed') return;
       const threadId = firstText(event['threadId'], eventValue?.['threadId']);
       if (threadId === null) return;
       const removed = this.current().filter(
@@ -743,7 +756,7 @@ export class HandOffStore {
       if (this.drop(new Set(removed))) await this.persist();
       return;
     }
-    if (kind !== 'thread-upserted') return;
+    if (kind !== 'thread-upserted' && kind !== 'thread.updated') return;
 
     const rawThread = event['thread'] ?? eventValue?.['thread'] ?? event['data'] ?? event['value'];
     const thread = mapT3Status(rawThread);
@@ -1176,8 +1189,11 @@ export class HandOffTracker {
     this.streamOpening = subscribe(
       sequence,
       (value) => {
+        const event = record(value);
+        const removed = firstText(event?.['kind'], event?.['type'], event?.['event'], event?.['_tag']) === 'thread.removed';
         void this.store
           .applyEvent(environmentId, origin, value)
+          .then(async () => { if (removed) await this.refresh(); })
           .then(() => this.announceThreadChange(upsertedThreadId(value)))
           .then(() => this.discoverMissingPullRequests(environmentId, origin))
           .catch(() => undefined);

@@ -29,6 +29,51 @@ const input = {
 };
 
 describe('mapT3Status', () => {
+  it.each([null, {}, { threads: null }, { threads: [], archivedThreads: null }, { threads: [{}] }])('keeps previously observed hand-offs when a shell is malformed: %j', async (snapshot) => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    await store.applySnapshot('env-1', input.t3Origin, { snapshotSequence: 1, threads: [{ id: input.threadId, status: 'running' }] });
+    await expect(store.applySnapshot('env-1', input.t3Origin, snapshot)).rejects.toThrow('incompatible orchestration');
+    expect(await store.list()).toMatchObject([{ status: 'running', sequence: 1 }]);
+  });
+  it('tracks v2 updates and retains a thread when it moves into the archive', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-v2-hand-offs-'));
+    try {
+      const store = new HandOffStore({ filePath: join(directory, 'hand-offs.json') });
+      await store.record(input);
+      await store.applyEvent('env-1', input.t3Origin, {
+        kind: 'thread.updated', sequence: 1, location: 'active', thread: { id: input.threadId, status: 'running' },
+      });
+      expect(await store.list()).toMatchObject([{ status: 'running' }]);
+      await store.applyEvent('env-1', input.t3Origin, { kind: 'thread.removed', location: 'active', threadId: input.threadId });
+      expect(await store.list()).toHaveLength(1);
+      await store.applySnapshot('env-1', input.t3Origin, {
+        snapshotSequence: 2, threads: [], archivedThreads: [{ id: input.threadId, status: 'completed', settledAt: '2026-10-07T12:00:00Z' }],
+      });
+      expect(await store.list()).toMatchObject([{ status: 'finished' }]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+  it.each([
+    ['running', 'running'], ['waiting', 'waiting'], ['completed', 'ready'],
+    ['failed', 'failed'], ['interrupted', 'interrupted'], ['cancelled', 'interrupted'],
+    ['preparing', 'starting'], ['queued', 'starting'], ['idle', 'ready'],
+  ])('maps v2 %s to %s', (status, expected) => {
+    expect(mapT3Status({ id: 'v2', status })?.status).toBe(expected);
+  });
+
+  it('reads v2 pending questions and settled completion', () => {
+    expect(mapT3Status({ id: 'v2', status: 'waiting', pendingRuntimeRequest: { kind: 'user_input' } })).toMatchObject({ status: 'waiting', pendingUserInput: true });
+    expect(mapT3Status({ id: 'v2', status: 'completed', settledAt: '2026-10-07T12:00:00Z' })?.status).toBe('finished');
+  });
+
+  it('uses the active v2 run before a completed latest run', () => {
+    expect(mapT3Status({ id: 'v2', status: 'completed', activityRunStatus: 'running' })?.status).toBe('running');
+    expect(mapT3Status({ id: 'v2', status: 'completed', activityRunStatus: 'waiting' })?.status).toBe('waiting');
+    expect(mapT3Status({ id: 'v2', status: 'completed', activityRunStatus: 'preparing' })?.status).toBe('starting');
+    expect(mapT3Status({ id: 'v2', status: 'completed', activityRunStatus: null, settledAt: null })?.status).toBe('ready');
+  });
   it('maps waiting, running, settled, interrupted, failed, and starting T3 states', () => {
     expect(mapT3Status({ id: 'waiting', hasPendingUserInput: true, session: { status: 'running' } })?.status).toBe('waiting');
     expect(mapT3Status({ id: 'running', session: { status: 'running' } })?.status).toBe('running');
@@ -885,6 +930,46 @@ describe('HandOffStore', () => {
 });
 
 describe('HandOffTracker', () => {
+  it.each([false, true])('reconciles v2 archive and deletion removals against the shell, wrapped=%s', async (wrapped) => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    let deliver: ((value: unknown) => void) | undefined;
+    let phase = 0;
+    const tracker = new HandOffTracker(store, {
+      readHandOffSnapshot: async () => ({
+        environmentId: 'env-1', origin: input.t3Origin,
+        snapshot: {
+          snapshotSequence: phase + 1,
+          threads: phase === 0 ? [{ id: input.threadId, status: 'running' }] : [],
+          archivedThreads: phase === 1 ? [{ id: input.threadId, status: 'completed', settledAt: '2026-10-07T12:00:00Z' }] : [],
+        },
+      }),
+      subscribeShell: async (_sequence, listener) => { deliver = listener; return () => undefined; },
+    }, { lookupPullRequests: async () => [], lookupPullRequestState: async () => null });
+    try {
+      await tracker.snapshot();
+      await vi.waitFor(() => expect(deliver).toBeDefined());
+      const removal = (location: string) => ({ kind: 'thread.removed',
+        ...(wrapped ? { value: { location, threadId: input.threadId } } : { location, threadId: input.threadId }),
+      });
+      phase = 1;
+      deliver?.(removal('active'));
+      await vi.waitFor(async () => expect(await store.list()).toMatchObject([{ status: 'finished' }]));
+      phase = 2;
+      deliver?.(removal('archive'));
+      await vi.waitFor(async () => expect(await store.list()).toHaveLength(0));
+    } finally { tracker.close(); }
+  });
+
+  it('reports an incompatible shell as unavailable and preserves the last observation', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    await store.applySnapshot('env-1', input.t3Origin, { threads: [{ id: input.threadId, status: 'running' }] });
+    const tracker = new HandOffTracker(store, { readHandOffSnapshot: async () => ({ environmentId: 'env-1', origin: input.t3Origin, snapshot: {} }) });
+    try {
+      await expect(tracker.snapshot()).resolves.toMatchObject({ t3: { available: false }, handOffs: [{ status: 'running', stale: true }] });
+    } finally { tracker.close(); }
+  });
   it('keeps the last known status visible as stale when T3 Code is down', async () => {
     const store = new HandOffStore({ filePath: null });
     await store.record(input);
@@ -1194,7 +1279,7 @@ describe('HandOffTracker', () => {
     }
   });
 
-  it('offers T3 PR snapshots to the map watcher while online, and announces thread changes', async () => {
+  it.each(['thread-upserted', 'thread.updated'])('offers T3 PR snapshots to the map watcher and announces %s changes', async (kind) => {
     const store = new HandOffStore({ filePath: null });
     await store.record(input);
     await store.record({ ...input, ticketNumber: 12, threadId: 'thread-2', requestedBranch: 'wayfinder/12-other' });
@@ -1233,7 +1318,7 @@ describe('HandOffTracker', () => {
       await expect(tracker.trackedPullRequests('octo/two')).resolves.toEqual(new Map());
 
       deliver({
-        kind: 'thread-upserted',
+        kind,
         sequence: 2,
         thread: { id: 'thread-1', session: { status: 'running' }, pullRequests: [{ ...snapshotPullRequest, snapshot: { state: 'open', checksState: 'passing' } }] },
       });

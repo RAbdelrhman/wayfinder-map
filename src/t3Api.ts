@@ -126,7 +126,11 @@ export class T3Api {
     const { token } = await this.issue();
     const response = await fetch(new URL(path, this.origin), {
       method: body === undefined ? 'GET' : 'POST',
-      headers: { authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      headers: {
+        authorization: `Bearer ${token}`,
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(path === '/api/orchestration/shell' && await this.protocolVersion() === 2 ? { 'x-t3-orchestration-protocol': '2' } : {}),
+      },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -137,10 +141,29 @@ export class T3Api {
     }
     const text = await response.text();
     if (!response.ok) throw new Error(`T3 Code answered ${String(response.status)}: ${text.slice(0, 300)}`);
-    return text.length === 0 ? null : (JSON.parse(text) as unknown);
+    if (response.headers.get('content-type')?.includes('text/html')) {
+      throw new Error(`T3 Code returned a web page for ${path}; its API is incompatible with this Wayfinder version`);
+    }
+    if (text.length === 0) return null;
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      throw new Error(`T3 Code returned a non-JSON response for ${path}`);
+    }
   }
 
-  snapshot(): Promise<T3Snapshot> {
+  async snapshot(): Promise<T3Snapshot> {
+    if (await this.protocolVersion() === 2) {
+      const shell = await this.shell() as (T3Snapshot & { archivedThreads?: T3Thread[] }) | null;
+      if (shell === null || typeof shell !== 'object' || !Array.isArray(shell.projects) || !Array.isArray(shell.threads) ||
+        (shell.archivedThreads !== undefined && !Array.isArray(shell.archivedThreads))) {
+        throw new Error('T3 Code returned an incompatible orchestration shell');
+      }
+      return {
+        projects: shell.projects.map((project) => ({ ...project, deletedAt: project.deletedAt ?? null })),
+        threads: [...shell.threads, ...(shell.archivedThreads ?? [])].map((thread) => ({ ...thread, deletedAt: thread.deletedAt ?? null })),
+      };
+    }
     return this.request('/api/orchestration/snapshot') as Promise<T3Snapshot>;
   }
 
@@ -152,23 +175,46 @@ export class T3Api {
     const response = await fetch(new URL('/.well-known/t3/environment', this.origin), {
       signal: AbortSignal.timeout(20_000),
     });
-    if (!response.ok) throw new Error(`T3 Code environment answered ${String(response.status)}`);
+    if (!response.ok) throw new Error(`T3 Code environment answered ${String(response.status)}`, { cause: { status: response.status } });
     return (await response.json()) as unknown;
   }
 
-  dispatch(command: Record<string, unknown>): Promise<unknown> {
+  async dispatch(command: Record<string, unknown>): Promise<unknown> {
+    if (await this.protocolVersion() === 2) {
+      if (command['type'] === 'project.create') return this.request('/api/projects/mutate', command);
+      if (command['type'] === 'thread.turn.start') {
+        const message = command['message'] as { messageId: string; text: string; attachments: unknown[] };
+        return this.rpc('orchestration.dispatchCommand', {
+          type: 'message.dispatch',
+          commandId: command['commandId'],
+          threadId: command['threadId'],
+          createdBy: 'user',
+          creationSource: 'web',
+          messageId: message.messageId,
+          text: message.text,
+          attachments: message.attachments,
+          modelSelection: command['modelSelection'],
+          dispatchMode: { type: 'start_immediately' },
+        });
+      }
+      return this.rpc('orchestration.dispatchCommand', command['type'] === 'thread.create'
+        ? { ...command, createdBy: 'user', creationSource: 'web' }
+        : command);
+    }
     return this.request('/api/orchestration/dispatch', command);
   }
 
-  /** V2 requires a protocol query parameter before it will upgrade the socket. */
-  private async webSocketUrl(): Promise<URL> {
-    this.protocol ??= this.environment().catch(() => {
-      // A failed probe must not pin a v2 server to v1 until Wayfinder restarts.
-      this.protocol = null;
-      return null;
+  private async protocolVersion(): Promise<1 | 2> {
+    this.protocol ??= this.environment().catch((error: unknown) => {
+      // A confirmed missing descriptor identifies the older API; outages do not.
+      const cause = error instanceof Error ? error.cause : null;
+      if (typeof cause === 'object' && cause !== null && 'status' in cause && cause.status === 404) {
+        return { orchestrationProtocolVersion: 1 };
+      }
+      throw error;
     }).then((raw) => {
       const version = (raw as { orchestrationProtocolVersion?: unknown } | null)?.orchestrationProtocolVersion;
-      // Older servers may not expose the descriptor or its version field.
+      // Older descriptors may omit the version field.
       if (version === undefined || version === 1) return 1;
       if (version === 2) return 2;
       throw new Error(`Unsupported T3 Code orchestration protocol: ${String(version)}`);
@@ -176,7 +222,12 @@ export class T3Api {
       this.protocol = null;
       throw error;
     });
-    const version = await this.protocol;
+    return this.protocol;
+  }
+
+  /** V2 requires a protocol query parameter before it will upgrade the socket. */
+  private async webSocketUrl(): Promise<URL> {
+    const version = await this.protocolVersion();
     const { ticket } = (await this.request('/api/auth/websocket-ticket', {}, false, 20_000)) as { ticket?: unknown };
     if (typeof ticket !== 'string') throw new Error('T3 Code issued no WebSocket ticket');
     const url = new URL('/ws', this.origin);

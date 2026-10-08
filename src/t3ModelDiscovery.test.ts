@@ -53,7 +53,7 @@ describe('T3 model discovery protocol compatibility', () => {
     vi.stubGlobal('WebSocket', CatalogSocket);
     const api = new T3Api('https://localhost:3773', { exe: 't3', script: 'server.mjs' });
     const environment = vi.spyOn(api, 'environment');
-    if (descriptor === null) environment.mockRejectedValue(new Error('T3 Code environment answered 404'));
+    if (descriptor === null) environment.mockRejectedValue(new Error('T3 Code environment answered 404', { cause: { status: 404 } }));
     else environment.mockResolvedValue(descriptor);
     const ticket = vi.spyOn(api as unknown as { request: (path: string, body?: unknown) => Promise<unknown> }, 'request')
       .mockResolvedValueOnce({ ticket: 'first-ticket' }).mockResolvedValueOnce({ ticket: 'second-ticket' });
@@ -65,7 +65,7 @@ describe('T3 model discovery protocol compatibility', () => {
         slug: 'custom-model', name: 'Custom model', effort: { id: 'reasoningEffort', defaultValue: 'high' },
       }] });
     }
-    expect(environment).toHaveBeenCalledTimes(descriptor === null ? 2 : 1);
+    expect(environment).toHaveBeenCalledTimes(1);
     expect(ticket).toHaveBeenCalledTimes(2);
     expect(urls.map((url) => url.protocol)).toEqual(['wss:', 'wss:']);
     expect(urls.map((url) => url.searchParams.get('wsTicket'))).toEqual(['first-ticket', 'second-ticket']);
@@ -105,7 +105,7 @@ describe('T3 model discovery protocol compatibility', () => {
     vi.spyOn(api as unknown as { request: (path: string) => Promise<unknown> }, 'request')
       .mockResolvedValue({ ticket: 'ticket' });
 
-    await expect(api.rpc('server.getConfig')).rejects.toThrow('T3 Code WebSocket failed');
+    await expect(api.rpc('server.getConfig')).rejects.toThrow('Temporarily unavailable');
     await expect(api.rpc('server.getConfig')).resolves.toEqual({ providers });
     expect(environment).toHaveBeenCalledTimes(2);
   });
