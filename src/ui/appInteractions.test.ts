@@ -4,6 +4,7 @@ import ts from 'typescript';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ModelCatalog, ModelChoice } from '../models.js';
+import { parseRepoPagePath } from '../repoRoutes.js';
 import { STATE_STYLE } from './chrome.js';
 import { rememberControlFocus } from './controlFocus.js';
 import { effortSelectHtml, findModel, liveChoice, modelSelectHtml, readChoice } from './models.js';
@@ -40,7 +41,7 @@ describe('automatic map syncing', () => {
     const map = { number: 205 };
     const snapshot = { maps: [map], fetchedAt: '2026-10-07T12:00:00Z' };
     const context: Record<string, unknown> = {
-      loadInFlight: null, loadMode: null, lastCheckedAt: null, snapshot,
+      loadInFlight: null, loadMode: null, loadMapNumber: null, lastCheckedAt: null, snapshot,
       pageRoute: { repo: 'owner/repo', mapNumber: 205 }, view: 'map', selected: 210,
       window: { location: { pathname: '/repos/owner/repo/maps/205' } }, URLSearchParams,
       Date: { now: () => 123_456, parse: Date.parse },
@@ -76,6 +77,24 @@ describe('automatic map syncing', () => {
     expect(await (context['load'] as (mode: string) => Promise<boolean>)('background')).toBe(false);
     expect(context['lastCheckedAt']).toBe(123_456);
     expect(context['toast']).not.toHaveBeenCalled();
+  });
+
+  it('checks the newly opened map after a read for the previous map finishes', async () => {
+    const context = fixture();
+    let finish!: () => void;
+    context['loadMode'] = 'background';
+    context['loadMapNumber'] = 205;
+    context['loadInFlight'] = new Promise<boolean>((resolve) => { finish = () => resolve(true); }).then(() => {
+      context['loadInFlight'] = null;
+      context['loadMode'] = null;
+      return true;
+    });
+    context['parseRepoPagePath'] = () => ({ mapNumber: 217 });
+    const switched = (context['load'] as (mode: string) => Promise<boolean>)('background');
+    expect(context['readRouteJson']).not.toHaveBeenCalled();
+    finish();
+    await switched;
+    expect(context['readRouteJson']).toHaveBeenCalledWith('/api/repos/owner/repo/snapshot?check=1&map=217', true);
   });
 
   it('refreshes a cached prototype without overlap and retains it when the check fails', async () => {
@@ -124,6 +143,69 @@ describe('automatic map syncing', () => {
     expect(context['renderSynced']).toHaveBeenCalledOnce();
     expect(context['flushPendingMapEvents']).toHaveBeenCalledOnce();
   });
+});
+
+describe('map switching without reloading the page', () => {
+  function fixture() {
+    const maps = [
+      { number: 205, ticketsLoaded: true, tickets: [{ number: 210 }] },
+      { number: 217, ticketsLoaded: true, tickets: [{ number: 225 }] },
+    ];
+    const location = { href: 'http://localhost/repos/owner/repo/maps/205', origin: 'http://localhost', pathname: '/repos/owner/repo/maps/205', search: '' };
+    const context: Record<string, unknown> = {
+      URL, URLSearchParams, parseRepoPagePath, window: { location },
+      snapshot: { repo: 'owner/repo', maps }, activeMap: 0,
+      canvasViewer: { isOpen: () => false },
+      history: { pushState: vi.fn((_state, _title, href: string) => {
+        const url = new URL(href, location.href);
+        Object.assign(location, { href: url.href, pathname: url.pathname, search: url.search });
+      }) },
+      currentMap: () => maps[context['activeMap'] as number],
+      planningHandOffId: null, planningHandOff: null, filter: 'claimed', query: 'old search', hovered: 210,
+      els: { search: { value: 'old search' } }, zoom: 1.5, homedMap: 205, selected: 210,
+      allTickets: (map: { tickets: unknown[] }) => map.tickets, rememberMapOpen: vi.fn(),
+      viewFromQuery: (value: string) => value ?? 'map', hideCard: vi.fn(),
+      navigation: { setSnapshot: vi.fn(), setActiveView: vi.fn() }, render: vi.fn(),
+      load: vi.fn(async () => true), loadPlanningHandoff: vi.fn(),
+    };
+    bindings(context, ['navigateMap', 'applyMapRoute']);
+    return { context, maps, location, navigate: context['navigateMap'] as (href: string) => boolean };
+  }
+
+  it('paints the cached destination immediately, keeps the shell and checks in the background', () => {
+    const { context, navigate } = fixture();
+    expect(navigate('/repos/owner/repo/maps/217?view=table&ticket=225')).toBe(true);
+    expect(context['activeMap']).toBe(1);
+    expect(context['selected']).toBe(225);
+    expect(context['view']).toBe('table');
+    expect(context['filter']).toBeNull();
+    expect(context['query']).toBe('');
+    expect(context['render']).toHaveBeenCalledOnce();
+    expect(context['load']).toHaveBeenCalledWith('background');
+  });
+
+  it('reads unloaded ticket details and restores the previous map on browser Back', () => {
+    const { context, maps, location, navigate } = fixture();
+    maps[1]!.ticketsLoaded = false;
+    maps[1]!.tickets = [];
+    navigate('/repos/owner/repo/maps/217?ticket=225');
+    expect(context['initialRouteTicketPending']).toBe(true);
+    expect(context['routedTicketNumber']).toBe(225);
+    expect(context['load']).toHaveBeenCalledExactlyOnceWith('initial');
+    Object.assign(location, { pathname: '/repos/owner/repo/maps/205', search: '?ticket=210' });
+    (context['applyMapRoute'] as () => void)();
+    expect(context['activeMap']).toBe(0);
+    expect(context['selected']).toBe(210);
+  });
+
+  it.each(['/repos/another/repo/maps/205', '/repos/owner/repo', '/repos/owner/repo/maps/999', 'https://other.test/repos/owner/repo/maps/205'])(
+    'keeps ordinary navigation for %s', (href) => {
+      const { context, navigate } = fixture();
+      expect(navigate(href)).toBe(false);
+      expect(context['render']).not.toHaveBeenCalled();
+      expect(context['load']).not.toHaveBeenCalled();
+    },
+  );
 });
 
 class SelectFixture {

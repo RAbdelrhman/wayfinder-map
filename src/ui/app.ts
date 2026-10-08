@@ -163,7 +163,7 @@ if (pageRoute === null || pageRoute.mapNumber === null) window.location.replace(
 let planningHandOffId = new URLSearchParams(window.location.search).get('planning');
 const handOffRoute = new URLSearchParams(window.location.search);
 const routedTicketText = handOffRoute.get('ticket');
-const routedTicketNumber = routedTicketText !== null && /^\d+$/.test(routedTicketText) ? Number(routedTicketText) : null;
+let routedTicketNumber = routedTicketText !== null && /^\d+$/.test(routedTicketText) ? Number(routedTicketText) : null;
 let initialRouteTicketPending = routedTicketNumber !== null;
 let planningHandOff: HandOffStatusDto | null = null;
 let selected: number | null = null;
@@ -439,6 +439,7 @@ navigation = mountNavigation({
   onViewChange(nextView) {
     setView(nextView);
   },
+  onNavigate: navigateMap,
   onStartNext() {
     startNext.open();
   },
@@ -544,6 +545,7 @@ const startNext = mountStartNext({
 let toastTimer: number | undefined;
 let loadInFlight: Promise<boolean> | null = null;
 let loadMode: 'initial' | 'manual' | 'background' | null = null;
+let loadMapNumber: number | null = null;
 let lastCheckedAt: number | null = null;
 
 function toast(message: string, ms = 4200): void {
@@ -558,8 +560,13 @@ function toast(message: string, ms = 4200): void {
 /* ---------- data ---------- */
 
 async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean> {
-  if (loadInFlight !== null) return mode === 'manual' && loadMode !== 'manual' ? loadInFlight.then(() => load('manual')) : loadInFlight;
+  const requestedMapNumber = parseRepoPagePath(window.location.pathname)?.mapNumber ?? null;
+  if (loadInFlight !== null) {
+    return loadMapNumber !== requestedMapNumber || mode === 'manual' && loadMode !== 'manual'
+      ? loadInFlight.then(() => load(mode)) : loadInFlight;
+  }
   loadMode = mode;
+  loadMapNumber = requestedMapNumber;
   const query = mode === 'manual' ? '?refresh=1' : mode === 'background' ? '?check=1' : '';
   if (mode === 'manual') setSyncedBusy(syncedButton(), true);
 
@@ -567,7 +574,7 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
     try {
       const endpoint = pageRoute === null ? '/api/snapshot' : scopedApiPath(pageRoute.repo, 'snapshot');
       const cached = mode === 'initial' ? routeData().peek<MapSnapshot>(endpoint) : null;
-      const cachedMap = cached?.maps.find((map) => map.number === pageRoute?.mapNumber);
+      const cachedMap = cached?.maps.find((map) => map.number === parseRepoPagePath(window.location.pathname)?.mapNumber);
       if (cached !== null && cachedMap?.ticketsLoaded === true) applySnapshot(cached, snapshot === null, true);
       // A settled map's tickets are read only once its page asks for them.
       const routedMapNumber = parseRepoPagePath(window.location.pathname)?.mapNumber ?? null;
@@ -602,6 +609,7 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
     } finally {
       loadInFlight = null;
       loadMode = null;
+      loadMapNumber = null;
       setSyncedBusy(syncedButton(), false);
     }
   })();
@@ -1523,19 +1531,44 @@ document.addEventListener('click', (event) => {
   if (!MENUS.some((entry) => entry.menu.contains(target))) closeMenus();
 });
 
-window.addEventListener('popstate', () => {
+function navigateMap(href: string): boolean {
+  const url = new URL(href, window.location.href);
+  const route = parseRepoPagePath(url.pathname);
+  if (url.origin !== window.location.origin || canvasViewer.isOpen() || snapshot === null ||
+      route?.repo.toLowerCase() !== snapshot.repo.toLowerCase() || route.mapNumber === null ||
+      !snapshot.maps.some((map) => map.number === route.mapNumber)) return false;
+  history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  applyMapRoute();
+  if (currentMap()?.ticketsLoaded !== false) void load('background');
+  return true;
+}
+
+function applyMapRoute(): void {
   planningHandOffId = new URLSearchParams(window.location.search).get('planning');
   planningHandOff = null;
   const route = parseRepoPagePath(window.location.pathname);
   const index = snapshot?.maps.findIndex((map) => map.number === route?.mapNumber) ?? -1;
   if (index < 0) return;
+  const changedMap = activeMap !== index;
   activeMap = index;
+  if (changedMap) {
+    filter = null;
+    query = '';
+    els.search.value = '';
+    hovered = null;
+    zoom = 1;
+    homedMap = null;
+    hideCard();
+  }
   const openedMap = currentMap();
   if (snapshot !== null && openedMap !== null) rememberMapOpen(snapshot.repo, openedMap.number);
   view = viewFromQuery(new URLSearchParams(window.location.search).get('view'));
-  const requestedTicket = Number(new URLSearchParams(window.location.search).get('ticket'));
+  const ticketText = new URLSearchParams(window.location.search).get('ticket');
+  routedTicketNumber = ticketText !== null && /^\d+$/.test(ticketText) ? Number(ticketText) : null;
+  initialRouteTicketPending = routedTicketNumber !== null;
   const map = currentMap();
-  selected = map === null ? null : allTickets(map).find((ticket) => ticket.number === requestedTicket)?.number ?? null;
+  selected = map === null ? null : allTickets(map).find((ticket) => ticket.number === routedTicketNumber)?.number ?? null;
+  if (map?.ticketsLoaded !== false) initialRouteTicketPending = false;
   inspectorTab = selected === null ? 'brief' : 'ticket';
   if (snapshot !== null) navigation?.setSnapshot(snapshot, currentMap()?.number ?? null);
   navigation?.setActiveView(view);
@@ -1543,7 +1576,9 @@ window.addEventListener('popstate', () => {
   if (planningHandOffId !== null) void loadPlanningHandoff();
   // Back to a settled map whose tickets were never read: read them now.
   if (map?.ticketsLoaded === false) void load('initial');
-});
+}
+
+window.addEventListener('popstate', applyMapRoute);
 
 els.planningHandoff.addEventListener('click', async (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-open-planning]');
