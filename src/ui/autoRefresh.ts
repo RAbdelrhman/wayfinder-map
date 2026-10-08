@@ -1,9 +1,10 @@
-export const REFRESH_INTERVAL_MS = 30_000;
+export const REFRESH_INTERVAL_MS = 5_000;
 export const MAX_RETRY_DELAY_MS = 5 * 60_000;
 
 export interface AutoRefreshOptions {
   refresh: () => Promise<boolean>;
   isVisible: () => boolean;
+  intervalMs?: number;
   now?: () => number;
   setTimer?: (callback: () => void, delay: number) => number;
   clearTimer?: (timer: number) => void;
@@ -18,12 +19,17 @@ export class AutoRefresh {
   private readonly now: () => number;
   private readonly setTimer: (callback: () => void, delay: number) => number;
   private readonly clearTimer: (timer: number) => void;
+  private readonly intervalMs: number;
   private timer: number | null = null;
   private running: Promise<void> | null = null;
   private lastSuccessfulSnapshot: number | null = null;
-  private nextDelay = REFRESH_INTERVAL_MS;
+  private nextDelay: number;
+  private stopped = true;
 
   constructor(private readonly options: AutoRefreshOptions) {
+    this.intervalMs = options.intervalMs ?? REFRESH_INTERVAL_MS;
+    if (!Number.isFinite(this.intervalMs) || this.intervalMs <= 0 || this.intervalMs > MAX_RETRY_DELAY_MS) throw new Error('Invalid automatic refresh interval.');
+    this.nextDelay = this.intervalMs;
     this.now = options.now ?? Date.now;
     this.setTimer = options.setTimer ?? ((callback, delay) => window.setTimeout(callback, delay));
     this.clearTimer = options.clearTimer ?? ((timer) => window.clearTimeout(timer));
@@ -31,34 +37,33 @@ export class AutoRefresh {
 
   markSuccessfulSnapshot(): void {
     this.lastSuccessfulSnapshot = this.now();
-    this.nextDelay = REFRESH_INTERVAL_MS;
+    this.nextDelay = this.intervalMs;
   }
 
   start(): void {
-    this.scheduleWhenVisible();
+    this.stopped = false;
+    this.visibilityChanged();
   }
 
-  visibilityChanged(): void {
+  visibilityChanged(checkNow = false): void {
+    if (this.stopped) return;
     if (!this.options.isVisible()) {
       this.cancelTimer();
       return;
     }
 
     const age = this.lastSuccessfulSnapshot === null ? Infinity : this.now() - this.lastSuccessfulSnapshot;
-    if (age >= REFRESH_INTERVAL_MS) {
+    if (checkNow || age >= this.intervalMs) {
+      this.cancelTimer();
       void this.refresh();
       return;
     }
-    this.schedule(REFRESH_INTERVAL_MS - age);
+    this.schedule(this.intervalMs - age);
   }
 
   stop(): void {
+    this.stopped = true;
     this.cancelTimer();
-  }
-
-  private scheduleWhenVisible(): void {
-    if (!this.options.isVisible()) return;
-    this.schedule(REFRESH_INTERVAL_MS);
   }
 
   private schedule(delay: number): void {
@@ -76,6 +81,7 @@ export class AutoRefresh {
   }
 
   private refresh(): Promise<void> {
+    if (this.stopped || !this.options.isVisible()) return Promise.resolve();
     if (this.running !== null) return this.running;
     this.running = this.options
       .refresh()
@@ -88,7 +94,7 @@ export class AutoRefresh {
       })
       .finally(() => {
         this.running = null;
-        if (!this.options.isVisible()) return;
+        if (this.stopped || !this.options.isVisible()) return;
         this.schedule(this.nextDelay);
       });
     return this.running;

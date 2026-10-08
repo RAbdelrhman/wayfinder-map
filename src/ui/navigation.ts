@@ -31,6 +31,8 @@ export interface NavigationOptions {
   view: NavigationView;
   onOpenTicket?: (ticketNumber: number) => void;
   onViewChange?: (view: NavigationView) => void;
+  /** Return true when the current page can open this destination without reloading. */
+  onNavigate?: (href: string) => boolean;
   /** The map-name menu's "Start next" item was chosen. */
   onStartNext?: () => void;
   /** The map-name menu's Auto map switch was flipped. */
@@ -723,6 +725,14 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
 
   document.addEventListener('click', (event) => {
     if (openMenu !== null && clickedOutside(event, sidebar, topbarRoot)) closeMenu(false);
+    if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
+    if (link === null || link.hasAttribute('download') || link.target !== '' && link.target !== '_self') return;
+    if (!sidebar.contains(link) && !topbarRoot.contains(link)) return;
+    if (options.onNavigate?.(link.href)) {
+      event.preventDefault();
+      closeMenu(false);
+    }
   });
 
   document.addEventListener('keydown', (event) => {
@@ -746,7 +756,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   dialog.addEventListener('click', (event) => {
     if (event.target === dialog) closePalette(true);
     const option = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-jump-href]');
-    if (option !== null) window.location.assign(option.dataset['jumpHref'] ?? '/');
+    if (option !== null) visit(option.dataset['jumpHref'] ?? '/');
   });
   queryInput.addEventListener('input', () => {
     paletteQuery = queryInput.value;
@@ -772,10 +782,15 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
       const destination = destinations[activeResult];
       if (destination !== undefined) {
         event.preventDefault();
-        window.location.assign(destination.href);
+        visit(destination.href);
       }
     }
   });
+
+  function visit(href: string): void {
+    closePalette(true);
+    if (!options.onNavigate?.(href)) window.location.assign(href);
+  }
 
   window.addEventListener('resize', () => {
     if (window.matchMedia('(max-width: 720px)').matches && expanded) setShellExpanded(false, false);

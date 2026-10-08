@@ -163,7 +163,7 @@ if (pageRoute === null || pageRoute.mapNumber === null) window.location.replace(
 let planningHandOffId = new URLSearchParams(window.location.search).get('planning');
 const handOffRoute = new URLSearchParams(window.location.search);
 const routedTicketText = handOffRoute.get('ticket');
-const routedTicketNumber = routedTicketText !== null && /^\d+$/.test(routedTicketText) ? Number(routedTicketText) : null;
+let routedTicketNumber = routedTicketText !== null && /^\d+$/.test(routedTicketText) ? Number(routedTicketText) : null;
 let initialRouteTicketPending = routedTicketNumber !== null;
 let planningHandOff: HandOffStatusDto | null = null;
 let selected: number | null = null;
@@ -439,6 +439,7 @@ navigation = mountNavigation({
   onViewChange(nextView) {
     setView(nextView);
   },
+  onNavigate: navigateMap,
   onStartNext() {
     startNext.open();
   },
@@ -544,6 +545,9 @@ const startNext = mountStartNext({
 let toastTimer: number | undefined;
 let loadInFlight: Promise<boolean> | null = null;
 let loadMode: 'initial' | 'manual' | 'background' | null = null;
+let loadMapNumber: number | null = null;
+let lastCheckedAt: number | null = null;
+let backgroundSyncFailed = false;
 
 function toast(message: string, ms = 4200): void {
   els.toast.textContent = message;
@@ -557,8 +561,13 @@ function toast(message: string, ms = 4200): void {
 /* ---------- data ---------- */
 
 async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean> {
-  if (loadInFlight !== null) return mode === 'manual' && loadMode !== 'manual' ? loadInFlight.then(() => load('manual')) : loadInFlight;
+  const requestedMapNumber = parseRepoPagePath(window.location.pathname)?.mapNumber ?? null;
+  if (loadInFlight !== null) {
+    return loadMapNumber !== requestedMapNumber || mode === 'manual' && loadMode !== 'manual'
+      ? loadInFlight.then(() => load(mode)) : loadInFlight;
+  }
   loadMode = mode;
+  loadMapNumber = requestedMapNumber;
   const query = mode === 'manual' ? '?refresh=1' : mode === 'background' ? '?check=1' : '';
   if (mode === 'manual') setSyncedBusy(syncedButton(), true);
 
@@ -566,7 +575,7 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
     try {
       const endpoint = pageRoute === null ? '/api/snapshot' : scopedApiPath(pageRoute.repo, 'snapshot');
       const cached = mode === 'initial' ? routeData().peek<MapSnapshot>(endpoint) : null;
-      const cachedMap = cached?.maps.find((map) => map.number === pageRoute?.mapNumber);
+      const cachedMap = cached?.maps.find((map) => map.number === parseRepoPagePath(window.location.pathname)?.mapNumber);
       if (cached !== null && cachedMap?.ticketsLoaded === true) applySnapshot(cached, snapshot === null, true);
       // A settled map's tickets are read only once its page asks for them.
       const routedMapNumber = parseRepoPagePath(window.location.pathname)?.mapNumber ?? null;
@@ -575,7 +584,15 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       if (routedMapNumber !== null) params.set('map', String(routedMapNumber));
       const search = params.toString();
       const nextSnapshot = await readRouteJson<MapSnapshot>(`${endpoint}${search === '' ? '' : `?${search}`}`, true);
+      // A queued destination read owns the view after a map switch.
+      if ((parseRepoPagePath(window.location.pathname)?.mapNumber ?? null) !== requestedMapNumber) return true;
+      // Initial display reads may restore a server snapshot without checking GitHub.
+      if (mode !== 'initial') lastCheckedAt = Date.now();
       applySnapshot(nextSnapshot, mode === 'initial' && (snapshot === null || initialRouteTicketPending));
+      if (mode === 'background') {
+        const map = currentMap();
+        if (map !== null && (view === 'prototypes' || ticketAt(map, selected)?.type === 'prototype')) prototypesFor(map, false, true);
+      }
       // The page reloads on its own while open, which is when it hears of a notice the server left.
       if (mode === 'background') void autoMaps.refresh();
       if (planningHandOffId !== null) void loadPlanningHandoff();
@@ -586,26 +603,42 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       }
       // The repository is only known once the snapshot lands, and the clone lookup is keyed to it.
       if (!workspaceAsked) void loadWorkspace().then(refreshLaunch);
+      backgroundSyncFailed = false;
       return true;
     } catch (error) {
       if (mode !== 'background' || snapshot === null) {
         toast((error as Error).message || 'Could not read the maps.', 12000);
+      } else if (!backgroundSyncFailed) {
+        console.warn('Wayfinder automatic sync failed. Keeping the last successful map and retrying.', error);
+        backgroundSyncFailed = true;
       }
       return false;
     } finally {
       loadInFlight = null;
       loadMode = null;
+      loadMapNumber = null;
       setSyncedBusy(syncedButton(), false);
     }
   })();
-  return loadInFlight;
+  const succeeded = await loadInFlight;
+  // Follow navigation only after releasing the old request, so the refresh
+  // scheduler receives the destination's result and applies its retry backoff.
+  if ((parseRepoPagePath(window.location.pathname)?.mapNumber ?? null) !== requestedMapNumber) return load(mode);
+  return succeeded;
 }
 
 /** Paint cached reads immediately; only live reads reconcile alerts. */
 function applySnapshot(nextSnapshot: MapSnapshot, initial: boolean, cached = false): void {
+  const unchanged = !initial && snapshot !== null &&
+    JSON.stringify({ ...snapshot, fetchedAt: undefined }) === JSON.stringify({ ...nextSnapshot, fetchedAt: undefined });
   if (!cached && snapshot !== null) notifyNewStalls(snapshot, nextSnapshot);
   snapshot = nextSnapshot;
   if (!cached) mapEventInbox.reconcileSnapshot(snapshot);
+  if (unchanged) {
+    renderSynced();
+    if (!cached) flushPendingMapEvents();
+    return;
+  }
   const currentRoute = parseRepoPagePath(window.location.pathname);
   const routedMap = currentRoute?.mapNumber === null
     ? -1
@@ -714,7 +747,7 @@ function render(): void {
 
 function renderSynced(): void {
   if (snapshot === null) return;
-  const fetched = Date.parse(snapshot.fetchedAt);
+  const fetched = lastCheckedAt ?? Date.parse(snapshot.fetchedAt);
   setSyncedLabel(syncedButton(), Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
 }
 
@@ -917,14 +950,16 @@ function renderTable(): void {
 type PrototypeLoad = { status: 'loading' } | { status: 'ready'; list: Prototype[] } | { status: 'failed'; error: string };
 
 const prototypeLoads = new Map<number, PrototypeLoad>();
+const prototypeRequests = new Set<number>();
 
-function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
+function prototypesFor(map: WayfinderMap, force = false, background = false): PrototypeLoad {
   const existing = prototypeLoads.get(map.number);
-  if (existing !== undefined && !force) return existing;
+  if (existing !== undefined && !force && (!background || prototypeRequests.has(map.number))) return existing;
   const endpoint = `${scopedApiPath(repoName(), 'prototypes')}?map=${String(map.number)}`;
   const previous = existing?.status === 'ready' ? existing.list : routeData().peek<Prototype[]>(endpoint);
   const loading: PrototypeLoad = previous === null ? { status: 'loading' } : { status: 'ready', list: previous };
   prototypeLoads.set(map.number, loading);
+  prototypeRequests.add(map.number);
   void (async () => {
     let next: PrototypeLoad;
     try {
@@ -939,12 +974,14 @@ function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
       if (previous !== null && force) toast((error as Error).message, 8000);
     }
     if (prototypeLoads.get(map.number) !== loading) return;
-    if (force && previous !== null && next.status === 'ready') {
+    prototypeRequests.delete(map.number);
+    if ((force || background) && previous !== null && next.status === 'ready') {
       for (const notification of changedPrototypeNotifications(repoName(), map, previous, next.list)) void publishNotification(notification);
     }
     prototypeLoads.set(map.number, next);
     if (currentMap()?.number !== map.number) return;
     navigation?.setPrototypeCount(next.status === 'ready' ? next.list.length : null);
+    if (background && next.status === 'ready' && JSON.stringify(previous) === JSON.stringify(next.list)) return;
     if (view === 'prototypes') renderPrototypes();
     renderTicketPrototype();
   })();
@@ -1505,27 +1542,56 @@ document.addEventListener('click', (event) => {
   if (!MENUS.some((entry) => entry.menu.contains(target))) closeMenus();
 });
 
-window.addEventListener('popstate', () => {
+function navigateMap(href: string): boolean {
+  const url = new URL(href, window.location.href);
+  const route = parseRepoPagePath(url.pathname);
+  if (url.origin !== window.location.origin || canvasViewer.isOpen() || snapshot === null ||
+      route?.repo.toLowerCase() !== snapshot.repo.toLowerCase() || route.mapNumber === null ||
+      !snapshot.maps.some((map) => map.number === route.mapNumber)) return false;
+  history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  applyMapRoute();
+  return true;
+}
+
+function applyMapRoute(): void {
   planningHandOffId = new URLSearchParams(window.location.search).get('planning');
   planningHandOff = null;
   const route = parseRepoPagePath(window.location.pathname);
   const index = snapshot?.maps.findIndex((map) => map.number === route?.mapNumber) ?? -1;
-  if (index < 0) return;
+  if (index < 0) {
+    if (snapshot !== null) window.location.replace(repoPath(snapshot.repo));
+    return;
+  }
+  const changedMap = activeMap !== index;
   activeMap = index;
+  if (changedMap) {
+    filter = null;
+    query = '';
+    els.search.value = '';
+    hovered = null;
+    zoom = 1;
+    homedMap = null;
+    hideCard();
+  }
   const openedMap = currentMap();
   if (snapshot !== null && openedMap !== null) rememberMapOpen(snapshot.repo, openedMap.number);
   view = viewFromQuery(new URLSearchParams(window.location.search).get('view'));
-  const requestedTicket = Number(new URLSearchParams(window.location.search).get('ticket'));
+  const ticketText = new URLSearchParams(window.location.search).get('ticket');
+  routedTicketNumber = ticketText !== null && /^\d+$/.test(ticketText) ? Number(ticketText) : null;
+  initialRouteTicketPending = routedTicketNumber !== null;
   const map = currentMap();
-  selected = map === null ? null : allTickets(map).find((ticket) => ticket.number === requestedTicket)?.number ?? null;
+  selected = map === null ? null : allTickets(map).find((ticket) => ticket.number === routedTicketNumber)?.number ?? null;
+  if (map?.ticketsLoaded !== false) initialRouteTicketPending = false;
   inspectorTab = selected === null ? 'brief' : 'ticket';
   if (snapshot !== null) navigation?.setSnapshot(snapshot, currentMap()?.number ?? null);
   navigation?.setActiveView(view);
   render();
   if (planningHandOffId !== null) void loadPlanningHandoff();
-  // Back to a settled map whose tickets were never read: read them now.
-  if (map?.ticketsLoaded === false) void load('initial');
-});
+  // Both menu navigation and browser history check their destination immediately.
+  void load(map?.ticketsLoaded === false ? 'initial' : 'background');
+}
+
+window.addEventListener('popstate', applyMapRoute);
 
 els.planningHandoff.addEventListener('click', async (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-open-planning]');
@@ -1803,8 +1869,16 @@ const autoRefresh = new AutoRefresh({
 });
 
 document.addEventListener('visibilitychange', () => {
-  autoRefresh.visibilityChanged();
+  autoRefresh.visibilityChanged(true);
   if (document.visibilityState === 'visible') void autoMaps.refresh();
+});
+window.addEventListener('focus', () => autoRefresh.visibilityChanged(true));
+window.addEventListener('online', () => autoRefresh.visibilityChanged(true));
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    autoRefresh.start();
+    autoRefresh.visibilityChanged(true);
+  }
 });
 
 void syncServerSettings();

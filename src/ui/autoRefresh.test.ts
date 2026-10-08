@@ -21,7 +21,35 @@ async function settle(): Promise<void> {
 }
 
 describe('AutoRefresh', () => {
-  it('polls visible pages every 30 seconds and never overlaps requests', async () => {
+  it('keeps a separate draft cadence through return checks, failures and recovery', async () => {
+    let now = 0;
+    let successful = false;
+    const timers = new Map<number, Timer>();
+    const refresh = new AutoRefresh({
+      intervalMs: 30_000,
+      refresh: async () => successful,
+      isVisible: () => true,
+      now: () => now,
+      setTimer: (callback, delay) => { timers.set(1, { callback, delay }); return 1; },
+      clearTimer: (id) => timers.delete(id),
+    });
+    refresh.markSuccessfulSnapshot();
+    refresh.start();
+    expect(timers.get(1)?.delay).toBe(30_000);
+    now = 5_000;
+    refresh.visibilityChanged();
+    expect(timers.get(1)?.delay).toBe(25_000);
+    refresh.visibilityChanged(true);
+    await settle();
+    expect(timers.get(1)?.delay).toBe(60_000);
+    successful = true;
+    refresh.visibilityChanged(true);
+    await settle();
+    expect(timers.get(1)?.delay).toBe(30_000);
+    refresh.stop();
+  });
+
+  it('polls visible pages every five seconds and never overlaps requests', async () => {
     const visible = true;
     let now = 0;
     const timers = new Map<number, Timer>();
@@ -108,8 +136,9 @@ describe('AutoRefresh', () => {
       clearTimer: (id) => timers.delete(id),
     });
 
+    refresh.markSuccessfulSnapshot();
     refresh.start();
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 8; index += 1) {
       const timer = [...timers.values()][0];
       timers.clear();
       timer?.callback();
@@ -118,5 +147,73 @@ describe('AutoRefresh', () => {
 
     expect([...timers.values()][0]?.delay).toBe(MAX_RETRY_DELAY_MS);
     visible = false;
+  });
+
+  it('stays stopped when an in-flight read finishes and resumes with a stale check', async () => {
+    let now = 0;
+    const timers = new Map<number, Timer>();
+    const read = deferred<boolean>();
+    let calls = 0;
+    const refresh = new AutoRefresh({
+      refresh: () => { calls += 1; return calls === 1 ? read.promise : Promise.resolve(true); },
+      isVisible: () => true,
+      now: () => now,
+      setTimer: (callback, delay) => { timers.set(1, { callback, delay }); return 1; },
+      clearTimer: (id) => timers.delete(id),
+    });
+    refresh.markSuccessfulSnapshot();
+    refresh.start();
+    const timer = timers.get(1);
+    timers.clear();
+    timer?.callback();
+    refresh.stop();
+    refresh.visibilityChanged();
+    read.resolve(true);
+    await settle();
+    expect(timers.size).toBe(0);
+    expect(calls).toBe(1);
+    now = REFRESH_INTERVAL_MS;
+    refresh.start();
+    await settle();
+    expect(calls).toBe(2);
+    expect(timers.get(1)?.delay).toBe(REFRESH_INTERVAL_MS);
+  });
+
+  it('does not read if the page becomes hidden before its timer fires', async () => {
+    let visible = true;
+    let timer: (() => void) | undefined;
+    let calls = 0;
+    const refresh = new AutoRefresh({
+      refresh: async () => { calls += 1; return true; },
+      isVisible: () => visible,
+      setTimer: (callback) => { timer = callback; return 1; },
+      clearTimer: () => undefined,
+    });
+    refresh.markSuccessfulSnapshot();
+    refresh.start();
+    visible = false;
+    timer?.();
+    await settle();
+    expect(calls).toBe(0);
+  });
+
+  it('checks immediately on return even when the last successful read is recent', async () => {
+    let calls = 0;
+    const read = deferred<boolean>();
+    const refresh = new AutoRefresh({
+      refresh: () => { calls += 1; return read.promise; },
+      isVisible: () => true,
+      now: () => 0,
+      setTimer: () => 1,
+      clearTimer: () => undefined,
+    });
+    refresh.markSuccessfulSnapshot();
+    refresh.start();
+    refresh.visibilityChanged(true);
+    refresh.visibilityChanged(true);
+    expect(calls).toBe(1);
+    read.resolve(true);
+    await settle();
+    refresh.stop();
   });
 });
