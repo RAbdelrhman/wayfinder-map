@@ -155,6 +155,51 @@ describe('threadCommands', () => {
   });
 });
 
+describe('T3 protocol compatibility', () => {
+  it.each([1, 2])('uses protocol %i snapshot and dispatch transports', async (version) => {
+    const api = new T3Api('http://127.0.0.1:3773', { exe: 't3', script: 'server.mjs' });
+    vi.spyOn(api, 'environment').mockResolvedValue({ orchestrationProtocolVersion: version });
+    const snapshot = { projects: [{ id: 'p1' }], threads: [], archivedThreads: [{ id: 'archived' }] };
+    const request = vi.spyOn(api as unknown as { request(path: string, body?: unknown): Promise<unknown> }, 'request').mockResolvedValue(snapshot);
+    const rpc = vi.spyOn(api, 'rpc').mockResolvedValue({});
+    const result = await api.snapshot();
+    expect(request).toHaveBeenCalledWith(version === 2 ? '/api/orchestration/shell' : '/api/orchestration/snapshot', ...(version === 2 ? [undefined, false, 20_000] : []));
+    if (version === 2) {
+      expect(result.projects[0]?.deletedAt).toBeNull();
+      expect(result.threads).toEqual([{ id: 'archived' }]);
+    }
+    const create = { type: 'thread.create', threadId: 't1' };
+    await api.dispatch(create);
+    if (version === 2) expect(rpc).toHaveBeenLastCalledWith('orchestration.dispatchCommand', { ...create, createdBy: 'user', creationSource: 'web' });
+    else expect(request).toHaveBeenLastCalledWith('/api/orchestration/dispatch', create);
+    const start = { type: 'thread.turn.start', threadId: 't1', commandId: 'c1', modelSelection: { model: 'm1' }, message: { messageId: 'm1', text: 'goal', attachments: [] } };
+    await api.dispatch(start);
+    if (version === 2) expect(rpc).toHaveBeenLastCalledWith('orchestration.dispatchCommand', {
+      type: 'message.dispatch', threadId: 't1', commandId: 'c1', modelSelection: { model: 'm1' },
+      createdBy: 'user', creationSource: 'web',
+      messageId: 'm1', text: 'goal', attachments: [], dispatchMode: { type: 'start_immediately' },
+    });
+    else expect(request).toHaveBeenLastCalledWith('/api/orchestration/dispatch', start);
+    const project = { type: 'project.create', projectId: 'p2' };
+    await api.dispatch(project);
+    expect(request).toHaveBeenLastCalledWith(version === 2 ? '/api/projects/mutate' : '/api/orchestration/dispatch', project);
+  });
+
+  it('sends the v2 shell protocol header and explains an HTML API response', async () => {
+    const api = new T3Api('http://127.0.0.1:3773', { exe: 't3', script: 'server.mjs' });
+    vi.spyOn(api, 'environment').mockResolvedValue({ orchestrationProtocolVersion: 2 });
+    vi.spyOn(api as unknown as { issue(): Promise<{ token: string }> }, 'issue').mockResolvedValue({ token: 'test-token' });
+    const fetchMock = vi.fn().mockResolvedValue(new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await expect(api.shell()).rejects.toThrow('returned a web page for /api/orchestration/shell');
+      expect(fetchMock.mock.calls[0]?.[1].headers).toMatchObject({ 'x-t3-orchestration-protocol': '2' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe('T3 shell stream', () => {
   it.each([1, 2])('resumes on protocol %i, forwards chunks, and reports a dropped connection', async (version) => {
     const sockets: Array<{

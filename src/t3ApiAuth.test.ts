@@ -22,6 +22,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('cached T3 API authentication', () => {
   it('reissues authentication once after an expired or revoked token is rejected', async () => {
     const api = new T3Api('http://127.0.0.1:3773', { exe: 't3', script: 'server.mjs' });
+    vi.spyOn(api, 'environment').mockResolvedValue({ orchestrationProtocolVersion: 1 });
     cli.run.mockResolvedValueOnce({ stdout: JSON.stringify({ sessionId: 'expired', token: 'old' }) })
       .mockResolvedValue({ stdout: JSON.stringify({ sessionId: 'fresh', token: 'new' }) });
     const request = vi.fn<typeof fetch>()
@@ -40,6 +41,7 @@ describe('cached T3 API authentication', () => {
 
   it('stops retrying if the replacement authentication is also rejected', async () => {
     const api = new T3Api('http://127.0.0.1:3773', { exe: 't3', script: 'server.mjs' });
+    vi.spyOn(api, 'environment').mockResolvedValue({ orchestrationProtocolVersion: 1 });
     cli.run.mockResolvedValue({ stdout: JSON.stringify({ sessionId: 'rejected', token: 'token' }) });
     const request = vi.fn<typeof fetch>().mockResolvedValue(new Response('Unauthorized', { status: 401 }));
     vi.stubGlobal('fetch', request);

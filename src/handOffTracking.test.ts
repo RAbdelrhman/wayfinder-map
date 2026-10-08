@@ -29,6 +29,37 @@ const input = {
 };
 
 describe('mapT3Status', () => {
+  it('tracks v2 updates and retains a thread when it moves into the archive', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-v2-hand-offs-'));
+    try {
+      const store = new HandOffStore({ filePath: join(directory, 'hand-offs.json') });
+      await store.record(input);
+      await store.applyEvent('env-1', input.t3Origin, {
+        kind: 'thread.updated', sequence: 1, location: 'active', thread: { id: input.threadId, status: 'running' },
+      });
+      expect(await store.list()).toMatchObject([{ status: 'running' }]);
+      await store.applyEvent('env-1', input.t3Origin, { kind: 'thread.removed', location: 'active', threadId: input.threadId });
+      expect(await store.list()).toHaveLength(1);
+      await store.applySnapshot('env-1', input.t3Origin, {
+        snapshotSequence: 2, threads: [], archivedThreads: [{ id: input.threadId, status: 'completed', settledAt: '2026-10-07T12:00:00Z' }],
+      });
+      expect(await store.list()).toMatchObject([{ status: 'finished' }]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+  it.each([
+    ['running', 'running'], ['waiting', 'waiting'], ['completed', 'ready'],
+    ['failed', 'failed'], ['interrupted', 'interrupted'], ['cancelled', 'interrupted'],
+    ['preparing', 'starting'], ['queued', 'starting'], ['idle', 'ready'],
+  ])('maps v2 %s to %s', (status, expected) => {
+    expect(mapT3Status({ id: 'v2', status })?.status).toBe(expected);
+  });
+
+  it('reads v2 pending questions and settled completion', () => {
+    expect(mapT3Status({ id: 'v2', status: 'waiting', pendingRuntimeRequest: { kind: 'user_input' } })).toMatchObject({ status: 'waiting', pendingUserInput: true });
+    expect(mapT3Status({ id: 'v2', status: 'completed', settledAt: '2026-10-07T12:00:00Z' })?.status).toBe('finished');
+  });
   it('maps waiting, running, settled, interrupted, failed, and starting T3 states', () => {
     expect(mapT3Status({ id: 'waiting', hasPendingUserInput: true, session: { status: 'running' } })?.status).toBe('waiting');
     expect(mapT3Status({ id: 'running', session: { status: 'running' } })?.status).toBe('running');

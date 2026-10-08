@@ -274,20 +274,22 @@ export function mapT3Status(thread: unknown): MappedT3Thread | null {
 
   const session = record(item['session']);
   const latestTurn = record(item['latestTurn']);
-  const sessionStatus = firstText(session?.['status'], item['sessionStatus']);
-  const turnState = firstText(latestTurn?.['state'], item['latestTurnState']);
+  const sessionStatus = firstText(session?.['status'], item['sessionStatus'], item['status']);
+  const turnState = firstText(latestTurn?.['state'], item['latestTurnState'], item['status']);
   const lastError = firstText(session?.['lastError'], item['lastError']);
-  const pendingApproval = flag(item['hasPendingApprovals']) || flag(item['pendingApproval']);
-  const pendingUserInput = flag(item['hasPendingUserInput']) || flag(item['pendingUserInput']);
+  const requestKind = text(record(item['pendingRuntimeRequest'])?.['kind']);
+  const pendingApproval = flag(item['hasPendingApprovals']) || flag(item['pendingApproval']) ||
+    (requestKind !== null && ['command', 'file-read', 'file-change', 'mcp-elicitation', 'permission'].includes(requestKind));
+  const pendingUserInput = flag(item['hasPendingUserInput']) || flag(item['pendingUserInput']) || requestKind === 'user_input';
   const background = record(item['backgroundLiveness']);
   const backgroundState = firstText(background?.['state'], background?.['status'], item['backgroundLiveness']);
 
   let status: MappedT3Thread['status'] = 'starting';
-  if (sessionStatus === 'error' || turnState === 'error' || lastError !== null) {
+  if (sessionStatus === 'error' || turnState === 'error' || turnState === 'failed' || lastError !== null) {
     status = 'failed';
-  } else if (turnState === 'interrupted' || sessionStatus === 'interrupted') {
+  } else if (turnState === 'interrupted' || sessionStatus === 'interrupted' || turnState === 'cancelled' || turnState === 'rolled_back') {
     status = 'interrupted';
-  } else if (pendingApproval || pendingUserInput) {
+  } else if (pendingApproval || pendingUserInput || turnState === 'waiting') {
     status = 'waiting';
   } else if (sessionStatus === 'starting') {
     status = 'starting';
@@ -300,7 +302,7 @@ export function mapT3Status(thread: unknown): MappedT3Thread | null {
     status = 'running';
   } else if (
     turnState === 'completed' &&
-    (text(latestTurn?.['settledAt']) !== null || flag(latestTurn?.['settledOverride']))
+    (text(latestTurn?.['settledAt']) !== null || flag(latestTurn?.['settledOverride']) || text(item['settledAt']) !== null || item['settledOverride'] === 'settled')
   ) {
     status = 'finished';
   } else if (sessionStatus === 'ready' || sessionStatus === 'idle' || sessionStatus === 'stopped' || turnState === 'completed') {
@@ -691,7 +693,10 @@ export class HandOffStore {
     const shell = record(snapshot);
     if (shell === null) return;
     const sequence = finiteNumber(shell['snapshotSequence']);
-    const threads = Array.isArray(shell['threads']) ? shell['threads'] : [];
+    const threads = [
+      ...(Array.isArray(shell['threads']) ? shell['threads'] : []),
+      ...(Array.isArray(shell['archivedThreads']) ? shell['archivedThreads'] : []),
+    ];
     const byId = new Map<string, MappedT3Thread>();
     for (const raw of threads) {
       if (text(record(raw)?.['deletedAt']) !== null) continue;
@@ -734,7 +739,9 @@ export class HandOffStore {
       await this.applySnapshotCurrent(environmentId, origin, snapshotWithSequence);
       return;
     }
-    if (kind === 'thread-removed') {
+    if (kind === 'thread-removed' || kind === 'thread.removed') {
+      // V2 moves archived threads between lists; only deletion removes the record.
+      if (kind === 'thread.removed' && event['location'] !== undefined) return;
       const threadId = firstText(event['threadId'], eventValue?.['threadId']);
       if (threadId === null) return;
       const removed = this.current().filter(
@@ -743,7 +750,7 @@ export class HandOffStore {
       if (this.drop(new Set(removed))) await this.persist();
       return;
     }
-    if (kind !== 'thread-upserted') return;
+    if (kind !== 'thread-upserted' && kind !== 'thread.updated') return;
 
     const rawThread = event['thread'] ?? eventValue?.['thread'] ?? event['data'] ?? event['value'];
     const thread = mapT3Status(rawThread);
