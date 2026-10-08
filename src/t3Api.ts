@@ -175,7 +175,7 @@ export class T3Api {
     const response = await fetch(new URL('/.well-known/t3/environment', this.origin), {
       signal: AbortSignal.timeout(20_000),
     });
-    if (!response.ok) throw new Error(`T3 Code environment answered ${String(response.status)}`);
+    if (!response.ok) throw new Error(`T3 Code environment answered ${String(response.status)}`, { cause: { status: response.status } });
     return (await response.json()) as unknown;
   }
 
@@ -190,7 +190,9 @@ export class T3Api {
           threadId: command['threadId'],
           createdBy: 'user',
           creationSource: 'web',
-          ...message,
+          messageId: message.messageId,
+          text: message.text,
+          attachments: message.attachments,
           modelSelection: command['modelSelection'],
           dispatchMode: { type: 'start_immediately' },
         });
@@ -203,13 +205,16 @@ export class T3Api {
   }
 
   private async protocolVersion(): Promise<1 | 2> {
-    this.protocol ??= this.environment().catch(() => {
-      // A failed probe must not pin a v2 server to v1 until Wayfinder restarts.
-      this.protocol = null;
-      return null;
+    this.protocol ??= this.environment().catch((error: unknown) => {
+      // A confirmed missing descriptor identifies the older API; outages do not.
+      const cause = error instanceof Error ? error.cause : null;
+      if (typeof cause === 'object' && cause !== null && 'status' in cause && cause.status === 404) {
+        return { orchestrationProtocolVersion: 1 };
+      }
+      throw error;
     }).then((raw) => {
       const version = (raw as { orchestrationProtocolVersion?: unknown } | null)?.orchestrationProtocolVersion;
-      // Older servers may not expose the descriptor or its version field.
+      // Older descriptors may omit the version field.
       if (version === undefined || version === 1) return 1;
       if (version === 2) return 2;
       throw new Error(`Unsupported T3 Code orchestration protocol: ${String(version)}`);

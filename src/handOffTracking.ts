@@ -692,14 +692,18 @@ export class HandOffStore {
 
   private async applySnapshotCurrent(environmentId: string | null, origin: string, snapshot: unknown): Promise<void> {
     const shell = record(snapshot);
-    if (shell === null) return;
+    if (shell === null || !Array.isArray(shell['threads']) ||
+      (shell['archivedThreads'] !== undefined && !Array.isArray(shell['archivedThreads']))) {
+      throw new Error('T3 Code returned an incompatible orchestration shell');
+    }
     const sequence = finiteNumber(shell['snapshotSequence']);
     const threads = [
-      ...(Array.isArray(shell['threads']) ? shell['threads'] : []),
+      ...shell['threads'],
       ...(Array.isArray(shell['archivedThreads']) ? shell['archivedThreads'] : []),
     ];
     const byId = new Map<string, MappedT3Thread>();
     for (const raw of threads) {
+      if (text(record(raw)?.['id']) === null) throw new Error('T3 Code returned an incompatible orchestration thread');
       if (text(record(raw)?.['deletedAt']) !== null) continue;
       const parsed = mapT3Status(raw);
       if (parsed !== null) byId.set(parsed.id, parsed);
@@ -741,8 +745,9 @@ export class HandOffStore {
       return;
     }
     if (kind === 'thread-removed' || kind === 'thread.removed') {
-      // V2 moves archived threads between lists; only deletion removes the record.
-      if (kind === 'thread.removed' && event['location'] !== undefined) return;
+      // V2 uses the same removal event for archive moves and deletions.
+      // Reconcile with a complete shell before dropping a saved hand-off.
+      if (kind === 'thread.removed') return;
       const threadId = firstText(event['threadId'], eventValue?.['threadId']);
       if (threadId === null) return;
       const removed = this.current().filter(
@@ -1184,8 +1189,11 @@ export class HandOffTracker {
     this.streamOpening = subscribe(
       sequence,
       (value) => {
+        const event = record(value);
+        const removed = firstText(event?.['kind'], event?.['type'], event?.['event'], event?.['_tag']) === 'thread.removed';
         void this.store
           .applyEvent(environmentId, origin, value)
+          .then(async () => { if (removed) await this.refresh(); })
           .then(() => this.announceThreadChange(upsertedThreadId(value)))
           .then(() => this.discoverMissingPullRequests(environmentId, origin))
           .catch(() => undefined);

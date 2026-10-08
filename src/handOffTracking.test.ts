@@ -29,6 +29,13 @@ const input = {
 };
 
 describe('mapT3Status', () => {
+  it.each([null, {}, { threads: null }, { threads: [], archivedThreads: null }, { threads: [{}] }])('keeps previously observed hand-offs when a shell is malformed: %j', async (snapshot) => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    await store.applySnapshot('env-1', input.t3Origin, { snapshotSequence: 1, threads: [{ id: input.threadId, status: 'running' }] });
+    await expect(store.applySnapshot('env-1', input.t3Origin, snapshot)).rejects.toThrow('incompatible orchestration');
+    expect(await store.list()).toMatchObject([{ status: 'running', sequence: 1 }]);
+  });
   it('tracks v2 updates and retains a thread when it moves into the archive', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'wayfinder-v2-hand-offs-'));
     try {
@@ -923,6 +930,46 @@ describe('HandOffStore', () => {
 });
 
 describe('HandOffTracker', () => {
+  it.each([false, true])('reconciles v2 archive and deletion removals against the shell, wrapped=%s', async (wrapped) => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    let deliver: ((value: unknown) => void) | undefined;
+    let phase = 0;
+    const tracker = new HandOffTracker(store, {
+      readHandOffSnapshot: async () => ({
+        environmentId: 'env-1', origin: input.t3Origin,
+        snapshot: {
+          snapshotSequence: phase + 1,
+          threads: phase === 0 ? [{ id: input.threadId, status: 'running' }] : [],
+          archivedThreads: phase === 1 ? [{ id: input.threadId, status: 'completed', settledAt: '2026-10-07T12:00:00Z' }] : [],
+        },
+      }),
+      subscribeShell: async (_sequence, listener) => { deliver = listener; return () => undefined; },
+    }, { lookupPullRequests: async () => [], lookupPullRequestState: async () => null });
+    try {
+      await tracker.snapshot();
+      await vi.waitFor(() => expect(deliver).toBeDefined());
+      const removal = (location: string) => ({ kind: 'thread.removed',
+        ...(wrapped ? { value: { location, threadId: input.threadId } } : { location, threadId: input.threadId }),
+      });
+      phase = 1;
+      deliver?.(removal('active'));
+      await vi.waitFor(async () => expect(await store.list()).toMatchObject([{ status: 'finished' }]));
+      phase = 2;
+      deliver?.(removal('archive'));
+      await vi.waitFor(async () => expect(await store.list()).toHaveLength(0));
+    } finally { tracker.close(); }
+  });
+
+  it('reports an incompatible shell as unavailable and preserves the last observation', async () => {
+    const store = new HandOffStore({ filePath: null });
+    await store.record(input);
+    await store.applySnapshot('env-1', input.t3Origin, { threads: [{ id: input.threadId, status: 'running' }] });
+    const tracker = new HandOffTracker(store, { readHandOffSnapshot: async () => ({ environmentId: 'env-1', origin: input.t3Origin, snapshot: {} }) });
+    try {
+      await expect(tracker.snapshot()).resolves.toMatchObject({ t3: { available: false }, handOffs: [{ status: 'running', stale: true }] });
+    } finally { tracker.close(); }
+  });
   it('keeps the last known status visible as stale when T3 Code is down', async () => {
     const store = new HandOffStore({ filePath: null });
     await store.record(input);

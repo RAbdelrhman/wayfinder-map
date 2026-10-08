@@ -173,7 +173,7 @@ describe('T3 protocol compatibility', () => {
     await api.dispatch(create);
     if (version === 2) expect(rpc).toHaveBeenLastCalledWith('orchestration.dispatchCommand', { ...create, createdBy: 'user', creationSource: 'web' });
     else expect(request).toHaveBeenLastCalledWith('/api/orchestration/dispatch', create);
-    const start = { type: 'thread.turn.start', threadId: 't1', commandId: 'c1', modelSelection: { model: 'm1' }, message: { messageId: 'm1', text: 'goal', attachments: [] } };
+    const start = { type: 'thread.turn.start', threadId: 't1', commandId: 'c1', modelSelection: { model: 'm1' }, message: { messageId: 'm1', role: 'user', text: 'goal', attachments: [] } };
     await api.dispatch(start);
     if (version === 2) expect(rpc).toHaveBeenLastCalledWith('orchestration.dispatchCommand', {
       type: 'message.dispatch', threadId: 't1', commandId: 'c1', modelSelection: { model: 'm1' },
@@ -207,6 +207,20 @@ describe('T3 protocol compatibility', () => {
     vi.spyOn(api, 'environment').mockResolvedValue({ orchestrationProtocolVersion: 2 });
     vi.spyOn(api, 'shell').mockResolvedValue(shell);
     await expect(api.snapshot()).rejects.toThrow('incompatible orchestration shell');
+  });
+
+  it('propagates a failed protocol probe and retries detection without calling legacy endpoints', async () => {
+    const api = new T3Api('http://127.0.0.1:3773', { exe: 't3', script: 'server.mjs' });
+    const environment = vi.spyOn(api, 'environment').mockRejectedValueOnce(new Error('probe unavailable'))
+      .mockResolvedValue({ orchestrationProtocolVersion: 2 });
+    const request = vi.spyOn(api as unknown as { request(path: string, body?: unknown): Promise<unknown> }, 'request')
+      .mockResolvedValue({ projects: [], threads: [] });
+    await expect(api.snapshot()).rejects.toThrow('probe unavailable');
+    expect(request).not.toHaveBeenCalled();
+    await expect(api.snapshot()).resolves.toEqual({ projects: [], threads: [] });
+    expect(environment).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledWith('/api/orchestration/shell', undefined, false, 20_000);
   });
 });
 
