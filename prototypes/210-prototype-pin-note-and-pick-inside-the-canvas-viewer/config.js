@@ -86,6 +86,48 @@
         },
       ],
     },
+    {
+      id: 'feedback-tools',
+      title: 'Feedback tools and saved drafts',
+      round: 2,
+      question: 'Does this remix give each feedback tool a clear job and keep the rail easy to use?',
+      sections: [
+        {
+          title: 'A remix',
+          note: 'Original A and B remain on the Directions page. This is a proposal for review, not a chosen direction.',
+          items: [
+            {
+              id: 'A2',
+              name: 'Separate tools, saved draft',
+              src: 'variants/a2.html',
+              width: 1360,
+              height: 920,
+              note: {
+                basedOn: ['A'],
+                idea: 'Pin, Select element, Color picker and Attach have separate jobs in an annotation toolbar. The rail holds feedback, the option note and the pick. A review dialog previews the issue comments. Draft recovery is shown through an honest restart simulation.',
+                feedback: 'Agreed scope in this thread: unposted drafts survive app restarts on the device where written; Select element highlights its target and opens a feedback editor; Color picker samples and suggests a replacement; Attach works on a pin or selected element and on the whole canvas. The layout and direction have not been chosen.',
+                pros: [
+                  'Annotation tools are separate from note and pick actions.',
+                  'Feedback lists readable targets; pin coordinates remain in posted data.',
+                  'A clear restore state shows the agreed device-local draft lifecycle.',
+                ],
+                cons: [
+                  'More tools need more room. Narrow shells stack the canvas and feedback rail.',
+                  'Element targeting and color sampling need a working wrapper and identifiable elements.',
+                  'Device-local draft storage and real file uploads need follow-up implementation beyond the original map contract.',
+                ],
+              },
+            },
+            {
+              id: 'review2',
+              kind: 'note',
+              name: 'Design review',
+              text: 'Sources: src/ui/styles.css light/dark tokens and controls; src/ui/canvasViewer.ts approved ACF4 shell; docs/design/in-app-canvas-viewer.md bridge/fallback contract; Round 1 shell.css and fixtures.js.\n\nChecked with Playwright CLI: pin and selected-element notes; sampled button color #1f6bc8 and proposed replacement; files targeted to an element and the whole canvas; independent Calm/Bold notes; simulated close/reopen and restart restoring all five annotations and the pick; review and posted comments containing feedback details; snapshot tool disabling, no-wrapper pick-ticket fallback and no-pick-ticket explanation. Light/dark screenshots and 600px float resize checked. 390px layout has no horizontal overflow. Keyboard Enter selects a target in the board frame; Escape dismisses its editor; review focus is contained and returns to its trigger. Measured light/dark secondary text, primary button, pin and focus colors all exceed 4.5:1. Canvas checker, typecheck, lint and 15 canvas tooling tests pass.\n\nFindings fixed: long annotation lists no longer squeeze fields; review header/footer stay visible while content scrolls; float stays inside a resized viewport; notes stay on their own option. Narrow layouts stack canvas and rail, leaving less room for each.\n\nNot checked: installed app interaction, screen-reader announcements, every color/state combination, all float drag corners, 60fps performance and real upload/storage APIs.\n\nLimitations: restart recovery is an in-memory simulation, not storage across actual reloads. Attach keeps file names only. Posting renders issue comments without network writes. Snapshot color/element tools are disabled; no-wrapper keeps the draft and offers the existing pick-ticket path. Color sampling reads the demo element style, not arbitrary image pixels across nested prototype frames. No direction is chosen.',
+            },
+          ],
+        },
+      ],
+    },
   ],
 };
 
