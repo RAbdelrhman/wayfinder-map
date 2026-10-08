@@ -65,4 +65,17 @@ describe('Windows packaging contract', () => {
     expect(windows).not.toContain('WAYFINDER_SIGNED_RELEASE');
     expect(windows).toContain("WAYFINDER_STABLE_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') && '1' || '0' }}");
   });
+
+  it('keeps a release a draft until the Windows workflow attaches its update metadata', async () => {
+    const config = JSON.parse(await read('release-please-config.json')) as {
+      packages: Record<string, { draft?: boolean; 'force-tag-creation'?: boolean }>;
+    };
+    const windows = await read('.github/workflows/release-windows.yml');
+    // A published release without latest-*.yml makes every installed app's update check 404.
+    expect(config.packages['.']).toMatchObject({ draft: true, 'force-tag-creation': true });
+    // softprops publishes the existing draft once its assets are uploaded, so its step passes no draft input.
+    const releaseStep = windows.slice(windows.indexOf('softprops/action-gh-release@v2')).split(/\n\s*- /)[0];
+    expect(releaseStep).toContain('files: release-assets/**/*');
+    expect(releaseStep).not.toMatch(/^\s*draft:/m);
+  });
 });
