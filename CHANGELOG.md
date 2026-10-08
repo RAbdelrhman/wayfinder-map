@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.17](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.16...v0.2.17) (2026-10-08)
+
+
+### Bug Fixes
+
+* hide settled maps from the map-name menu ([#283](https://github.com/RAbdelrhman/wayfinder-map/issues/283)) ([606d672](https://github.com/RAbdelrhman/wayfinder-map/commit/606d6728f2987bd19ca17558976d7bd4f3419a47))
+* restore map and ticket launches with T3 v2 ([#282](https://github.com/RAbdelrhman/wayfinder-map/issues/282)) ([53c7d70](https://github.com/RAbdelrhman/wayfinder-map/commit/53c7d7005a16ae2ad6c06305c2dd7e2af88db9fd))
+
 ## [0.2.16](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.15...v0.2.16) (2026-10-07)
 
 
