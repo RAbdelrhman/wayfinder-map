@@ -130,16 +130,36 @@ describe('automatic map syncing', () => {
     context['parseRepoPagePath'] = () => ({ mapNumber: 217 });
     const destination = load('background');
     finishOld({ repo: 'owner/repo', maps: [{ number: 205 }], fetchedAt: 'old' });
-    await previous;
     await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
     expect(context['applySnapshot']).not.toHaveBeenCalled();
     expect(context['lastCheckedAt']).toBeNull();
     expect(context['prototypesFor']).not.toHaveBeenCalled();
     const next = { repo: 'owner/repo', maps: [{ number: 217 }], fetchedAt: 'new' };
     finishNew(next);
-    await destination;
+    await Promise.all([previous, destination]);
     expect(context['applySnapshot']).toHaveBeenCalledExactlyOnceWith(next, false);
     expect(context['lastCheckedAt']).toBe(123_456);
+  });
+
+  it('propagates a queued destination failure to the original automatic refresh', async () => {
+    const context = fixture();
+    const load = context['load'] as (mode: string) => Promise<boolean>;
+    let finishOld!: (value: unknown) => void;
+    let failNew!: (error: Error) => void;
+    const read = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { failNew = reject; }));
+    context['readRouteJson'] = read;
+    const previous = load('background');
+    context['parseRepoPagePath'] = () => ({ mapNumber: 217 });
+    const destination = load('background');
+    finishOld({ maps: [{ number: 205 }] });
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    failNew(new Error('destination offline'));
+    expect(await previous).toBe(false);
+    expect(await destination).toBe(false);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(context['lastCheckedAt']).toBeNull();
   });
 
   it('refreshes a cached prototype without overlap and retains it when the check fails', async () => {
@@ -196,9 +216,9 @@ describe('map switching without reloading the page', () => {
       { number: 205, ticketsLoaded: true, tickets: [{ number: 210 }] },
       { number: 217, ticketsLoaded: true, tickets: [{ number: 225 }] },
     ];
-    const location = { href: 'http://localhost/repos/owner/repo/maps/205', origin: 'http://localhost', pathname: '/repos/owner/repo/maps/205', search: '' };
+    const location = { href: 'http://localhost/repos/owner/repo/maps/205', origin: 'http://localhost', pathname: '/repos/owner/repo/maps/205', search: '', replace: vi.fn() };
     const context: Record<string, unknown> = {
-      URL, URLSearchParams, parseRepoPagePath, window: { location },
+      URL, URLSearchParams, parseRepoPagePath, repoPath: () => '/repos/owner/repo', window: { location },
       snapshot: { repo: 'owner/repo', maps }, activeMap: 0,
       canvasViewer: { isOpen: () => false },
       history: { pushState: vi.fn((_state, _title, href: string) => {
@@ -241,6 +261,18 @@ describe('map switching without reloading the page', () => {
     (context['applyMapRoute'] as () => void)();
     expect(context['activeMap']).toBe(0);
     expect(context['selected']).toBe(210);
+    expect(context['load']).toHaveBeenLastCalledWith('background');
+    expect(context['load']).toHaveBeenCalledTimes(2);
+  });
+
+  it('reconciles a removed historical map with the repository route', () => {
+    const { context, maps, location } = fixture();
+    maps.splice(0, 1);
+    Object.assign(location, { pathname: '/repos/owner/repo/maps/205' });
+    (context['applyMapRoute'] as () => void)();
+    expect(location.replace).toHaveBeenCalledExactlyOnceWith('/repos/owner/repo');
+    expect(context['render']).not.toHaveBeenCalled();
+    expect(context['load']).not.toHaveBeenCalled();
   });
 
   it.each(['/repos/another/repo/maps/205', '/repos/owner/repo', '/repos/owner/repo/maps/999', 'https://other.test/repos/owner/repo/maps/205'])(

@@ -620,7 +620,11 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       setSyncedBusy(syncedButton(), false);
     }
   })();
-  return loadInFlight;
+  const succeeded = await loadInFlight;
+  // Follow navigation only after releasing the old request, so the refresh
+  // scheduler receives the destination's result and applies its retry backoff.
+  if ((parseRepoPagePath(window.location.pathname)?.mapNumber ?? null) !== requestedMapNumber) return load(mode);
+  return succeeded;
 }
 
 /** Paint cached reads immediately; only live reads reconcile alerts. */
@@ -1546,7 +1550,6 @@ function navigateMap(href: string): boolean {
       !snapshot.maps.some((map) => map.number === route.mapNumber)) return false;
   history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`);
   applyMapRoute();
-  if (currentMap()?.ticketsLoaded !== false) void load('background');
   return true;
 }
 
@@ -1555,7 +1558,10 @@ function applyMapRoute(): void {
   planningHandOff = null;
   const route = parseRepoPagePath(window.location.pathname);
   const index = snapshot?.maps.findIndex((map) => map.number === route?.mapNumber) ?? -1;
-  if (index < 0) return;
+  if (index < 0) {
+    if (snapshot !== null) window.location.replace(repoPath(snapshot.repo));
+    return;
+  }
   const changedMap = activeMap !== index;
   activeMap = index;
   if (changedMap) {
@@ -1581,8 +1587,8 @@ function applyMapRoute(): void {
   navigation?.setActiveView(view);
   render();
   if (planningHandOffId !== null) void loadPlanningHandoff();
-  // Back to a settled map whose tickets were never read: read them now.
-  if (map?.ticketsLoaded === false) void load('initial');
+  // Both menu navigation and browser history check their destination immediately.
+  void load(map?.ticketsLoaded === false ? 'initial' : 'background');
 }
 
 window.addEventListener('popstate', applyMapRoute);
