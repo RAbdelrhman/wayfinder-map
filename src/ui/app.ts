@@ -544,6 +544,7 @@ const startNext = mountStartNext({
 let toastTimer: number | undefined;
 let loadInFlight: Promise<boolean> | null = null;
 let loadMode: 'initial' | 'manual' | 'background' | null = null;
+let lastCheckedAt: number | null = null;
 
 function toast(message: string, ms = 4200): void {
   els.toast.textContent = message;
@@ -575,7 +576,13 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       if (routedMapNumber !== null) params.set('map', String(routedMapNumber));
       const search = params.toString();
       const nextSnapshot = await readRouteJson<MapSnapshot>(`${endpoint}${search === '' ? '' : `?${search}`}`, true);
+      // Initial display reads may restore a server snapshot without checking GitHub.
+      if (mode !== 'initial') lastCheckedAt = Date.now();
       applySnapshot(nextSnapshot, mode === 'initial' && (snapshot === null || initialRouteTicketPending));
+      if (mode === 'background') {
+        const map = currentMap();
+        if (map !== null && (view === 'prototypes' || ticketAt(map, selected)?.type === 'prototype')) prototypesFor(map, false, true);
+      }
       // The page reloads on its own while open, which is when it hears of a notice the server left.
       if (mode === 'background') void autoMaps.refresh();
       if (planningHandOffId !== null) void loadPlanningHandoff();
@@ -603,9 +610,16 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
 
 /** Paint cached reads immediately; only live reads reconcile alerts. */
 function applySnapshot(nextSnapshot: MapSnapshot, initial: boolean, cached = false): void {
+  const unchanged = !initial && snapshot !== null &&
+    JSON.stringify({ ...snapshot, fetchedAt: undefined }) === JSON.stringify({ ...nextSnapshot, fetchedAt: undefined });
   if (!cached && snapshot !== null) notifyNewStalls(snapshot, nextSnapshot);
   snapshot = nextSnapshot;
   if (!cached) mapEventInbox.reconcileSnapshot(snapshot);
+  if (unchanged) {
+    renderSynced();
+    if (!cached) flushPendingMapEvents();
+    return;
+  }
   const currentRoute = parseRepoPagePath(window.location.pathname);
   const routedMap = currentRoute?.mapNumber === null
     ? -1
@@ -714,7 +728,7 @@ function render(): void {
 
 function renderSynced(): void {
   if (snapshot === null) return;
-  const fetched = Date.parse(snapshot.fetchedAt);
+  const fetched = lastCheckedAt ?? Date.parse(snapshot.fetchedAt);
   setSyncedLabel(syncedButton(), Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
 }
 
@@ -917,14 +931,16 @@ function renderTable(): void {
 type PrototypeLoad = { status: 'loading' } | { status: 'ready'; list: Prototype[] } | { status: 'failed'; error: string };
 
 const prototypeLoads = new Map<number, PrototypeLoad>();
+const prototypeRequests = new Set<number>();
 
-function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
+function prototypesFor(map: WayfinderMap, force = false, background = false): PrototypeLoad {
   const existing = prototypeLoads.get(map.number);
-  if (existing !== undefined && !force) return existing;
+  if (existing !== undefined && !force && (!background || prototypeRequests.has(map.number))) return existing;
   const endpoint = `${scopedApiPath(repoName(), 'prototypes')}?map=${String(map.number)}`;
   const previous = existing?.status === 'ready' ? existing.list : routeData().peek<Prototype[]>(endpoint);
   const loading: PrototypeLoad = previous === null ? { status: 'loading' } : { status: 'ready', list: previous };
   prototypeLoads.set(map.number, loading);
+  prototypeRequests.add(map.number);
   void (async () => {
     let next: PrototypeLoad;
     try {
@@ -939,12 +955,14 @@ function prototypesFor(map: WayfinderMap, force = false): PrototypeLoad {
       if (previous !== null && force) toast((error as Error).message, 8000);
     }
     if (prototypeLoads.get(map.number) !== loading) return;
-    if (force && previous !== null && next.status === 'ready') {
+    prototypeRequests.delete(map.number);
+    if ((force || background) && previous !== null && next.status === 'ready') {
       for (const notification of changedPrototypeNotifications(repoName(), map, previous, next.list)) void publishNotification(notification);
     }
     prototypeLoads.set(map.number, next);
     if (currentMap()?.number !== map.number) return;
     navigation?.setPrototypeCount(next.status === 'ready' ? next.list.length : null);
+    if (background && next.status === 'ready' && JSON.stringify(previous) === JSON.stringify(next.list)) return;
     if (view === 'prototypes') renderPrototypes();
     renderTicketPrototype();
   })();
@@ -1803,8 +1821,16 @@ const autoRefresh = new AutoRefresh({
 });
 
 document.addEventListener('visibilitychange', () => {
-  autoRefresh.visibilityChanged();
+  autoRefresh.visibilityChanged(true);
   if (document.visibilityState === 'visible') void autoMaps.refresh();
+});
+window.addEventListener('focus', () => autoRefresh.visibilityChanged(true));
+window.addEventListener('online', () => autoRefresh.visibilityChanged(true));
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    autoRefresh.start();
+    autoRefresh.visibilityChanged(true);
+  }
 });
 
 void syncServerSettings();

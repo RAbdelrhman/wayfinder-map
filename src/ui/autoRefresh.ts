@@ -1,4 +1,4 @@
-export const REFRESH_INTERVAL_MS = 30_000;
+export const REFRESH_INTERVAL_MS = 5_000;
 export const MAX_RETRY_DELAY_MS = 5 * 60_000;
 
 export interface AutoRefreshOptions {
@@ -22,6 +22,7 @@ export class AutoRefresh {
   private running: Promise<void> | null = null;
   private lastSuccessfulSnapshot: number | null = null;
   private nextDelay = REFRESH_INTERVAL_MS;
+  private stopped = true;
 
   constructor(private readonly options: AutoRefreshOptions) {
     this.now = options.now ?? Date.now;
@@ -35,17 +36,20 @@ export class AutoRefresh {
   }
 
   start(): void {
-    this.scheduleWhenVisible();
+    this.stopped = false;
+    this.visibilityChanged();
   }
 
-  visibilityChanged(): void {
+  visibilityChanged(checkNow = false): void {
+    if (this.stopped) return;
     if (!this.options.isVisible()) {
       this.cancelTimer();
       return;
     }
 
     const age = this.lastSuccessfulSnapshot === null ? Infinity : this.now() - this.lastSuccessfulSnapshot;
-    if (age >= REFRESH_INTERVAL_MS) {
+    if (checkNow || age >= REFRESH_INTERVAL_MS) {
+      this.cancelTimer();
       void this.refresh();
       return;
     }
@@ -53,12 +57,8 @@ export class AutoRefresh {
   }
 
   stop(): void {
+    this.stopped = true;
     this.cancelTimer();
-  }
-
-  private scheduleWhenVisible(): void {
-    if (!this.options.isVisible()) return;
-    this.schedule(REFRESH_INTERVAL_MS);
   }
 
   private schedule(delay: number): void {
@@ -76,6 +76,7 @@ export class AutoRefresh {
   }
 
   private refresh(): Promise<void> {
+    if (this.stopped || !this.options.isVisible()) return Promise.resolve();
     if (this.running !== null) return this.running;
     this.running = this.options
       .refresh()
@@ -88,7 +89,7 @@ export class AutoRefresh {
       })
       .finally(() => {
         this.running = null;
-        if (!this.options.isVisible()) return;
+        if (this.stopped || !this.options.isVisible()) return;
         this.schedule(this.nextDelay);
       });
     return this.running;

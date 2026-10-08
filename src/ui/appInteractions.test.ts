@@ -35,6 +35,97 @@ const catalog: ModelCatalog = { providers: [{
   ],
 }] };
 
+describe('automatic map syncing', () => {
+  function fixture() {
+    const map = { number: 205 };
+    const snapshot = { maps: [map], fetchedAt: '2026-10-07T12:00:00Z' };
+    const context: Record<string, unknown> = {
+      loadInFlight: null, loadMode: null, lastCheckedAt: null, snapshot,
+      pageRoute: { repo: 'owner/repo', mapNumber: 205 }, view: 'map', selected: 210,
+      window: { location: { pathname: '/repos/owner/repo/maps/205' } }, URLSearchParams,
+      Date: { now: () => 123_456, parse: Date.parse },
+      scopedApiPath: () => '/api/repos/owner/repo/snapshot',
+      routeData: () => ({ peek: () => null }), parseRepoPagePath: () => ({ mapNumber: 205 }),
+      readRouteJson: vi.fn(async () => snapshot), applySnapshot: vi.fn(),
+      currentMap: () => map, ticketAt: () => ({ type: 'prototype' }), prototypesFor: vi.fn(),
+      autoMaps: { refresh: vi.fn(async () => undefined) },
+      planningHandOffId: null, workspaceAsked: true, initialRouteTicketPending: false,
+      syncedButton: () => ({}), setSyncedBusy: vi.fn(), toast: vi.fn(),
+      setSyncedLabel: vi.fn(), syncedLabel: (age: number) => String(age),
+    };
+    bindings(context, ['load', 'renderSynced']);
+    return context;
+  }
+
+  it('checks the open prototype automatically and records the successful check time', async () => {
+    const context = fixture();
+    expect(await (context['load'] as (mode: string) => Promise<boolean>)('background')).toBe(true);
+    expect(context['readRouteJson']).toHaveBeenCalledWith('/api/repos/owner/repo/snapshot?check=1&map=205', true);
+    expect(context['prototypesFor']).toHaveBeenCalledWith({ number: 205 }, false, true);
+    expect(context['lastCheckedAt']).toBe(123_456);
+    (context['renderSynced'] as () => void)();
+    expect(context['setSyncedLabel']).toHaveBeenCalledWith({}, '0');
+  });
+
+  it('retains the last successful sync time on failure and leaves ordinary ticket views alone', async () => {
+    const context = fixture();
+    context['ticketAt'] = () => ({ type: 'task' });
+    await (context['load'] as (mode: string) => Promise<boolean>)('background');
+    expect(context['prototypesFor']).not.toHaveBeenCalled();
+    context['readRouteJson'] = vi.fn(async () => { throw new Error('offline'); });
+    expect(await (context['load'] as (mode: string) => Promise<boolean>)('background')).toBe(false);
+    expect(context['lastCheckedAt']).toBe(123_456);
+    expect(context['toast']).not.toHaveBeenCalled();
+  });
+
+  it('refreshes a cached prototype without overlap and retains it when the check fails', async () => {
+    const map = { number: 205 };
+    const old = [{ title: 'Original' }];
+    let resolve!: (value: unknown) => void;
+    const readRouteJson = vi.fn(() => new Promise((next) => { resolve = next; }));
+    const context: Record<string, unknown> = {
+      prototypeLoads: new Map([[205, { status: 'ready', list: old }]]), prototypeRequests: new Set(),
+      scopedApiPath: () => '/api/repos/owner/repo/prototypes', repoName: () => 'owner/repo',
+      routeData: () => ({ peek: () => null }), readRouteJson,
+      currentMap: () => map, view: 'map', navigation: { setPrototypeCount: vi.fn() },
+      renderTicketPrototype: vi.fn(), renderPrototypes: vi.fn(), toast: vi.fn(),
+      changedPrototypeNotifications: vi.fn(() => []), publishNotification: vi.fn(),
+    };
+    bindings(context, ['prototypesFor']);
+    const refresh = context['prototypesFor'] as (map: unknown, force: boolean, background: boolean) => unknown;
+    refresh(map, false, true);
+    refresh(map, false, true);
+    expect(readRouteJson).toHaveBeenCalledTimes(1);
+    expect(readRouteJson).toHaveBeenCalledWith('/api/repos/owner/repo/prototypes?map=205', true);
+    const next = [{ title: 'Updated' }];
+    resolve(next);
+    const loads = context['prototypeLoads'] as Map<number, { status: string; list: unknown }>;
+    await vi.waitFor(() => expect(loads.get(205)?.list).toBe(next));
+    expect(loads.get(205)?.status).toBe('ready');
+    context['readRouteJson'] = vi.fn(async () => { throw new Error('offline'); });
+    refresh(map, false, true);
+    await vi.waitFor(() => expect((context['prototypeRequests'] as Set<number>).size).toBe(0));
+    expect(loads.get(205)?.status).toBe('ready');
+    expect(loads.get(205)?.list).toBe(next);
+    expect(context['toast']).not.toHaveBeenCalled();
+  });
+
+  it('keeps the mounted map and prototype preview when a check changes only the read time', () => {
+    const before = { repo: 'owner/repo', maps: [{ number: 205 }], fetchedAt: '2026-10-07T12:00:00Z' };
+    const context: Record<string, unknown> = {
+      snapshot: before, notifyNewStalls: vi.fn(), mapEventInbox: { reconcileSnapshot: vi.fn() },
+      renderSynced: vi.fn(), flushPendingMapEvents: vi.fn(), render: vi.fn(),
+    };
+    bindings(context, ['applySnapshot']);
+    const after = { ...before, fetchedAt: '2026-10-07T12:01:00Z' };
+    (context['applySnapshot'] as (snapshot: unknown, initial: boolean) => void)(after, false);
+    expect(context['snapshot']).toBe(after);
+    expect(context['render']).not.toHaveBeenCalled();
+    expect(context['renderSynced']).toHaveBeenCalledOnce();
+    expect(context['flushPendingMapEvents']).toHaveBeenCalledOnce();
+  });
+});
+
 class SelectFixture {
   constructor(public id: string, public value: string) {}
 }
