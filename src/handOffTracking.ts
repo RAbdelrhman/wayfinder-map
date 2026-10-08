@@ -152,12 +152,13 @@ export interface ThreadChange {
   ticketNumber: number | null;
 }
 
-/** The thread a shell `thread-upserted` event is about, or null for any other event. */
+/** The thread a v1 or v2 shell update is about, or null for any other event. */
 export function upsertedThreadId(value: unknown): string | null {
   const event = record(value);
   if (event === null) return null;
   const eventValue = record(event['value']);
-  if (firstText(event['kind'], event['type'], event['event'], event['_tag']) !== 'thread-upserted') return null;
+  const kind = firstText(event['kind'], event['type'], event['event'], event['_tag']);
+  if (kind !== 'thread-upserted' && kind !== 'thread.updated') return null;
   return text(record(event['thread'] ?? eventValue?.['thread'] ?? event['data'] ?? event['value'])?.['id']);
 }
 
@@ -275,7 +276,7 @@ export function mapT3Status(thread: unknown): MappedT3Thread | null {
   const session = record(item['session']);
   const latestTurn = record(item['latestTurn']);
   const sessionStatus = firstText(session?.['status'], item['sessionStatus'], item['status']);
-  const turnState = firstText(latestTurn?.['state'], item['latestTurnState'], item['status']);
+  const turnState = firstText(item['activityRunStatus'], latestTurn?.['state'], item['latestTurnState'], item['status']);
   const lastError = firstText(session?.['lastError'], item['lastError']);
   const requestKind = text(record(item['pendingRuntimeRequest'])?.['kind']);
   const pendingApproval = flag(item['hasPendingApprovals']) || flag(item['pendingApproval']) ||

@@ -159,14 +159,15 @@ describe('T3 protocol compatibility', () => {
   it.each([1, 2])('uses protocol %i snapshot and dispatch transports', async (version) => {
     const api = new T3Api('http://127.0.0.1:3773', { exe: 't3', script: 'server.mjs' });
     vi.spyOn(api, 'environment').mockResolvedValue({ orchestrationProtocolVersion: version });
-    const snapshot = { projects: [{ id: 'p1' }], threads: [], archivedThreads: [{ id: 'archived' }] };
+    const snapshot = { projects: [{ id: 'p1' }], threads: [], archivedThreads: [{ id: 'archived', projectId: 'p1', createdAt: '2026-10-07T12:00:00Z', modelSelection: { model: 'existing' } }] };
     const request = vi.spyOn(api as unknown as { request(path: string, body?: unknown): Promise<unknown> }, 'request').mockResolvedValue(snapshot);
     const rpc = vi.spyOn(api, 'rpc').mockResolvedValue({});
     const result = await api.snapshot();
     expect(request).toHaveBeenCalledWith(version === 2 ? '/api/orchestration/shell' : '/api/orchestration/snapshot', ...(version === 2 ? [undefined, false, 20_000] : []));
     if (version === 2) {
       expect(result.projects[0]?.deletedAt).toBeNull();
-      expect(result.threads).toEqual([{ id: 'archived' }]);
+      expect(result.threads[0]?.deletedAt).toBeNull();
+      expect(threadDefaults(result, 'p1')?.modelSelection).toEqual({ model: 'existing' });
     }
     const create = { type: 'thread.create', threadId: 't1' };
     await api.dispatch(create);
@@ -185,18 +186,27 @@ describe('T3 protocol compatibility', () => {
     expect(request).toHaveBeenLastCalledWith(version === 2 ? '/api/projects/mutate' : '/api/orchestration/dispatch', project);
   });
 
-  it('sends the v2 shell protocol header and explains an HTML API response', async () => {
+  it.each(['text/html', 'text/plain', 'application/json'])('sends the v2 shell protocol header and explains HTML with %s', async (contentType) => {
     const api = new T3Api('http://127.0.0.1:3773', { exe: 't3', script: 'server.mjs' });
     vi.spyOn(api, 'environment').mockResolvedValue({ orchestrationProtocolVersion: 2 });
     vi.spyOn(api as unknown as { issue(): Promise<{ token: string }> }, 'issue').mockResolvedValue({ token: 'test-token' });
-    const fetchMock = vi.fn().mockResolvedValue(new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response('<!doctype html>', { headers: { 'content-type': contentType } }));
     vi.stubGlobal('fetch', fetchMock);
     try {
-      await expect(api.shell()).rejects.toThrow('returned a web page for /api/orchestration/shell');
+      await expect(api.shell()).rejects.toThrow(contentType === 'text/html'
+        ? 'returned a web page for /api/orchestration/shell'
+        : 'returned a non-JSON response for /api/orchestration/shell');
       expect(fetchMock.mock.calls[0]?.[1].headers).toMatchObject({ 'x-t3-orchestration-protocol': '2' });
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it.each([null, {}, { projects: [] }, { projects: [], threads: null }, { projects: [], threads: [], archivedThreads: {} }])('rejects an incompatible v2 shell %j', async (shell) => {
+    const api = new T3Api('http://127.0.0.1:3773', { exe: 't3', script: 'server.mjs' });
+    vi.spyOn(api, 'environment').mockResolvedValue({ orchestrationProtocolVersion: 2 });
+    vi.spyOn(api, 'shell').mockResolvedValue(shell);
+    await expect(api.snapshot()).rejects.toThrow('incompatible orchestration shell');
   });
 });
 

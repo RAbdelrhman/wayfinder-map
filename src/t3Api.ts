@@ -144,15 +144,24 @@ export class T3Api {
     if (response.headers.get('content-type')?.includes('text/html')) {
       throw new Error(`T3 Code returned a web page for ${path}; its API is incompatible with this Wayfinder version`);
     }
-    return text.length === 0 ? null : (JSON.parse(text) as unknown);
+    if (text.length === 0) return null;
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      throw new Error(`T3 Code returned a non-JSON response for ${path}`);
+    }
   }
 
   async snapshot(): Promise<T3Snapshot> {
     if (await this.protocolVersion() === 2) {
-      const shell = await this.shell() as T3Snapshot & { archivedThreads?: T3Thread[] };
+      const shell = await this.shell() as (T3Snapshot & { archivedThreads?: T3Thread[] }) | null;
+      if (shell === null || typeof shell !== 'object' || !Array.isArray(shell.projects) || !Array.isArray(shell.threads) ||
+        (shell.archivedThreads !== undefined && !Array.isArray(shell.archivedThreads))) {
+        throw new Error('T3 Code returned an incompatible orchestration shell');
+      }
       return {
         projects: shell.projects.map((project) => ({ ...project, deletedAt: project.deletedAt ?? null })),
-        threads: [...shell.threads, ...(shell.archivedThreads ?? [])],
+        threads: [...shell.threads, ...(shell.archivedThreads ?? [])].map((thread) => ({ ...thread, deletedAt: thread.deletedAt ?? null })),
       };
     }
     return this.request('/api/orchestration/snapshot') as Promise<T3Snapshot>;

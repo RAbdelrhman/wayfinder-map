@@ -60,6 +60,13 @@ describe('mapT3Status', () => {
     expect(mapT3Status({ id: 'v2', status: 'waiting', pendingRuntimeRequest: { kind: 'user_input' } })).toMatchObject({ status: 'waiting', pendingUserInput: true });
     expect(mapT3Status({ id: 'v2', status: 'completed', settledAt: '2026-10-07T12:00:00Z' })?.status).toBe('finished');
   });
+
+  it('uses the active v2 run before a completed latest run', () => {
+    expect(mapT3Status({ id: 'v2', status: 'completed', activityRunStatus: 'running' })?.status).toBe('running');
+    expect(mapT3Status({ id: 'v2', status: 'completed', activityRunStatus: 'waiting' })?.status).toBe('waiting');
+    expect(mapT3Status({ id: 'v2', status: 'completed', activityRunStatus: 'preparing' })?.status).toBe('starting');
+    expect(mapT3Status({ id: 'v2', status: 'completed', activityRunStatus: null, settledAt: null })?.status).toBe('ready');
+  });
   it('maps waiting, running, settled, interrupted, failed, and starting T3 states', () => {
     expect(mapT3Status({ id: 'waiting', hasPendingUserInput: true, session: { status: 'running' } })?.status).toBe('waiting');
     expect(mapT3Status({ id: 'running', session: { status: 'running' } })?.status).toBe('running');
@@ -1225,7 +1232,7 @@ describe('HandOffTracker', () => {
     }
   });
 
-  it('offers T3 PR snapshots to the map watcher while online, and announces thread changes', async () => {
+  it.each(['thread-upserted', 'thread.updated'])('offers T3 PR snapshots to the map watcher and announces %s changes', async (kind) => {
     const store = new HandOffStore({ filePath: null });
     await store.record(input);
     await store.record({ ...input, ticketNumber: 12, threadId: 'thread-2', requestedBranch: 'wayfinder/12-other' });
@@ -1264,7 +1271,7 @@ describe('HandOffTracker', () => {
       await expect(tracker.trackedPullRequests('octo/two')).resolves.toEqual(new Map());
 
       deliver({
-        kind: 'thread-upserted',
+        kind,
         sequence: 2,
         thread: { id: 'thread-1', session: { status: 'running' }, pullRequests: [{ ...snapshotPullRequest, snapshot: { state: 'open', checksState: 'passing' } }] },
       });
