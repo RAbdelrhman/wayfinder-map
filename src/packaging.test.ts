@@ -73,7 +73,9 @@ describe('Windows packaging contract', () => {
     const windows = await read('.github/workflows/release-windows.yml');
     // A published release without latest-*.yml makes every installed app's update check 404.
     expect(config.packages['.']).toMatchObject({ draft: true, 'force-tag-creation': true });
-    // softprops publishes the existing draft once its assets are uploaded, unless told to keep it a draft.
-    expect(windows).not.toMatch(/^\s*draft:\s*true/m);
+    // softprops publishes the existing draft once its assets are uploaded, so its step passes no draft input.
+    const releaseStep = windows.slice(windows.indexOf('softprops/action-gh-release@v2')).split(/\n\s*- /)[0];
+    expect(releaseStep).toContain('files: release-assets/**/*');
+    expect(releaseStep).not.toMatch(/^\s*draft:/m);
   });
 });
