@@ -23,6 +23,10 @@
   const save = () => { draft = JSON.stringify(st); restored = false; syncSave(); };
   const hasDraft = () => st.items.length || Object.values(st.notes).some((note) => note.trim()) || st.pick;
   function syncSave() {
+    for (const item of st.items) {
+      const summary = root.querySelector('.r2-item-main[data-edit=' + item.id + '] p');
+      if (summary) summary.textContent = itemSummary(item);
+    }
     const status = root.querySelector('#draft-status');
     if (status) status.textContent = restored ? 'Draft restored on this device' : hasDraft() ? 'Draft saved on this device' : 'No unposted feedback';
     const review = root.querySelector('[data-action="review"]');
