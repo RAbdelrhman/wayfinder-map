@@ -187,7 +187,7 @@ export function repoLabel(repo: string, repositories: readonly string[]): string
   return clashes ? repo : name;
 }
 
-/** The maps the tree lists: settled ones stay out, unless one is the page you are on. */
+/** The maps the tree and the map-name menu list: settled ones stay out, unless one is the page you are on. */
 export function sidebarMaps(maps: readonly WayfinderMap[], currentMapNumber: number | null): WayfinderMap[] {
   return maps.filter((map) => map.settled === null || map.number === currentMapNumber);
 }
@@ -511,7 +511,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
       const autoMapItem = autoMap === null || current === null ? '' : `<li class="nav-auto-map">${autoMapMenuHtml(autoMap)}</li>`;
       const startItem = startNextItem === '' && autoMapItem === '' ? '' : `<ul>${startNextItem}${autoMapItem}</ul>`;
       const menuMaps = snapshot?.maps.length
-        ? `${startItem}<div class="menu-label">Maps in ${escapeHtml(repoLabel(repo, repositories))}</div><ul>${snapshot.maps.map((candidate) => `<li><a class="menu-item${candidate.number === currentMapNumber ? ' is-on' : ''}" href="${mapHref(repo, candidate, activeView)}"${candidate.number === currentMapNumber ? ' aria-current="page"' : ''}>${miniRing(candidate)}<span class="grow">#${String(candidate.number)} ${escapeHtml(candidate.title)}</span></a></li>`).join('')}<li><a class="menu-item nav-all-maps" href="${repoPath(repo)}">${iconName('map')}<span class="grow">All maps</span></a></li></ul>`
+        ? `${startItem}<div class="menu-label">Maps in ${escapeHtml(repoLabel(repo, repositories))}</div><ul>${sidebarMaps(snapshot.maps, currentMapNumber).map((candidate) => `<li><a class="menu-item${candidate.number === currentMapNumber ? ' is-on' : ''}" href="${mapHref(repo, candidate, activeView)}"${candidate.number === currentMapNumber ? ' aria-current="page"' : ''}>${miniRing(candidate)}<span class="grow">#${String(candidate.number)} ${escapeHtml(candidate.title)}</span></a></li>`).join('')}<li><a class="menu-item nav-all-maps" href="${repoPath(repo)}">${iconName('map')}<span class="grow">All maps</span></a></li></ul>`
         : `<ul><li class="nav-tree-status">${snapshotRequests.has(repo) ? 'Loading maps…' : snapshotErrors.has(repo) ? 'Could not load maps.' : 'No maps yet'}</li></ul>`;
       return `<div class="nav-scope-control"><button type="button" class="scope" data-nav-menu-trigger="${menuId}" aria-haspopup="true" aria-expanded="${String(openMenu === menuId)}" aria-controls="nav-menu-${menuId}"${snapshot?.maps.length ? '' : ' disabled'} aria-label="${escapeHtml(current === null ? label : `Choose a map, current is ${label}`)}" title="${escapeHtml(current === null ? label : `${label} · Choose a map`)}">${current === null ? '' : miniRing(current)}<span class="t">${escapeHtml(label)}</span>${current === null || autoMap === null ? '' : autoMapMarkHtml(autoMap.enabled)}${iconName('chevron')}</button><div class="menu nav-popover" id="nav-menu-${menuId}" data-nav-menu="${menuId}" aria-label="Maps in ${escapeHtml(repo)}"${openMenu === menuId ? '' : ' hidden'}>${menuMaps}</div></div>`;
     };
