@@ -38,8 +38,11 @@ Nobody edits the version by hand. The **Release** workflow
 It collects everything merged to `main` and works out the bump from the conventional
 commits: while the version is below 1.0, `feat:` and `fix:` both bump the patch
 number, and a breaking change bumps the minor. It also writes `CHANGELOG.md`.
-Merging that PR sets the version in `package.json`, creates the tag and GitHub
-release, and then starts the Windows workflow on that tag. Merging anything else
+Merging that PR sets the version in `package.json`, creates the tag and a draft
+GitHub release, and then starts the Windows workflow on that tag. The release stays a
+draft until that workflow attaches the installers and `latest-*.yml`, then it is
+published; publishing it earlier makes every installed app's update check fail with a
+404 for `latest-x64.yml`. Merging anything else
 into `main` does not release anything.
 
 The Windows workflow can also run from a tag you push yourself, as long as the tag
