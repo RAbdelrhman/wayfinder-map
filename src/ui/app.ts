@@ -584,6 +584,8 @@ async function load(mode: 'initial' | 'manual' | 'background'): Promise<boolean>
       if (routedMapNumber !== null) params.set('map', String(routedMapNumber));
       const search = params.toString();
       const nextSnapshot = await readRouteJson<MapSnapshot>(`${endpoint}${search === '' ? '' : `?${search}`}`, true);
+      // A queued destination read owns the view after a map switch.
+      if ((parseRepoPagePath(window.location.pathname)?.mapNumber ?? null) !== requestedMapNumber) return true;
       // Initial display reads may restore a server snapshot without checking GitHub.
       if (mode !== 'initial') lastCheckedAt = Date.now();
       applySnapshot(nextSnapshot, mode === 'initial' && (snapshot === null || initialRouteTicketPending));

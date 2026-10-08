@@ -117,6 +117,31 @@ describe('automatic map syncing', () => {
     expect(context['readRouteJson']).toHaveBeenCalledWith('/api/repos/owner/repo/snapshot?check=1&map=217', true);
   });
 
+  it('does not repaint the destination or advance its freshness with the previous map response', async () => {
+    const context = fixture();
+    const load = context['load'] as (mode: string) => Promise<boolean>;
+    let finishOld!: (value: unknown) => void;
+    let finishNew!: (value: unknown) => void;
+    const read = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { finishNew = resolve; }));
+    context['readRouteJson'] = read;
+    const previous = load('background');
+    context['parseRepoPagePath'] = () => ({ mapNumber: 217 });
+    const destination = load('background');
+    finishOld({ repo: 'owner/repo', maps: [{ number: 205 }], fetchedAt: 'old' });
+    await previous;
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    expect(context['applySnapshot']).not.toHaveBeenCalled();
+    expect(context['lastCheckedAt']).toBeNull();
+    expect(context['prototypesFor']).not.toHaveBeenCalled();
+    const next = { repo: 'owner/repo', maps: [{ number: 217 }], fetchedAt: 'new' };
+    finishNew(next);
+    await destination;
+    expect(context['applySnapshot']).toHaveBeenCalledExactlyOnceWith(next, false);
+    expect(context['lastCheckedAt']).toBe(123_456);
+  });
+
   it('refreshes a cached prototype without overlap and retains it when the check fails', async () => {
     const map = { number: 205 };
     const old = [{ title: 'Original' }];
