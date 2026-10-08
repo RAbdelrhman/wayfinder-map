@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tour wording</title>
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="tour.css" />
+    <style>
+      body { overflow: auto; }
+      .wording { max-width: 960px; margin: 0 auto; padding: 32px 28px 60px; }
+      .wording h1 { margin: 0 0 4px; font-size: 24px; }
+      .wording > p { margin: 0 0 24px; color: var(--text-secondary); }
+      .wording table { width: 100%; border-collapse: collapse; background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px; overflow: hidden; margin-bottom: 28px; }
+      .wording th, .wording td { text-align: left; vertical-align: top; padding: 10px 14px; border-top: 1px solid var(--hairline); font-size: 13.5px; }
+      .wording thead th { border-top: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); background: var(--wash); }
+      .wording td:first-child { width: 150px; color: var(--text-muted); white-space: nowrap; }
+      .wording td strong { display: block; margin-bottom: 3px; }
+      .wording h2 { font-size: 15px; margin: 0 0 10px; }
+      .wording .k { font-size: 12px; color: var(--text-muted); }
+    </style>
+  </head>
+  <body class="viz-root">
+    <main class="wording" id="wording"></main>
+    <script src="../../canvas/kit/kit.js"></script>
+    <script src="icons.js"></script>
+    <script src="tour-data.js"></script>
+    <script>
+      (() => {
+        const { steps, copy, invite, entries, types } = window.TOUR;
+        const esc = Kit.esc;
+        const row = (label, ...cells) => `<tr><td>${label}</td>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
+        const stepRows = steps.map((s, i) => row(
+          `${i + 1} · ${esc(s.label)}`,
+          `<strong>${esc(s.title)}</strong>${esc(s.body)}`,
+          [s.hint && `Hint: ${esc(s.hint)}`, s.wait && `While waiting: ${esc(s.wait)}`, s.cta && `Button: ${esc(s.cta)}`].filter(Boolean).join('<br>') || '<span class="k">Next</span>',
+        )).join('');
+        const c = copy.completion;
+        document.getElementById('wording').innerHTML = `
+          <h1>Tour wording</h1>
+          <p>Every line the tour shows, in order. The three formats and three entry options all use this same text. Places marked {where} name the tour entry chosen on the Invitation page.</p>
+          <h2>Steps</h2>
+          <table><thead><tr><th>Step</th><th>Title and body</th><th>Prompt</th></tr></thead><tbody>${stepRows}</tbody></table>
+          <h2>Ticket types (step 5)</h2>
+          <table><thead><tr><th>Type</th><th>Line</th></tr></thead><tbody>${Object.values(types).map((t) => row(esc(t.label), esc(t.line))).join('')}</tbody></table>
+          <h2>Invitation, demo status and endings</h2>
+          <table><thead><tr><th>Where</th><th>Text</th></tr></thead><tbody>
+            ${row('Welcome dialog', `<strong>${esc(invite.title)}</strong>${esc(invite.body)}<br><span class="k">Buttons:</span> ${esc(invite.accept)} · ${esc(invite.decline)}<br><span class="k">Footnote:</span> You can take it later from {where}.`)}
+            ${row('Home or corner card', `<strong>${esc(invite.cardTitle)}</strong>${esc(invite.shortBody)}<br><span class="k">Buttons:</span> ${esc(invite.accept)} · ${esc(invite.decline)}`)}
+            ${row('Demo banner', `<span class="demo-pill">${esc(copy.demoPill)}</span> ${esc(copy.banner)} <span class="k">Link:</span> ${esc(copy.exit)}`)}
+            ${row('Start map note', esc(copy.startMapNote))}
+            ${row('Hand-off note', esc(copy.openNote))}
+            ${row('Hand-off status', TOUR.demo.handOff.map(esc).join('<br>'))}
+            ${row('Completion', `<strong>${esc(c.title)}</strong>${esc(c.body)}<br><span class="k">Buttons:</span> ${esc(c.primary)} · ${esc(c.secondary)}<br>${esc(c.replay('{where}'))}`)}
+            ${row('After Not now', esc(copy.skipped('{where}')))}
+            ${row('After Exit tour', esc(copy.exited('{where}')))}
+            ${row('{where}', Object.values(entries).map((e) => `${esc(e.label)}: ${esc(e.where)}`).join('<br>'))}
+          </tbody></table>`;
+      })();
+    </script>
+  </body>
+</html>
