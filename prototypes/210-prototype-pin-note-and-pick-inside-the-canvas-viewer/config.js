@@ -1,4 +1,4 @@
-﻿window.CANVAS = {
+window.CANVAS = {
   title: 'Pin, note & pick in the canvas viewer',
   question: 'How should a reviewer pin, note, and pick an option from inside the in-app canvas viewer?',
   ticket: 210,
@@ -127,6 +127,33 @@
           ],
         },
       ],
+    },
+    {
+      id: 'anchored-feedback',
+      title: 'Anchored feedback',
+      round: 3,
+      question: 'Does this revision restore A\'s pin interaction and make the added tools coherent?',
+      sections: [{
+        title: 'A revision',
+        note: 'A, B and A2 are preserved on their earlier pages. This revision is not chosen.',
+        items: [
+          {
+            id: 'A3', name: 'Anchored tools and consistent pins',
+            src: 'variants/a3.html', width: 1360, height: 920,
+            note: {
+              basedOn: ['A', 'A2'],
+              idea: 'Restore A\'s anchored pin note. Use its theme pin color for the canvas marker and rail badge. Hover outlines show the element before selecting. A compact saturation/hue/hex editor handles a color suggestion. Each source scenario shows an explicit fallback state.',
+              feedback: 'User requested correcting A2: source dropdown appeared ineffective; element selection needs hover; color UI was poor; labels repeated; alignment was inconsistent; pin popup changed from A; pin colors did not match. The source refers to the Canvas source scenario dropdown. A3 is a proposal, not an agreed direction.',
+              pros: ['Pin editing stays at the target, like original A.', 'Hover and focus preview the selected element; color suggestion uses a visible picker.', 'Readable labels and theme-matched pin numbers remove duplication.'],
+              cons: ['Anchored editors can cover nearby content on small canvases.', 'Color sampling reads an element style rather than arbitrary image pixels.', 'The source scenario buttons change demo capabilities; they do not load a different GitHub branch.'],
+            },
+          },
+          {
+            id: 'review3', kind: 'note', name: 'Design review',
+            text: 'Design critique and design-system audit applied to the user screenshots. Findings: repeated option ID/name and Pin/number labels; mismatched hardcoded pin color; modal replaced original anchored pin note; native color input and uneven label baselines; source mode was unclear. Sources: A a.js/a.css popover and shell.css --pin theme values; src/ui/styles.css controls and palette; src/ui/canvasViewer.ts shell; A2 and supplied screenshots.\n\nSource changes: shared pin token and consistent number alignment, anchored editor, hover/focus outline, compact HSV/hex picker, explicit source scenario panels, simpler rail labels.\n\nChecked with Playwright CLI: light/dark pin and color editor screenshots; matching canvas/rail pin colors; ten-pin list alignment; hover outline and named target; HSV pointer/keyboard and hex edits; all four source scenarios and disabled snapshot/no-wrapper tools; review and posted comments with pin, option and pick notes; Enter target selection, Escape editor dismissal and focus return; review focus containment; side-by-side wide pane; 600px editor bounds and 390px horizontal overflow. Opaque-origin canvas frame checked for keyboard target selection, source fallback and close/reopen draft simulation. Canvas checker, JavaScript syntax, typecheck, lint and 15 canvas tests pass. Full Vitest run: 1330 passed, 6 asynchronous updater/server failures; isolated rerun of both affected files: 113 passed.\n\nNot checked: installed-app interaction, screen-reader announcements, new color-picker contrast at every hue or saturation, every layout/interaction state, actual restart persistence, uploads and GitHub posting. Shared shell palette inherits prior light/dark contrast checks; the added color-picker visuals do not yet have a complete accessibility audit.\n\nSimulation limits remain: no actual reload persistence, uploads or GitHub posting. Source changes demo capability/fallback, not remote content. No direction is chosen.',
+          },
+        ],
+      }],
     },
   ],
 };
