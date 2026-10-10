@@ -167,6 +167,8 @@ window.CANVAS = {
                 pros: ['A clear home that can hold more help later', 'Matches how every other setting is laid out'],
                 cons: ['Adds a sixth Settings category for one button', 'Two clicks from anywhere: the gear, then Help'],
                 basedOn: ['E1', 'A'],
+                disposition: 'keep',
+                feedback: 'S1.',
               },
             },
             {
