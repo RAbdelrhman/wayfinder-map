@@ -31,10 +31,12 @@ test('#210 config references existing sandbox-compatible pages', () => {
   };
   assert.deepEqual(checkCanvas(config, disk).errors, []);
   for (const item of items.filter(item => item.src)) {
-    assert.deepEqual(checkPageHtml(disk.read(item.src)), []);
-    const scripts = [...disk.read(item.src).matchAll(/<script[^>]*src="([^"]+)"/g)];
+    // Frames may pass state in a query, as check.mjs allows: read the file itself.
+    const file = item.src.split(/[?#]/)[0];
+    assert.deepEqual(checkPageHtml(disk.read(file)), []);
+    const scripts = [...disk.read(file).matchAll(/<script[^>]*src="([^"]+)"/g)];
     for (const [, src] of scripts) {
-      const path = resolve(canvasDir, dirname(item.src), src);
+      const path = resolve(canvasDir, dirname(file), src);
       assert.ok(existsSync(path), `${item.id} script ${src} exists`);
       assert.deepEqual(checkPageHtml(readFileSync(path, 'utf8')), [], `${item.id} script is sandbox safe`);
     }
