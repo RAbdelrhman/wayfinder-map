@@ -17,13 +17,14 @@ The tickets that build it rename Settled to Archive and add the finished rule. T
 
 - **File:** `~/.wayfinder-map/settled.json`, kept as it is. It holds only hand-made choices: `{ "<login>": { "<owner/repo>": { "<map number>": { "settled": true | false, "at": "<ISO time>" } } } }`. Login and repository are stored lowercase.
 - **Meaning of a choice:** `settled: true` is a manual archive. `settled: false` is a restore. Both win over every automatic rule.
-- **Automatic archives are never stored as choices.** They are worked out whenever the repository's maps are fetched from GitHub, from facts the map list already has (`settlementOf` in `fetchMaps`). The result is cached with the rest of the snapshot, in memory and in the on-disk snapshot cache (`src/repositorySnapshotCache.ts`), but `settled.json` never holds it. A map stops being automatically archived on the first fresh fetch after the facts change, with nothing to clean up.
+- **Automatic archives are never stored as choices.** They are worked out whenever the repository's maps are fetched from GitHub (`settlementOf` in `fetchMaps`). Closed and finished come from the map list itself. Idle also needs ticket activity: when some open map has gone quiet, `fetchMaps` makes one search, `recentlyUpdated(repo, idleCutoff(now))`, and if that search fails or passes 1000 results, every map counts as recently changed, so nothing archives as idle. The result is cached with the rest of the snapshot, in memory and in the on-disk snapshot cache (`src/repositorySnapshotCache.ts`), but `settled.json` never holds it. A map stops being automatically archived on the first fresh fetch after the facts change, with nothing to clean up.
 - **Migration:** none. Existing Settle choices become manual archives, and existing Unsettle choices become restores. The file name and its keys can stay; renaming them would only add a migration.
 - **Writes** run one at a time inside one `SettleStore` (`set` chains on `writing`), so two quick clicks can't overwrite each other. Other processes are not locked. Ticket #241 may move the write to `SettingsFileWriter` (`src/settingsFile.ts`) for an atomic replace; the shape stays the same.
 
 ## Account isolation
 
 - Choices are keyed by the signed-in GitHub login (`signedInLogin` in `src/server.ts`), so each account on the machine keeps its own archive. Archiving affects only that login's view; the GitHub issue and its tickets are never changed.
+- **Today's gap:** the keys hold the login only, as `follows.json` does. Two accounts with the same login on different GitHub hosts would share choices, even though the snapshot cache already scopes by host and login (`identity` in `src/repositoryStore.ts`). **Contract (#241):** key choices by host and login, reading today's entries as `github.com`. A renamed login starts with no choices, as it does for follows; that is accepted rather than keyed by user id, which would need a migration.
 - Switching accounts applies the other login's choices on the next list. The on-disk snapshot cache is scoped by identity and choices (`persistedScope`, `src/repositoryStore.ts`), so one account's cached list is never shown to another.
 - Signed out: no manual choices apply and the archive endpoint answers `409` (`Sign in with GitHub to settle maps.`). Automatic archives still apply, because they need no login.
 - No cross-device sync in this version (out of scope on the map).
@@ -52,7 +53,8 @@ Opening an archived map does not restore it (map decision). Opening reads its ti
 
 - Finished means `total > 0 && completed === total`, using the map issue's `sub_issues_summary`, which the map list already returns (`src/github.ts`). It needs no extra GitHub call, so a reopened ticket is noticed on the next fresh fetch even though archived maps are not watched. The conditional refresh (`refreshIfChanged`) skips unopened archived maps, so the return to active waits for the next full fetch; #243 decides whether that is soon enough or the map-issue list needs its own conditional read.
 - When the rules overlap, the reason shown is the first that applies: manual choice, then closed, then finished, then idle.
-- Two cases for #243 to check against GitHub before relying on the count: whether `completed` counts tickets closed as not planned, and tickets listed only in the map body and not attached as sub-issues (the app already warns about those; see `unattachedTicketsWarning`).
+- **Ticket scope:** "every ticket" means every ticket the map shows, and the finished and reopen rules use the same scope. `sub_issues_summary` counts only attached sub-issues, so a map whose body lists a ticket that isn't attached (`parseChildNumbers`; the app warns about these with `unattachedTicketsWarning`) is never finished by this rule. It stays active until those tickets are attached, so an open body-only ticket can't be hidden by an archive, and its reopening is never missed.
+- One case for #243 to check against GitHub before relying on the count: whether `completed` counts tickets closed as not planned.
 
 ## Background activity
 
@@ -75,6 +77,6 @@ Opening an archived map does not restore it (map decision). Opening reads its ti
 
 ## What the follow-up tickets inherit
 
-- #241 Persist per-user archive and restore state: reuse `SettleStore` and `settlementOf` and don't add a new file. Close the two gaps above: no watching or Auto map on archived maps at start-up, and no Auto map batch submitted, and no "ready" notification posted, for a map archived while the batch waited.
+- #241 Persist per-user archive and restore state: reuse `SettleStore` and `settlementOf` and don't add a new file. Key choices by host and login. Close the two background gaps above: no watching or Auto map on archived maps at start-up, and no Auto map batch submitted, and no "ready" notification posted, for a map archived while the batch waited.
 - #242 Archive, Archived maps, Open, and Restore controls: replace the Settle and Unsettle controls and the Settled section rather than adding new ones next to them. **(user)** No chosen prototype shows these controls yet, so #242 needs [#288](https://github.com/RAbdelrhman/wayfinder-map/issues/288), the prototype of the archive controls and the Archived maps view, and builds only what the picked prototype shows.
-- #243 Automatically archive finished maps: owns the `finished` reason and the finished rule above, derived and not stored, including the return to active when a ticket reopens. It also settles the two open questions about `sub_issues_summary`.
+- #243 Automatically archive finished maps: owns the `finished` reason and the finished rule above, derived and not stored, including the return to active when a ticket reopens. It also checks how `completed` counts tickets closed as not planned.
