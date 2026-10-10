@@ -210,9 +210,10 @@ window.CANVAS = {
           title: 'Every line the tour shows',
           items: [
             {
-              id: 'W', name: 'Tour wording', src: 'variants/wording.html', width: 1100, height: 1500, boardWidth: 600,
+              id: 'W', name: 'Tour wording', src: 'variants/wording.html', width: 1100, height: 1900, boardWidth: 600,
               note: {
-                idea: 'All copy from one source file, used by every format and entry option: the seven steps, ticket-type lines, invitation, Demo banner, hand-off status, completion, and the messages after Not now and Exit tour.',
+                idea: 'Every line of the picked flow (A · Spotlight, E1’s welcome dialog, tour entry in Settings › Help): the seven steps, ticket-type lines, welcome dialog, Settings › Help row, Demo banner, hand-off status, completion, and the messages after Not now and Exit tour.',
+                basedOn: ['A', 'E1', 'S1'],
                 pros: ['One place to approve or change wording before implementation'],
                 cons: ['Read in context too: some lines read differently beside the demo'],
               },

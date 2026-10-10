@@ -27,7 +27,8 @@
     <script src="tour-data.js"></script>
     <script>
       (() => {
-        const { steps, copy, invite, entries, types } = window.TOUR;
+        const { steps, copy, invite, entries, types, settingsTour } = window.TOUR;
+        const where = entries.settingsHelp.where;
         const esc = Kit.esc;
         const row = (label, ...cells) => `<tr><td>${label}</td>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
         const stepRows = steps.map((s, i) => row(
@@ -38,23 +39,22 @@
         const c = copy.completion;
         document.getElementById('wording').innerHTML = `
           <h1>Tour wording</h1>
-          <p>Every line the tour shows, in order. The three formats and three entry options all use this same text. Places marked {where} name the tour entry chosen on the Invitation page.</p>
+          <p>Every line the tour shows, in order, for the picked flow: A · Spotlight, E1’s welcome dialog, and the tour entry in Settings › Help (S1).</p>
           <h2>Steps</h2>
           <table><thead><tr><th>Step</th><th>Title and body</th><th>Prompt</th></tr></thead><tbody>${stepRows}</tbody></table>
           <h2>Ticket types (step 5)</h2>
           <table><thead><tr><th>Type</th><th>Line</th></tr></thead><tbody>${Object.values(types).map((t) => row(esc(t.label), esc(t.line))).join('')}</tbody></table>
           <h2>Invitation, demo status and endings</h2>
           <table><thead><tr><th>Where</th><th>Text</th></tr></thead><tbody>
-            ${row('Welcome dialog', `<strong>${esc(invite.title)}</strong>${esc(invite.body)}<br><span class="k">Buttons:</span> ${esc(invite.accept)} · ${esc(invite.decline)}<br><span class="k">Footnote:</span> You can take it later from {where}.`)}
-            ${row('Home or corner card', `<strong>${esc(invite.cardTitle)}</strong>${esc(invite.shortBody)}<br><span class="k">Buttons:</span> ${esc(invite.accept)} · ${esc(invite.decline)}`)}
+            ${row('Welcome dialog', `<strong>${esc(invite.title)}</strong>${esc(invite.body)}<br><span class="k">Buttons:</span> ${esc(invite.accept)} · ${esc(invite.decline)}<br><span class="k">Footnote:</span> You can take it later from ${esc(where)}.`)}
+            ${row('Settings › Help', `<strong>${esc(settingsTour.title)}</strong>${esc(settingsTour.label)}: ${esc(settingsTour.hint)}<br><span class="k">Button:</span> ${esc(settingsTour.label)}`)}
             ${row('Demo banner', `<span class="demo-pill">${esc(copy.demoPill)}</span> ${esc(copy.banner)} <span class="k">Link:</span> ${esc(copy.exit)}`)}
             ${row('Start map note', esc(copy.startMapNote))}
             ${row('Hand-off note', esc(copy.openNote))}
             ${row('Hand-off status', TOUR.demo.handOff.map(esc).join('<br>'))}
-            ${row('Completion', `<strong>${esc(c.title)}</strong>${esc(c.body)}<br><span class="k">Buttons:</span> ${esc(c.primary)} · ${esc(c.secondary)}<br>${esc(c.replay('{where}'))}`)}
-            ${row('After Not now', esc(copy.skipped('{where}')))}
-            ${row('After Exit tour', esc(copy.exited('{where}')))}
-            ${row('{where}', Object.values(entries).map((e) => `${esc(e.label)}: ${esc(e.where)}`).join('<br>'))}
+            ${row('Completion', `<strong>${esc(c.title)}</strong>${esc(c.body)}<br><span class="k">Buttons:</span> ${esc(c.primary)} · ${esc(c.secondary)}<br>${esc(c.replay(where))}`)}
+            ${row('After Not now', esc(copy.skipped(where)))}
+            ${row('After Exit tour', esc(copy.exited(where)))}
           </tbody></table>`;
       })();
     </script>
