@@ -46,7 +46,7 @@ The tickets that build it rename Settled to Archive and add the finished rule. T
 
 A **restore** stores `settled: false`. A restored map stays active until the user archives it again, even while it is finished, closed or idle (map decision). A restored map whose ticket reopens and is finished again still stays active, because the restore choice still wins.
 
-Opening an archived map does not restore it (map decision). Opening reads its tickets once (`expand`, `src/github.ts`) but starts no watcher and no map-event inbox (`rememberMapOpen`, `src/ui/app.ts`).
+Opening an archived map does not restore it (map decision). Opening reads its tickets once (the `expand` option of `fetchMaps`, then `withTickets` in `src/repositoryStore.ts`) but starts no watcher and no map-event inbox (`rememberMapOpen`, `src/ui/app.ts`).
 
 ### The finished rule
 
