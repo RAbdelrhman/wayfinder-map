@@ -1,0 +1,433 @@
+/* D3 (round 6), on top of r4-viewer.css. Tighter popovers, a real colour picker, E's panel tidied. */
+
+/* ---------- tool row: every tool shows its key ---------- */
+.p6 .p210-toolgroup .seg kbd,
+.p6 .p210-tool kbd {
+  margin-left: 2px;
+  padding: 0 4px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font: 10.5px/16px ui-monospace, Consolas, monospace;
+}
+.p6 .p210-toolgroup .seg.is-on kbd {
+  color: var(--text-secondary);
+}
+.p6-keys {
+  padding: 4px 8px;
+  border-color: transparent;
+  font-size: 12.5px;
+}
+.p6-keys:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+
+/* ---------- marks on the canvas ---------- */
+.p6-el .p6-el-n,
+.p6-clip span {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  background: var(--accent-fill);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.p6-el .p6-el-n {
+  top: -26px;
+  left: -2px;
+}
+.p6-el:focus-visible,
+.p6-clip:focus-visible {
+  outline: 3px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+.p6-el-colors {
+  position: absolute;
+  right: -2px;
+  bottom: -22px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.p6-el-colors i {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.p6-clip {
+  position: absolute;
+  width: 0;
+  height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.p6-clip span .i {
+  width: 13px;
+  height: 13px;
+}
+.p6-clip span {
+  left: 14px;
+  top: -42px;
+  background: #fff;
+  color: var(--accent-fill);
+  border-color: var(--accent-fill);
+}
+.p6-clip.is-open span {
+  transform: scale(1.12);
+}
+
+/* ---------- popovers: positioned by JS inside the canvas, tight padding ---------- */
+.p6-poplayer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.p6-pop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  gap: 8px;
+  width: 280px;
+  padding: 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  pointer-events: auto;
+}
+.p6-pop.is-color {
+  width: 288px;
+}
+.p6-pop-head {
+  display: grid;
+  gap: 1px;
+}
+.p6-pop-head b {
+  font-size: 13px;
+}
+.p6-pop-head span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.p6-pop textarea.input,
+.p6-row textarea.input {
+  min-height: 48px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+.p6-pop-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: -2px;
+}
+.p6-pop-foot .iconbtn,
+.p6-row .iconbtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+.p6-pop-foot .iconbtn .i,
+.p6-row .iconbtn .i {
+  width: 15px;
+  height: 15px;
+}
+.p6-pop-foot .primary {
+  padding: 5px 12px;
+}
+.p6-pop .p210-field select,
+.p6-pop .p210-field .input {
+  height: 30px;
+}
+
+/* ---------- colour picker ---------- */
+.p6-cmp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.p6-cmp .p210-sw {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+.p6-sv {
+  position: relative;
+  height: 128px;
+  border-radius: 8px;
+  background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent);
+  cursor: crosshair;
+  touch-action: none;
+}
+.p6-sv-dot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.p6-sv-dot:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+.p6-hue {
+  width: 100%;
+  height: 12px;
+  margin: 0;
+  border-radius: 999px;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  appearance: none;
+  -webkit-appearance: none;
+}
+.p6-hue::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  -webkit-appearance: none;
+}
+.p6-hue:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+.p6-val {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.p6-val .segmented {
+  flex: none;
+  padding: 2px;
+}
+.p6-val .seg,
+.p6-ptabs .seg {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.p6-val .input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  font: 12px ui-monospace, Consolas, monospace;
+}
+.p6-val .input[aria-invalid='true'] {
+  border-color: var(--handoff-needs-you);
+}
+.p6-ptabs {
+  justify-self: start;
+  padding: 2px;
+}
+.p6-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 22px);
+  gap: 6px;
+}
+.p6-swatches .p210-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+.p6 .seg:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 1px;
+}
+
+/* ---------- the feedback panel ---------- */
+.p6 .p210-split.has-panel {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+.p6-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  border-left: 1px solid var(--hairline);
+  background: var(--surface-1);
+}
+.p6-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px 10px 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+.p6-panel-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.p6-panel-head .p210-muted {
+  font-size: 12px;
+}
+.p6-panel-head .iconbtn {
+  width: 30px;
+  height: 30px;
+}
+.p6-panel-body {
+  display: grid;
+  grid-auto-rows: max-content;
+  gap: 14px;
+  overflow: auto;
+  padding: 12px 16px 16px;
+}
+.p6-panel-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--hairline);
+}
+.p6-group {
+  display: grid;
+  gap: 8px;
+}
+.p6-group h3 {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.p6-group h3 .p210-tag {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.p6-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 28px;
+  gap: 8px;
+  align-items: start;
+  padding: 6px;
+  margin: 0 -6px;
+  border-radius: 8px;
+}
+.p6-row.is-open {
+  background: color-mix(in srgb, var(--state-claimed) 10%, transparent);
+}
+.p6-row-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.p6-row-kind {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+}
+button.p6-row-kind:hover {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+button.p6-row-kind:focus-visible,
+.p6-add:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+.p6-row-colors {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.p6-row-colors i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+/* One marker shape per kind, the same size, so the list lines up. */
+.p6-mk {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 0;
+  background: var(--accent-fill);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.p6-mk.is-pin {
+  border-radius: 50% 50% 50% 0;
+}
+.p6-mk.is-el {
+  border-radius: 5px;
+  background: none;
+  color: var(--accent-text);
+  box-shadow: inset 0 0 0 2px var(--accent-fill);
+}
+.p6-mk.is-color {
+  border-radius: 5px;
+  background: var(--to);
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+}
+.p6-mk.is-plain {
+  border-radius: 6px;
+  background: var(--wash);
+  color: var(--text-secondary);
+}
+.p6-mk .i {
+  width: 13px;
+  height: 13px;
+}
+.p6-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  padding: 4px 8px 4px 4px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--accent-text);
+  font-size: 12.5px;
+}
+.p6-add:hover {
+  background: var(--wash);
+}
+.p6-add .i {
+  width: 14px;
+  height: 14px;
+}
+.p210-banner.is-info {
+  background: var(--wash);
+}
+.p210-banner.is-info .i {
+  color: var(--text-secondary);
+}
+.p6-panel .p210-files {
+  gap: 4px;
+}
+.p6-panel .ghost:focus-visible,
+.p6-panel .primary:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+.p6-panel-body > p { margin: 0; }

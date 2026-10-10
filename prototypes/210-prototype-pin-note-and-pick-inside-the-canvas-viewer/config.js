@@ -284,6 +284,8 @@ window.CANVAS = {
               ...R4_FRAME,
               note: {
                 basedOn: ['D', 'A3'],
+                disposition: 'change',
+                feedback: "User, in the #210 thread (2026-10-10): \"i really like D2.\" Changes asked for: 1. less padding (the note popover footer); 2. a key for every tool, not just Pin, and 2a. a note that keys can be changed in Settings; 3. remove Pick: while annotating there will be another revision, so the pick is never posted from the viewer, only made in the T3 Code thread once the decision is final; 4. the pins from F; 5. a real colour picker, with presets from the canvas palette, the project's common colours, and basic colours on separate tabs, and RGB paste as well as hex; 6. E's feedback panel while annotating, with a way to close it, and its formatting and style inconsistencies fixed; 7. stop showing % across and down; 8. E's Review; 9. keep notes on the whole page. Built as D3 (round 6).",
                 idea: 'D with A3\'s four tools in the viewer toolbar: Pin, Select element, Color picker and Attach, as one tool group. Select element and Color picker outline each element on hover or focus; clicking one opens a note there (Color picker also shows the sampled colour and a suggested replacement). Attach adds files to the whole canvas, a pin or an element. Pick is split off from the tools: a primary "Pick B" button at the right end, next to the Review count. Fallbacks follow A3: a snapshot keeps page-level pins and Attach but turns element selection and colour sampling off; with no reply, everything but "Pick in #43" is off.',
                 pros: [
                   'Pick reads as a decision, not as one more feedback tool',
@@ -314,6 +316,74 @@ window.CANVAS = {
               kind: 'note',
               name: 'Design review',
               text: 'Sources: D (r4-viewer.js), A3 (a3.js tool names, hover-to-select, colour suggestion, Attach targets and per-source fallbacks), src/ui/styles.css (.segmented, .primary, .ghost, tokens). Checked headless at 1280×800 with Playwright: D2 pin (colour editor open), review, snapshot, no-bridge, side pane; no page errors. Fixed during review: the first layout put the four tools in the main toolbar, which overflowed at 1280 px and clipped Pick and the size switch, so tools now sit on their own row under the toolbar (as in A3) and Pick sits alone at the right; hex colours rendered as issue links. Keyboard: element and colour targets are buttons (Tab, Enter), swatches are toggle buttons, the hex field has a label, Esc leaves any tool. Not checked: dark theme, floating size, screen reader, the colour editor contrast at every swatch, real uploads (Attach only lists file names here).',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'd3',
+      title: 'D3 · Annotate, then review',
+      round: 6,
+      question: 'Does D2 with your nine changes work: a key per tool, F\'s pins, a real colour picker, E\'s closable feedback panel and review, and no pick in the viewer?',
+      sampleState: 'Sample canvas: prototype ticket #42 (Home, options A Greeting, B Split hero, C Dense list); its pick ticket #43 is not touched from the viewer. Nothing is sent to GitHub. Every frame is clickable: P, E, C, A, N and F work.',
+      sections: [
+        {
+          title: 'D3 · Annotate, then review',
+          note: 'Opens with the colour picker on B\'s Open map button; review, posted, panel closed, fallbacks and side pane follow.',
+          items: [
+            {
+              id: 'D3',
+              name: 'Annotate, then review',
+              src: 'variants/r6-viewer.html?state=pin',
+              ...R4_FRAME,
+              note: {
+                basedOn: ['D2', 'E', 'F'],
+                idea: 'D2\'s tool row, with a key on every tool: Pin P, Select element E, Color picker C, Attach A, Note N, and F for the feedback panel. A Shortcuts button points to Settings › Keyboard shortcuts, where the keys can be changed. Pins are F\'s teardrops. Color picker opens a real picker: a saturation and brightness square, a hue slider, a Hex/RGB field that takes either pasted, and preset tabs for this canvas\'s colours, the project\'s colours and basic colours. E\'s feedback panel sits beside the canvas while you annotate and closes with × or F: notes are grouped as Whole page, then by option, with one marker style per kind. Review happens in the panel, as in E, and posts one comment to the prototype ticket. There is no Pick: the pick is made in the T3 Code thread once revisions settle. Places read as element names ("pin on Continue card"), never % across and down; positions stay in the hidden JSON for agents.',
+                pros: [
+                  'Every tool is one key away, and the keys are configurable',
+                  'The viewer only collects feedback; picking stays a deliberate step in the grilling thread',
+                  'Notes are readable as a list while you work, and the panel gets out of the way when closed',
+                  'Colour suggestions can be exact: drag, paste hex or RGB, or reuse a colour already in the design',
+                ],
+                cons: [
+                  'The panel takes 340 px from the canvas while it is open',
+                  'Single-letter keys need care: they must not fire while typing (handled here) or clash with the canvas\'s own keys',
+                  'Nothing in the viewer moves the ticket to a decision: the user has to go back to the T3 Code thread to pick',
+                  'Element names come from the canvas wrapper; a pin on bare space reads "pin on B"',
+                ],
+              },
+            },
+            ...[
+              ['closed', 'Panel closed', 'The feedback panel closed (× or F); the Feedback button keeps the count.'],
+              ['review', 'Review before posting', 'E\'s review in the panel: the one comment for #42, with Preview and Markdown tabs.'],
+              ['posted', 'Posted', 'The comment as posted on #42. No pick comment: the pick is made in the T3 Code thread.'],
+              ['nobridge', 'No bridge', 'No reply within 3 s: pins, elements and colours are off; notes and files still work on an option or the whole page.'],
+              ['snapshot', 'Snapshot', 'A prototype-snapshot.html: pins mark the page; elements and colours are off.'],
+              ['pane', 'Side pane', 'The side pane: icon-only tools and Canvas / Feedback tabs.'],
+            ].map(([state, label, line]) => ({
+              id: `D3-${state}`,
+              name: label,
+              src: state === 'pane' ? 'variants/r6-viewer.html?state=pin&size=pane' : `variants/r6-viewer.html?state=${state}`,
+              ...R4_FRAME,
+              note: line,
+            })),
+          ],
+        },
+        {
+          title: 'Notes',
+          items: [
+            {
+              id: 'keys6',
+              kind: 'note',
+              name: 'Keys are configurable',
+              text: 'The default keys are P (Pin), E (Select element), C (Color picker), A (Attach), N (Note) and F (feedback panel). Settings › Keyboard shortcuts would let each be changed. That Settings page does not exist yet; building it is a follow-up for the user to decide, not part of this prototype.',
+            },
+            {
+              id: 'review6',
+              kind: 'note',
+              name: 'Design review',
+              text: 'Sources: D2 (tool row, element and colour regions, Attach targets), E (feedback panel, grouping by option, review inside the panel, no-bridge option chooser), F (teardrop pins), r4-fixtures.js (sample canvas, comment card), src/ui/styles.css (tokens, .segmented, .ghost, .primary, .iconbtn). Checked headless at 1280×800 with Playwright: pin (colour picker open), panel closed, review, posted, no bridge, snapshot, side pane, and pin in dark; no page errors. Fixed during review: list numbers ran out of order (whole-page notes came first in the list but last in the numbering), so numbers now follow the panel and the comment. Existing element marks covered the hover targets, so an annotated element could not be selected again; targets now sit on top while a tool is active. Flow run with Playwright: P, click, type; C, select Open map button, paste rgb(10, 20, 30) (became #0a141e), Basic tab red, click the square; N note; F closes and reopens the panel; Review shows no % text. Keyboard: every tool has a key and aria-keyshortcuts; keys are ignored while typing or with Ctrl/Alt/Cmd; the colour square\'s handle is a slider (arrow keys, Shift for 10%); the hue is a range input; Esc leaves a tool or closes a popover. Not checked: screen reader output, the floating size (its switch shows a toast), 200% zoom, touch, clashes between the single-letter keys and keys a canvas itself uses.',
             },
           ],
         },

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>D3 · Annotate, then review in the feedback panel</title>
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="r4-viewer.css" />
+    <link rel="stylesheet" href="r6-viewer.css" />
+  </head>
+  <body class="viz-root p210">
+    <div class="p210-map" id="map" aria-hidden="true">
+      <header class="topbar"><span class="page-title">Home, repository and Prototypes</span></header>
+      <div class="p210-map-body"><img src="../../canvas/assets/protos/39-board.jpg" alt="" /></div>
+    </div>
+    <section class="vw is-a" id="viewer" role="dialog" aria-modal="true" aria-labelledby="vw-title">
+      <div id="vw-toolbar"></div>
+      <div class="vw-stage p210-stage" id="stage"></div>
+    </section>
+    <div class="p210-live" id="live" role="status" aria-live="polite"></div>
+    <script src="../../canvas/kit/kit.js"></script>
+    <script src="r4-fixtures.js"></script>
+    <script src="r6-viewer.js"></script>
+  </body>
+</html>
