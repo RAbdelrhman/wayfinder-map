@@ -4,7 +4,7 @@
     ?format=panel      a docked guide with a checklist; the demo app stays fully usable
     ?format=story      a dedicated tour page: the story on the left, a live demo window on the right
   ?entry=dialog|card|corner picks the first-launch invitation and the persistent tour entry.
-  ?state=invite|skipped|exited|done, or ?step=1..7 (with plan, sel, handoff) opens a given state.
+  ?state=invite|skipped|exited|settings|done, or ?step=1..7 (with plan, sel, handoff) opens a given state.
 */
 (() => {
   const { steps, copy, entries, invite, demo } = window.TOUR;
@@ -14,6 +14,7 @@
   const format = ['spotlight', 'panel', 'story'].includes(params.get('format')) ? params.get('format') : 'spotlight';
   const entry = entries[params.get('entry')] ? params.get('entry') : 'dialog';
   const where = entries[entry].where;
+  const inviteKind = entries[entry].invite;
   const N = steps.length;
 
   const s = {
@@ -24,6 +25,7 @@
   };
   let timer = null;
   let focusStep = false;
+  let focusEntry = false;
 
   function stopTimer() { clearInterval(timer); timer = null; }
 
@@ -90,6 +92,8 @@
     home: () => endTour(copy.completion.replay(where)),
     restart: startTour,
     'new-map': () => Kit.toast('Would open Start a new map'),
+    settings: () => { s.view = 'settings'; s.note = ''; focusEntry = true; },
+    'go-home': () => { s.view = 'home'; s.pulse = false; },
     noop: () => {},
   };
 
@@ -188,7 +192,7 @@
 
   function inviteLayer() {
     if (!s.invite) return '';
-    if (entry === 'dialog') {
+    if (inviteKind === 'dialog') {
       return `<div class="tour-scrim"></div>
         <section class="tour-pop is-center tour-invite" role="dialog" aria-modal="true" aria-labelledby="tour-title">
           <span class="tour-invite-icon" aria-hidden="true">${icon('compass')}</span>
@@ -199,7 +203,7 @@
           <p class="tour-replay">You can take it later from ${esc(where)}.</p>
         </section>`;
     }
-    if (entry === 'corner') {
+    if (inviteKind === 'corner') {
       return `<section class="tour-corner" role="region" aria-labelledby="tour-title">
           <button type="button" class="iconbtn tour-x" aria-label="Dismiss" data-act="not-now">${icon('close')}</button>
           <h2 id="tour-title" tabindex="-1">${esc(invite.cardTitle)}</h2>
@@ -255,6 +259,9 @@
       live.textContent = s.tourOn
         ? s.done ? copy.completion.title : `${copy.stepOf(s.step + 1, N)}: ${step.title}`
         : s.note;
+    } else if (focusEntry) {
+      focusEntry = false;
+      root.querySelector('#entry-persistent')?.focus({ preventScroll: true });
     } else if (key) {
       const again = document.getElementById(key) ?? [...root.querySelectorAll('[data-act]')].find((el) => el.dataset.act + (el.dataset.ticket ?? '') === key);
       if (again && !again.disabled) {
@@ -357,6 +364,7 @@
   if (state === 'invite') { s.invite = true; focusStep = true; }
   else if (state === 'skipped') { s.pulse = true; s.note = copy.skipped(where); }
   else if (state === 'exited') { s.pulse = true; s.note = copy.exited(where); }
+  else if (state === 'settings') { s.view = 'settings'; s.pulse = true; }
   else if (state === 'done') { startTour(); s.plan = 4; s.selected = 5; s.handoff = 3; finish(); }
   else if (stepParam >= 1 && stepParam <= N) {
     startTour();

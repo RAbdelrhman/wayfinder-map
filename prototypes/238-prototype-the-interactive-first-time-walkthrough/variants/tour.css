@@ -272,6 +272,14 @@ button.demo-rail-btn:hover { background: var(--wash); }
 .story-scale { position: absolute; left: 0; top: 0; width: 1280px; height: 800px; transform-origin: 0 0; }
 
 /* ---------- narrow screens ---------- */
+/* Round 2: the demo Settings page, reusing the app's own settings classes. */
+.demo-settings { padding: 30px 32px 40px; }
+.demo-settings-head { display: flex; align-items: center; gap: 16px; }
+.demo-settings .settings-categories svg { width: 15px; height: 15px; }
+.demo-settings .settings-save-note svg { width: 14px; height: 14px; }
+.demo-settings .settings-row .ghost { flex-shrink: 0; }
+.demo-foot .iconbtn.is-current { background: var(--wash); color: var(--text-primary); }
+
 @media (max-width: 760px) {
   /* Scoped to .tour-shell: the Story format's scaled demo window keeps the desktop layout. */
   .tour-shell .demo-sidebar { display: none; }

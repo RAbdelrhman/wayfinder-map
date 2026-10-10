@@ -111,12 +111,21 @@ window.TOUR = {
 
   /*
     Where the invitation appears on first launch, and where the tour lives afterwards.
-    Page 2 of the canvas compares these.
+    Page 2 of the canvas compares these. Round 2 keeps E1's welcome dialog and moves
+    the tour into Settings (settingsHelp and settingsHead).
   */
   entries: {
-    dialog: { label: 'Welcome dialog', where: 'the ? button at the bottom of the sidebar' },
-    card: { label: 'Home card', where: 'the sidebar' },
-    corner: { label: 'Corner card', where: 'the Tour button at the top of every page' },
+    dialog: { label: 'Welcome dialog', invite: 'dialog', where: 'the ? button at the bottom of the sidebar' },
+    card: { label: 'Home card', invite: 'card', where: 'the sidebar' },
+    corner: { label: 'Corner card', invite: 'corner', where: 'the Tour button at the top of every page' },
+    settingsHelp: { label: 'Welcome dialog + Settings › Help', invite: 'dialog', settings: 'help', where: 'Settings, under Help' },
+    settingsHead: { label: 'Welcome dialog + Settings heading', invite: 'dialog', settings: 'head', where: 'the top of Settings' },
+  },
+
+  settingsTour: {
+    title: 'Product tour',
+    label: 'Take the tour',
+    hint: 'A two-minute walkthrough with a demo project. Nothing touches GitHub.',
   },
 
   invite: {

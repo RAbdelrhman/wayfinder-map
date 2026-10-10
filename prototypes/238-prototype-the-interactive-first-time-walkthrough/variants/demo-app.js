@@ -38,28 +38,66 @@ window.DemoApp = (() => {
         <span class="demo-rail-btn" aria-label="acme/storefront"><span class="demo-mono">AS</span></span>
         <span class="demo-rail-foot">
           ${s.entry === 'dialog' ? `<button type="button" class="demo-rail-btn${s.pulse ? ' is-pulse' : ''}" aria-label="Take the tour" title="Take the tour" data-act="take-tour" id="entry-persistent">${icon('help')}</button>` : ''}
-          <span class="demo-rail-btn" aria-label="Settings">${icon('gear')}</span>
+          ${inSettings(s) ? gearBtn(s, 'demo-rail-btn') : `<span class="demo-rail-btn" aria-label="Settings">${icon('gear')}</span>`}
         </span>
       </aside>`;
     }
     return `<aside class="demo-sidebar" aria-label="Wayfinder navigation">
       <div class="demo-brand"><span class="demo-logo" aria-hidden="true">${icon('compass')}</span>Wayfinder</div>
       <button type="button" class="primary demo-new" data-act="${s.tourOn ? 'noop' : 'new-map'}">${icon('plus')}Start a new map</button>
-      <button type="button" class="demo-nav${s.view === 'home' ? ' is-current' : ''}" data-act="noop">${icon('home')}<span>Home</span></button>
+      <button type="button" class="demo-nav${s.view === 'home' ? ' is-current' : ''}" data-act="${inSettings(s) && !s.tourOn ? 'go-home' : 'noop'}">${icon('home')}<span>Home</span></button>
       ${tourItem}
       <h2 class="eyebrow demo-eyebrow">Repositories</h2>
       <ul class="demo-repos">${repos}</ul>
       <div class="demo-foot">
         <span class="demo-avatar" aria-hidden="true">M</span><span class="demo-user">mira-dev</span>
         ${helpBtn}
-        <button type="button" class="iconbtn" aria-label="Settings" data-to="Settings">${icon('gear')}</button>
+        ${inSettings(s) ? gearBtn(s, 'iconbtn') : `<button type="button" class="iconbtn" aria-label="Settings" data-to="Settings">${icon('gear')}</button>`}
       </div>
     </aside>`;
+  }
+
+  /* Round 2: the tour lives in Settings, so the gear leads there and pulses after Not now or Exit. */
+  function inSettings(s) { return Boolean(entries[s.entry].settings); }
+
+  function gearBtn(s, cls) {
+    const here = s.view === 'settings';
+    return `<button type="button" class="${cls}${here ? ' is-current' : s.pulse ? ' is-pulse' : ''}" aria-label="Settings" title="Settings" data-act="${s.tourOn ? 'noop' : 'settings'}"${here ? ' aria-current="page"' : ' id="entry-persistent"'}>${icon('gear')}</button>`;
+  }
+
+  function settings(s) {
+    const place = entries[s.entry].settings;
+    const t = TOUR.settingsTour;
+    const pulse = s.pulse ? ' is-pulse' : '';
+    const cats = [['panel', 'Appearance'], ['sliders', 'Tasks & models'], ['bell', 'Notifications'], ['map', 'Progress'], ['person', 'Account']];
+    if (place === 'help') cats.push(['help', 'Help']);
+    const current = place === 'help' ? 'Help' : 'Appearance';
+    const nav = cats.map(([ic, label]) => `<a href="#" data-act="noop"${label === current ? ' aria-current="location"' : ''}>${icon(ic)}${label}</a>`).join('');
+    const headBtn = place === 'head'
+      ? `<button type="button" class="ghost${pulse}" data-act="take-tour" id="entry-persistent">${icon('play')}${esc(t.label)}</button>`
+      : '';
+    const body = place === 'help'
+      ? `<header class="settings-category-heading"><h2>Help</h2><p>Learn how Wayfinder works.</p></header>
+        <section class="settings-section" aria-labelledby="settings-tour-title"><h3 id="settings-tour-title">${esc(t.title)}</h3>
+          <div class="settings-row"><span class="grow">${esc(t.label)}<span class="hint">${esc(t.hint)}</span></span>
+          <button type="button" class="ghost${pulse}" data-act="take-tour" id="entry-persistent">${icon('play')}${esc(t.label)}</button></div>
+        </section>`
+      : `<header class="settings-category-heading"><h2>Appearance</h2><p>Choose how Wayfinder looks.</p></header>
+        <section class="settings-section"><div class="settings-row"><span class="grow">Theme<span class="hint">Use a light or dark appearance throughout the app.</span></span>
+          <span class="segmented" role="group" aria-label="Theme"><button type="button" class="seg is-on" aria-pressed="true" data-act="noop">Light</button><button type="button" class="seg" aria-pressed="false" data-act="noop">Dark</button></span></div>
+          <div class="settings-row"><span class="grow">Open canvases</span>
+          <span class="segmented" role="group" aria-label="Open canvases"><button type="button" class="seg is-on" aria-pressed="true" data-act="noop">Full window</button><button type="button" class="seg" aria-pressed="false" data-act="noop">Side pane</button><button type="button" class="seg" aria-pressed="false" data-act="noop">Floating</button></span></div></section>`;
+    return `<main class="settings-page demo-settings">
+      <header class="settings-page-heading"><div><h1>Settings</h1><p>Make Wayfinder work your way.</p></div>
+        <span class="demo-settings-head">${headBtn}<span class="settings-save-note">${icon('check')}Changes save automatically</span></span></header>
+      <div class="settings-page-layout"><nav class="settings-categories" aria-label="Settings categories">${nav}</nav><div>${body}</div></div>
+    </main>`;
   }
 
   function topbar(s) {
     let title = '<span class="demo-title">Home</span>';
     if (s.view === 'newmap' || s.view === 'planning') title = '<span class="demo-title">Start a new map</span>';
+    if (s.view === 'settings') title = '<span class="demo-title">Settings</span>';
     if (s.view === 'map') {
       title = `<span class="demo-crumb"><span class="demo-mono is-demo" aria-hidden="true">DR</span>${esc(demo.repo)}</span><span class="demo-slash">/</span><span class="demo-crumb is-map">#${demo.mapNumber} ${esc(demo.mapTitle)}</span>`;
     }
@@ -237,7 +275,7 @@ window.DemoApp = (() => {
   }
 
   function render(s) {
-    const view = { home, newmap: newMap, planning, map: mapView }[s.view](s);
+    const view = { home, newmap: newMap, planning, map: mapView, settings }[s.view](s);
     return `<div class="demo-app is-${s.view}">${sidebar(s)}<div class="demo-main">${topbar(s)}${banner(s)}${view}</div></div>`;
   }
 

@@ -35,6 +35,8 @@ window.CANVAS = {
                 idea: 'Coach marks over the demo app. The page dims except the control to use next, and a small card beside it explains the step. The user presses the real-looking control to move on. A Demo banner stays under the top bar the whole time.',
                 pros: ['The user does each step with the actual controls, so it carries over to real use', 'Easy to see exactly where to click', 'Feels like the app, not a separate lesson'],
                 cons: ['The dimmed page and card cover part of the map', 'Only the highlighted control works during the tour, which can feel restrictive', 'On a phone the card becomes a bottom sheet over the page'],
+                disposition: 'keep',
+                feedback: 'I like A.',
               },
             },
             {
@@ -82,7 +84,8 @@ window.CANVAS = {
                 'Sources inspected: src/ui/styles.css (tokens, .primary, .ghost, .iconbtn, .eyebrow, focus ring), src/ui/icons.ts (every icon is copied from it except a new ? icon for E1), src/ui/index.html and home.html. The real app was run and screenshotted on Home, New map and map #236 for reference. The demo uses only existing colour tokens.',
                 'Checked in Chromium: all three formats played through every step (Start map, planning, select #6, select #5, Open in T3 Code, Finish), plus Back, Exit tour, Esc and Back to Home. All three entry options checked through invite, Not now and Exit tour. Light and dark at 1280×800, and 390×844 for Spotlight, Panel and Story, with no horizontal page overflow. Text contrast measured against the composited background: lowest 4.76:1 in light and 5.15:1 in dark (fixed: Exit tour link was 3.78:1 in dark). Visible focus ring matches Settings; each step moves focus to its title and announces “Step N of 7” in a live region; Esc exits and returns focus to the tour entry.',
                 'Findings left open: in Spotlight, Tab can still reach dimmed controls (the build should make them inert); Spotlight’s card can cover the ticket it talks about at step 6; the Story demo window is small at 1280 wide and very small on a phone; on a phone, Panel shows only the current step.',
-                'Not checked: the installed Electron app, screen reader output, forced colours, 200% zoom, reduced motion beyond the CSS rule, and real persistence of the dismissed invitation.',
+                'Round 2 (Tour entry in Settings): S1 and S2 checked in Chromium at 1280×800 through first launch, Not now, the pulsing Settings gear, the Settings entry, and Take the tour starting the tour; focus moves to the Settings entry when Settings opens. The demo Settings page reuses the app’s own settings classes and copy from src/ui/settings.ts; the Help category and its icon are new. Dark theme spot-checked: hint text uses the app’s own muted colour.',
+                'Not checked: S1 and S2 at 390×844, the installed Electron app, screen reader output, forced colours, 200% zoom, reduced motion beyond the CSS rule, and real persistence of the dismissed invitation.',
               ].join('\n\n'),
             },
           ],
@@ -105,6 +108,8 @@ window.CANVAS = {
                 idea: 'A centred welcome dialog on first launch. Afterwards the tour lives behind a ? button at the bottom of the sidebar, beside Settings.',
                 pros: ['Impossible to miss on first launch', 'The ? button is a familiar place for help', 'Takes no space on Home or the top bar'],
                 cons: ['A dialog interrupts before the user has seen anything', 'A small icon is easy to overlook later', 'Adds a new ? icon to the app’s icon set'],
+                disposition: 'change',
+                feedback: 'I like E1. I don’t like the placement of any of the tour buttons; the tour should live in Settings.',
               },
             },
             {
@@ -141,6 +146,54 @@ window.CANVAS = {
             { id: 'E1-exit', name: 'after Exit tour', src: tour('format=spotlight&entry=dialog&state=exited'), ...frame, note: { idea: 'Back on Home; the ? button pulses.' } },
             { id: 'E2-exit', name: 'after Exit tour', src: tour('format=spotlight&entry=card&state=exited'), ...frame, note: { idea: 'Back on Home; Take the tour pulses.' } },
             { id: 'E3-exit', name: 'after Exit tour', src: tour('format=spotlight&entry=corner&state=exited'), ...frame, note: { idea: 'Back on Home; the Tour button pulses.' } },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'entry-settings',
+      title: 'Tour entry in Settings',
+      round: 2,
+      question: 'Where in Settings should Take the tour live?',
+      sections: [
+        {
+          title: 'E1’s welcome dialog, with the tour moved into Settings',
+          note: 'From round 1: A (Spotlight) kept; E1 changed: “the tour should live in Settings.” First launch still shows E1’s welcome dialog. There is no tour button in the sidebar or top bar any more. After Not now or Exit tour, the message names Settings and the Settings gear pulses; press it to see the entry. Two places in Settings are shown.',
+          items: [
+            {
+              id: 'S1', name: 'Settings › Help', src: tour('format=spotlight&entry=settingsHelp&state=settings'), ...frame,
+              note: {
+                idea: 'A new Help category at the end of the Settings list, with a Product tour row and a Take the tour button.',
+                pros: ['A clear home that can hold more help later', 'Matches how every other setting is laid out'],
+                cons: ['Adds a sixth Settings category for one button', 'Two clicks from anywhere: the gear, then Help'],
+                basedOn: ['E1', 'A'],
+              },
+            },
+            {
+              id: 'S2', name: 'Settings heading', src: tour('format=spotlight&entry=settingsHead&state=settings'), ...frame,
+              note: {
+                idea: 'A Take the tour button at the top of Settings, beside “Changes save automatically”, visible on every Settings category.',
+                pros: ['One click once Settings is open, whatever category is showing', 'No new category'],
+                cons: ['Sits apart from the settings themselves, so it reads as a page action', 'A button in the heading may compete with the page title'],
+                basedOn: ['E1', 'A'],
+              },
+            },
+          ],
+        },
+        {
+          title: 'After Not now',
+          note: 'The welcome dialog is gone. The message names Settings and the gear at the bottom of the sidebar pulses.',
+          items: [
+            { id: 'S1-skip', name: 'Settings › Help, after Not now', src: tour('format=spotlight&entry=settingsHelp&state=skipped'), ...frame, note: { idea: '“Take the tour any time from Settings, under Help.”', basedOn: ['E1-skip'] } },
+            { id: 'S2-skip', name: 'Settings heading, after Not now', src: tour('format=spotlight&entry=settingsHead&state=skipped'), ...frame, note: { idea: '“Take the tour any time from the top of Settings.”', basedOn: ['E1-skip'] } },
+          ],
+        },
+        {
+          title: 'First launch',
+          note: 'Unchanged from E1 apart from the last line, which now names Settings.',
+          items: [
+            { id: 'S1-invite', name: 'Settings › Help, welcome dialog', src: tour('format=spotlight&entry=settingsHelp&state=invite'), ...frame, note: { idea: 'E1’s dialog; “You can take it later from Settings, under Help.”', basedOn: ['E1'] } },
+            { id: 'S2-invite', name: 'Settings heading, welcome dialog', src: tour('format=spotlight&entry=settingsHead&state=invite'), ...frame, note: { idea: 'E1’s dialog; “You can take it later from the top of Settings.”', basedOn: ['E1'] } },
           ],
         },
       ],
