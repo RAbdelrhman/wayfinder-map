@@ -1,3 +1,70 @@
+// Round 4: three more directions on the shipped ACF4 viewer. One page, ?dir= picks the direction.
+const R4_FRAME = { width: 1280, height: 800, boardWidth: 560 };
+const r4src = (dir, state, size) => `variants/r4-viewer.html?dir=${dir}&state=${state}${size ? `&size=${size}` : ''}`;
+const R4 = {
+  D: {
+    name: 'Toolbar tools',
+    note: {
+      idea: 'Pin and Pick are two tools in the viewer toolbar. Pin (N) turns the cursor into a crosshair; each click drops a numbered pin with its note in a popover beside it. Pick opens a small form under the button: the option on screen, an optional note, and the pins on it. A count button ("3 notes · pick B · Review") opens one modal showing both GitHub comments exactly as they will post. Without the bridge it follows #206 to the letter: Pin and Pick are off, and "Pick in #43" sends you to the existing grilling path.',
+      pros: [
+        'Smallest change to the shipped ACF4 shell: two buttons and a count; the canvas keeps the whole stage',
+        'Notes sit at the pin, so you read them in context',
+        'One review modal makes posting deliberate',
+        'Fallback matches #206 exactly: nothing posts with a wrong location',
+      ],
+      cons: [
+        'Notes are spread over the canvas; no single list until Review',
+        'Every note needs a pin; no note on a whole option',
+        'In the side pane and floating window the tools shrink to icons',
+        'Canvases that did not answer lose in-app picking entirely',
+      ],
+    },
+  },
+  E: {
+    name: 'Feedback panel',
+    note: {
+      idea: 'A Feedback panel docks right of the canvas inside the viewer, toggled from the toolbar with a count badge. It lists notes by option (pins and whole-option notes), has Pin on / Note on buttons for the option on screen, and holds the pick as a radio list with an optional note. Review replaces the panel with both comment previews while the canvas and its pins stay visible. In the side pane the panel becomes a Canvas / Feedback tab. Without the bridge, pins are off but whole-option notes and picking still work: you say which option is showing.',
+      pros: [
+        'Everything you will post is always in one list, editable in place',
+        'Notes without a pin cover "this whole option is too busy"',
+        'Review sits beside the canvas, so you can check each pin against its note',
+        'Fallback keeps notes and picking for canvases that did not answer',
+      ],
+      cons: [
+        'Takes 360 px from the canvas at full window; in the pane a tab hides one or the other',
+        'Two places to look: pins on the canvas, text in the panel',
+        'Picking from a list is easy to do without looking at the option',
+        'Fallback goes beyond #206 (pick is off without a reply there); needs agreeing',
+      ],
+    },
+  },
+  F: {
+    name: 'Pick bar and send sheet',
+    note: {
+      idea: 'A floating bar at the bottom of an open option holds the option name, Add pin, a note count and a primary "Pick B". Pins are teardrop markers with comment bubbles. Pick B opens a send sheet from the right: your pick and its note, a checklist of pins to include, and the rendered comments, with "Post pick and notes" or "Post notes only". The count opens the same sheet without the pick. Without the bridge, pins mark the viewer window instead of the option, are written out as approximate, and you choose which option is showing.',
+      pros: [
+        'Picking is the obvious next step once an option is open',
+        'Review is built into the send sheet, with per-pin include checkboxes',
+        'The toolbar is untouched, so ACF4 is unchanged in every size',
+        'Fallback still lets you pin and pick on any canvas',
+      ],
+      cons: [
+        'The bar covers the bottom of the option',
+        'Approximate window pins can point at the wrong spot if the canvas was zoomed or scrolled',
+        'The sheet dims the canvas, so you cannot check pins while reviewing',
+        'Fallback goes furthest from #206 and writes positions it cannot verify',
+      ],
+    },
+  },
+};
+const R4_STATES = [
+  ['review', 'Review before posting', 'Both comments exactly as they will post, with Preview and Markdown tabs.'],
+  ['posted', 'Posted', 'The prototype ticket comment (#42: pins and notes) and the pick ticket comment (#43: option ID, name, note and pins), as posted.'],
+  ['nobridge', 'No bridge', 'The wrapper did not answer within 3 s (#206 fallback 4).'],
+  ['snapshot', 'Snapshot', "A prototype-snapshot.html with no canvas engine (#206 fallback 3): page-level pins, option from Wayfinder's variant list."],
+  ['pane', 'Side pane', 'The same direction in the ACF4 side pane beside the map.'],
+];
+
 window.CANVAS = {
   title: 'Pin, note & pick in the canvas viewer',
   question: 'How should a reviewer pin, note, and pick an option from inside the in-app canvas viewer?',
@@ -155,5 +222,47 @@ window.CANVAS = {
         ],
       }],
     },
-  ],
+      {
+      id: 'new-directions',
+      title: 'New directions',
+      round: 4,
+      question: 'Three more ways to pin, note and pick, alongside A, B, A2 and A3 on the earlier pages.',
+      sampleState:
+        'Sample canvas: prototype ticket #42 (Home, options A Greeting, B Split hero, C Dense list) and its pick ticket #43. All three post the same two comment formats; only how you get there differs. Nothing is sent to GitHub. Every frame is clickable: N drops pins, then write notes, pick, review and post.',
+      sections: [
+        {
+          title: 'Directions',
+          note: 'Each opens pinning on option B. Their states are in the sections below.',
+          items: ['D', 'E', 'F'].map((dir) => ({ id: dir, name: R4[dir].name, src: r4src(dir, 'pin'), ...R4_FRAME, note: R4[dir].note })),
+        },
+        ...['D', 'E', 'F'].map((dir) => ({
+          title: `${dir} · ${R4[dir].name}: states`,
+          items: R4_STATES.map(([state, label, line]) => ({
+            id: `${dir}-${state}`,
+            name: label,
+            src: state === 'pane' ? r4src(dir, 'pin', 'pane') : r4src(dir, state),
+            ...R4_FRAME,
+            note: line,
+          })),
+        })),
+        {
+          title: 'Notes',
+          items: [
+            {
+              id: 'formats4',
+              kind: 'note',
+              name: 'Shared comment formats',
+              text: 'D, E and F post the same two comments. Prototype ticket: a heading, branch and SHA, one numbered line per pin (option ID and name, % across and down, note) and a hidden <!-- wayfinder:notes v1 {...} --> JSON block for agents. Pick ticket: "Pick: B · Split hero", option ID, the note as a quote, the pins on that option, a line saying the ticket stays open until the grilling session records the decision, and a hidden <!-- wayfinder:pick v1 {...} --> block. Open any Review frame and switch to Markdown for the exact text.',
+            },
+            {
+              id: 'review4',
+              kind: 'note',
+              name: 'Design review',
+              text: 'Sources: src/ui/styles.css (tokens, .vw/.vw-bar ACF4 rules, .segmented, .ghost, .primary, .iconbtn, .input; linked directly, not mirrored), src/ui/canvasViewer.ts (toolbar markup copied: Close/Esc, title, page menu, Board/A/B/C, option name, GitHub, size switch), docs/design/in-app-canvas-viewer.md (bridge sources engine/dom/page/none, 3 s no-reply fallback). Checked headless at 1280×800: every direction in pin, review and no-bridge; D posted and side pane; E in dark (no-bridge) and snapshot; F review. Flow run end to end in D: N, click to drop a pin, write a note, Pick, Review, Post; Markdown shows the exact text including the hidden JSON. Keyboard: N toggles pin mode, Enter drops a pin in the middle, arrow keys (Shift for 5%) move a focused pin, Esc closes popovers, pin mode and the sheet; D review is a native modal dialog with focus on Post. Fixed during review: apostrophes rendered as #39 issue links; textareas collapsed in the F sheet; the no-bridge toolbar showed option buttons the viewer cannot drive (now "View only", as in the shipped viewer); compact Pin/Pick buttons had no accessible name. Contrast: warning chip text #7a5200 on its tint is about 6:1 (light); other text uses app tokens. Not checked: screen reader output, F sheet focus trap (scrim, not a native dialog), floating-window size (its switch shows a toast), E and F posted frames in dark, 200% zoom, touch.',
+            },
+          ],
+        },
+      ],
+    },
+],
 };
