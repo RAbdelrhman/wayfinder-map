@@ -701,3 +701,155 @@
     transition: none;
   }
 }
+
+/* ---------- D2: A3's tools in the toolbar, Pick on its own ---------- */
+.p210-toolgroup .seg {
+  gap: 6px;
+  padding: 0 10px;
+}
+.p210-pickbtn {
+  height: 32px;
+  white-space: nowrap;
+}
+.p210-pickbtn:focus-visible,
+.p210-toolgroup .seg:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+.vw-bar .p210-pickbtn + .p210-pickpop,
+.vw-bar.is-a .p210-pickbtn + .p210-pickpop {
+  left: auto;
+  right: 0;
+}
+.p210-el,
+.p210-region {
+  position: absolute;
+  padding: 0;
+  border: 2px solid var(--accent-fill);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent-fill) 8%, transparent);
+}
+.p210-el.is-open {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-fill) 30%, transparent);
+}
+.p210-el.is-posted {
+  border-style: dashed;
+  background: none;
+}
+.p210-el-n {
+  position: absolute;
+  top: -12px;
+  left: -12px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--accent-fill);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.p210-region {
+  border: 2px dashed transparent;
+  background: none;
+  cursor: pointer;
+}
+.p210-region:hover,
+.p210-region:focus-visible {
+  border-color: var(--state-claimed);
+  background: color-mix(in srgb, var(--state-claimed) 10%, transparent);
+  outline: none;
+}
+.p210-region span {
+  position: absolute;
+  top: -26px;
+  left: -2px;
+  display: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #1b1b1a;
+  color: #f3f2ee;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.p210-region:hover span,
+.p210-region:focus-visible span {
+  display: inline-block;
+}
+.p210-cv.is-selecting .p210-opt {
+  outline: 2px dashed var(--state-claimed);
+  outline-offset: 4px;
+}
+.p210-colors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.p210-sw {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.p210-hex {
+  width: 96px;
+  flex: none;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.p210-swatches {
+  display: flex;
+  gap: 6px;
+}
+.p210-swatch {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid var(--surface-1);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--hairline);
+}
+.p210-swatch.is-on {
+  box-shadow: 0 0 0 2px var(--state-claimed);
+}
+.p210-swatch:focus-visible {
+  outline: 2px solid var(--state-claimed);
+  outline-offset: 2px;
+}
+.p210-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.p210-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--wash);
+  font-size: 12.5px;
+}
+.p210-file .i {
+  width: 13px;
+  height: 13px;
+}
+.p210-toolrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-1);
+  font-size: 13px;
+}
+.p210-toolrow .segmented {
+  flex: none;
+}
+.p210-dir-A #vw-toolbar {
+  min-width: 0;
+}

@@ -20,6 +20,9 @@ Object.assign(Kit.icons, {
   send: '<path d="M21 3 10 14"/><path d="M21 3 14 21l-4-7-7-4z"/>',
   eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  cursor: '<path d="M5 3l14 7-6 2-2 6z"/>',
+  drop: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
+  clip: '<path d="M21 11.5 12.5 20a5 5 0 0 1-7-7L14 4.5a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4L15.5 7.6"/>',
 });
 
 window.P210 = (() => {
@@ -37,6 +40,26 @@ window.P210 = (() => {
     ],
     board: '../../canvas/assets/protos/39-board.jpg',
     snapshot: { file: 'prototype-snapshot.html', img: '../../canvas/assets/protos/17.jpg' },
+    // Elements the wrapper would report for Select element and Color picker, as fractions of each option.
+    regions: {
+      A: [
+        { name: 'Continue card', x: 0.225, y: 0.26, w: 0.48, h: 0.21, color: '#fcfcfb' },
+        { name: 'Open map button', x: 0.603, y: 0.342, w: 0.086, h: 0.046, color: '#1f6bc8' },
+        { name: 'Today panel', x: 0.725, y: 0.26, w: 0.25, h: 0.74, color: '#fcfcfb' },
+      ],
+      B: [
+        { name: 'Start a new map button', x: 0.008, y: 0.094, w: 0.184, h: 0.047, color: '#2a78d6' },
+        { name: 'Continue card', x: 0.225, y: 0.115, w: 0.468, h: 0.375, color: '#fcfcfb' },
+        { name: 'Open map button', x: 0.241, y: 0.415, w: 0.086, h: 0.047, color: '#1f6bc8' },
+        { name: 'Needs you card', x: 0.225, y: 0.62, w: 0.228, h: 0.125, color: '#fcfcfb' },
+        { name: 'Fog cleared panel', x: 0.711, y: 0.115, w: 0.265, h: 0.86, color: '#fcfcfb' },
+      ],
+      C: [
+        { name: 'Continue card', x: 0.222, y: 0.108, w: 0.5, h: 0.13, color: '#fcfcfb' },
+        { name: 'In flight list', x: 0.222, y: 0.33, w: 0.5, h: 0.245, color: '#f0f0ef' },
+        { name: 'Progress panel', x: 0.744, y: 0.11, w: 0.235, h: 0.5, color: '#3bb143' },
+      ],
+    },
   };
   const samplePins = () => [
     { option: 'B', fx: 0.34, fy: 0.3, note: 'The hero card is too tall: the next ticket drops below the fold.' },
@@ -48,7 +71,11 @@ window.P210 = (() => {
   const opt = (id) => canvas.options.find((o) => o.id === id);
   const pct = (n) => `${Math.round(n * 100)}%`;
   /** How a pin's place is written out. `kind` is the bridge source: engine/dom, page (snapshot) or none. */
+  const files = (list) => list.map((f) => `\`${f}\``).join(', ') || '_(no file yet)_';
   const where = (p) => {
+    if (p.type === 'element') return `element "${p.target}"`;
+    if (p.type === 'color') return `element "${p.target}", colour \`${p.from}\` → \`${p.to}\``;
+    if (p.type === 'attach') return `${p.files.length === 1 ? 'attachment' : 'attachments'} ${files(p.files)} on ${p.on}`;
     if (p.fx === null || p.fx === undefined) return 'whole option';
     const at = `${pct(p.fx)} across, ${pct(p.fy)} down`;
     if (p.kind === 'page') return `${at} of the page`;
@@ -56,6 +83,7 @@ window.P210 = (() => {
     return at;
   };
   const label = (p) => {
+    if (!p.option) return '**Whole canvas**';
     if (p.kind === 'page') return `\`${canvas.snapshot.file}\` · option **${p.option}** (from Wayfinder's variant list)`;
     const o = opt(p.option);
     return `**${o.id} · ${o.name}**`;
@@ -70,6 +98,10 @@ window.P210 = (() => {
     x: p.fx === null || p.fx === undefined ? null : +p.fx.toFixed(3),
     y: p.fy === null || p.fy === undefined ? null : +p.fy.toFixed(3),
     ...(p.kind === 'window' ? { approximate: true } : {}),
+    ...(p.type && p.type !== 'pin' ? { type: p.type } : {}),
+    ...(p.target ? { element: p.target } : {}),
+    ...(p.type === 'color' ? { from: p.from, to: p.to } : {}),
+    ...(p.type === 'attach' ? { on: p.on, files: p.files } : {}),
     note: p.note,
   });
 
@@ -83,9 +115,10 @@ window.P210 = (() => {
   function pickComment(pick, pins, kind = 'dom') {
     const o = opt(pick.option);
     const mine = pins.filter((p) => p.option === pick.option);
+    const noun = mine.some((p) => p.type && p.type !== 'pin') ? 'Notes' : 'Pins';
     const quote = pick.note ? `\n> ${pick.note}\n` : '\n_No note._\n';
     const list = mine.length
-      ? `\nPins on ${o.id}:\n${mine.map((p, i) => `${i + 1}. ${where({ kind, ...p })}: ${p.note || '_(no note)_'}`).join('\n')}\n`
+      ? `\n${noun} on ${o.id}:\n${mine.map((p, i) => `${i + 1}. ${where({ kind, ...p })}: ${p.note || '_(no note)_'}`).join('\n')}\n`
       : '';
     const json = JSON.stringify({
       option: o.id,
@@ -106,7 +139,7 @@ window.P210 = (() => {
         .replace(/`([^`]+)`/g, '<code>$1</code>')
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/_\(([^)]+)\)_|_([^_]+)_/g, (_, a, b) => `<em>${a ? `(${a})` : b}</em>`)
-        .replace(/(^|[^&\w])#(\d+)/g, '$1<a href="#" data-to="GitHub issue #$2">#$2</a>');
+        .replace(/(^|[^&\w])#(\d+)(?!\w)/g, '$1<a href="#" data-to="GitHub issue #$2">#$2</a>');
     const out = [];
     let list = null;
     for (const line of md.split('\n')) {
@@ -140,5 +173,5 @@ window.P210 = (() => {
     </article>`;
   }
 
-  return { canvas, samplePins, samplePick, opt, notesComment, pickComment, render, commentCard, where };
+  return { regions: canvas.regions, canvas, samplePins, samplePick, opt, notesComment, pickComment, render, commentCard, where };
 })();

@@ -4,10 +4,14 @@
   and ?size=full|pane sets the viewer size. Everything after that is clickable.
 */
 (() => {
-  const { canvas, opt, notesComment, pickComment, commentCard, where } = P210;
+  const { canvas, regions, opt, notesComment, pickComment, commentCard, where } = P210;
   const q = new URLSearchParams(location.search);
   // Round 4 option IDs D, E, F on the board; the code calls them A, B, C internally.
-  const DIR = { D: 'A', E: 'B', F: 'C' }[q.get('dir')] ?? 'A';
+  // D2 (round 5) is D with A3's tools and a separate Pick, so it runs as A plus the tools below.
+  const DIR = { D: 'A', E: 'B', F: 'C', D2: 'A' }[q.get('dir')] ?? 'A';
+  const D2 = q.get('dir') === 'D2';
+  const TOOLS = { pin: 'Pin', element: 'Select element', color: 'Color picker', attach: 'Attach' };
+  const KIND = { pin: 'Pin', element: 'Element', color: 'Colour', attach: 'Attachment' };
   const START = q.get('state') ?? 'pin';
   const icon = (name) => Kit.icon(name);
   const esc = Kit.esc;
@@ -18,6 +22,7 @@
     option: 'B',
     pins: [],
     pinMode: false,
+    tool: null, // D2: 'pin' | 'element' | 'color'
     editing: null, // index of the pin whose note is open
     pick: null,
     picking: false, // A: the pick popover
@@ -36,13 +41,26 @@
       { option: 'B', fx: 0.34, fy: 0.3, note: 'The hero card is too tall: the next ticket drops below the fold.' },
       { option: 'B', fx: 0.84, fy: 0.16, note: 'Keep the Trail · Hexes · Bar switch.' },
     ];
-    if (S.source === 'page') return [{ option: 'A', fx: 0.5, fy: 0.42, note: 'Recovery cards need a status colour.' }];
+    if (S.source === 'page')
+      return [
+        { option: 'A', fx: 0.5, fy: 0.42, note: 'Recovery cards need a status colour.' },
+        ...(D2 ? [{ type: 'attach', option: null, on: 'the whole canvas', fx: null, fy: null, files: ['launch-flow.png'], note: 'The order I expect.' }] : []),
+      ];
     if (S.source === 'none') {
       if (DIR === 'A') return [];
       if (DIR === 'B') return [{ option: 'B', fx: null, fy: null, note: 'The hero card is too tall.' }];
       return [{ option: 'B', fx: 0.33, fy: 0.36, note: 'The hero card is too tall.', approximate: true }];
     }
     if (DIR === 'B') return [...base, { option: 'C', fx: null, fy: null, note: 'Too dense to scan at this size.' }];
+    if (D2) {
+      const [hero, button] = [regions.B[1], regions.B[2]];
+      return [
+        ...base,
+        { type: 'element', option: 'B', target: hero.name, fx: hero.x, fy: hero.y, note: 'Too tall: cut the illustration.' },
+        { type: 'color', option: 'B', target: button.name, fx: button.x, fy: button.y, from: button.color, to: '#1659a8', note: 'A shade darker, to match the primary buttons.' },
+        { type: 'attach', option: 'B', on: 'pin 1', fx: 0.34, fy: 0.3, files: ['hero-shorter.png'], note: 'Roughly this height.' },
+      ];
+    }
     return [...base, { option: 'C', fx: 0.5, fy: 0.64, note: 'Too dense to scan at this size.' }];
   };
   S.pins = pinsFor();
@@ -52,6 +70,10 @@
   if (S.source === 'page' && S.pick) S.pick.note = 'A, but keep the recovery cards.';
   if (START === 'pin') {
     if (DIR === 'A') S.editing = 1;
+    if (D2 && S.source === 'dom') {
+      S.editing = 3;
+      S.tool = 'color';
+    }
     if (DIR === 'C') S.editing = 0;
   }
   if (START === 'review' || START === 'posted') {
@@ -107,6 +129,34 @@
       : '';
     return { left: `<span class="vw-sep"></span>${fallback || pin + pick}`, right: S.posted ? `<span class="p210-chip is-ok">${icon('check')}Posted</span>` : review };
   }
+  function toolsD2(compact) {
+    const why = 'This canvas did not answer, so Wayfinder cannot tell what you are pointing at.';
+    const off = {
+      pin: S.source === 'none' || S.option === null ? (S.source === 'none' ? why : 'Open an option first') : '',
+      element: S.source !== 'dom' || S.option === null ? (S.source === 'page' ? 'Snapshots do not report their elements' : S.source === 'none' ? why : 'Open an option first') : '',
+      color: S.source !== 'dom' || S.option === null ? (S.source === 'page' ? 'Snapshots do not report their colours' : S.source === 'none' ? why : 'Open an option first') : '',
+      attach: S.source === 'none' ? why : '',
+    };
+    const tools = `<div class="segmented p210-toolgroup" role="group" aria-label="Feedback tools">${Object.entries(TOOLS)
+      .map(([id, name]) => {
+        const on = id !== 'attach' && S.tool === id;
+        return `<button type="button" class="seg${on ? ' is-on' : ''}" data-tool="${id}" aria-label="${name}"${id === 'attach' ? '' : ` aria-pressed="${on}"`}${off[id] ? ` aria-disabled="true" title="${off[id]}"` : id === 'pin' ? ' title="Pin (N)"' : ''}>${icon(id === 'element' ? 'cursor' : id === 'color' ? 'drop' : id === 'attach' ? 'clip' : 'pin')}${compact ? '' : `<span class="vw-lbl">${name}</span>`}</button>`;
+      })
+      .join('')}</div>`;
+    const pickOff = S.source === 'none' || (S.option === null && S.source !== 'page');
+    const pickId = S.source === 'page' ? 'A' : S.option;
+    const pick = `<div class="vw-menu-anchor"><button type="button" class="primary p210-pickbtn" data-act="pick" aria-label="Pick${pickId ? ` ${pickId}` : ''}" aria-haspopup="dialog" aria-expanded="${S.picking}"${pickOff ? ` aria-disabled="true" title="${S.source === 'none' ? why : 'Open an option to pick it'}"` : ''}>${icon('flag')}${compact ? '' : `Pick${pickId ? ` ${pickId}` : ''}…`}</button>${S.picking ? pickPopoverA() : ''}</div>`;
+    const review = count() || S.pick
+      ? `<button type="button" class="ghost p210-tool p210-count" data-act="review">${icon('send')}<span>${count()} ${count() === 1 ? 'note' : 'notes'}</span><span class="p210-sep">Review</span></button>`
+      : '';
+    const fallback = `<span class="p210-chip is-warn" title="${why}">${icon('info')}View only: this canvas did not answer.</span><a class="ghost" href="#" data-to="GitHub issue #43">Pick in #43${icon('external')}</a>`;
+    if (S.source === 'none') return { row: `<div class="p210-toolrow">${fallback}</div>`, right: '' };
+    const hint = S.source === 'page' ? '<span class="p210-muted">Snapshot: pins mark the page; element selection and colours are off.</span>' : '';
+    return {
+      row: `<div class="p210-toolrow">${tools}${hint}</div>`,
+      right: `${S.posted ? `<span class="p210-chip is-ok">${icon('check')}Posted</span>` : review}${S.posted ? '' : pick}`,
+    };
+  }
   function toolsB() {
     const n = count() + (S.pick ? 1 : 0);
     return {
@@ -120,6 +170,17 @@
 
   function toolbarHtml() {
     const compact = S.size !== 'full';
+    if (D2) {
+      const d = toolsD2(compact);
+      const title = `<span class="vw-title" id="vw-title">${icon('beaker')}<span class="vw-title-t">${esc(canvas.title)}</span></span>`;
+      const gh = `<a class="iconbtn" href="#" data-to="the branch on GitHub" aria-label="Open the branch on GitHub">${icon('external')}</a>`;
+      if (!compact) {
+        const close = `<button type="button" class="ghost vw-close" data-to="the map (closes the canvas)" aria-label="Close the canvas">${icon('close')}<span class="vw-lbl">Close</span><kbd>Esc</kbd></button>`;
+        return `<div class="vw-bar is-a">${close}${title}<span class="vw-sep"></span>${options()}<span class="topbar-spacer"></span>${d.right}<span class="vw-sep"></span>${gh}${sizes()}</div>${d.row}`;
+      }
+      const close = `<button type="button" class="iconbtn vw-close" data-to="the map (closes the canvas)" aria-label="Close the canvas">${icon('close')}</button>`;
+      return `<div class="vw-bar is-c"><div class="vw-c-row">${title}<span class="topbar-spacer"></span>${gh}${sizes()}${close}</div><div class="vw-c-row">${options()}</div></div><div class="p210-toolrow">${d.row.replace(/^<div class="p210-toolrow">|<\/div>$/g, '')}<span class="topbar-spacer"></span>${d.right}</div>`;
+    }
     const t = DIR === 'A' ? toolsA(compact) : DIR === 'B' ? toolsB() : toolsC();
     const title = `<span class="vw-title" id="vw-title">${icon('beaker')}<span class="vw-title-t">${esc(canvas.title)}</span></span>`;
     const gh = `<a class="iconbtn" href="#" data-to="the branch on GitHub" aria-label="Open the branch on GitHub">${icon('external')}</a>`;
@@ -137,7 +198,11 @@
   // ---------- the canvas inside the frame, and pins over it ----------
 
   function pinHtml(p, i) {
-    if (p.fx === null) return '';
+    if (p.fx === null || p.type === 'attach') return '';
+    if (p.type === 'element' || p.type === 'color') {
+      const r = regions[p.option].find((x) => x.name === p.target);
+      return `<button type="button" class="p210-el${S.editing === i ? ' is-open' : ''}${S.posted ? ' is-posted' : ''}" style="left:${r.x * 100}%;top:${r.y * 100}%;width:${r.w * 100}%;height:${r.h * 100}%" data-pin="${i}" aria-label="${KIND[p.type]} ${i + 1}, ${esc(p.target)}: ${esc(p.note || 'no note yet')}"><span class="p210-el-n">${i + 1}</span></button>`;
+    }
     const posted = S.posted ? ' is-posted' : '';
     const shape = DIR === 'C' ? ' is-drop' : '';
     const approx = p.approximate ? ' is-approx' : '';
@@ -145,7 +210,8 @@
   }
   function notePopover(i) {
     const p = S.pins[i];
-    if (!p || p.fx === null) return '';
+    if (!p || (p.fx === null && p.type !== 'attach')) return '';
+    if (p.type) return d2Popover(p, i);
     const left = p.fx > 0.62;
     const o = opt(p.option);
     const optionField = S.source === 'page'
@@ -157,6 +223,35 @@
       <textarea class="input" rows="3" data-note="${i}" aria-label="Note for pin ${i + 1}" placeholder="What should change here?">${esc(p.note)}</textarea>
       <div class="p210-pop-foot"><button type="button" class="iconbtn" data-del="${i}" aria-label="Delete pin ${i + 1}">${icon('trash')}</button><span class="topbar-spacer"></span><button type="button" class="primary" data-act="done">Done</button></div>
     </div>`;
+  }
+  const SWATCHES = ['#1659a8', '#1f6bc8', '#2a78d6', '#087008', '#b42318', '#0b0b0b'];
+  function d2Popover(p, i) {
+    const fx = p.fx ?? 0.5,
+      fy = p.fy ?? 0.04;
+    const left = fx > 0.62;
+    const sub = p.option ? `${p.option} · ${esc(opt(p.option).name)}` : 'Whole canvas';
+    let extra = '';
+    if (p.type === 'color')
+      extra = `<div class="p210-colors"><span class="p210-sw" style="background:${p.from}" aria-hidden="true"></span><code>${p.from}</code><span aria-hidden="true">→</span><span class="p210-sw" style="background:${esc(p.to)}" aria-hidden="true"></span><input class="input p210-hex" data-hex="${i}" value="${esc(p.to)}" aria-label="Suggested colour, hex" spellcheck="false" /></div>
+        <div class="p210-swatches" role="group" aria-label="Suggest a colour">${SWATCHES.map((c) => `<button type="button" class="p210-swatch${c === p.to ? ' is-on' : ''}" style="background:${c}" data-swatch="${i}" data-color="${c}" aria-label="Suggest ${c}" aria-pressed="${c === p.to}"></button>`).join('')}</div>`;
+    if (p.type === 'attach') {
+      const targets = [['the whole canvas', 'Whole canvas'], ...S.pins.map((x, k) => [x, k]).filter(([x]) => !x.type || x.type === 'element' || x.type === 'color').map(([x, k]) => [`${(KIND[x.type ?? 'pin']).toLowerCase()} ${k + 1}`, `${KIND[x.type ?? 'pin']} ${k + 1}${x.target ? ` · ${x.target}` : ''}`])];
+      extra = `<label class="p210-field">Attach to<select class="input" data-attach-on="${i}">${targets.map(([v, t]) => `<option value="${esc(v)}"${v === p.on ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+        <div class="p210-files">${p.files.map((f) => `<span class="p210-file">${icon('clip')}${esc(f)}</span>`).join('')}<button type="button" class="ghost p210-sm" data-addfile="${i}">${icon('plus')}Add file</button></div>
+        <span class="p210-muted">Files go up with the comment. This prototype only lists them.</span>`;
+    }
+    return `<div class="p210-pop${left ? ' is-left' : ''}" style="left:${fx * 100}%;top:${fy * 100}%" role="dialog" aria-label="${KIND[p.type]} ${i + 1}">
+      <div class="p210-pop-head"><b>${KIND[p.type]} ${i + 1}${p.target ? ` · ${esc(p.target)}` : ''}</b><span>${sub}${p.type === 'attach' ? ` · on ${esc(p.on)}` : ''}</span></div>
+      ${extra}
+      <textarea class="input" rows="2" data-note="${i}" aria-label="Note for ${KIND[p.type].toLowerCase()} ${i + 1}" placeholder="${p.type === 'color' ? 'Why this colour? (optional)' : 'What should change here?'}">${esc(p.note)}</textarea>
+      <div class="p210-pop-foot"><button type="button" class="iconbtn" data-del="${i}" aria-label="Delete ${KIND[p.type].toLowerCase()} ${i + 1}">${icon('trash')}</button><span class="topbar-spacer"></span><button type="button" class="primary" data-act="done">Done</button></div>
+    </div>`;
+  }
+  function regionsHtml() {
+    if (!D2 || (S.tool !== 'element' && S.tool !== 'color') || !S.option || S.source !== 'dom') return '';
+    return regions[S.option]
+      .map((r, k) => `<button type="button" class="p210-region" style="left:${r.x * 100}%;top:${r.y * 100}%;width:${r.w * 100}%;height:${r.h * 100}%" data-region="${k}" aria-label="${S.tool === 'color' ? 'Sample the colour of' : 'Select'} ${esc(r.name)}"><span>${esc(r.name)}${S.tool === 'color' ? ` · <code>${r.color}</code>` : ''}</span></button>`)
+      .join('');
   }
   function pickPopoverA() {
     const o = opt(S.pick?.option ?? S.option ?? 'A');
@@ -176,12 +271,15 @@
     const engine = `<div class="p210-engine" aria-hidden="true"><span>← Canvas</span><span class="p210-engine-tabs">${canvas.options.map((o) => `<i${o.id === S.option ? ' class="is-on"' : ''}>${o.id}</i>`).join('')}</span><span class="topbar-spacer"></span><span>Notes</span><span>↗</span></div>`;
     if (S.option === null)
       return `<div class="p210-cv"><div class="p210-cv-body is-board"><img src="${canvas.board}" alt="The canvas board with every option" /></div>${hintBoard()}</div>`;
+    const selecting = D2 && (S.tool === 'element' || S.tool === 'color');
+    if (selecting)
+      return `<div class="p210-cv is-selecting">${engine}<div class="p210-cv-body"><div class="p210-opt" id="opt"><img src="${opt(S.option).img}" alt="Option ${S.option}: ${esc(opt(S.option).name)}" />${pinsLayer()}</div></div><div class="p210-hint" role="status">${icon(S.tool === 'color' ? 'drop' : 'cursor')}Hover or Tab to an element, then click or press Enter to ${S.tool === 'color' ? 'sample its colour' : 'select it'}. <kbd>Esc</kbd> stops.</div></div>`;
     return `<div class="p210-cv${S.pinMode ? ' is-pinning' : ''}">${engine}<div class="p210-cv-body"><div class="p210-opt" id="opt"><img src="${opt(S.option).img}" alt="Option ${S.option}: ${esc(opt(S.option).name)}" />${pinsLayer()}</div></div>${S.pinMode ? `<div class="p210-hint" role="status">${icon('pin')}Click the option to drop a pin. Enter drops one in the middle; arrow keys move it. <kbd>Esc</kbd> stops.</div>` : ''}</div>`;
   }
   const hintBoard = () => `<div class="p210-hint is-soft" role="status">${icon('info')}Open an option to pin or pick it.</div>`;
   function pinsLayer() {
-    const shown = S.pins.map((p, i) => [p, i]).filter(([p]) => S.source === 'page' || p.option === S.option || p.approximate);
-    const layer = shown.map(([p, i]) => pinHtml(p, i)).join('');
+    const shown = S.pins.map((p, i) => [p, i]).filter(([p]) => S.source === 'page' || p.option === S.option || p.approximate || (p.type === 'attach' && !p.option));
+    const layer = regionsHtml() + shown.map(([p, i]) => pinHtml(p, i)).join('');
     const pop = S.editing !== null && !S.posted && shown.some(([, i]) => i === S.editing) ? notePopover(S.editing) : '';
     return `<div class="p210-pins">${layer}${pop}</div>`;
   }
@@ -342,6 +440,7 @@
   const disabled = (el) => el.getAttribute('aria-disabled') === 'true' || el.disabled;
   function addPin(fx, fy) {
     const pin = { option: S.source === 'page' ? 'A' : S.option, fx, fy, note: '' };
+    if (D2) S.tool = 'pin';
     if (S.source === 'none') pin.approximate = true;
     S.pins.push(pin);
     S.include.add(S.pins.length - 1);
@@ -392,6 +491,45 @@
       });
       return;
     }
+    if (t.dataset.tool) {
+      if (disabled(t)) return Kit.toast(t.title);
+      const tool = t.dataset.tool;
+      if (tool === 'attach') {
+        const open = S.editing !== null ? S.pins[S.editing] : null;
+        const on = open && open.type !== 'attach' ? `${KIND[open.type ?? 'pin'].toLowerCase()} ${S.editing + 1}` : 'the whole canvas';
+        const anchor = on === 'the whole canvas' ? { option: null, fx: null, fy: null } : { option: open.option, fx: open.fx, fy: open.fy };
+        S.pins.push({ type: 'attach', on, files: [], note: '', ...anchor });
+        S.editing = S.pins.length - 1;
+        S.tool = null;
+        S.pinMode = false;
+        S.posted = false;
+        live(`Attachment ${S.pins.length} added to ${on}.`);
+        return paint();
+      }
+      S.tool = S.tool === tool ? null : tool;
+      S.pinMode = S.tool === 'pin';
+      S.editing = null;
+      return paint();
+    }
+    if (t.dataset.region !== undefined) {
+      const r = regions[S.option][+t.dataset.region];
+      const base = { option: S.option, target: r.name, fx: r.x, fy: r.y, note: '' };
+      S.pins.push(S.tool === 'color' ? { type: 'color', from: r.color, to: r.color, ...base } : { type: 'element', ...base });
+      S.editing = S.pins.length - 1;
+      S.posted = false;
+      live(`${r.name} selected. Write its note.`);
+      paint();
+      return document.querySelector(`[data-note="${S.editing}"]`)?.focus();
+    }
+    if (t.dataset.swatch !== undefined) {
+      S.pins[+t.dataset.swatch].to = t.dataset.color;
+      return paint();
+    }
+    if (t.dataset.addfile !== undefined) {
+      const files = S.pins[+t.dataset.addfile].files;
+      files.push(`screenshot-${files.length + 1}.png`);
+      return paint();
+    }
     if (t.dataset.pin !== undefined) {
       S.editing = S.editing === +t.dataset.pin ? null : +t.dataset.pin;
       return paint();
@@ -420,6 +558,7 @@
     switch (act) {
       case 'pinmode':
         S.pinMode = !S.pinMode;
+        if (D2) S.tool = S.pinMode ? 'pin' : null;
         S.editing = null;
         if (DIR === 'B' && S.size === 'pane') S.paneTab = 'canvas';
         return paint();
@@ -506,6 +645,11 @@
     const t = e.target;
     if (t.dataset.note !== undefined) S.pins[+t.dataset.note].note = t.value;
     if (t.dataset.picknote !== undefined && S.pick) S.pick.note = t.value;
+    if (t.dataset.hex !== undefined && /^#[0-9a-f]{6}$/i.test(t.value.trim())) {
+      S.pins[+t.dataset.hex].to = t.value.trim().toLowerCase();
+      const sw = t.previousElementSibling;
+      if (sw) sw.style.background = S.pins[+t.dataset.hex].to;
+    }
   });
   document.addEventListener('change', (e) => {
     const t = e.target;
@@ -514,6 +658,14 @@
       paint();
     }
     if (t.dataset.pinOption !== undefined) S.pins[+t.dataset.pinOption].option = t.value;
+    if (t.dataset.attachOn !== undefined) {
+      const a = S.pins[+t.dataset.attachOn];
+      a.on = t.value;
+      const k = /(\d+)$/.exec(t.value);
+      const target = k ? S.pins[+k[1] - 1] : null;
+      Object.assign(a, target ? { option: target.option, fx: target.fx, fy: target.fy } : { option: null, fx: null, fy: null });
+      paint();
+    }
     if (t.dataset.cur !== undefined) {
       S.option = t.value;
       paint();
@@ -523,10 +675,11 @@
   document.addEventListener('keydown', (e) => {
     const typing = e.target.matches('textarea, input, select');
     if (e.key === 'Escape') {
-      if (S.editing !== null || S.pinMode || S.picking || S.sheet) {
+      if (S.editing !== null || S.pinMode || S.tool || S.picking || S.sheet) {
         e.preventDefault();
         S.editing = null;
         S.pinMode = false;
+        S.tool = null;
         S.picking = false;
         if (S.sheet && S.sheet !== 'posted') S.sheet = null;
         return paint();
@@ -536,6 +689,7 @@
     if (typing) return;
     if ((e.key === 'n' || e.key === 'N') && canPin() && S.option !== null) {
       S.pinMode = !S.pinMode;
+      if (D2) S.tool = S.pinMode ? 'pin' : null;
       return paint();
     }
     if (e.key === 'Enter' && S.pinMode && !e.target.matches('button')) {

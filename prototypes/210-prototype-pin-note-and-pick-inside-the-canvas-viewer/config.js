@@ -5,6 +5,8 @@ const R4 = {
   D: {
     name: 'Toolbar tools',
     note: {
+      disposition: 'change',
+      feedback: 'User, in the #210 thread (2026-10-09), after seeing D: "you need to split up the pick button from the tools and bring in the tools from A3." Built as D2 on the D2 page (round 5). A3 itself has no recorded choice yet.',
       idea: 'Pin and Pick are two tools in the viewer toolbar. Pin (N) turns the cursor into a crosshair; each click drops a numbered pin with its note in a popover beside it. Pick opens a small form under the button: the option on screen, an optional note, and the pins on it. A count button ("3 notes · pick B · Review") opens one modal showing both GitHub comments exactly as they will post. Without the bridge it follows #206 to the letter: Pin and Pick are off, and "Pick in #43" sends you to the existing grilling path.',
       pros: [
         'Smallest change to the shipped ACF4 shell: two buttons and a count; the canvas keeps the whole stage',
@@ -64,6 +66,47 @@ const R4_STATES = [
   ['snapshot', 'Snapshot', "A prototype-snapshot.html with no canvas engine (#206 fallback 3): page-level pins, option from Wayfinder's variant list."],
   ['pane', 'Side pane', 'The same direction in the ACF4 side pane beside the map.'],
 ];
+
+const R4_NOTES = [
+{
+    id: 'formats4',
+    kind: 'note',
+    name: 'Shared comment formats',
+    text: 'D, E and F post the same two comments. Prototype ticket: a heading, branch and SHA, one numbered line per pin (option ID and name, % across and down, note) and a hidden <!-- wayfinder:notes v1 {...} --> JSON block for agents. Pick ticket: "Pick: B · Split hero", option ID, the note as a quote, the pins on that option, a line saying the ticket stays open until the grilling session records the decision, and a hidden <!-- wayfinder:pick v1 {...} --> block. Open any Review frame and switch to Markdown for the exact text.',
+  },
+  {
+    id: 'review4',
+    kind: 'note',
+    name: 'Design review',
+    text: 'Sources: src/ui/styles.css (tokens, .vw/.vw-bar ACF4 rules, .segmented, .ghost, .primary, .iconbtn, .input; linked directly, not mirrored), src/ui/canvasViewer.ts (toolbar markup copied: Close/Esc, title, page menu, Board/A/B/C, option name, GitHub, size switch), docs/design/in-app-canvas-viewer.md (bridge sources engine/dom/page/none, 3 s no-reply fallback). Checked headless at 1280×800: every direction in pin, review and no-bridge; D posted and side pane; E in dark (no-bridge) and snapshot; F review. Flow run end to end in D: N, click to drop a pin, write a note, Pick, Review, Post; Markdown shows the exact text including the hidden JSON. Keyboard: N toggles pin mode, Enter drops a pin in the middle, arrow keys (Shift for 5%) move a focused pin, Esc closes popovers, pin mode and the sheet; D review is a native modal dialog with focus on Post. Fixed during review: apostrophes rendered as #39 issue links; textareas collapsed in the F sheet; the no-bridge toolbar showed option buttons the viewer cannot drive (now "View only", as in the shipped viewer); compact Pin/Pick buttons had no accessible name. Contrast: warning chip text #7a5200 on its tint is about 6:1 (light); other text uses app tokens. Not checked: screen reader output, F sheet focus trap (scrim, not a native dialog), floating-window size (its switch shows a toast), E and F posted frames in dark, 200% zoom, touch.',
+  },
+];
+const R4_SAMPLE =
+  'Sample canvas: prototype ticket #42 (Home, options A Greeting, B Split hero, C Dense list) and its pick ticket #43. Nothing is sent to GitHub. Every frame is clickable: N drops pins, then write notes, pick, review and post.';
+const r4Page = (dir) => ({
+  id: `dir-${dir.toLowerCase()}`,
+  title: `${dir} · ${R4[dir].name}`,
+  round: 4,
+  question: 'Another way to pin, note and pick, alongside A, B, A2 and A3 on the earlier pages.',
+  sampleState: R4_SAMPLE,
+  sections: [
+    {
+      title: `${dir} · ${R4[dir].name}`,
+      note: 'Opens pinning on option B; its review, posted, fallback and side-pane states follow.',
+      items: [
+        { id: dir, name: R4[dir].name, src: r4src(dir, 'pin'), ...R4_FRAME, note: R4[dir].note },
+        ...R4_STATES.map(([state, label, line]) => ({
+          id: `${dir}-${state}`,
+          name: label,
+          src: state === 'pane' ? r4src(dir, 'pin', 'pane') : r4src(dir, state),
+          ...R4_FRAME,
+          note: line,
+        })),
+      ],
+    },
+    ...(dir === 'D' ? [{ title: 'Notes', items: R4_NOTES }] : []),
+  ],
+});
 
 window.CANVAS = {
   title: 'Pin, note & pick in the canvas viewer',
@@ -222,43 +265,55 @@ window.CANVAS = {
         ],
       }],
     },
-      {
-      id: 'new-directions',
-      title: 'New directions',
-      round: 4,
-      question: 'Three more ways to pin, note and pick, alongside A, B, A2 and A3 on the earlier pages.',
-      sampleState:
-        'Sample canvas: prototype ticket #42 (Home, options A Greeting, B Split hero, C Dense list) and its pick ticket #43. All three post the same two comment formats; only how you get there differs. Nothing is sent to GitHub. Every frame is clickable: N drops pins, then write notes, pick, review and post.',
+      ...['D', 'E', 'F'].map(r4Page),
+    {
+      id: 'd2',
+      title: 'D2 · Tools with a separate pick',
+      round: 5,
+      question: 'Does D work with A3\'s tools in the toolbar and Pick split off from them?',
+      sampleState: R4_SAMPLE,
       sections: [
         {
-          title: 'Directions',
-          note: 'Each opens pinning on option B. Their states are in the sections below.',
-          items: ['D', 'E', 'F'].map((dir) => ({ id: dir, name: R4[dir].name, src: r4src(dir, 'pin'), ...R4_FRAME, note: R4[dir].note })),
+          title: 'D2 · Tools with a separate pick',
+          note: 'D, E and F stay on their own pages; A3 stays on Anchored feedback.',
+          items: [
+            {
+              id: 'D2',
+              name: 'Tools with a separate pick',
+              src: r4src('D2', 'pin'),
+              ...R4_FRAME,
+              note: {
+                basedOn: ['D', 'A3'],
+                idea: 'D with A3\'s four tools in the viewer toolbar: Pin, Select element, Color picker and Attach, as one tool group. Select element and Color picker outline each element on hover or focus; clicking one opens a note there (Color picker also shows the sampled colour and a suggested replacement). Attach adds files to the whole canvas, a pin or an element. Pick is split off from the tools: a primary "Pick B" button at the right end, next to the Review count. Fallbacks follow A3: a snapshot keeps page-level pins and Attach but turns element selection and colour sampling off; with no reply, everything but "Pick in #43" is off.',
+                pros: [
+                  'Pick reads as a decision, not as one more feedback tool',
+                  'One tool group carries all four feedback kinds A3 agreed',
+                  'Every annotation stays anchored on the canvas, like A3',
+                ],
+                cons: [
+                  'The toolbar gets long: in the side pane and floating window the tools drop to icons on a second row',
+                  'Four tools plus Pick is more to learn than D\'s two buttons',
+                  'Element regions come from the canvas wrapper; old canvases without it get pins only',
+                ],
+              },
+            },
+            ...R4_STATES.map(([state, label, line]) => ({
+              id: `D2-${state}`,
+              name: label,
+              src: state === 'pane' ? r4src('D2', 'pin', 'pane') : r4src('D2', state),
+              ...R4_FRAME,
+              note: line,
+            })),
+          ],
         },
-        ...['D', 'E', 'F'].map((dir) => ({
-          title: `${dir} · ${R4[dir].name}: states`,
-          items: R4_STATES.map(([state, label, line]) => ({
-            id: `${dir}-${state}`,
-            name: label,
-            src: state === 'pane' ? r4src(dir, 'pin', 'pane') : r4src(dir, state),
-            ...R4_FRAME,
-            note: line,
-          })),
-        })),
         {
           title: 'Notes',
           items: [
             {
-              id: 'formats4',
-              kind: 'note',
-              name: 'Shared comment formats',
-              text: 'D, E and F post the same two comments. Prototype ticket: a heading, branch and SHA, one numbered line per pin (option ID and name, % across and down, note) and a hidden <!-- wayfinder:notes v1 {...} --> JSON block for agents. Pick ticket: "Pick: B · Split hero", option ID, the note as a quote, the pins on that option, a line saying the ticket stays open until the grilling session records the decision, and a hidden <!-- wayfinder:pick v1 {...} --> block. Open any Review frame and switch to Markdown for the exact text.',
-            },
-            {
-              id: 'review4',
+              id: 'review5',
               kind: 'note',
               name: 'Design review',
-              text: 'Sources: src/ui/styles.css (tokens, .vw/.vw-bar ACF4 rules, .segmented, .ghost, .primary, .iconbtn, .input; linked directly, not mirrored), src/ui/canvasViewer.ts (toolbar markup copied: Close/Esc, title, page menu, Board/A/B/C, option name, GitHub, size switch), docs/design/in-app-canvas-viewer.md (bridge sources engine/dom/page/none, 3 s no-reply fallback). Checked headless at 1280×800: every direction in pin, review and no-bridge; D posted and side pane; E in dark (no-bridge) and snapshot; F review. Flow run end to end in D: N, click to drop a pin, write a note, Pick, Review, Post; Markdown shows the exact text including the hidden JSON. Keyboard: N toggles pin mode, Enter drops a pin in the middle, arrow keys (Shift for 5%) move a focused pin, Esc closes popovers, pin mode and the sheet; D review is a native modal dialog with focus on Post. Fixed during review: apostrophes rendered as #39 issue links; textareas collapsed in the F sheet; the no-bridge toolbar showed option buttons the viewer cannot drive (now "View only", as in the shipped viewer); compact Pin/Pick buttons had no accessible name. Contrast: warning chip text #7a5200 on its tint is about 6:1 (light); other text uses app tokens. Not checked: screen reader output, F sheet focus trap (scrim, not a native dialog), floating-window size (its switch shows a toast), E and F posted frames in dark, 200% zoom, touch.',
+              text: 'Sources: D (r4-viewer.js), A3 (a3.js tool names, hover-to-select, colour suggestion, Attach targets and per-source fallbacks), src/ui/styles.css (.segmented, .primary, .ghost, tokens). Checked headless at 1280×800 with Playwright: D2 pin (colour editor open), review, snapshot, no-bridge, side pane; no page errors. Fixed during review: the first layout put the four tools in the main toolbar, which overflowed at 1280 px and clipped Pick and the size switch, so tools now sit on their own row under the toolbar (as in A3) and Pick sits alone at the right; hex colours rendered as issue links. Keyboard: element and colour targets are buttons (Tab, Enter), swatches are toggle buttons, the hex field has a label, Esc leaves any tool. Not checked: dark theme, floating size, screen reader, the colour editor contrast at every swatch, real uploads (Attach only lists file names here).',
             },
           ],
         },
