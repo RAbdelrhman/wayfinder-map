@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.18](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.17...v0.2.18) (2026-10-10)
+
+
+### Bug Fixes
+
+* keep maps synced without reloading on switches ([#287](https://github.com/RAbdelrhman/wayfinder-map/issues/287)) ([b7dc1d0](https://github.com/RAbdelrhman/wayfinder-map/commit/b7dc1d040a9522bd2da545282cc6ef2c7fdb9edb))
+* keep releases drafts until the Windows build attaches update metadata ([#285](https://github.com/RAbdelrhman/wayfinder-map/issues/285)) ([7fa2d4a](https://github.com/RAbdelrhman/wayfinder-map/commit/7fa2d4aebca5646ffae8988440a8cf6b1ff7d24a))
+
 ## [0.2.17](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.16...v0.2.17) (2026-10-08)
 
 
