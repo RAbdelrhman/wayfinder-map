@@ -42,7 +42,7 @@ The tickets that build it rename Settled to Archive and add the finished rule. T
 | Kind | How it happens | Stored? | `reason` | Leaves the archive when |
 | --- | --- | --- | --- | --- |
 | Closed | The map issue is closed on GitHub | No | `closed` | The map issue reopens |
-| Finished (new) | The map has at least one ticket and every ticket is done | No | `finished` (new) | A ticket reopens or a new ticket is added, so the map is no longer finished **(user)** |
+| Finished (new) | The map has at least one ticket and every ticket is done | No | `finished` (new) | A ticket reopens or a new ticket that isn't done is added, so the map is no longer finished **(user)** |
 | Idle | Open map, nothing on it or its tickets changed for 30 days (`IDLE_DAYS`) | No | `idle` | Something on the map changes **(user: keep this rule)** |
 | Manual | The user archives it | Yes, `settled: true` | `manual` | Only the user's Restore, even if a ticket reopens **(user)** |
 
