@@ -214,6 +214,8 @@ window.CANVAS = {
               note: {
                 idea: 'Every line of the picked flow (A · Spotlight, E1’s welcome dialog, tour entry in Settings › Help): the seven steps, ticket-type lines, welcome dialog, Settings › Help row, Demo banner, hand-off status, completion, and the messages after Not now and Exit tour.',
                 basedOn: ['A', 'E1', 'S1'],
+                disposition: 'keep',
+                feedback: 'yes looks good to me',
                 pros: ['One place to approve or change wording before implementation'],
                 cons: ['Read in context too: some lines read differently beside the demo'],
               },
