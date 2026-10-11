@@ -3,6 +3,7 @@
   E's feedback panel (closable) and E's review. No pick: the viewer only posts notes to the
   prototype ticket; the pick is made in the T3 Code thread once revisions settle.
   ?state=pin|closed|review|posted|nobridge|snapshot sets where it opens; ?size=pane opens the side pane.
+  ?attach=off is D4: D3 without the Attach tool or attachments.
 */
 Object.assign(Kit.icons, {
   keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
@@ -12,6 +13,7 @@ Object.assign(Kit.icons, {
   const { canvas, regions, opt, commentCard } = P210;
   const q = new URLSearchParams(location.search);
   const START = q.get('state') ?? 'pin';
+  const ATTACH = q.get('attach') !== 'off';
   const icon = (name) => Kit.icon(name);
   const esc = Kit.esc;
 
@@ -22,7 +24,7 @@ Object.assign(Kit.icons, {
     { id: 'color', name: 'Color picker', icon: 'drop', key: 'C', mode: true },
     { id: 'attach', name: 'Attach', icon: 'clip', key: 'A' },
     { id: 'note', name: 'Note', icon: 'note', key: 'N' },
-  ];
+  ].filter((t) => ATTACH || t.id !== 'attach');
   const PANEL_KEY = 'F';
   const KIND = { pin: 'Pin', element: 'Element', color: 'Colour', attach: 'Attachment', note: 'Note' };
 
@@ -67,6 +69,7 @@ Object.assign(Kit.icons, {
       { type: 'note', option: null, note: 'Every option uses too much padding around the cards.' },
     ];
   }
+  if (!ATTACH) S.items = S.items.filter((it) => it.type !== 'attach');
   if (START === 'pin' && S.source === 'dom') {
     S.tool = 'color';
     S.editing = 3;
@@ -301,7 +304,7 @@ Object.assign(Kit.icons, {
     if (S.source === 'page')
       return `<div class="p210-cv is-page${S.tool === 'pin' ? ' is-pinning' : ''}"><div class="p210-cv-body"><div class="p210-opt" id="opt"><img src="${canvas.snapshot.img}" alt="Snapshot: Desktop launch and recovery states" />${layer}</div></div>${pop}${hintHtml}</div>`;
     if (S.option === null)
-      return `<div class="p210-cv"><div class="p210-cv-body is-board"><img src="${canvas.board}" alt="The canvas board with every option" /></div><div class="p210-hint is-soft" role="status">${icon('info')}Open an option to pin it. Notes and files work here too.</div></div>`;
+      return `<div class="p210-cv"><div class="p210-cv-body is-board"><img src="${canvas.board}" alt="The canvas board with every option" /></div><div class="p210-hint is-soft" role="status">${icon('info')}Open an option to pin it. ${ATTACH ? 'Notes and files work' : 'Notes work'} here too.</div></div>`;
     const engine = `<div class="p210-engine" aria-hidden="true"><span>← Canvas</span><span class="p210-engine-tabs">${canvas.options.map((o) => `<i${o.id === S.option ? ' class="is-on"' : ''}>${o.id}</i>`).join('')}</span><span class="topbar-spacer"></span><span>Notes</span><span>↗</span></div>`;
     const mode = S.tool === 'pin' ? ' is-pinning' : S.tool ? ' is-selecting' : '';
     return `<div class="p210-cv${mode}">${engine}<div class="p210-cv-body"><div class="p210-opt" id="opt"><img src="${opt(S.option).img}" alt="Option ${S.option}: ${esc(opt(S.option).name)}" />${layer}</div></div>${pop}${hintHtml}</div>`;
@@ -387,7 +390,7 @@ Object.assign(Kit.icons, {
       ? `<label class="p210-field">Which option is showing? This canvas does not say.<select class="input" data-cur>${canvas.options.map((x) => `<option value="${x.id}"${x.id === cur ? ' selected' : ''}>${x.id} · ${esc(x.name)}</option>`).join('')}</select></label>`
       : '';
     const warn = S.source === 'none'
-      ? `<div class="p210-banner">${icon('info')}<span>This canvas did not answer, so pins, elements and colours are off. Notes and files still work on a whole option or the whole page.</span></div>`
+      ? `<div class="p210-banner">${icon('info')}<span>This canvas did not answer, so pins, elements and colours are off. ${ATTACH ? 'Notes and files' : 'Notes'} still work on a whole option or the whole page.</span></div>`
       : S.source === 'page'
         ? `<div class="p210-banner is-info">${icon('info')}<span>Snapshot: pins mark the page. Elements and colours are off.</span></div>`
         : '';

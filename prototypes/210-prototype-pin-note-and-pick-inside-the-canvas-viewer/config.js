@@ -339,6 +339,8 @@ window.CANVAS = {
               ...R4_FRAME,
               note: {
                 basedOn: ['D2', 'E', 'F'],
+                disposition: 'change',
+                feedback: 'User, in the #210 thread (2026-10-10): "this looks and feels way more polished the only questionable part is the attach could you just remove it then finish this thread". Built as D4 (round 7): D3 without Attach.',
                 idea: 'D2\'s tool row, with a key on every tool: Pin P, Select element E, Color picker C, Attach A, Note N, and F for the feedback panel. A Shortcuts button points to Settings › Keyboard shortcuts, where the keys can be changed. Pins are F\'s teardrops. Color picker opens a real picker: a saturation and brightness square, a hue slider, a Hex/RGB field that takes either pasted, and preset tabs for this canvas\'s colours, the project\'s colours and basic colours. E\'s feedback panel sits beside the canvas while you annotate and closes with × or F: notes are grouped as Whole page, then by option, with one marker style per kind. Review happens in the panel, as in E, and posts one comment to the prototype ticket. There is no Pick: the pick is made in the T3 Code thread once revisions settle. Places read as element names ("pin on Continue card"), never % across and down; positions stay in the hidden JSON for agents.',
                 pros: [
                   'Every tool is one key away, and the keys are configurable',
@@ -377,13 +379,72 @@ window.CANVAS = {
               id: 'keys6',
               kind: 'note',
               name: 'Keys are configurable',
-              text: 'The default keys are P (Pin), E (Select element), C (Color picker), A (Attach), N (Note) and F (feedback panel). Settings › Keyboard shortcuts would let each be changed. That Settings page does not exist yet; building it is a follow-up for the user to decide, not part of this prototype.',
+              text: 'The default keys are P (Pin), E (Select element), C (Color picker), A (Attach, D3 only), N (Note) and F (feedback panel). Settings › Keyboard shortcuts would let each be changed. That Settings page does not exist yet; building it is a follow-up for the user to decide, not part of this prototype.',
             },
             {
               id: 'review6',
               kind: 'note',
               name: 'Design review',
               text: 'Sources: D2 (tool row, element and colour regions, Attach targets), E (feedback panel, grouping by option, review inside the panel, no-bridge option chooser), F (teardrop pins), r4-fixtures.js (sample canvas, comment card), src/ui/styles.css (tokens, .segmented, .ghost, .primary, .iconbtn). Checked headless at 1280×800 with Playwright: pin (colour picker open), panel closed, review, posted, no bridge, snapshot, side pane, and pin in dark; no page errors. Fixed during review: list numbers ran out of order (whole-page notes came first in the list but last in the numbering), so numbers now follow the panel and the comment. Existing element marks covered the hover targets, so an annotated element could not be selected again; targets now sit on top while a tool is active. Flow run with Playwright: P, click, type; C, select Open map button, paste rgb(10, 20, 30) (became #0a141e), Basic tab red, click the square; N note; F closes and reopens the panel; Review shows no % text. Keyboard: every tool has a key and aria-keyshortcuts; keys are ignored while typing or with Ctrl/Alt/Cmd; the colour square\'s handle is a slider (arrow keys, Shift for 10%); the hue is a range input; Esc leaves a tool or closes a popover. Not checked: screen reader output, the floating size (its switch shows a toast), 200% zoom, touch, clashes between the single-letter keys and keys a canvas itself uses.',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'd4',
+      title: 'D4 · Final: D3 without Attach',
+      round: 7,
+      question: 'D3 with Attach removed: the direction the user chose for #210.',
+      sampleState: 'Sample canvas: prototype ticket #42 (Home, options A Greeting, B Split hero, C Dense list); its pick ticket #43 is not touched from the viewer. Nothing is sent to GitHub. Every frame is clickable: P, E, C, N and F work.',
+      sections: [
+        {
+          title: 'D4 · Final',
+          note: 'D3 unchanged except that the Attach tool, its key and attachments are gone.',
+          items: [
+            {
+              id: 'D4',
+              name: 'Annotate, then review (no Attach)',
+              src: 'variants/r6-viewer.html?state=pin&attach=off',
+              ...R4_FRAME,
+              note: {
+                basedOn: ['D3'],
+                idea: 'D3 without Attach. Tools: Pin P, Select element E, Color picker C, Note N, and F for the feedback panel. Everything else is D3: F\'s teardrop pins, the real colour picker, E\'s closable feedback panel and review, notes on the whole page, no % across and down, and no Pick: the pick is made in the T3 Code thread.',
+                pros: [
+                  'One fewer tool and key; the tool row reads as point, select, recolour, note',
+                  'Every note is text plus a place on the canvas, so the comment stays simple for the agent',
+                ],
+                cons: [
+                  'No way to hand the agent a reference image from the viewer; that goes in the T3 Code thread instead',
+                ],
+                disposition: 'keep',
+                feedback: 'User, in the #210 thread (2026-10-10): "this looks and feels way more polished the only questionable part is the attach could you just remove it then finish this thread".',
+              },
+            },
+            ...[
+              ['closed', 'Panel closed'],
+              ['review', 'Review before posting'],
+              ['posted', 'Posted'],
+              ['nobridge', 'No bridge'],
+              ['snapshot', 'Snapshot'],
+              ['pane', 'Side pane'],
+            ].map(([state, label]) => ({
+              id: `D4-${state}`,
+              name: label,
+              src: state === 'pane' ? 'variants/r6-viewer.html?state=pin&size=pane&attach=off' : `variants/r6-viewer.html?state=${state}&attach=off`,
+              ...R4_FRAME,
+              note: `As D3-${state}, without Attach.`,
+            })),
+          ],
+        },
+        {
+          title: 'Notes',
+          items: [
+            {
+              id: 'review7',
+              kind: 'note',
+              name: 'Design review',
+              text: 'Sources: D3 (r6-viewer.js, with ?attach=off). Checks: the pin, closed, review, posted, no-bridge, snapshot and side-pane frames, and pin in dark, loaded headless at 1280×800 with Playwright with no page errors; in every state the tool row shows Pin, Select element, Color picker and Note only, with no attachment rows, clip marks or file chips; pressing A does nothing, N still adds a note; review still shows the one comment for #42; the no-bridge banner reads "Notes still work on a whole option or the whole page". Findings: none beyond D3\'s review. Not checked: the same as D3 (screen reader, floating size, 200% zoom, touch, key clashes with a canvas\'s own keys).',
             },
           ],
         },
