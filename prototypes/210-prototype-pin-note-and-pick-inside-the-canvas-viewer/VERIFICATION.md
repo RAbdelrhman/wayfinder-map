@@ -1,36 +1,66 @@
 ﻿# Independent verification of #210
 
-Reviewed by a fresh GPT-6.1 agent on 2026-10-08. Base: 3105dda. Artifact: existing A/B/A2/A3 canvas plus test and shell corrections. No direction has a submitted disposition. This report does not approve production implementation or ticket closeout.
+Final pass by a fresh Codex agent (gpt-6.1-sol, high), on 2026-10-10. It was not the author (Claude Opus) and ran read-only. Base: origin/main. Head: 2e0f312. The user chose **D4** (D3 without Attach). This replaces the 2026-10-08 report on the A/B/A2/A3 artifact.
 
 ## Done when
 
-- Pass, source/artifact: A design canvas on the prototype branch shows at least two directions for pin, note and pick, built on the chosen viewer shell, with trade-offs in the option notes.
-  Evidence: config.js preserves A/B trade-offs, A2/A3 provenance and named rounds. Shared shell renders full/pane/float, four resize corners and GitHub only in full/pane.
-- Pass, source/artifact: Each direction shows the review-before-post step and the posted result: the prototype ticket comment with pins and notes, and the pick ticket comment with option ID, name, note and pins.
-  Evidence: A review dialog, B inline review, simulated posted comments in both; fixtures.js includes prototype pins/notes and pick ID/name/note/pins. A3 commentsHtml includes additional annotations and option notes.
-- Pass, source/artifact: Each direction shows what happens on a canvas without the bridge (the research's fallback).
-  Evidence: engine/DOM/page/no-wrapper scenarios, unavailable annotation/pick tools and Pick in #211 fallback; A3 preserves its draft.
+The three requested prototype checks **Pass**. D4’s browser checks pass, but review-note and hosted-scope gaps remain.
 
-## Independent checks
+| Item | Result | Evidence |
+|---|---|---|
+| 1. At least two directions on ACF4, with trade-offs | Pass | `config.js` retains A/B, A2/A3, D/E/F and D2/D3/D4. Options include pros/cons and use the ACF4 shell. Browser loads succeeded. |
+| 2. Review-before-post and posted result | Pass | Playwright exercised review/post in A/B/A2/A3 and loaded D/E/F/D2 review/posted states. D4 showed “Review before posting,” then “Posted to #42,” including through the pane’s Feedback tab. D4 posts notes only; see the hosted requirement conflict below. |
+| 3. No-bridge fallback | Pass | Playwright exercised A/B/A2/A3 fallbacks and loaded D/E/F/D2 fallback states. D4 disables Pin/Element/Colour, retains notes and an option chooser, and displays “Notes still work on a whole option or the whole page.” |
 
-- Task tools/check.mjs: Canvas config OK.
-- Task tools/check.test.mjs: 17/17 passed.
-- bun run test:canvas: 15/15 passed.
-- bun run typecheck and bun run lint: exit 0.
-- bun run test -- --maxWorkers=2: 112 files, 1336 tests passed, exit 0.
-- node --check variants/shell.js: exit 0.
-- git diff --check 3105dda: exit 0.
+Browser evidence came from:
 
-Found and corrected: copied task-local tests referenced unrelated fixtures; extra blank EOF line in config; shared A/B float exposed only southeast resize and its handle remained hidden. Author made the corrections; verifier independently rechecked the source and automated checks.
+```powershell
+node C:\Users\supie\shots\verify-210-directions.cjs
+node C:\Users\supie\shots\verify-210-d4.cjs
+```
+
+Results: zero page errors and zero final script failures. Details: direction results (local), D4 results (local).
+
+## Other checks
+
+- `node prototypes/210-prototype-pin-note-and-pick-inside-the-canvas-viewer/tools/check.mjs` → `Canvas config OK.`, exit 0.
+- `node --test prototypes/210-prototype-pin-note-and-pick-inside-the-canvas-viewer/tools/check.test.mjs` → **17 passed, 0 failed**, exit 0.
+- D4’s six states loaded in both full and pane sizes: **12 HTTP 200 responses**, zero page errors or HTTP failures.
+- Attach, attachment rows and Pick controls were absent throughout. A added nothing.
+- P added a pin and editable note; E selected an element; C converted `rgb(10, 20, 30)` to `#0a141e`; N added a note; F closed/reopened feedback. Typing `pecnf` in a textarea triggered no shortcuts.
+- Original options remain. A2/A3/D2/D3/D4 have named pages, rounds and `basedOn`. D2/D3 record Change and D4 Keep alongside user feedback.
+- **Fail:** E and F have no visible “Design review” note. The other seven canvas pages have one.
+- `git diff --name-only origin/main...HEAD` → all 30 changed files are under the ticket’s prototype directory. `git diff --check origin/main...HEAD` → no output.
+- HEAD is `2e0f312`; actual local branch is `wayfinder/210-prototype-pin-note-and-pick-inside-the-canvas-viewer-2`, rather than the supplied `prototype/210`. Final `git status --porcelain` was empty. Repository and hosted state remained unchanged.
 
 ## Scope questions
 
-- UI absent from a chosen prototype: proposed prototype UI exists and remains unchosen. No production UI is changed. Human approval remains required before implementation or closeout.
-- Duplicate app controls: no production controls added; shell controls are reproduced inside design simulations.
-- Independent overlap with another open map ticket: no production implementation overlap. Live reads: #208/#209 closed, #210-#215 open; #211 needs #210, #212 needs #209/#211, #213 needs #212.
+- **Q1: No production UI beyond the chosen prototype.** The diff changes prototype artifacts only. Earlier, unchosen options remain available for comparison.
+- **Q2: No additional production control.** The prototypes reproduce existing viewer controls; D4’s annotation controls match the selected direction.
+- **Q3: Planned overlap, with a scope conflict.** Read-only `gh issue list --repo RAbdelrhman/wayfinder-map --state all --limit 1000 --json number,title,state,body` confirmed #211–#215 are OPEN. #213 implements D4’s pin/note behavior; #211 records the choice. [#212](https://github.com/RAbdelrhman/wayfinder-map/issues/212) still requires in-viewer picking, which D4 explicitly removes. [Map #205](https://github.com/RAbdelrhman/wayfinder-map/issues/205) also still records structured in-canvas picks.
+
+## Findings
+
+1. E and F need their own visible Design review notes. `config.js:107` adds the shared review notes only to D.
+2. D4 follows the user’s removal of Pick, but the hosted contract is stale. Although the abbreviated review/posted-state check above passes, [#210’s full second criterion](https://github.com/RAbdelrhman/wayfinder-map/issues/210) still requires a pick-ticket comment. **That clause fails for D3/D4**, and #212/map #205 need reconciliation.
+3. `VERIFICATION.md:3` still says no disposition exists and later says browser interactions were unverified. It describes the older A/B/A2/A3 artifact and does not reflect D4 or this verification.
 
 ## Not verified
 
-Independent browser clicking, dragging, keyboard/focus, responsive states and opaque-origin behavior; installed-app interactions; screen-reader announcements; all color picker contrast states; actual restart persistence, uploads and GitHub posting. Existing screenshots are author evidence. T3 preview snapshot/evaluate operations timed out during resumed verification. New shared-shell four-corner resize was source/automated checked, not independently dragged in a browser.
+Installed-app behavior, real GitHub posting, restart persistence, real bridge delivery, screen readers, complete contrast/focus coverage, floating-window behavior, touch, 200% zoom and performance. Posting here is simulated. Original user transcripts were unavailable; feedback quotations were checked in metadata against the selection supplied in this request.
 
-Draft retention, attachments and posting are simulations. No decision recorded, PR opened, merge performed, issue closed or map decision added.
+
+## After the verifier
+
+- **Finding 1 (E and F had no Design review note):** fixed. Each of E and F now has its own note, `review4-e` and `review4-f`.
+- **Finding 3 (this file was stale):** replaced by this report.
+- **Finding 2 (D3 and D4 post no pick comment):** this is deliberate. The user asked for it on 2026-10-10: "it should never post to the next thread the pick until final decision is made in the t3 code thread". Directions A to D2 still show the pick comment. #212 and the map's in-canvas pick decision still assume an in-viewer pick, so they need the user's call. That is flagged in the closeout.
+- **Fixes from the PR #290 review bots:**
+  - **Review showed a stale comment.** In D3 and D4, editing a mark while Review was open kept the old preview. Editing now returns the panel to the list.
+  - **A pin inside an annotated element couldn't be clicked**, because the element's outline sat over it. Found while rechecking. Pins now sit above element outlines.
+  - **Unvalidated select values (CodeQL).** The option, source and attach-target selects now accept only values from their own lists.
+  - **Mojibake in round 1's notes:** corrected.
+- **Rechecked after the fixes:**
+  - The verifier's own `verify-210-directions.cjs` and `verify-210-d4.cjs` reran with no page errors and no failures.
+  - `check.mjs`: Canvas config OK.
+  - `check.test.mjs`: 17/17 pass.

@@ -446,7 +446,8 @@ Object.assign(Kit.icons, {
   function edit(i, { focusNote = true } = {}) {
     S.editing = i;
     S.posted = false;
-    if (S.panel === 'posted') S.panel = 'edit';
+    // Editing from Review or Posted goes back to the list, so Review never shows a stale comment.
+    S.panel = 'edit';
     const it = S.items[i];
     S.hsv = it?.type === 'color' ? toHsv(it.to) : null;
     if (it && !onCanvas(it)) {
@@ -640,8 +641,9 @@ Object.assign(Kit.icons, {
     const t = e.target;
     if (t.dataset.hue !== undefined) paint();
     if (t.dataset.colorval !== undefined && parseColor(t.value)) paint();
-    if (t.dataset.itemOption !== undefined) S.items[+t.dataset.itemOption].option = t.value;
-    if (t.dataset.attachOn !== undefined) {
+    const isOption = canvas.options.some((o) => o.id === t.value);
+    if (t.dataset.itemOption !== undefined && isOption) S.items[+t.dataset.itemOption].option = t.value;
+    if (t.dataset.attachOn !== undefined && /^(page|option|item:d+)$/.test(t.value)) {
       const a = S.items[+t.dataset.attachOn];
       a.on = t.value;
       if (t.value === 'page') a.option = null;
@@ -649,7 +651,7 @@ Object.assign(Kit.icons, {
       if (k !== null) a.option = S.items[k].option;
       paint();
     }
-    if (t.dataset.cur !== undefined) {
+    if (t.dataset.cur !== undefined && isOption) {
       S.option = t.value;
       paint();
     }

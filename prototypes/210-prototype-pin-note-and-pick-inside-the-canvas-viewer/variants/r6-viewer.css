@@ -24,6 +24,18 @@
 }
 
 /* ---------- marks on the canvas ---------- */
+/* Pins sit above element outlines, so a pin inside an annotated element stays clickable;
+   while selecting, the element targets sit above both. */
+.p6 .p6-el {
+  z-index: 1;
+}
+.p6 .p210-pin,
+.p6 .p6-clip {
+  z-index: 2;
+}
+.p6 .p210-region {
+  z-index: 3;
+}
 .p6-el .p6-el-n,
 .p6-clip span {
   position: absolute;

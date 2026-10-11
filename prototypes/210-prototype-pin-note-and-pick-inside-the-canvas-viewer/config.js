@@ -81,6 +81,21 @@ const R4_NOTES = [
     text: 'Sources: src/ui/styles.css (tokens, .vw/.vw-bar ACF4 rules, .segmented, .ghost, .primary, .iconbtn, .input; linked directly, not mirrored), src/ui/canvasViewer.ts (toolbar markup copied: Close/Esc, title, page menu, Board/A/B/C, option name, GitHub, size switch), docs/design/in-app-canvas-viewer.md (bridge sources engine/dom/page/none, 3 s no-reply fallback). Checked headless at 1280×800: every direction in pin, review and no-bridge; D posted and side pane; E in dark (no-bridge) and snapshot; F review. Flow run end to end in D: N, click to drop a pin, write a note, Pick, Review, Post; Markdown shows the exact text including the hidden JSON. Keyboard: N toggles pin mode, Enter drops a pin in the middle, arrow keys (Shift for 5%) move a focused pin, Esc closes popovers, pin mode and the sheet; D review is a native modal dialog with focus on Post. Fixed during review: apostrophes rendered as #39 issue links; textareas collapsed in the F sheet; the no-bridge toolbar showed option buttons the viewer cannot drive (now "View only", as in the shipped viewer); compact Pin/Pick buttons had no accessible name. Contrast: warning chip text #7a5200 on its tint is about 6:1 (light); other text uses app tokens. Not checked: screen reader output, F sheet focus trap (scrim, not a native dialog), floating-window size (its switch shows a toast), E and F posted frames in dark, 200% zoom, touch.',
   },
 ];
+// E and F share D's round 4 review; each page still carries its own.
+const R4_REVIEW = Object.fromEntries(
+  ['E', 'F'].map((dir) => [
+    dir,
+    {
+      id: `review4-${dir.toLowerCase()}`,
+      kind: 'note',
+      name: 'Design review',
+      text:
+        dir === 'E'
+          ? 'Sources: as D (src/ui/styles.css, src/ui/canvasViewer.ts toolbar, docs/design/in-app-canvas-viewer.md bridge sources), plus r4-fixtures.js for the sample canvas and comments. Checks: headless at 1280×800 in pin, review and no bridge, and in dark (no bridge) and snapshot. Findings: fixed in round 4 with D (apostrophes as #39 links, the no-bridge toolbar now "View only", accessible names on compact buttons). Not checked: screen reader output, the posted frame in dark, floating size (its switch shows a toast), 200% zoom, touch.'
+          : 'Sources: as D (src/ui/styles.css, src/ui/canvasViewer.ts toolbar, docs/design/in-app-canvas-viewer.md bridge sources), plus r4-fixtures.js for the sample canvas and comments. Checks: headless at 1280×800 in pin, review and no bridge; the review sheet. Findings: textareas collapsed in the sheet (fixed in round 4), plus the shared fixes listed on D. Not checked: screen reader output, the sheet focus trap (a scrim, not a native dialog), the posted frame in dark, floating size, 200% zoom, touch.',
+    },
+  ]),
+);
 const R4_SAMPLE =
   'Sample canvas: prototype ticket #42 (Home, options A Greeting, B Split hero, C Dense list) and its pick ticket #43. Nothing is sent to GitHub. Every frame is clickable: N drops pins, then write notes, pick, review and post.';
 const r4Page = (dir) => ({
@@ -104,7 +119,7 @@ const r4Page = (dir) => ({
         })),
       ],
     },
-    ...(dir === 'D' ? [{ title: 'Notes', items: R4_NOTES }] : []),
+    { title: 'Notes', items: dir === 'D' ? R4_NOTES : [R4_REVIEW[dir]] },
   ],
 });
 
@@ -115,14 +130,14 @@ window.CANVAS = {
   sampleState:
     'A sample "Onboarding" canvas (options Calm / Bold) open in the viewer. The demo bar at the ' +
     'bottom switches the ACF4 shell (full / pane / float), the canvas source (engine / DOM / plain ' +
-    'page / no-wrapper), and the theme. Posting is simulated â€” no network write.',
+    'page / no-wrapper), and the theme. Posting is simulated — no network write.',
   pages: [
     {
       title: 'Directions',
       round: 1,
       sections: [
         {
-          title: 'Pin Â· note Â· pick',
+          title: 'Pin · note · pick',
           note: 'Two interaction models on the same approved full / pane / float shell. Open each full size, then drive it with the demo bar.',
           items: [
             {
@@ -140,7 +155,7 @@ window.CANVAS = {
                   'Tool state makes "I am placing a pin" explicit, so stray clicks do not pin.',
                 ],
                 cons: [
-                  'The rail eats width â€” tight in the side pane and the floating window, where it drops below the canvas.',
+                  'The rail eats width — tight in the side pane and the floating window, where it drops below the canvas.',
                   'Arming a tool before clicking is one extra step per pin.',
                   'A modal takes focus off the canvas while you confirm.',
                 ],
@@ -156,7 +171,7 @@ window.CANVAS = {
                 idea:
                   'No modes: click the canvas and a pin drops with an in-context note bubble right there. Pins stay anchored to what they mark; one bottom composer summarises pins, option note and pick, and its Review expands in place into the #210 / #211 preview, then collapses to a Posted row.',
                 pros: [
-                  'Fastest path â€” one click to pin, feedback stays next to the thing it is about.',
+                  'Fastest path — one click to pin, feedback stays next to the thing it is about.',
                   'The composer is compact, so it survives the side pane and float without a second column.',
                   'Review and the posted result live in the same bar, so focus never leaves the canvas.',
                 ],
@@ -178,17 +193,17 @@ window.CANVAS = {
               name: 'Design review',
               text:
                 'Sources inspected: src/ui/canvasViewer.ts (ACF4 full/pane/float shell, toolbar, message types), ' +
-                'src/ui/styles.css (tokens + .vw / control classes, values mirrored into shell.css â€” the app CSS is ' +
+                'src/ui/styles.css (tokens + .vw / control classes, values mirrored into shell.css — the app CSS is ' +
                 'scoped to .viz-root and drives dark off :root[data-theme]), docs/design/in-app-canvas-viewer.md ' +
                 '(bridge protocol, the four wrapper sources engine/dom/page/none, the open question on pins drawn ' +
                 'inside vs over the canvas), prototypes/AGENTS.md, README.md, CODING_STANDARDS.md.\n\n' +
                 'Source review: light/dark tokens, shell and fallback handlers, focus-ring CSS and field labels. Browser checks: both directions pin, note, review and simulated post; dark posted results; no-wrapper fallback. Planned coverage: the four ' +
-                'canvas sources and their fallbacks â€” engine & DOM pins anchor to an option, plain page gives page-level ' +
-                'pins with the option from the viewerâ€™s variant list, no-wrapper is view-only with pins/pick off and ' +
+                'canvas sources and their fallbacks — engine & DOM pins anchor to an option, plain page gives page-level ' +
+                'pins with the option from the viewer’s variant list, no-wrapper is view-only with pins/pick off and ' +
                 '"Pick in #211" still live; keyboard focus rings on every control, Esc closes bubble/popover/dialog, ' +
                 'labels on pins and note fields; responsive reflow of rail (A) and composer (B) into the narrow shells.\n\n' +
-                'Browser finding: resizing the viewport after opening Float can leave it off-screen. Keyboard modal focus containment is incomplete. Findings: Aâ€™s rail is cramped in float; Bâ€™s bubbles can overlap on dense boards. Both preserve the ' +
-                'canvas options and never write the network â€” Post only renders the comment.\n\n' +
+                'Browser finding: resizing the viewport after opening Float can leave it off-screen. Keyboard modal focus containment is incomplete. Findings: A’s rail is cramped in float; B’s bubbles can overlap on dense boards. Both preserve the ' +
+                'canvas options and never write the network — Post only renders the comment.\n\n' +
                 'Not checked: installed desktop app, full keyboard/focus flow, screen-reader announcement order, pointer-drag of pins, ' +
                 'AA contrast measurement, 60fps pan/zoom with live pins (that is #214). Mark these verified before build.',
             },
@@ -444,7 +459,7 @@ window.CANVAS = {
               id: 'review7',
               kind: 'note',
               name: 'Design review',
-              text: 'Sources: D3 (r6-viewer.js, with ?attach=off). Checks: the pin, closed, review, posted, no-bridge, snapshot and side-pane frames, and pin in dark, loaded headless at 1280×800 with Playwright with no page errors; in every state the tool row shows Pin, Select element, Color picker and Note only, with no attachment rows, clip marks or file chips; pressing A does nothing, N still adds a note; review still shows the one comment for #42; the no-bridge banner reads "Notes still work on a whole option or the whole page". Findings: none beyond D3\'s review. Not checked: the same as D3 (screen reader, floating size, 200% zoom, touch, key clashes with a canvas\'s own keys).',
+              text: 'Sources: D3 (r6-viewer.js, with ?attach=off). Checks: the pin, closed, review, posted, no-bridge, snapshot and side-pane frames, and pin in dark, loaded headless at 1280×800 with Playwright with no page errors; in every state the tool row shows Pin, Select element, Color picker and Note only, with no attachment rows, clip marks or file chips; pressing A does nothing, N still adds a note; review still shows the one comment for #42; the no-bridge banner reads "Notes still work on a whole option or the whole page". Findings, fixed on D3 and D4 after the PR review: editing a mark while Review was open left a stale preview (editing now returns to the list); a pin inside an annotated element could not be clicked (pins now sit above element outlines); select values are checked against their own lists. Not checked: the same as D3 (screen reader, floating size, 200% zoom, touch, key clashes with a canvas\'s own keys).',
             },
           ],
         },

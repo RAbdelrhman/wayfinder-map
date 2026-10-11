@@ -283,8 +283,8 @@
   root.addEventListener('change', (e) => {
     const el=e.target;
     if (el.id === 'r2-theme') { document.documentElement.dataset.theme=el.value; return; }
-    if (el.id === 'r2-source') { st.source=el.value; tool=null; save(); render('#r2-source'); }
-    if (el.id === 'r2-pick-option' && st.pick) { st.pick.option=el.value; save(); }
+    if (el.id === 'r2-source' && el.value in WF.SOURCES) { st.source=el.value; tool=null; save(); render('#r2-source'); }
+    if (el.id === 'r2-pick-option' && st.pick && data.options.some((o) => o.id === el.value)) { st.pick.option=el.value; save(); }
     if (el.id === 'r2-attach-target') {
       const item=st.items.find((i) => i.id === editor.id), parent=st.items.find((i) => i.id === Number(el.value));
       item.scope=parent ? 'target' : 'canvas'; item.parent=parent?.id || null; item.option=parent?.option || null; item.target=parent ? parent.target || `Pin ${parent.id}` : ''; save();
