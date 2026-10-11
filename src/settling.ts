@@ -1,6 +1,8 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+
+import { SettingsFileWriter } from './settingsFile.js';
 
 import type { MapSettlement } from './types.js';
 
@@ -59,58 +61,121 @@ function isChoice(value: unknown): value is SettleChoice {
   return typeof settled === 'boolean' && typeof at === 'string';
 }
 
-/** `~/.wayfinder-map/settled.json`: each GitHub login's hand-made settle choices, by repository. */
+/**
+ * `~/.wayfinder-map/settled.json`: each account's hand-made settle choices, as
+ * `{ "<host>": { "<login>": { "<owner/repo>": { "<map number>": choice } } } }`. Files written before
+ * hosts were added hold `{ "<login>": … }` at the top; those entries read as `github.com`.
+ */
 export function settledFile(): string {
   return join(homedir(), '.wayfinder-map', 'settled.json');
 }
 
-/** Settle choices per GitHub login, so each account on the machine keeps its own. */
-export class SettleStore {
-  constructor(private readonly path: string = settledFile()) {}
+/** Whose choices these are: a login on one GitHub host. */
+export interface SettleAccount {
+  host: string;
+  login: string;
+}
 
-  async choices(login: string, repo: string): Promise<Record<number, SettleChoice>> {
-    const raw = this.repoOf(await this.readAll(), login, repo);
+const LEGACY_HOST = 'github.com';
+
+/** `settled.json` exists but can't be read or parsed, so no choices apply and saving is refused. */
+export class SettleFileError extends Error {
+  constructor(path: string, options?: { cause?: unknown }) {
+    super(`Could not save this choice: ${displayPath(path)} can't be read. Fix or remove the file, then try again.`, options);
+    this.name = 'SettleFileError';
+  }
+}
+
+function displayPath(path: string): string {
+  const home = homedir();
+  return path.startsWith(home) ? `~${path.slice(home.length).replaceAll('\\', '/')}` : path;
+}
+
+type Json = Record<string, unknown>;
+
+function isObject(value: unknown): value is Json {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** One level of the file with its keys lowercased, so a hand-edited mixed-case key still applies. */
+function lowered(value: unknown): Json {
+  const out: Json = {};
+  if (!isObject(value)) return out;
+  for (const [key, child] of Object.entries(value)) {
+    const lower = key.toLowerCase();
+    out[lower] = isObject(out[lower]) && isObject(child) ? { ...out[lower], ...child } : child;
+  }
+  return out;
+}
+
+/** Settle choices per host and login, so each account on the machine keeps its own. */
+export class SettleStore {
+  private readonly writer: SettingsFileWriter;
+
+  constructor(private readonly path: string = settledFile()) {
+    this.writer = new SettingsFileWriter(path);
+  }
+
+  /** The account's choices for a repository; none when the file can't be read. */
+  async choices(account: SettleAccount, repo: string): Promise<Record<number, SettleChoice>> {
+    let all: Json;
+    try {
+      all = await this.readAll();
+    } catch (error) {
+      if (error instanceof SettleFileError) return {};
+      throw error;
+    }
     const choices: Record<number, SettleChoice> = {};
-    for (const [key, value] of Object.entries(raw)) {
+    for (const [key, value] of Object.entries(this.repoOf(all, account, repo))) {
       const number = Number(key);
       if (Number.isSafeInteger(number) && number > 0 && isChoice(value)) choices[number] = { settled: value.settled, at: value.at };
     }
     return choices;
   }
 
-  /** Saves one choice. Saves run one at a time, so two quick clicks can't overwrite each other. */
-  set(login: string, repo: string, mapNumber: number, choice: SettleChoice): Promise<void> {
-    const saved = this.writing.then(() => this.write(login, repo, mapNumber, choice));
-    this.writing = saved.catch(() => undefined);
-    return saved;
+  /**
+   * Saves one choice. Saves run one at a time, so two quick clicks can't overwrite each other, and
+   * the file is replaced whole. A file that can't be read is left as it is and the save throws.
+   */
+  set(account: SettleAccount, repo: string, mapNumber: number, choice: SettleChoice): Promise<void> {
+    return this.writer.update(async () => {
+      const all = await this.readAll();
+      const host = account.host.toLowerCase();
+      const login = account.login.toLowerCase();
+      const repoKey = repo.toLowerCase();
+      const hostEntry = isObject(all[host]) ? all[host] : {};
+      const user = isObject(hostEntry[login]) ? hostEntry[login] : {};
+      const repository = { ...(isObject(user[repoKey]) ? user[repoKey] : {}), [String(mapNumber)]: choice };
+      await this.writer.write({ ...all, [host]: { ...hostEntry, [login]: { ...user, [repoKey]: repository } } });
+    });
   }
 
-  private writing: Promise<void> = Promise.resolve();
-
-  private async write(login: string, repo: string, mapNumber: number, choice: SettleChoice): Promise<void> {
-    const all = await this.readAll();
-    const user = this.objectAt(all, login.toLowerCase());
-    const repository = { ...this.objectAt(user, repo.toLowerCase()), [String(mapNumber)]: choice };
-    const next = { ...all, [login.toLowerCase()]: { ...user, [repo.toLowerCase()]: repository } };
-    await mkdir(dirname(this.path), { recursive: true });
-    await writeFile(this.path, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+  private repoOf(all: Json, account: SettleAccount, repo: string): Json {
+    const host = account.host.toLowerCase();
+    const login = account.login.toLowerCase();
+    const repoKey = repo.toLowerCase();
+    const current = lowered(lowered(lowered(all)[host])[login])[repoKey];
+    // Entries saved before hosts were added sit at the top level under the login; they belong to github.com.
+    const legacy = host === LEGACY_HOST ? lowered(lowered(all)[login])[repoKey] : undefined;
+    return { ...lowered(legacy), ...lowered(current) };
   }
 
-  private repoOf(all: Record<string, unknown>, login: string, repo: string): Record<string, unknown> {
-    return this.objectAt(this.objectAt(all, login.toLowerCase()), repo.toLowerCase());
-  }
-
-  private objectAt(parent: Record<string, unknown>, key: string): Record<string, unknown> {
-    const value = parent[key];
-    return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-  }
-
-  private async readAll(): Promise<Record<string, unknown>> {
+  /** The whole file; `{}` only when it doesn't exist yet. */
+  private async readAll(): Promise<Json> {
+    let text: string;
     try {
-      const parsed: unknown = JSON.parse(await readFile(this.path, 'utf8'));
-      return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
-    } catch {
-      return {};
+      text = await readFile(this.path, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+      throw new SettleFileError(this.path, { cause: error });
     }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch (error) {
+      throw new SettleFileError(this.path, { cause: error });
+    }
+    if (!isObject(parsed)) throw new SettleFileError(this.path);
+    return parsed;
   }
 }

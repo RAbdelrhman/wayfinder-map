@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { get as httpGet } from 'node:http';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import type { Config } from './config.js';
 import type { HomeState } from './home.js';
@@ -17,6 +20,8 @@ import { MapWatcher } from './mapWatcher.js';
 import type { MapRead } from './mapWatcher.js';
 import { memoryNotificationSettings } from './notifications.js';
 import { memoryAutoMapStore } from './autoMapStore.js';
+import { SettleStore } from './settling.js';
+import type { SettleAccount } from './settling.js';
 
 const config: Config = {
   repo: null,
@@ -1574,6 +1579,34 @@ describe('local clone for a hand-off', () => {
         }
       });
 
+      it('after a restart, watches nothing on a map archived since, and keeps its auto map on', async () => {
+        const store = memoryAutoMapStore();
+        const first = await serve({ autoMapStore: store, t3, ...(({ mapWatcher, fetcher }) => ({ mapWatcher, fetcher }))(watcherWhere([12])) });
+        try {
+          await autoMap(first.url, { repo: 'octo/one', map: 5, op: 'enable', tier: 'hard' });
+        } finally {
+          await new Promise<void>((resolve) => first.server.close(() => resolve()));
+        }
+        const { server, startThread } = liveT3();
+        const readMap = vi.fn(async (): Promise<MapRead> => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }));
+        // The watcher also saved a baseline for the map before the restart.
+        const saved = { repo: 'octo/one', mapNumber: 5, etag: null, tickets: [], history: [], pullRequestsRead: [], lastPolledAt: 0 };
+        const stateStore = { load: async () => ({ nextEventId: 1, maps: [saved] }), save: vi.fn(async () => undefined) };
+        const mapWatcher = new MapWatcher({ readMap, readPullRequests: noPullRequests }, { intervalMs: 10, stateStore });
+        const archived = { ...startMap, settled: { reason: 'manual' as const, since: '2026-10-01T09:00:00.000Z' } };
+        const second = await serve({ autoMapStore: store, startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher: async () => ({ maps: [archived], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+        try {
+          await vi.waitFor(() => expect(stateStore.save).toHaveBeenCalled());
+          expect(stateStore.save).toHaveBeenLastCalledWith(expect.objectContaining({ maps: [] }));
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          expect(readMap).not.toHaveBeenCalled();
+          expect(startThread).not.toHaveBeenCalled();
+          expect((await view(second.url)).maps).toMatchObject([{ repo: 'octo/one', mapNumber: 5, enabled: true, tier: 'hard' }]);
+        } finally {
+          await new Promise<void>((resolve) => second.server.close(() => resolve()));
+        }
+      });
+
       it.each([1, 4])('turns the map off on a later usage-limit error with cap %i, including a drained queue', async (cap) => {
         const { server, sessions } = liveT3();
         const limited: ServerT3 = {
@@ -1727,6 +1760,21 @@ describe('local clone for a hand-off', () => {
         await settledBatch(running.url, (batch) => batch.items.every((item) => item.status === 'started'));
         expect(startThread).toHaveBeenCalledTimes(1);
         expect((await batches(running.url))[0]).toMatchObject({ auto: true });
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('refuses an auto map batch for an archived map, but not a start by hand', async () => {
+      const { server } = liveT3();
+      const archived = { ...startMap, settled: { reason: 'manual' as const, since: '2026-10-01T09:00:00.000Z' } };
+      const running = await serve({ startNextIntervalMs: 20, t3: server, fetcher: async () => ({ maps: [archived], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      try {
+        const auto = await post(running.url, '/api/repos/octo/one/start-next', { map: 5, auto: true, tickets: [{ ticket: 12, tier: 'mid' }] });
+        expect(auto.status).toBe(409);
+        expect(((await auto.json()) as { error: string }).error).toBe('This map is archived.');
+        expect(await batches(running.url)).toEqual([]);
+        expect((await post(running.url, '/api/repos/octo/one/start-next', { map: 5, tickets: [{ ticket: 12 }] })).status).toBe(202);
       } finally {
         await new Promise<void>((resolve) => running.server.close(() => resolve()));
       }
@@ -2009,11 +2057,11 @@ describe('following public maps', () => {
 });
 
 describe('settling maps', () => {
-  function settlingServer(login: string | null, mapWatcher?: MapWatcher) {
+  function settlingServer(login: string | null, mapWatcher?: MapWatcher, givenStore?: SettleStore) {
     const saved = new Map<string, { settled: boolean; at: string }>();
-    const store = {
-      choices: vi.fn(async (_login: string, _repo: string) => Object.fromEntries([...saved].map(([key, choice]) => [Number(key), choice]))),
-      set: vi.fn(async (_login: string, _repo: string, mapNumber: number, choice: { settled: boolean; at: string }) => {
+    const store = givenStore ?? {
+      choices: vi.fn(async (_account: SettleAccount, _repo: string) => Object.fromEntries([...saved].map(([key, choice]) => [Number(key), choice]))),
+      set: vi.fn(async (_account: SettleAccount, _repo: string, mapNumber: number, choice: { settled: boolean; at: string }) => {
         saved.set(String(mapNumber), choice);
       }),
     };
@@ -2030,7 +2078,7 @@ describe('settling maps', () => {
       fetcher,
       homeLoader: async () => home,
       handOffStore: new HandOffStore({ filePath: null }),
-      settling: { login: async () => login, store },
+      settling: { account: async () => (login === null ? null : { host: 'github.com', login }), store },
       ...(mapWatcher === undefined ? {} : { mapWatcher }),
     });
     return { running, store, fetcher };
@@ -2048,7 +2096,7 @@ describe('settling maps', () => {
       expect(response.status).toBe(200);
       const body = (await response.json()) as { maps: WayfinderMap[] };
       expect(body.maps[0]?.settled).toMatchObject({ reason: 'manual' });
-      expect(store.set).toHaveBeenCalledWith('octo', 'octo/one', 5, expect.objectContaining({ settled: true }));
+      expect(store.set).toHaveBeenCalledWith({ host: 'github.com', login: 'octo' }, 'octo/one', 5, expect.objectContaining({ settled: true }));
 
       // A fresh read, as after a restart, applies the stored choice.
       const refreshed = (await (await fetch(`${running.url}/api/repos/octo/one/snapshot?refresh=1`)).json()) as { maps: WayfinderMap[] };
@@ -2056,6 +2104,26 @@ describe('settling maps', () => {
       expect(fetcher).toHaveBeenLastCalledWith(expect.objectContaining({ choices: { 5: expect.objectContaining({ settled: true }) } }));
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('refuses a settle, and keeps the file, when settled.json cannot be read', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'wayfinder-settle-'));
+    const path = join(dir, 'settled.json');
+    await writeFile(path, '{"octo": ', 'utf8');
+    const { running: started } = settlingServer('octo', undefined, new SettleStore(path));
+    const running = await started;
+    try {
+      const response = await post(`${running.url}/api/repos/octo/one/settle`, { map: 5, settled: true });
+      expect(response.status).toBe(502);
+      expect(((await response.json()) as { error: string }).error).toMatch(/^Could not save this choice: .*settled\.json can't be read\. Fix or remove the file, then try again\.$/);
+      expect(await readFile(path, 'utf8')).toBe('{"octo": ');
+      // No choices apply while it can't be read.
+      const snapshot = (await (await fetch(`${running.url}/api/repos/octo/one/snapshot?refresh=1`)).json()) as { maps: WayfinderMap[] };
+      expect(snapshot.maps[0]?.settled).toBeNull();
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await rm(dir, { recursive: true, force: true });
     }
   });
 

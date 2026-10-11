@@ -52,7 +52,7 @@ import { normalizeCap } from './startNext.js';
 import type { Repick } from './autoRepick.js';
 import { StartNextRunner } from './startNextRunner.js';
 import type { BatchRequestItem } from './startNextRunner.js';
-import { SettleStore } from './settling.js';
+import { SettleStore, type SettleAccount } from './settling.js';
 import { FollowStore } from './follows.js';
 import type { Viewer } from './visibility.js';
 import { memoryNotificationSettings, NotificationSettingsStore, parseDesktopNotification } from './notifications.js';
@@ -161,7 +161,7 @@ export interface ServeOptions {
   /** Clears the desktop tray badge after the inbox is opened. */
   onNotificationsRead?: () => void;
   /**
-   * Whose settle choices apply and where they are kept. Defaults to the signed-in GitHub login and
+   * Whose settle choices apply and where they are kept. Defaults to the signed-in GitHub host and login and
    * `~/.wayfinder-map/settled.json`, except when tests inject a `fetcher`, where it is off unless given.
    */
   settling?: Settling;
@@ -173,7 +173,7 @@ export interface ServeOptions {
 }
 
 export interface Settling {
-  login: () => Promise<string | null>;
+  account: () => Promise<SettleAccount | null>;
   store: Pick<SettleStore, 'choices' | 'set'>;
 }
 
@@ -403,7 +403,11 @@ export async function startServer({
     const login = follow === null ? null : await follow.login();
     return follow === null || login === null ? null : { login, follows: await follow.store.follows(login, forRepo) };
   };
-  const settle: Settling | null = settling ?? (fetcher === undefined ? { login: signedInLogin, store: new SettleStore() } : null);
+  const signedInSettleAccount = async (): Promise<SettleAccount | null> => {
+    const account = await signedInAccount();
+    return account.status === 'ready' && account.login !== null ? { host: account.host, login: account.login } : null;
+  };
+  const settle: Settling | null = settling ?? (fetcher === undefined ? { account: signedInSettleAccount, store: new SettleStore() } : null);
   const repositories = new RepositoryStore({
     mapLabel: config.mapLabel,
     typePrefix: config.typePrefix,
@@ -420,8 +424,8 @@ export async function startServer({
       ? {}
       : {
           choices: async (forRepo: string) => {
-            const login = await settle.login();
-            return login === null ? {} : settle.store.choices(login, forRepo);
+            const account = await settle.account();
+            return account === null ? {} : settle.store.choices(account, forRepo);
           },
         }),
     // Your own maps and the public maps you follow. Tests that inject a fetcher list every map.
@@ -453,6 +457,24 @@ export async function startServer({
       ...(mapWatchStore === undefined ? {} : { stateStore: mapWatchStore }),
     });
   await mapWatcher.restore();
+  /**
+   * At start-up, before anything is watched: the maps of a repository that may be watched, from its saved or
+   * fresh snapshot, or from the stored archive choices when it can't be read. Restored watches on the others stop.
+   */
+  const watchableAtStartup = async (forRepo: string): Promise<(mapNumber: number) => boolean> => {
+    try {
+      const snapshot = await repositories.snapshot(forRepo);
+      const active = new Set(snapshot.maps.filter((map) => map.open && map.settled === null).map((map) => map.number));
+      mapWatcher.reconcile(forRepo, active);
+      return (mapNumber) => active.has(mapNumber);
+    } catch {
+      const account = settle === null ? null : await settle.account().catch(() => null);
+      const choices = settle === null || account === null ? {} : await settle.store.choices(account, forRepo).catch(() => ({}));
+      const archived = new Set(Object.entries(choices).filter(([, choice]) => choice.settled).map(([number]) => Number(number)));
+      for (const mapNumber of archived) mapWatcher.stop(forRepo, mapNumber);
+      return (mapNumber) => !archived.has(mapNumber);
+    }
+  };
   const reconcileMapWatches = (snapshot: MapSnapshot): void => {
     const active = new Set(snapshot.maps.filter((map) => map.open && map.settled === null).map((map) => map.number));
     mapWatcher.reconcile(snapshot.repo, active);
@@ -651,6 +673,8 @@ export async function startServer({
     const read = auto ? await repositories.refreshIfChanged(requestedRepo, [mapNumber]) : await repositories.currentForAction(requestedRepo, [mapNumber]);
     const map = read.maps.find((candidate) => candidate.number === mapNumber);
     if (map === undefined) return { status: 404, body: { error: 'No such map.' } };
+    // Auto map starts nothing on an archived map, even from a batch that was waiting when it was archived.
+    if (auto && map.settled !== null) return { status: 409, body: { error: 'This map is archived.' } };
     if ((await clones.resolve(requestedRepo)) === null) {
       return { status: 409, body: { error: `Choose a local clone of ${requestedRepo} before starting in T3 Code.` } };
     }
@@ -691,6 +715,11 @@ export async function startServer({
     notificationOn: async (kind) => (await notificationSettings.get())[kind],
     ...(onDesktopNotification === undefined ? {} : { desktop: onDesktopNotification }),
     ...(autoMapBatchMs === undefined ? {} : { batchMs: autoMapBatchMs }),
+    archived: (forRepo, mapNumber) => {
+      const map = repositories.cached(forRepo)?.maps.find((candidate) => candidate.number === mapNumber);
+      return map !== undefined && map.settled !== null;
+    },
+    watchable: watchableAtStartup,
   });
   await autoMaps.init();
 
@@ -1155,14 +1184,14 @@ export async function startServer({
           json(response, 400, { error: 'Name a map and whether it is settled.' });
           return;
         }
-        const login = settle === null ? null : await settle.login();
-        if (settle === null || login === null) {
+        const account = settle === null ? null : await settle.account();
+        if (settle === null || account === null) {
           json(response, 409, { error: 'Sign in with GitHub to settle maps.' });
           return;
         }
         try {
           const at = new Date().toISOString();
-          await settle.store.set(login, requestedRepo, mapNumber, { settled: body.settled, at });
+          await settle.store.set(account, requestedRepo, mapNumber, { settled: body.settled, at });
           const snapshot =
             (await repositories.settle(requestedRepo, mapNumber, body.settled ? { reason: 'manual', since: at } : null)) ??
             (await repositories.snapshot(requestedRepo, false));
