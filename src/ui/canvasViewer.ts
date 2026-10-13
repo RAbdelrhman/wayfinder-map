@@ -203,12 +203,25 @@ export function canvasToolbarHtml(
       : `<a class="iconbtn" href="${escapeHtml(route.github)}" target="_blank" rel="noreferrer" aria-label="Open the branch on GitHub">${icon(EXTERNAL)}</a>`;
   const close = `<button type="button" class="${size === 'full' ? 'ghost' : 'iconbtn'} vw-close" data-close aria-label="Close the canvas">${icon(CLOSE)}${size === 'full' ? '<span class="vw-lbl">Close</span><kbd>Esc</kbd>' : ''}</button>`;
   const controls = page
-    ? `<div class="vw-menu-anchor"><button type="button" class="ghost" data-menu aria-haspopup="menu" aria-expanded="${menu}" aria-label="Canvas page: ${escapeHtml(page.title)}">${escapeHtml(page.title)}${icon(CHEVRON)}</button><div class="vw-menu" role="menu" aria-label="Canvas pages"${menu ? '' : ' hidden'}>${pages.map((p) => `<button type="button" role="menuitemradio" aria-checked="${p.id === page.id}" data-page="${escapeHtml(p.id)}">${p.id === page.id ? icon(CHECK) : '<span class="i"></span>'}${escapeHtml(p.title)}<span class="vw-count">${p.options.length}</span></button>`).join('')}</div></div><div class="segmented vw-options" role="group" aria-label="Show the board, or open one option full size"><button type="button" class="seg${optionId === null ? ' is-on' : ''}" data-go="" aria-pressed="${optionId === null}">Board</button>${page.options.map((o) => `<button type="button" class="seg${optionId === o.id ? ' is-on' : ''}" data-go="${escapeHtml(o.id)}" aria-pressed="${optionId === o.id}" title="${escapeHtml(o.name)}">${escapeHtml(o.id)}</button>`).join('')}</div>${optionId ? `<button type="button" class="iconbtn vw-step" data-step="-1" aria-label="Previous option"><span class="vw-flip">${icon(CHEVRON_RIGHT)}</span></button><button type="button" class="iconbtn vw-step" data-step="1" aria-label="Next option">${icon(CHEVRON_RIGHT)}</button><span class="vw-optname">${escapeHtml(page.options.find((o) => o.id === optionId)?.name ?? '')}</span>` : ''}`
+    ? `<div class="vw-menu-anchor"><button type="button" class="ghost" data-menu aria-haspopup="menu" aria-expanded="${menu}" aria-label="Canvas page: ${escapeHtml(page.title)}">${escapeHtml(page.title)}${icon(CHEVRON)}</button><div class="vw-menu" role="menu" aria-label="Canvas pages"${menu ? '' : ' hidden'}>${pages.map((p) => `<button type="button" role="menuitemradio" aria-checked="${p.id === page.id}" data-page="${escapeHtml(p.id)}">${p.id === page.id ? icon(CHECK) : '<span class="i"></span>'}${escapeHtml(p.title)}<span class="vw-count">${p.options.length}</span></button>`).join('')}</div></div><div class="vw-strip"><button type="button" class="vw-strip-btn" data-scroll="-1" tabindex="-1" aria-hidden="true"><span class="vw-flip">${icon(CHEVRON_RIGHT)}</span></button><div class="segmented vw-options" role="group" aria-label="Show the board, or open one option full size"><button type="button" class="seg${optionId === null ? ' is-on' : ''}" data-go="" aria-pressed="${optionId === null}">Board</button>${page.options.map((o) => `<button type="button" class="seg${optionId === o.id ? ' is-on' : ''}" data-go="${escapeHtml(o.id)}" aria-pressed="${optionId === o.id}" title="${escapeHtml(o.name)}">${escapeHtml(o.id)}</button>`).join('')}</div><button type="button" class="vw-strip-btn" data-scroll="1" tabindex="-1" aria-hidden="true">${icon(CHEVRON_RIGHT)}</button></div>${optionId ? `<button type="button" class="iconbtn vw-step" data-step="-1" aria-label="Previous option"><span class="vw-flip">${icon(CHEVRON_RIGHT)}</span></button><button type="button" class="iconbtn vw-step" data-step="1" aria-label="Next option">${icon(CHEVRON_RIGHT)}</button><span class="vw-optname">${escapeHtml(page.options.find((o) => o.id === optionId)?.name ?? '')}</span>` : ''}`
     : `<span class="vw-status" role="status">${source === 'loading' ? 'Loading the canvas…' : source === 'page' ? 'Snapshot' : 'View only'}</span>`;
   return size === 'full'
     ? `<div class="vw-bar is-a">${close}${title}<span class="vw-sep"></span>${controls}<span class="topbar-spacer"></span>${github}${sizes}</div>`
     : `<div class="vw-bar is-c"><div class="vw-c-row${size === 'float' ? ' vw-drag' : ''}">${title}<span class="topbar-spacer"></span>${github}${sizes}${close}</div><div class="vw-c-row">${controls}</div></div>`;
 }
+
+/** Which ends of the option strip hide options; 1px of slack absorbs subpixel widths. */
+export function stripEdges(scrollLeft: number, clientWidth: number, scrollWidth: number): { start: boolean; end: boolean } {
+  return { start: scrollLeft > 1, end: scrollLeft + clientWidth < scrollWidth - 1 };
+}
+
+/** The smallest scroll that shows an option in full, clear of the strip's fade by `inset`. */
+export function revealScroll(scrollLeft: number, clientWidth: number, left: number, width: number, inset: number): number {
+  if (left - inset < scrollLeft) return Math.max(0, left - inset);
+  if (left + width + inset > scrollLeft + clientWidth) return left + width + inset - clientWidth;
+  return scrollLeft;
+}
+const STRIP_FADE = 36;
 
 /** Mounted outside the app, which remains mounted underneath all three sizes. */
 export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => void): { isOpen: () => boolean } {
@@ -238,6 +251,9 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pendingFile: string | null = null;
   let documentIds: string[] = [], documentIndex = -1;
+  let stripScroll = 0,
+    stripPage: string | null = null,
+    stripOption: string | null = null;
   const findOrigin = (): HTMLElement | null => {
     if (origin?.isConnected) return origin;
     return (
@@ -250,6 +266,18 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
     );
   };
   const send = (page: string, option: string | null): void => frame?.contentWindow?.postMessage({ wf: 1, type: 'go', page, option }, '*');
+  const syncStrip = (reveal: HTMLElement | null = null): void => {
+    const strip = toolbar.querySelector<HTMLElement>('.vw-options');
+    if (!strip) return;
+    if (reveal) {
+      const left = reveal.getBoundingClientRect().left - strip.getBoundingClientRect().left + strip.scrollLeft;
+      strip.scrollLeft = revealScroll(strip.scrollLeft, strip.clientWidth, left, reveal.offsetWidth, STRIP_FADE);
+    }
+    const edges = stripEdges(strip.scrollLeft, strip.clientWidth, strip.scrollWidth);
+    strip.parentElement?.classList.toggle('has-start', edges.start);
+    strip.parentElement?.classList.toggle('has-end', edges.end);
+    stripScroll = strip.scrollLeft;
+  };
   const paint = (): void => {
     if (!routing.current) return;
     const focused =
@@ -257,6 +285,12 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
         ? [...document.activeElement.attributes].find((attr) => attr.name.startsWith('data-'))
         : undefined;
     setTrustedHtml(toolbar, canvasToolbarHtml(routing.current, size, pages, pageId, optionId, source, menu));
+    // Repainting replaces the strip: keep its scroll on the same page, and bring a newly shown option into view.
+    const strip = toolbar.querySelector<HTMLElement>('.vw-options');
+    if (strip) strip.scrollLeft = pageId === stripPage ? stripScroll : 0;
+    syncStrip(pageId === stripPage && optionId === stripOption ? null : (strip?.querySelector<HTMLElement>('.is-on') ?? null));
+    stripPage = pageId;
+    stripOption = optionId;
     if (focused)
       [...toolbar.querySelectorAll<HTMLElement>(`[${focused.name}]`)]
         .find((el) => el.getAttribute(focused.name) === focused.value)
@@ -445,6 +479,14 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
   toolbar.addEventListener('click', (event) => {
     const button = event.target instanceof Element ? event.target.closest<HTMLElement>('button') : null;
     if (!button) return;
+    if (button.dataset['scroll']) {
+      const strip = toolbar.querySelector<HTMLElement>('.vw-options');
+      strip?.scrollBy({
+        left: Number(button.dataset['scroll']) * strip.clientWidth * 0.8,
+        behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      });
+      return;
+    }
     if (button.hasAttribute('data-close')) {
       routing.close();
       return;
@@ -476,6 +518,17 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       const option = page.options[(index + Number(button.dataset['step']) + page.options.length) % page.options.length];
       if (option) send(page.id, option.id);
     }
+  });
+  // Scroll does not bubble, so the toolbar listens in the capture phase.
+  toolbar.addEventListener(
+    'scroll',
+    (event) => {
+      if (event.target instanceof HTMLElement && event.target.classList.contains('vw-options')) syncStrip();
+    },
+    true,
+  );
+  toolbar.addEventListener('focusin', (event) => {
+    if (event.target instanceof HTMLElement && event.target.parentElement?.classList.contains('vw-options')) syncStrip(event.target);
   });
   window.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (!frame || event.source !== frame.contentWindow) return;
@@ -564,7 +617,10 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       viewer.classList.remove('is-dragging');
     });
   window.addEventListener('resize', () => {
-    if (routing.current) applySize();
+    if (!routing.current) return;
+    applySize();
+    // A narrower window can push the open option out of the strip.
+    syncStrip(toolbar.querySelector<HTMLElement>('.vw-options .is-on'));
   });
   // A copied/reloaded viewer URL waits for its real originating tile to load.
   const requested = new URL(location.href).searchParams.get('canvas');
