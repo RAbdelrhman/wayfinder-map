@@ -20,9 +20,20 @@ The viewer owns one history entry. Size and page/option switches add none. The s
 
 The wrapper announces readiness at DOM readiness, rather than waiting for every nested option's load. It supports implicit page IDs, one-page shorthand configs and expanded style comparisons in old copied engines. The viewer checks the sending iframe and validates message shapes; commands only select known pages/options. Pin, note and pick commands are not implemented here.
 
-Files use `/proto/<owner>/<repo>/<branch>/<sha>/viewer-4/<path>`. The rendition segment versions the injected wrapper and engine adaptation as well as the SHA-addressed repo bytes. Bump `PROTOTYPE_HOST_VERSION` when either adaptation changes. Versioned SHA responses keep the original CSP and have immutable caching; legacy branch and unversioned SHA URLs remain uncached. The server keeps a 50 MB LRU of raw commit bytes and coalesces reads. Prototype lists queue up to 64 relevant files per unseen SHA with three reads at once. The last viewer iframe stays mounted after close.
+Files use `/proto/<owner>/<repo>/<branch>/<sha>/viewer-7/<path>`. The rendition segment versions the injected wrapper and engine adaptation as well as the SHA-addressed repo bytes. Bump `PROTOTYPE_HOST_VERSION` when either adaptation changes. Versioned SHA responses keep the original CSP and have immutable caching; legacy branch and unversioned SHA URLs remain uncached. The server keeps a 50 MB LRU of raw commit bytes and coalesces reads. Prototype lists queue up to 64 relevant files per unseen SHA with three reads at once. The last viewer iframe stays mounted after close.
 
 The sandbox headers and `sandbox="allow-scripts"` iframe are unchanged. The wrapper provides no API proxy. Installed-app validation, provider hand-offs, performance measurements for #214, annotations/picking and release work remain separate.
+
+### Pins and notes in #213
+
+#213 builds D4 from #210 (kept in PR #290, recorded in #211). `src/ui/canvasFeedback.ts` owns the tool row (Pin P, Select element E, Color picker C, Note N, panel F), the feedback panel, Review and Post. `src/canvasNotes.ts` writes the comment. There is no pick in the viewer, and no Shortcuts button until #292 picks its UI.
+
+- **Pins are drawn over the canvas by the viewer**, not inside it. While a tool is on, a transparent layer over the frame takes the click and sends `hitTest`. Each wrapper either answers for its own document or hands the point to the option it presents (`#present-frame`), offsetting coordinates both ways. A point covered by the canvas's own chrome is a miss.
+- **Answers name things.** `hit` carries the element's name (its label, its short text, or "<heading> card"), a selector that finds it again, its colour, its rect, and where inside it the point fell. For the Color picker it also carries the option's most-used colours.
+- **Marks follow the canvas.** The viewer sends `marks` (pins by element and offset, elements by selector). The wrapper answers with `layout` on scroll and resize, one per animation frame. While a tool is on, the wheel goes through `scroll` to the pane under the pointer.
+- **No bridge:** after the 3 s timeout, pins, elements and colours are off. Notes still work on the whole page or on an option the person picks in "Which option is showing?", from the prototype's variant list.
+- **Posting:** `POST /api/repos/<owner>/<repo>/canvas-notes` takes `{ ticket, body }`. It only accepts a canvas-notes comment, on a ticket labelled as a prototype, from Wayfinder's own origin. A canvas's `Origin: null` gets 403. The body goes to `gh api` through stdin.
+- **The comment:** a `### Canvas notes from Wayfinder` heading, `branch @ sha` with the page, then one numbered line per mark: whole page first, then options in the canvas's order. Lines use element names. Positions (`x`, `y` as fractions of the option's document), selectors and colours go in `<!-- wayfinder:notes v1 {...} -->` for agents.
 
 The observations below describe the pre-implementation baseline measured for #206.
 

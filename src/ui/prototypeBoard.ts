@@ -206,6 +206,7 @@ function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string
   const summarySource = prototype.verdict ?? ticket?.body ?? '';
   const summary = verdictGist(summarySource) || (decision.state === 'building' ? 'This prototype is still being built.' : 'Prototype decision recorded.');
   const date = dateLabel(prototype.updatedAt);
+  const variantList = variants.map((variant) => ({ id: variant.id, name: variant.title }));
   const variantHtml = variants
     .map((variant) => {
       const isPicked = selected.includes(variant.id);
@@ -213,7 +214,7 @@ function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string
       const title = variants.length === 1 && variant.title.startsWith('Variant ') ? ticketTitle : variant.title;
       const href = variant.page ?? variant.image ?? canvas;
       const marker = isPicked ? '<span data-icon="check" aria-hidden="true"></span><span class="sr-only">Picked winner:</span>' : '';
-      return `<a class="wf-var decision-variant${stateClass}" role="listitem" href="${escapeHtml(href)}" ${canvasEntryAttrs(repo, prototype, ticketTitle, variant.page, variant.page ? null : variant.image)} aria-label="Open variant ${escapeHtml(variant.id)}: ${escapeHtml(title)}${isPicked ? ' (picked)' : ''}">${variantFrame(variant)}<span class="lbl">${marker}${escapeHtml(`${variant.id} · ${title}`)}</span></a>`;
+      return `<a class="wf-var decision-variant${stateClass}" role="listitem" href="${escapeHtml(href)}" ${canvasEntryAttrs(repo, prototype, ticketTitle, variant.page, variant.page ? null : variant.image, { pick: decision.pickTicket?.number ?? null, variant: variant.id, variants: variantList })} aria-label="Open variant ${escapeHtml(variant.id)}: ${escapeHtml(title)}${isPicked ? ' (picked)' : ''}">${variantFrame(variant)}<span class="lbl">${marker}${escapeHtml(`${variant.id} · ${title}`)}</span></a>`;
     })
     .join('');
   const pickAction = decision.pickTicket === null
@@ -223,7 +224,7 @@ function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string
   return `<section class="wf-node wf-proto is-${decision.state}" style="--accent: var(${accent})">
     <div class="h">${status}<button type="button" class="wf-proto-title" data-jump="${String(prototype.ticketNumber)}" title="Open #${String(prototype.ticketNumber)} on the map">#${String(prototype.ticketNumber)} ${escapeHtml(ticketTitle)}</button>
       ${date === '' ? '' : `<time class="when" datetime="${escapeHtml(prototype.updatedAt ?? '')}">${escapeHtml(date)}</time>`}
-      <span class="acts">${pickAction}<a class="${decision.state === 'waiting' ? 'primary' : 'ghost'}" href="${escapeHtml(canvas)}" ${canvasEntryAttrs(repo, prototype, ticketTitle)} aria-label="Open the #${String(prototype.ticketNumber)} prototype canvas"><span data-icon="play" aria-hidden="true"></span>Canvas</a></span></div>
+      <span class="acts">${pickAction}<a class="${decision.state === 'waiting' ? 'primary' : 'ghost'}" href="${escapeHtml(canvas)}" ${canvasEntryAttrs(repo, prototype, ticketTitle, null, null, { pick: decision.pickTicket?.number ?? null, variants: variantList })} aria-label="Open the #${String(prototype.ticketNumber)} prototype canvas"><span data-icon="play" aria-hidden="true"></span>Canvas</a></span></div>
     <p class="gist">${escapeHtml(summary)}</p>
     ${canvasLinksHtml(repo, prototype)}
     <div class="wf-strip" role="list" aria-label="Variants for #${String(prototype.ticketNumber)}">${variantHtml}</div>

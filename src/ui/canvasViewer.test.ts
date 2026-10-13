@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Window } from 'happy-dom';
 import {
   CanvasRouting,
+  canvasEntryRoute,
   isCanvasClick,
   canvasFrameHtml,
   canvasOptionForFile,
@@ -243,5 +244,47 @@ describe('untrusted canvas messages', () => {
       { wf: 2, type: 'key', key: 'Escape' },
     ])
       expect(readCanvasMessage(value)).toBeNull();
+  });
+});
+
+describe('pin and note messages and routes (#213)', () => {
+  it('checks every hit and layout field the prototype sends', () => {
+    const rect = { left: 1, top: 2, width: 3, height: 4 };
+    const hit = { wf: 1, type: 'hit', requestId: 3, x: 0.2, y: 0.4, name: 'Continue card', selector: '#go', color: '#2f6fd0', rect };
+    expect(readCanvasMessage(hit)).toEqual(hit);
+    expect(readCanvasMessage({ wf: 1, type: 'hit', requestId: 3, miss: true })).toEqual({ wf: 1, type: 'hit', requestId: 3, miss: true });
+    expect(readCanvasMessage({ ...hit, palette: [['#ffffff', 'Page'], ['red', 'Bad'], ['#000000', 9]] })).toMatchObject({ palette: [['#ffffff', 'Page']] });
+    expect(readCanvasMessage({ wf: 1, type: 'layout', marks: [{ id: 1, rect }, { id: 2, rect: null }], viewport: rect })).not.toBeNull();
+    for (const value of [
+      { ...hit, color: 'red; background:url(x)' },
+      { ...hit, x: Number.NaN },
+      { ...hit, name: 'x'.repeat(201) },
+      { ...hit, rect: { left: 1 } },
+      { ...hit, requestId: '3' },
+      { wf: 1, type: 'layout', marks: [{ id: 1, rect: { left: 'x' } }], viewport: rect },
+      { wf: 1, type: 'layout', marks: Array.from({ length: 501 }, (_, id) => ({ id, rect: null })), viewport: rect },
+    ])
+      expect(readCanvasMessage(value)).toBeNull();
+  });
+  it('carries the ticket, pick ticket and variants from the entry to the viewer route', () => {
+    const prototype: Prototype = {
+      branch: 'prototype/207',
+      sha: 'a'.repeat(40),
+      ticketNumber: 207,
+      mapNumber: 205,
+      url: route.github,
+      preview: 'prototypes/canvas/index.html',
+      updatedAt: null,
+      files: [],
+      openable: [],
+      verdict: null,
+    };
+    const browser = new Window();
+    const link = browser.document.createElement('a');
+    const attrs = canvasEntryAttrs('octo/repo', prototype, 'Canvas', null, null, { pick: 208, variant: 'B', variants: [{ id: 'B', name: '<Split>' }] });
+    for (const [, name, value] of attrs.matchAll(/([\w-]+)="([^"]*)"/g)) link.setAttribute(name!, value!.replaceAll('&quot;', '"').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&'));
+    const read = readCanvasRoute(canvasEntryRoute(link.dataset as unknown as DOMStringMap, link.dataset['canvasUrl']), origin);
+    expect(read).toMatchObject({ ticket: 207, pick: 208, variant: 'B', variants: [{ id: 'B', name: '<Split>' }] });
+    expect(readCanvasRoute({ ...route, ticket: -1, pick: 1.5, variants: 'x' }, origin)).toEqual(readCanvasRoute(route, origin));
   });
 });

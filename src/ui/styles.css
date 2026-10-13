@@ -8339,3 +8339,131 @@ body.is-touring { overflow: hidden; }
   .tour-shell .demo-filter, .tour-shell .demo-types-group { flex: none; flex-wrap: nowrap; white-space: nowrap; }
   .tour-pop, .tour-pop.is-center { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; transform: none; max-height: 52vh; overflow: auto; }
 }
+
+/* ---------- canvas feedback (#213): D4 from #210, pins, elements, colours and notes ---------- */
+.vw-stage { display: grid; grid-template-columns: minmax(0, 1fr); }
+.vw-stage.has-feedback { grid-template-columns: minmax(0, 1fr) 340px; }
+.vw-canvas { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.vw-canvas[hidden], .cf-panel[hidden] { display: none; }
+.cf-toolrow { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 12px; background: var(--surface-1); border-bottom: 1px solid var(--hairline); font-size: 13px; }
+.vw.is-c .cf-toolrow, .vw.is-f .cf-toolrow { padding: 6px 10px; }
+.cf-toolgroup .seg { gap: 6px; height: 28px; padding: 0 10px; font-weight: 600; }
+.cf-toolgroup .seg .i { width: 14px; height: 14px; }
+.cf-toolgroup .seg kbd, .cf-toggle kbd { margin-left: 2px; padding: 0 4px; border: 1px solid var(--hairline); border-radius: 4px; color: var(--text-muted); font: 10.5px/16px ui-monospace, Consolas, monospace; }
+.cf-toolgroup .seg.is-on kbd { color: var(--text-secondary); }
+.cf-toolgroup [aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+.cf-toolgroup .seg:focus-visible, .cf-tabs .seg:focus-visible { outline: 2px solid var(--state-claimed); outline-offset: 2px; }
+.cf-toggle.is-on { border-color: var(--state-claimed); background: color-mix(in srgb, var(--state-claimed) 12%, transparent); color: var(--text-primary); }
+.cf-tabs .seg { gap: 6px; }
+.cf-chip { display: inline-flex; flex: none; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12.5px; white-space: nowrap; }
+.cf-chip .i { width: 14px; height: 14px; }
+.cf-chip.is-warn { background: color-mix(in srgb, var(--state-blocked) 22%, transparent); color: var(--handoff-needs-you); }
+.cf-chip.is-ok { background: color-mix(in srgb, var(--state-frontier) 16%, transparent); color: var(--handoff-pr-ready); }
+.cf-badge { min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--accent-fill); color: #fff; font-size: 11px; font-weight: 700; text-align: center; }
+
+/* Marks sit over the frame; only the marks themselves take the pointer. */
+.cf-layer, .cf-poplayer { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.cf-poplayer { z-index: 3; }
+.cf-layer > *, .cf-poplayer > * { pointer-events: auto; }
+.cf-capture { position: absolute; inset: 0; z-index: 0; outline: 2px dashed var(--state-claimed); outline-offset: -4px; cursor: crosshair; }
+.vw-canvas.is-selecting .cf-capture { cursor: pointer; }
+.cf-hover { position: absolute; z-index: 1; border: 2px solid var(--state-claimed); border-radius: 6px; background: color-mix(in srgb, var(--state-claimed) 10%, transparent); pointer-events: none !important; }
+.cf-hover span { position: absolute; top: -26px; left: -2px; padding: 2px 8px; border-radius: 6px; background: #1b1b1a; color: #f3f2ee; font-size: 12px; white-space: nowrap; }
+/* Pins sit above element outlines, so a pin inside an annotated element stays clickable. */
+.cf-pin { position: absolute; z-index: 3; display: grid; place-items: center; width: 28px; height: 28px; margin: -30px 0 0 0; padding: 0; border: 2px solid #fff; border-radius: 50% 50% 50% 0; background: var(--accent-fill); color: #fff; font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); transition: transform 0.12s ease-out; transform-origin: bottom left; }
+.cf-pin:hover, .cf-pin.is-open { transform: scale(1.15); }
+.cf-pin:focus-visible, .cf-el:focus-visible { outline: 3px solid var(--state-claimed); outline-offset: 2px; }
+.cf-pin.is-posted { background: #fff; color: var(--accent-fill); border-color: var(--accent-fill); }
+.cf-el { position: absolute; z-index: 2; padding: 0; border: 2px solid var(--accent-fill); border-radius: 6px; background: color-mix(in srgb, var(--accent-fill) 8%, transparent); }
+.cf-el.is-open { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-fill) 30%, transparent); }
+.cf-el.is-posted { border-style: dashed; background: none; }
+.cf-el-n { position: absolute; top: -26px; left: -2px; display: grid; place-items: center; width: 24px; height: 24px; border: 2px solid #fff; border-radius: 50% 50% 50% 0; background: var(--accent-fill); color: #fff; font-size: 11.5px; font-weight: 700; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
+.cf-el-colors { position: absolute; right: -2px; bottom: -22px; display: flex; gap: 2px; padding: 2px; border-radius: 6px; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25); }
+.cf-el-colors i { width: 14px; height: 14px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15); }
+.cf-hint { position: absolute; left: 50%; bottom: 18px; z-index: 4; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: #1b1b1a; color: #f3f2ee; font-size: 13px; transform: translateX(-50%); box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5); white-space: nowrap; pointer-events: none !important; }
+.cf-hint .i { width: 14px; height: 14px; }
+.cf-hint.is-soft { background: var(--surface-1); color: var(--text-secondary); border: 1px solid var(--hairline); }
+.cf-hint kbd { padding: 0 5px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; font: 11px ui-monospace, Consolas, monospace; }
+.cf-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* Popovers: beside their mark, inside the canvas. */
+.cf-pop { position: absolute; top: 0; left: 0; display: grid; gap: 8px; width: 280px; padding: 10px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-1); color: var(--text-primary); box-shadow: var(--shadow); font-size: 13px; }
+.cf-pop.is-color { width: 288px; }
+.cf-pop-head { display: grid; gap: 1px; }
+.cf-pop-head span { color: var(--text-muted); font-size: 12px; }
+.cf-pop textarea.input, .cf-row textarea.input { width: 100%; min-height: 48px; padding: 6px 8px; resize: vertical; }
+.cf-pop-foot { display: flex; align-items: center; gap: 6px; }
+.cf-pop-foot .iconbtn, .cf-row .iconbtn { width: 28px; height: 28px; border-radius: 7px; }
+.cf-pop-foot .iconbtn .i, .cf-row .iconbtn .i { width: 15px; height: 15px; }
+.cf-pop-foot .primary { padding: 5px 12px; }
+.cf-field { display: grid; gap: 4px; color: var(--text-secondary); font-size: 12.5px; font-weight: 600; }
+.cf-pop .cf-field select { height: 30px; }
+
+/* The colour picker. */
+.cf-cmp { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.cf-sw { width: 16px; height: 16px; flex: none; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2); }
+.cf-sv { position: relative; height: 128px; border-radius: 8px; background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent); cursor: crosshair; touch-action: none; }
+.cf-sv-dot { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.4); }
+.cf-sv-dot:focus-visible, .cf-hue:focus-visible, .cf-swatch:focus-visible, .cf-pop .seg:focus-visible { outline: 2px solid var(--state-claimed); outline-offset: 2px; }
+.cf-hue { width: 100%; height: 12px; margin: 0; border-radius: 999px; background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); appearance: none; }
+.cf-hue::-webkit-slider-thumb { width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%; background: transparent; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45); appearance: none; }
+.cf-val { display: flex; gap: 6px; align-items: center; }
+.cf-val .segmented, .cf-ptabs { flex: none; justify-self: start; padding: 2px; }
+.cf-val .seg, .cf-ptabs .seg { padding: 2px 8px; font-size: 12px; }
+.cf-val .input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; font: 12px ui-monospace, Consolas, monospace; }
+.cf-val .input[aria-invalid="true"] { border-color: var(--handoff-needs-you); }
+.cf-swatches { display: grid; grid-template-columns: repeat(auto-fill, 22px); gap: 6px; }
+.cf-swatch { width: 22px; height: 22px; padding: 0; border: 2px solid var(--surface-1); border-radius: 6px; box-shadow: 0 0 0 1px var(--hairline); }
+.cf-swatch.is-on { box-shadow: 0 0 0 2px var(--state-claimed); }
+
+/* The feedback panel: E's list and review. */
+.cf-panel { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; border-left: 1px solid var(--hairline); background: var(--surface-1); font-size: 13px; }
+.vw.is-c .cf-panel, .vw.is-f .cf-panel { border-left: 0; }
+.cf-panel-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 16px; border-bottom: 1px solid var(--hairline); }
+.cf-panel-head h2 { margin: 0; font-size: 15px; }
+.cf-panel-head .iconbtn { width: 30px; height: 30px; }
+.cf-muted { color: var(--text-muted); font-size: 12px; }
+.cf-panel-body { display: grid; grid-auto-rows: max-content; gap: 14px; overflow: auto; padding: 12px 16px 16px; }
+.cf-panel-body > p { margin: 0; }
+.cf-panel-foot { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--hairline); }
+.cf-panel .ghost:focus-visible, .cf-panel .primary:focus-visible, .cf-panel .iconbtn:focus-visible, .cf-row-kind:focus-visible, .cf-add:focus-visible, .cf-gh .seg:focus-visible { outline: 2px solid var(--state-claimed); outline-offset: 2px; }
+.cf-ok { display: grid; flex: none; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: color-mix(in srgb, var(--state-frontier) 18%, transparent); color: var(--handoff-pr-ready); }
+.cf-group { display: grid; gap: 8px; }
+.cf-group h3 { margin: 0; color: var(--text-secondary); font-size: 12px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; }
+.cf-tag { margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--wash); color: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.cf-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 28px; gap: 8px; align-items: start; margin: 0 -6px; padding: 6px; border-radius: 8px; }
+.cf-row.is-open { background: color-mix(in srgb, var(--state-claimed) 10%, transparent); }
+.cf-row-main { display: grid; gap: 4px; min-width: 0; }
+.cf-row-kind { justify-self: start; padding: 0; border: 0; background: none; color: var(--text-secondary); font-size: 12.5px; font-weight: 600; text-align: left; }
+button.cf-row-kind { cursor: pointer; }
+button.cf-row-kind:hover { color: var(--accent-text); text-decoration: underline; }
+.cf-row-colors { display: flex; align-items: center; gap: 5px; color: var(--text-muted); font-size: 12px; }
+.cf-row-colors i { width: 12px; height: 12px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2); }
+/* One marker shape per kind, the same size, so the list lines up. */
+.cf-mk { display: grid; place-items: center; width: 22px; height: 22px; background: var(--accent-fill); color: #fff; font-size: 11px; font-weight: 700; }
+.cf-mk.is-pin { border-radius: 50% 50% 50% 0; }
+.cf-mk.is-el { border-radius: 5px; background: none; color: var(--accent-text); box-shadow: inset 0 0 0 2px var(--accent-fill); }
+.cf-mk.is-color { border-radius: 5px; background: var(--to); text-shadow: 0 0 2px rgba(0, 0, 0, 0.6); }
+.cf-mk.is-plain { border-radius: 6px; background: var(--wash); color: var(--text-secondary); }
+.cf-mk .i { width: 13px; height: 13px; }
+.cf-add { display: inline-flex; align-items: center; gap: 6px; justify-self: start; padding: 4px 8px 4px 4px; border: 0; border-radius: 7px; background: none; color: var(--accent-text); font-size: 12.5px; cursor: pointer; }
+.cf-add:hover { background: var(--wash); }
+.cf-add .i { width: 14px; height: 14px; }
+.cf-banner { display: flex; gap: 8px; padding: 10px 12px; border-radius: 9px; background: color-mix(in srgb, var(--state-blocked) 18%, transparent); color: var(--text-primary); font-size: 12.5px; }
+.cf-banner .i { flex: none; width: 15px; height: 15px; margin-top: 2px; color: var(--handoff-needs-you); }
+.cf-banner.is-info { background: var(--wash); }
+.cf-banner.is-info .i { color: var(--text-secondary); }
+/* The comment preview, as GitHub will show it. */
+.cf-gh { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--plane); }
+.cf-gh-head { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12.5px; }
+.cf-gh-head > span { flex: 1; min-width: 0; }
+.cf-gh-tabs { justify-self: start; }
+.cf-gh-tabs .seg { height: 26px; font-size: 12px; }
+.cf-gh-body { padding: 10px 12px; border-radius: 8px; background: var(--surface-1); font-size: 13px; overflow-wrap: anywhere; }
+.cf-gh-body h4 { margin: 0 0 4px; font-size: 15px; }
+.cf-gh-body p, .cf-gh-body ol { margin: 4px 0; }
+.cf-gh-body ol { padding-left: 20px; }
+.cf-gh-md { max-height: 260px; margin: 0; padding: 10px 12px; overflow: auto; border-radius: 8px; background: var(--surface-1); font: 11.5px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
+.cf-sm { padding: 3px 8px; }
+@media (max-width: 1180px) { .cf-toolrow .vw-lbl { display: none; } }
+@media (prefers-reduced-motion: reduce) { .cf-pin { transition: none; } }

@@ -4,12 +4,20 @@ import { canvasSize, isCanvasSize } from './canvasPreference.js';
 import type { CanvasSize } from './canvasPreference.js';
 import { escapeHtml } from './markdown.js';
 import { icon, BEAKER, CLOSE, EXTERNAL, CHEVRON, CHEVRON_RIGHT, CHECK } from './icons.js';
+import { CanvasFeedback } from './canvasFeedback.js';
+import type { CanvasHit } from './canvasFeedback.js';
 
 export interface CanvasRoute {
   url: string;
   title: string;
   github: string;
   file: string | null;
+  /** The prototype ticket notes are posted to, and the pick ticket the posted panel points at. */
+  ticket?: number;
+  pick?: number;
+  /** The prototype's variants, for snapshots and canvases that never answer, and the one opened. */
+  variants?: { id: string; name: string }[];
+  variant?: string;
 }
 export interface CanvasPage {
   id: string;
@@ -39,16 +47,56 @@ export type CanvasMessage =
   | { wf: 1; type: 'state'; page: string | null; option: string | null; presenting: boolean }
   | { wf: 1; type: 'back' }
   | { wf: 1; type: 'document'; id: string }
-  | { wf: 1; type: 'key'; key: 'Escape' };
+  | { wf: 1; type: 'key'; key: 'Escape' }
+  | ({ wf: 1; type: 'hit' } & CanvasHit)
+  | { wf: 1; type: 'layout'; marks: { id: number; rect: CanvasRect | null }[]; viewport: CanvasRect };
+export interface CanvasRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
 
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const textOrNull = (value: unknown): value is string | null => value === null || typeof value === 'string';
+const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const isRect = (value: unknown): value is CanvasRect =>
+  record(value) && finite(value['left']) && finite(value['top']) && finite(value['width']) && finite(value['height']);
+const HEX_COLOR = /^#[0-9a-f]{6}$/;
+const shortText = (value: unknown): value is string | null => value === null || (typeof value === 'string' && value.length <= 200);
+
+/** A hit test's answer. Names and colours come from the prototype, so each is checked before use. */
+function readHit(value: Record<string, unknown>): CanvasMessage | null {
+  const requestId = value['requestId'];
+  if (!finite(requestId)) return null;
+  if (value['miss'] === true) return { wf: 1, type: 'hit', requestId, miss: true };
+  const { x, y, name, selector, color, rect, palette } = value;
+  if (!finite(x) || !finite(y) || !shortText(name) || !(selector === null || (typeof selector === 'string' && selector.length <= 2000))) return null;
+  if (!(color === null || (typeof color === 'string' && HEX_COLOR.test(color))) || !(rect === null || isRect(rect))) return null;
+  const colors =
+    Array.isArray(palette) && palette.length <= 24
+      ? palette.filter(
+          (entry: unknown): entry is [string, string] =>
+            Array.isArray(entry) && typeof entry[0] === 'string' && HEX_COLOR.test(entry[0]) && typeof entry[1] === 'string' && entry[1].length <= 200,
+        )
+      : undefined;
+  const { ax, ay } = value;
+  const anchor = finite(ax) && finite(ay) ? { ax, ay } : {};
+  return { wf: 1, type: 'hit', requestId, x, y, name, selector, color, rect, ...anchor, ...(colors ? { palette: colors } : {}) };
+}
 
 export function readCanvasMessage(value: unknown): CanvasMessage | null {
   if (!record(value) || value['wf'] !== 1) return null;
   if (value['type'] === 'back') return { wf: 1, type: 'back' };
   if (value['type'] === 'document' && typeof value['id'] === 'string') return { wf: 1, type: 'document', id: value['id'] };
   if (value['type'] === 'key' && value['key'] === 'Escape') return value as CanvasMessage;
+  if (value['type'] === 'hit') return readHit(value);
+  if (value['type'] === 'layout') {
+    const marks = value['marks'];
+    if (!Array.isArray(marks) || marks.length > 500 || !isRect(value['viewport'])) return null;
+    if (!marks.every((mark: unknown) => record(mark) && finite(mark['id']) && (mark['rect'] === null || isRect(mark['rect'])))) return null;
+    return { wf: 1, type: 'layout', marks: marks as { id: number; rect: CanvasRect | null }[], viewport: value['viewport'] };
+  }
   if (value['type'] === 'state' && textOrNull(value['page']) && textOrNull(value['option']) && typeof value['presenting'] === 'boolean')
     return value as CanvasMessage;
   if (
@@ -76,6 +124,26 @@ export function readCanvasMessage(value: unknown): CanvasMessage | null {
   return value as CanvasMessage;
 }
 
+/** A canvas entry's data attributes (see canvasEntryAttrs), as the raw route readCanvasRoute checks. */
+export function canvasEntryRoute(data: DOMStringMap, url: string | undefined): Record<string, unknown> {
+  let variants: unknown = undefined;
+  try {
+    variants = data['canvasVariants'] ? JSON.parse(data['canvasVariants']) : undefined;
+  } catch {
+    /* Not a list: the viewer has no variants to offer. */
+  }
+  return {
+    url,
+    title: data['canvasTitle'],
+    github: data['canvasGithub'],
+    file: data['canvasFile'] ?? null,
+    ticket: Number(data['canvasTicket']),
+    pick: Number(data['canvasPick']),
+    variants,
+    variant: data['canvasVariant'],
+  };
+}
+
 export function readCanvasRoute(value: unknown, origin: string): CanvasRoute | null {
   if (
     !record(value) ||
@@ -95,7 +163,26 @@ export function readCanvasRoute(value: unknown, origin: string): CanvasRoute | n
       github.hostname !== 'github.com'
     )
       return null;
-    return { url: url.pathname + url.search + url.hash, title: value['title'], github: github.href, file: value['file'] };
+    const ticket = value['ticket'],
+      pick = value['pick'],
+      variant = value['variant'];
+    const positive = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n > 0;
+    const variants = Array.isArray(value['variants'])
+      ? value['variants']
+          .filter((v: unknown): v is { id: string; name: string } => record(v) && typeof v['id'] === 'string' && typeof v['name'] === 'string')
+          .slice(0, 100)
+          .map((v) => ({ id: v.id, name: v.name }))
+      : [];
+    return {
+      url: url.pathname + url.search + url.hash,
+      title: value['title'],
+      github: github.href,
+      file: value['file'],
+      ...(positive(ticket) ? { ticket } : {}),
+      ...(positive(pick) ? { pick } : {}),
+      ...(variants.length ? { variants } : {}),
+      ...(typeof variant === 'string' && variant ? { variant } : {}),
+    };
   } catch {
     return null;
   }
@@ -193,6 +280,7 @@ export function canvasToolbarHtml(
   optionId: string | null,
   source: string,
   menu: boolean,
+  feedback: { bar: string; row: string; tabs: string } = { bar: '', row: '', tabs: '' },
 ): string {
   const page = pages.find((candidate) => candidate.id === pageId) ?? pages[0];
   const sizes = `<div class="segmented vw-sizes" role="group" aria-label="Canvas size">${(['full', 'pane', 'float'] as const).map((value) => `<button type="button" class="seg${value === size ? ' is-on' : ''}" data-size="${value}" aria-pressed="${value === size}" aria-label="${SIZE_LABEL[value]}" title="${SIZE_LABEL[value]}">${icon(SIZE_ICON[value])}</button>`).join('')}</div>`;
@@ -206,8 +294,8 @@ export function canvasToolbarHtml(
     ? `<div class="vw-menu-anchor"><button type="button" class="ghost" data-menu aria-haspopup="menu" aria-expanded="${menu}" aria-label="Canvas page: ${escapeHtml(page.title)}">${escapeHtml(page.title)}${icon(CHEVRON)}</button><div class="vw-menu" role="menu" aria-label="Canvas pages"${menu ? '' : ' hidden'}>${pages.map((p) => `<button type="button" role="menuitemradio" aria-checked="${p.id === page.id}" data-page="${escapeHtml(p.id)}">${p.id === page.id ? icon(CHECK) : '<span class="i"></span>'}${escapeHtml(p.title)}<span class="vw-count">${p.options.length}</span></button>`).join('')}</div></div><div class="vw-strip"><button type="button" class="vw-strip-btn" data-scroll="-1" tabindex="-1" aria-hidden="true"><span class="vw-flip">${icon(CHEVRON_RIGHT)}</span></button><div class="segmented vw-options" role="group" aria-label="Show the board, or open one option full size"><button type="button" class="seg${optionId === null ? ' is-on' : ''}" data-go="" aria-pressed="${optionId === null}">Board</button>${page.options.map((o) => `<button type="button" class="seg${optionId === o.id ? ' is-on' : ''}" data-go="${escapeHtml(o.id)}" aria-pressed="${optionId === o.id}" title="${escapeHtml(o.name)}">${escapeHtml(o.id)}</button>`).join('')}</div><button type="button" class="vw-strip-btn" data-scroll="1" tabindex="-1" aria-hidden="true">${icon(CHEVRON_RIGHT)}</button></div>${optionId ? `<button type="button" class="iconbtn vw-step" data-step="-1" aria-label="Previous option"><span class="vw-flip">${icon(CHEVRON_RIGHT)}</span></button><button type="button" class="iconbtn vw-step" data-step="1" aria-label="Next option">${icon(CHEVRON_RIGHT)}</button><span class="vw-optname">${escapeHtml(page.options.find((o) => o.id === optionId)?.name ?? '')}</span>` : ''}`
     : `<span class="vw-status" role="status">${source === 'loading' ? 'Loading the canvas…' : source === 'page' ? 'Snapshot' : 'View only'}</span>`;
   return size === 'full'
-    ? `<div class="vw-bar is-a">${close}${title}<span class="vw-sep"></span>${controls}<span class="topbar-spacer"></span>${github}${sizes}</div>`
-    : `<div class="vw-bar is-c"><div class="vw-c-row${size === 'float' ? ' vw-drag' : ''}">${title}<span class="topbar-spacer"></span>${github}${sizes}${close}</div><div class="vw-c-row">${controls}</div></div>`;
+    ? `<div class="vw-bar is-a">${close}${title}<span class="vw-sep"></span>${controls}<span class="topbar-spacer"></span>${feedback.bar}${github}${sizes}</div>${feedback.row}`
+    : `<div class="vw-bar is-c"><div class="vw-c-row${size === 'float' ? ' vw-drag' : ''}">${title}<span class="topbar-spacer"></span>${github}${sizes}${close}</div><div class="vw-c-row">${controls}${feedback.tabs ? `<span class="topbar-spacer"></span>${feedback.tabs}` : ''}</div></div>${feedback.row}`;
 }
 
 /** Which ends of the option strip hide options; 1px of slack absorbs subpixel widths. */
@@ -229,13 +317,13 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
   viewer.id = 'canvas-viewer';
   viewer.hidden = true;
   viewer.setAttribute('aria-labelledby', 'vw-title');
-  setTrustedHtml(viewer, '<div id="vw-toolbar"></div><div class="vw-stage"></div>' +
+  setTrustedHtml(viewer, '<div id="vw-toolbar"></div><div class="vw-stage"><div class="vw-canvas"></div><aside class="cf-panel" id="vw-feedback" aria-label="Feedback" hidden></aside></div>' +
     ['nw', 'ne', 'sw', 'se']
       .map((corner) => `<span class="vw-grip" data-corner="${corner}" title="Drag to resize" aria-hidden="true"></span>`)
       .join(''));
   document.body.append(viewer);
   const toolbar = viewer.querySelector<HTMLElement>('#vw-toolbar')!;
-  const stage = viewer.querySelector<HTMLElement>('.vw-stage')!;
+  const stage = viewer.querySelector<HTMLElement>('.vw-canvas')!;
   let size = canvasSize(),
     rect: FloatRect | null = null;
   let frame: HTMLIFrameElement | null = null,
@@ -266,6 +354,31 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
     );
   };
   const send = (page: string, option: string | null): void => frame?.contentWindow?.postMessage({ wf: 1, type: 'go', page, option }, '*');
+  const feedback = new CanvasFeedback(
+    {
+      context: () => {
+        const route = routing.current;
+        if (!route) return null;
+        return {
+          url: route.url,
+          title: route.title,
+          ticket: route.ticket ?? null,
+          pick: route.pick ?? null,
+          variants: route.variants ?? [],
+          variant: route.variant ?? null,
+          source: source === 'dom' || source === 'engine' || source === 'page' || source === 'none' ? source : 'loading',
+          pages,
+          page: pageId,
+          option: optionId,
+          size,
+        };
+      },
+      send: (message) => frame?.contentWindow?.postMessage({ wf: 1, ...message }, '*'),
+      repaintToolbar: () => paint(),
+    },
+    stage,
+    viewer.querySelector<HTMLElement>('#vw-feedback')!,
+  );
   const syncStrip = (reveal: HTMLElement | null = null): void => {
     const strip = toolbar.querySelector<HTMLElement>('.vw-options');
     if (!strip) return;
@@ -284,7 +397,7 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       document.activeElement instanceof HTMLElement && toolbar.contains(document.activeElement)
         ? [...document.activeElement.attributes].find((attr) => attr.name.startsWith('data-'))
         : undefined;
-    setTrustedHtml(toolbar, canvasToolbarHtml(routing.current, size, pages, pageId, optionId, source, menu));
+    setTrustedHtml(toolbar, canvasToolbarHtml(routing.current, size, pages, pageId, optionId, source, menu, feedback.toolbarParts(size)));
     // Repainting replaces the strip: keep its scroll on the same page, and bring a newly shown option into view.
     const strip = toolbar.querySelector<HTMLElement>('.vw-options');
     if (strip) strip.scrollLeft = pageId === stripPage ? stripScroll : 0;
@@ -295,6 +408,7 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       [...toolbar.querySelectorAll<HTMLElement>(`[${focused.name}]`)]
         .find((el) => el.getAttribute(focused.name) === focused.value)
         ?.focus({ preventScroll: true });
+    feedback.paint();
   };
   const applySize = (): void => {
     viewer.className = `vw is-${size === 'full' ? 'a' : size === 'pane' ? 'c' : 'f'} has-corner-grips`;
@@ -334,14 +448,14 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       pageId = null;
       optionId = null;
       source = 'loading';
-      stage.replaceChildren();
+      for (const old of stage.querySelectorAll('.vw-poster-image, .vw-frame')) old.remove();
       const poster = origin?.closest('.wf-var, .proto-tile, .wf-proto')?.querySelector<HTMLImageElement>('img');
       if (poster) {
         const copy = poster.cloneNode() as HTMLImageElement;
         copy.className = 'vw-poster-image';
-        stage.append(copy);
+        stage.prepend(copy);
       }
-      insertTrustedHtml(stage, 'beforeend', canvasFrameHtml(route));
+      insertTrustedHtml(stage.querySelector('.vw-poster-image') ?? stage, stage.querySelector('.vw-poster-image') ? 'afterend' : 'afterbegin', canvasFrameHtml(route));
       frame = stage.querySelector<HTMLIFrameElement>('.vw-frame')!;
       frame.addEventListener('load', () => frame?.classList.add('is-ready'));
       clearTimeout(timer);
@@ -383,6 +497,7 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       viewer.hidden = false;
       applySize();
       openFrame(route);
+      feedback.reset();
       paint();
       if (origin) animateFrom(origin.getBoundingClientRect());
       toolbar.querySelector<HTMLElement>('[data-close]')?.focus({ preventScroll: true });
@@ -454,15 +569,7 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       if (!isCanvasClick(event)) return;
       const target = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-canvas-url]') : null;
       if (!target) return;
-      const route = readCanvasRoute(
-        {
-          url: target.dataset['canvasUrl'],
-          title: target.dataset['canvasTitle'],
-          github: target.dataset['canvasGithub'],
-          file: target.dataset['canvasFile'] ?? null,
-        },
-        location.origin,
-      );
+      const route = readCanvasRoute(canvasEntryRoute(target.dataset, target.dataset['canvasUrl']), location.origin);
       if (!route) return;
       if (routing.current) {
         event.preventDefault();
@@ -551,10 +658,14 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       frame.classList.add('is-ready');
       if (routing.current) chooseFile();
     }
-    if (message.type === 'state') {
+    if (message.type === 'hit') return feedback.onHit(message);
+    if (message.type === 'layout') return feedback.onLayout(message.marks, message.viewport);
+    if (message.type === 'state' && (pageId !== message.page || optionId !== message.option)) {
       pageId = message.page;
       optionId = message.option;
+      feedback.stateChanged();
     }
+    if (message.type === 'key' && feedback.escape()) return;
     if ((message.type === 'key' || message.type === 'back') && routing.current) routing.close();
     paint();
   });
@@ -562,6 +673,13 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
     'keydown',
     (event) => {
       if (!routing.current) return;
+      // In the pane and the floating window the map stays live, so its keys stay its own.
+      const inViewer = size === 'full' || (event.target instanceof Node && viewer.contains(event.target));
+      if (inViewer && !menu && feedback.key(event)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -583,7 +701,7 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
         event.preventDefault();
       }
       if (size === 'full' && event.key === 'Tab') {
-        const items = [...viewer.querySelectorAll<HTMLElement>('button, a[href], iframe')].filter((el) => !el.closest('[hidden]'));
+        const items = [...viewer.querySelectorAll<HTMLElement>('button, a[href], iframe, textarea, input, select, [tabindex="0"]')].filter((el) => !el.closest('[hidden]'));
         if (event.shiftKey && document.activeElement === items[0]) {
           items.at(-1)?.focus();
           event.preventDefault();
@@ -628,15 +746,7 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
     const observer = new MutationObserver(() => {
       const target = [...app.querySelectorAll<HTMLElement>('[data-canvas-url]')].find((el) => el.dataset['canvasUrl'] === requested);
       if (!target) return;
-      const route = readCanvasRoute(
-        {
-          url: requested,
-          title: target.dataset['canvasTitle'],
-          github: target.dataset['canvasGithub'],
-          file: target.dataset['canvasFile'] ?? null,
-        },
-        location.origin,
-      );
+      const route = readCanvasRoute(canvasEntryRoute(target.dataset, requested), location.origin);
       if (!route) {
         observer.disconnect();
         return;
