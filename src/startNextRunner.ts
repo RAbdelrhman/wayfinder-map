@@ -72,7 +72,7 @@ export interface Batch {
 export type StartOutcome = { kind: 'started'; handOffId: string | null } | { kind: 'skipped'; reason: string } | { kind: 'failed'; reason: string };
 
 export interface RunnerDeps {
-  startTicket: (input: { repo: string; mapNumber: number; item: BatchRequestItem }) => Promise<StartOutcome>;
+  startTicket: (input: { repo: string; mapNumber: number; item: BatchRequestItem; auto: boolean }) => Promise<StartOutcome>;
   /** Live hand-offs on this machine, across every repository and map. */
   running: () => Promise<number>;
   /** The last error of each given hand-off that has one. */
@@ -308,6 +308,7 @@ export class StartNextRunner {
         repo: batch.repo,
         mapNumber: batch.mapNumber,
         item: { ticketNumber: item.ticketNumber, title: item.title, tier: item.tier, model: item.model, auto: item.auto },
+        auto: batch.auto,
       });
     } catch (error) {
       outcome = { kind: 'failed', reason: (error as Error).message };
