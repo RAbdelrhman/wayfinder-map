@@ -619,7 +619,8 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
   window.addEventListener('resize', () => {
     if (!routing.current) return;
     applySize();
-    syncStrip();
+    // A narrower window can push the open option out of the strip.
+    syncStrip(toolbar.querySelector<HTMLElement>('.vw-options .is-on'));
   });
   // A copied/reloaded viewer URL waits for its real originating tile to load.
   const requested = new URL(location.href).searchParams.get('canvas');
