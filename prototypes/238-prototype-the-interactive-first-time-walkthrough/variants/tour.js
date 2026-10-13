@@ -72,7 +72,7 @@
     'take-tour': startTour,
     'not-now': () => { Object.assign(s, { invite: false, pulse: true, note: copy.skipped(where) }); focusStep = true; },
     exit: () => endTour(copy.exited(where)),
-    'close-note': () => { s.note = ''; s.pulse = false; },
+    'close-note': () => { s.note = ''; s.pulse = false; focusEntry = true; },
     next: () => { if (!canAdvance()) return; if (s.step + 1 < N) enterStep(s.step + 1); else finish(); },
     back: () => { if (s.done) { s.done = false; enterStep(N - 1); s.handoff = 3; s.selected = 5; return; } if (s.step > 0) enterStep(s.step - 1); },
     'start-map': () => { if (s.tourOn && steps[s.step].id === 'goal') enterStep(s.step + 1); },
@@ -257,7 +257,7 @@
     if (focusStep) {
       focusStep = false;
       const title = document.getElementById('tour-title');
-      const focusTarget = title ?? (s.note ? root.querySelector('#entry-persistent') : null);
+      const focusTarget = title ?? (s.tourOn ? null : root.querySelector('#entry-persistent'));
       if (focusTarget) focusTarget.focus({ preventScroll: true });
       live.textContent = s.tourOn
         ? s.done ? copy.completion.title : `${copy.stepOf(s.step + 1, N)}: ${step.title}`
