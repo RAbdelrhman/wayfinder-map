@@ -44,7 +44,7 @@ window.DemoApp = (() => {
     }
     return `<aside class="demo-sidebar" aria-label="Wayfinder navigation">
       <div class="demo-brand"><span class="demo-logo" aria-hidden="true">${icon('compass')}</span>Wayfinder</div>
-      <button type="button" class="primary demo-new" data-act="${s.tourOn ? 'noop' : 'new-map'}">${icon('plus')}Start a new map</button>
+      ${entries[s.entry].oneButton && s.view === 'home' ? '' : `<button type="button" class="primary demo-new" data-act="${s.tourOn ? 'noop' : 'new-map'}">${icon('plus')}Start a new map</button>`}
       <button type="button" class="demo-nav${s.view === 'home' ? ' is-current' : ''}" data-act="${inSettings(s) && !s.tourOn ? 'go-home' : 'noop'}">${icon('home')}<span>Home</span></button>
       ${tourItem}
       <h2 class="eyebrow demo-eyebrow">Repositories</h2>

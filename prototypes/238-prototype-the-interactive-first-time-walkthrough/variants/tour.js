@@ -103,10 +103,13 @@
     const step = steps[s.step];
     const ready = canAdvance();
     const waitText = !ready && step.wait && ((step.id === 'planning') || (step.id === 'handoff' && s.handoff > 0)) ? step.wait : '';
-    const hint = !ready && step.hint && !waitText ? `<p class="tour-hint">${icon('hand')}${esc(step.hint)}</p>` : '';
+    // Round 4: once planning is done, the screen's own Open the map moves on, so the card hints instead of showing Next.
+    const ownButton = ready && step.readyHint && entries[entry].oneButton;
+    const hintText = ownButton ? step.readyHint : !ready && !waitText && step.hint;
+    const hint = hintText ? `<p class="tour-hint">${icon('hand')}${esc(hintText)}</p>` : '';
     const wait = waitText ? `<p class="tour-hint is-wait" role="status">${icon('clock')}${esc(waitText)}</p>` : '';
     const nextLabel = step.cta ?? (s.step + 1 === N ? 'Finish' : copy.next);
-    const nextBtn = ready || step.cta ? `<button type="button" class="primary" data-act="next">${esc(nextLabel)}${icon('arrow')}</button>` : '';
+    const nextBtn = (ready && !ownButton) || step.cta ? `<button type="button" class="primary" data-act="next">${esc(nextLabel)}${icon('arrow')}</button>` : '';
     const backBtn = s.step > 0 ? `<button type="button" class="ghost" data-act="back">${esc(copy.back)}</button>` : '';
     return `${hint}${wait}<div class="tour-actions${compact ? ' is-compact' : ''}">${backBtn}<span class="demo-spacer"></span>${nextBtn}</div>`;
   }

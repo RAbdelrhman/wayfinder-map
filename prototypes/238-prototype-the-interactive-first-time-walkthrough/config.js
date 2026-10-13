@@ -86,7 +86,8 @@ window.CANVAS = {
                 'Findings left open: in Spotlight, Tab can still reach dimmed controls (the build should make them inert); Spotlight’s card can cover the ticket it talks about at step 6; the Story demo window is small at 1280 wide and very small on a phone; on a phone, Panel shows only the current step.',
                 'Round 2 (Tour entry in Settings): S1 and S2 checked in Chromium at 1280×800 through first launch, Not now, the pulsing Settings gear, the Settings entry, and Take the tour starting the tour; focus moves to the Settings entry when Settings opens. The demo Settings page reuses the app’s own settings classes and copy from src/ui/settings.ts; the Help category and its icon are new. Dark theme spot-checked: hint text uses the app’s own muted colour.',
                 'Round 3 (Without the Demo banner): the independent verifier (gpt-6.1-sol) flagged the banner’s Exit tour and the card’s × as a duplicate control; the user chose to remove the banner. Checked in Chromium at 1280×800: F has no banner and one Exit control at steps 3, 4 and 7, and the card still shows Demo; S1 still shows both as reviewed. The demo Home’s two Start a new map buttons are stand-in chrome; the build uses the real Home.',
-                'Not checked: S1, S2 and F at 390×844, the installed Electron app, screen reader output, forced colours, 200% zoom, reduced motion beyond the CSS rule, and real persistence of the dismissed invitation.',
+                'Round 4 (One button per action): the second verifier run flagged Open the map vs the card’s Next after planning, and Home’s two Start a new map buttons. The user kept Open the map and the No maps yet button. Checked in Chromium at 1280×800: G-plan shows Open the map and the hint “Press Open the map to continue.” with no Next; G-home shows one Start a new map (in No maps yet); the tour map step still shows Next; F still shows both buttons at planning, as reviewed.',
+                'Not checked: S1, S2, F and G at 390×844, the installed Electron app, screen reader output, forced colours, 200% zoom, reduced motion beyond the CSS rule, and real persistence of the dismissed invitation.',
               ].join('\n\n'),
             },
           ],
@@ -229,6 +230,42 @@ window.CANVAS = {
       ],
     },
     {
+      id: 'one-button',
+      title: 'One button per action',
+      round: 4,
+      question: 'Two buttons do the same thing: which one stays?',
+      sections: [
+        {
+          title: 'F with each duplicate cut to one',
+          note: 'The second verifier run flagged two duplicates: after planning, the screen’s Open the map and the step card’s Next both move to the map; on Home, the sidebar and the No maps yet card both show Start a new map. Decisions: keep Open the map (the card shows “Press Open the map to continue.” instead of Next, as step 2 does with Start map), and keep the No maps yet button (the sidebar drops its copy on Home only).',
+          items: [
+            {
+              id: 'G-plan', name: 'Planning done, Open the map only', src: tour('format=spotlight&entry=oneButton&step=3&plan=4'), ...frame,
+              note: {
+                idea: 'F’s planning step with the card’s Next removed once planning is done. The card hints at the screen’s own Open the map.',
+                pros: ['One way forward', 'Same pattern as step 2: press the real control'],
+                cons: ['The card has no forward button on this step'],
+                basedOn: ['F-plan'],
+                disposition: 'keep',
+                feedback: 'Picked ① Open the map.',
+              },
+            },
+            {
+              id: 'G-home', name: 'Home after Not now, one Start a new map', src: tour('format=spotlight&entry=oneButton&state=skipped'), ...frame,
+              note: {
+                idea: 'Home keeps the No maps yet card’s Start a new map; the sidebar button is hidden on Home and still shows on other pages.',
+                pros: ['One Start a new map on Home', 'The button sits next to the text that explains it'],
+                cons: ['The sidebar button comes and goes between pages'],
+                basedOn: ['F', 'E1-skip'],
+                disposition: 'keep',
+                feedback: 'Picked ② the No maps yet button.',
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
       id: 'wording',
       title: 'Wording',
       round: 1,
@@ -240,8 +277,8 @@ window.CANVAS = {
             {
               id: 'W', name: 'Tour wording', src: 'variants/wording.html', width: 1100, height: 1900, boardWidth: 600,
               note: {
-                idea: 'Every line of the picked flow (A · Spotlight, E1’s welcome dialog, tour entry in Settings › Help): the seven steps, ticket-type lines, welcome dialog, Settings › Help row, step card, hand-off status, completion, and the messages after Not now and Exit tour.',
-                basedOn: ['A', 'E1', 'S1', 'F'],
+                idea: 'Every line of the picked flow (A · Spotlight, E1’s welcome dialog, tour entry in Settings › Help, no Demo banner, one button per action): the seven steps, ticket-type lines, welcome dialog, Settings › Help row, step card, hand-off status, completion, and the messages after Not now and Exit tour.',
+                basedOn: ['A', 'E1', 'S1', 'F', 'G-plan', 'G-home'],
                 disposition: 'keep',
                 feedback: 'yes looks good to me',
                 pros: ['One place to approve or change wording before implementation'],

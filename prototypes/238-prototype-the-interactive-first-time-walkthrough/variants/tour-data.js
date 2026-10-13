@@ -82,6 +82,7 @@ window.TOUR = {
       title: 'T3 Code plans it with you',
       body: 'In real use, T3 Code asks you a few questions about the goal, then drafts the map on GitHub. In the demo the answers are filled in for you.',
       wait: 'Planning the demo map…',
+      readyHint: 'Press Open the map to continue.',
     },
     {
       id: 'map', label: 'Map', view: 'map', target: '.demo-canvas-inner',
@@ -114,6 +115,8 @@ window.TOUR = {
     Page 2 of the canvas compares these. Round 2 keeps E1's welcome dialog and moves
     the tour into Settings (settingsHelp and settingsHead). Round 3's final entry is
     settingsHelp without the Demo banner: the step card's Demo label and × carry it.
+    Round 4's oneButton entry is final with one control per action: the planning screen's
+    Open the map replaces the card's Next, and Home keeps only the No maps yet button.
   */
   entries: {
     dialog: { label: 'Welcome dialog', invite: 'dialog', where: 'the ? button at the bottom of the sidebar' },
@@ -121,6 +124,7 @@ window.TOUR = {
     corner: { label: 'Corner card', invite: 'corner', where: 'the Tour button at the top of every page' },
     settingsHelp: { label: 'Welcome dialog + Settings › Help', invite: 'dialog', settings: 'help', where: 'Settings, under Help' },
     final: { label: 'Settings › Help, no Demo banner', invite: 'dialog', settings: 'help', banner: false, where: 'Settings, under Help' },
+    oneButton: { label: 'No banner, one button per action', invite: 'dialog', settings: 'help', banner: false, oneButton: true, where: 'Settings, under Help' },
     settingsHead: { label: 'Welcome dialog + Settings heading', invite: 'dialog', settings: 'head', where: 'the top of Settings' },
   },
 

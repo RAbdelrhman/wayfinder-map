@@ -28,18 +28,18 @@
     <script>
       (() => {
         const { steps, copy, invite, entries, types, settingsTour } = window.TOUR;
-        const where = entries.final.where;
+        const where = entries.oneButton.where;
         const esc = Kit.esc;
         const row = (label, ...cells) => `<tr><td>${label}</td>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
         const stepRows = steps.map((s, i) => row(
           `${i + 1} · ${esc(s.label)}`,
           `<strong>${esc(s.title)}</strong>${esc(s.body)}`,
-          [s.hint && `Hint: ${esc(s.hint)}`, s.wait && `While waiting: ${esc(s.wait)}`, s.cta && `Button: ${esc(s.cta)}`].filter(Boolean).join('<br>') || '<span class="k">Next</span>',
+          [s.hint && `Hint: ${esc(s.hint)}`, s.wait && `While waiting: ${esc(s.wait)}`, s.readyHint && `When ready: ${esc(s.readyHint)}`, s.cta && `Button: ${esc(s.cta)}`].filter(Boolean).join('<br>') || '<span class="k">Next</span>',
         )).join('');
         const c = copy.completion;
         document.getElementById('wording').innerHTML = `
           <h1>Tour wording</h1>
-          <p>Every line the tour shows, in order, for the picked flow: A · Spotlight, E1’s welcome dialog, the tour entry in Settings › Help (S1), and no Demo banner (F).</p>
+          <p>Every line the tour shows, in order, for the picked flow: A · Spotlight, E1’s welcome dialog, the tour entry in Settings › Help (S1), no Demo banner (F), and one button per action (G).</p>
           <h2>Steps</h2>
           <table><thead><tr><th>Step</th><th>Title and body</th><th>Prompt</th></tr></thead><tbody>${stepRows}</tbody></table>
           <h2>Ticket types (step 5)</h2>
