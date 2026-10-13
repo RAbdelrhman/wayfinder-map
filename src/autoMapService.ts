@@ -449,13 +449,19 @@ export class AutoMapService {
 
   /**
    * Put a notice where the page's inbox will find it, and show it as an OS notification in the desktop app.
-   * `wanted` is asked again after the settings read, so a notice made stale meanwhile is dropped.
+   * `wanted` is asked again after each wait, so a notice made stale meanwhile is dropped, from the inbox too.
    */
   private async publish(notice: AutoMapNotice, wanted: () => boolean = () => true): Promise<void> {
     if (this.closed || !(await this.deps.notificationOn(notice.kind).catch(() => true)) || this.closed || !wanted() || this.notices.some((existing) => existing.id === notice.id)) return;
     this.notices = this.fresh([notice, ...this.notices]);
     await this.persistWithRetry();
-    if (!this.closed) this.deps.desktop?.(desktopNotificationOf(notice));
+    if (this.closed) return;
+    if (!wanted()) {
+      this.notices = this.notices.filter((existing) => existing.id !== notice.id);
+      await this.persistWithRetry();
+      return;
+    }
+    this.deps.desktop?.(desktopNotificationOf(notice));
   }
 
   private fresh(notices: readonly AutoMapNotice[]): AutoMapNotice[] {

@@ -470,6 +470,19 @@ export async function startServer({
   };
   /** Start-up's check on each repository, which an event stream opened before any snapshot waits for. */
   const startupChecks = new Map<string, Promise<(mapNumber: number) => boolean>>();
+  /**
+   * Whether an event stream must not watch a map: it is closed, archived or gone in the snapshot read last. With
+   * nothing read yet, as just after a restart, the start-up check on the repository answers instead.
+   */
+  const unwatchable = async (forRepo: string, mapNumber: number): Promise<boolean> => {
+    const cached = repositories.cached(forRepo);
+    if (cached === null) {
+      const startupCheck = startupChecks.get(forRepo.toLowerCase());
+      return startupCheck !== undefined && !(await startupCheck.catch(() => () => false))(mapNumber);
+    }
+    const map = cached.maps.find((candidate) => candidate.number === mapNumber);
+    return map === undefined || !map.open || map.settled !== null;
+  };
   const watchableMaps = async (forRepo: string): Promise<(mapNumber: number) => boolean> => {
     try {
       const snapshot = await repositories.snapshot(forRepo);
@@ -1106,9 +1119,7 @@ export async function startServer({
         const active: MapWatchTarget[] = [];
         const ended: MapWatchTarget[] = [];
         for (const target of targets) {
-          const cached = repositories.cached(target.repo);
-          const map = cached?.maps.find((candidate) => candidate.number === target.mapNumber);
-          if (cached !== null && cached !== undefined && (map === undefined || !map.open || map.settled !== null)) {
+          if (await unwatchable(target.repo, target.mapNumber)) {
             mapWatcher.stop(target.repo, target.mapNumber);
             ended.push(target);
           } else {
@@ -1181,15 +1192,7 @@ export async function startServer({
           return;
         }
         // EventSource treats 204 as a completed stream and does not keep reconnecting.
-        const cached = repositories.cached(requestedRepo);
-        const map = cached?.maps.find((candidate) => candidate.number === mapNumber);
-        // With nothing read yet, as just after a restart, the start-up check on the repository answers instead.
-        const startupCheck = cached === null ? startupChecks.get(requestedRepo.toLowerCase()) : undefined;
-        const unwatchable =
-          startupCheck !== undefined
-            ? !(await startupCheck.catch(() => () => false))(mapNumber)
-            : cached !== null && (map === undefined || !map.open || map.settled !== null);
-        if (unwatchable) {
+        if (await unwatchable(requestedRepo, mapNumber)) {
           mapWatcher.stop(requestedRepo, mapNumber);
           response.writeHead(204);
           response.end();

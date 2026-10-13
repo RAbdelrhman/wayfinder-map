@@ -625,6 +625,30 @@ describe('AutoMapService', () => {
       expect(h.desktop).toEqual([]);
     });
 
+    it('takes back a ready notice, and shows no OS notification, for a map archived while the notice was saved', async () => {
+      let archived = false;
+      const store = memoryAutoMapStore();
+      const save = store.save.bind(store);
+      const h = harness({
+        archived: () => archived,
+        store: {
+          load: () => store.load(),
+          save: async (state) => {
+            if (state.notices.length > 0) archived = true;
+            await save(state);
+          },
+        },
+      });
+      h.reply.ok = false;
+      h.reply.error = 'offline';
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      h.emit(next(12));
+      await h.service.flush();
+      expect(h.service.view().notices).toEqual([]);
+      expect((await store.load()).notices).toEqual([]);
+      expect(h.desktop).toEqual([]);
+    });
+
     it('posts no ready notice when the start was refused because the map was just archived', async () => {
       let archived = false;
       const h = harness({

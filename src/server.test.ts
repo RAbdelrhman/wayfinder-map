@@ -2181,7 +2181,10 @@ describe('settling maps', () => {
     }
   });
 
-  it('opens no event stream on an archived map while the start-up check is still reading', async () => {
+  it.each([
+    ['the map page', '/api/repos/octo/one/events?map=5'],
+    ['the inbox', '/api/events?watch=octo/one:5'],
+  ])('opens no event stream from %s on an archived map while the start-up check is still reading', async (_, path) => {
     const autoMapStore = memoryAutoMapStore();
     const first = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, fetcher: async () => ({ maps: [sampleMap], warnings: [] }), homeLoader: async () => home, handOffStore: new HandOffStore({ filePath: null }), autoMapStore, mapWatcher: new MapWatcher({ readMap: async () => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }), readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) }) });
     await post(`${first.url}/api/auto-map/map`, { repo: 'octo/one', map: 5, op: 'enable' });
@@ -2207,11 +2210,21 @@ describe('settling maps', () => {
       mapWatcher,
     });
     try {
-      const stream = fetch(`${running.url}/api/repos/octo/one/events?map=5`);
+      const stream = fetch(`${running.url}${path}`);
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(readMap).not.toHaveBeenCalled();
       release();
-      expect((await stream).status).toBe(204);
+      const response = await stream;
+      if (path.startsWith('/api/events')) {
+        // The inbox's stream stays open for its other maps and says this one ended.
+        const reader = response.body!.getReader();
+        let text = '';
+        while (!text.includes('watch-ended')) text += new TextDecoder().decode((await reader.read()).value);
+        expect(text).toContain('event: watch-ended');
+        void reader.cancel().catch(() => undefined);
+      } else {
+        expect(response.status).toBe(204);
+      }
       await new Promise((resolve) => setTimeout(resolve, 30));
       expect(readMap).not.toHaveBeenCalled();
     } finally {
