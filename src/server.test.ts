@@ -2235,6 +2235,59 @@ describe('settling maps', () => {
     }
   });
 
+  it('watches no map from the inbox that was archived while another repository was still being checked', async () => {
+    const autoMapStore = memoryAutoMapStore();
+    const stub = () => new MapWatcher({ readMap: async () => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }), readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) });
+    const first = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, fetcher: async () => ({ maps: [sampleMap], warnings: [] }), homeLoader: async () => home, handOffStore: new HandOffStore({ filePath: null }), autoMapStore, mapWatcher: stub() });
+    await post(`${first.url}/api/auto-map/map`, { repo: 'octo/two', map: 5, op: 'enable' });
+    await new Promise<void>((resolve) => first.server.close(() => resolve()));
+
+    const readMap = vi.fn(async (_repo: string, _mapNumber: number): Promise<MapRead> => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }));
+    const mapWatcher = new MapWatcher({ readMap, readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) }, { intervalMs: 10 });
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((done) => { release = done; });
+    const saved = new Map<number, { settled: boolean; at: string }>();
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      // octo/two's start-up read is held, so the stream waits on it.
+      fetcher: async ({ repo, choices }) => {
+        if (repo === 'octo/two') await released;
+        return { maps: [{ ...sampleMap, settled: choices?.[5]?.settled === true ? { reason: 'manual', since: choices[5].at } : null }], warnings: [] };
+      },
+      homeLoader: async () => home,
+      handOffStore: new HandOffStore({ filePath: null }),
+      autoMapStore,
+      mapWatcher,
+      settling: {
+        account: async () => ({ host: 'github.com', login: 'octo' }),
+        store: { choices: async () => Object.fromEntries(saved), set: async (_account, _repo, mapNumber, choice) => void saved.set(mapNumber, choice) },
+      },
+    });
+    try {
+      await fetch(`${running.url}/api/repos/octo/one/snapshot`);
+      const stream = fetch(`${running.url}/api/events?watch=octo/one:5&watch=octo/two:5`);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect((await post(`${running.url}/api/repos/octo/one/settle`, { map: 5, settled: true })).status).toBe(200);
+      release();
+      const reader = (await stream).body!.getReader();
+      let text = '';
+      while (!text.includes('"octo/one"')) text += new TextDecoder().decode((await reader.read()).value);
+      expect(text).toContain('event: watch-ended');
+      void reader.cancel().catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(readMap.mock.calls.filter(([repo]) => repo === 'octo/one')).toEqual([]);
+    } finally {
+      await new Promise<void>((resolve) => {
+        running.server.close(() => resolve());
+        running.server.closeAllConnections();
+      });
+    }
+  });
+
   it('never watches a settled map', async () => {
     const readMap = vi.fn(async (): Promise<MapRead> => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }));
     const mapWatcher = new MapWatcher({ readMap, readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) }, { intervalMs: 10 });

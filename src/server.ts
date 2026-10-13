@@ -471,17 +471,25 @@ export async function startServer({
   /** Start-up's check on each repository, which an event stream opened before any snapshot waits for. */
   const startupChecks = new Map<string, Promise<(mapNumber: number) => boolean>>();
   /**
-   * Whether an event stream must not watch a map: it is closed, archived or gone in the snapshot read last. With
-   * nothing read yet, as just after a restart, the start-up check on the repository answers instead.
+   * Which maps an event stream must not watch: closed, archived or gone in the snapshot read last. With nothing
+   * read yet, as just after a restart, the start-up check on the repository answers instead. Every map is decided
+   * after the last wait, so one archived while another repository was checked is still caught.
    */
-  const unwatchable = async (forRepo: string, mapNumber: number): Promise<boolean> => {
-    const cached = repositories.cached(forRepo);
-    if (cached === null) {
-      const startupCheck = startupChecks.get(forRepo.toLowerCase());
-      return startupCheck !== undefined && !(await startupCheck.catch(() => () => false))(mapNumber);
-    }
-    const map = cached.maps.find((candidate) => candidate.number === mapNumber);
-    return map === undefined || !map.open || map.settled !== null;
+  const unwatchable = async (targets: readonly MapWatchTarget[]): Promise<boolean[]> => {
+    const checks = await Promise.all(
+      targets.map((target) =>
+        repositories.cached(target.repo) === null ? startupChecks.get(target.repo.toLowerCase())?.catch(() => () => false) : undefined,
+      ),
+    );
+    return targets.map((target, index) => {
+      const cached = repositories.cached(target.repo);
+      if (cached === null) {
+        const keep = checks[index];
+        return keep !== undefined && !keep(target.mapNumber);
+      }
+      const map = cached.maps.find((candidate) => candidate.number === target.mapNumber);
+      return map === undefined || !map.open || map.settled !== null;
+    });
   };
   const watchableMaps = async (forRepo: string): Promise<(mapNumber: number) => boolean> => {
     try {
@@ -1118,14 +1126,15 @@ export async function startServer({
         }
         const active: MapWatchTarget[] = [];
         const ended: MapWatchTarget[] = [];
-        for (const target of targets) {
-          if (await unwatchable(target.repo, target.mapNumber)) {
+        const unwatched = await unwatchable(targets);
+        targets.forEach((target, index) => {
+          if (unwatched[index] === true) {
             mapWatcher.stop(target.repo, target.mapNumber);
             ended.push(target);
           } else {
             active.push(target);
           }
-        }
+        });
         streamMapEvents(request, response, mapWatcher, active, requestUrl.searchParams.get('after'), ended);
         return;
       }
@@ -1192,7 +1201,7 @@ export async function startServer({
           return;
         }
         // EventSource treats 204 as a completed stream and does not keep reconnecting.
-        if (await unwatchable(requestedRepo, mapNumber)) {
+        if ((await unwatchable([{ repo: requestedRepo, mapNumber }]))[0] === true) {
           mapWatcher.stop(requestedRepo, mapNumber);
           response.writeHead(204);
           response.end();
