@@ -122,7 +122,7 @@
   function completionBody() {
     const c = copy.completion;
     return `<p class="tour-body">${esc(c.body)}</p>
-      <div class="tour-actions"><button type="button" class="ghost" data-act="home">${esc(c.secondary)}</button><span class="demo-spacer"></span>
+      <div class="tour-actions">${entries[entry].oneButton ? '' : `<button type="button" class="ghost" data-act="home">${esc(c.secondary)}</button>`}<span class="demo-spacer"></span>
       <button type="button" class="primary" data-act="first-map">${icon('plus')}${esc(c.primary)}</button></div>
       <p class="tour-replay">${esc(c.replay(where))}</p>`;
   }

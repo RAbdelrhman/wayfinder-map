@@ -116,7 +116,8 @@ window.TOUR = {
     the tour into Settings (settingsHelp and settingsHead). Round 3's final entry is
     settingsHelp without the Demo banner: the step card's Demo label and × carry it.
     Round 4's oneButton entry is final with one control per action: the planning screen's
-    Open the map replaces the card's Next, and Home keeps only the No maps yet button.
+    Open the map replaces the card's Next, Home keeps only the No maps yet button,
+    and the completion card drops Back to Home for its ×.
   */
   entries: {
     dialog: { label: 'Welcome dialog', invite: 'dialog', where: 'the ? button at the bottom of the sidebar' },

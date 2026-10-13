@@ -86,7 +86,7 @@ window.CANVAS = {
                 'Findings left open: in Spotlight, Tab can still reach dimmed controls (the build should make them inert); Spotlight’s card can cover the ticket it talks about at step 6; the Story demo window is small at 1280 wide and very small on a phone; on a phone, Panel shows only the current step.',
                 'Round 2 (Tour entry in Settings): S1 and S2 checked in Chromium at 1280×800 through first launch, Not now, the pulsing Settings gear, the Settings entry, and Take the tour starting the tour; focus moves to the Settings entry when Settings opens. The demo Settings page reuses the app’s own settings classes and copy from src/ui/settings.ts; the Help category and its icon are new. Dark theme spot-checked: hint text uses the app’s own muted colour.',
                 'Round 3 (Without the Demo banner): the independent verifier (gpt-6.1-sol) flagged the banner’s Exit tour and the card’s × as a duplicate control; the user chose to remove the banner. Checked in Chromium at 1280×800: F has no banner and one Exit control at steps 3, 4 and 7, and the card still shows Demo; S1 still shows both as reviewed. The demo Home’s two Start a new map buttons are stand-in chrome; the build uses the real Home.',
-                'Round 4 (One button per action): the second verifier run flagged Open the map vs the card’s Next after planning, and Home’s two Start a new map buttons. The user kept Open the map and the No maps yet button. Checked in Chromium at 1280×800: G-plan shows Open the map and the hint “Press Open the map to continue.” with no Next; G-home shows one Start a new map (in No maps yet); the tour map step still shows Next; F still shows both buttons at planning, as reviewed.',
+                'Round 4 (One button per action): the second verifier run flagged Open the map vs the card’s Next after planning, and Home’s two Start a new map buttons; the third run flagged the completion card’s × and Back to Home. The user kept Open the map, the No maps yet button, and the ×. Checked in Chromium at 1280×800: G-plan shows Open the map and the hint “Press Open the map to continue.” with no Next; G-home shows one Start a new map (in No maps yet); G-done shows the × and Start my first map with no Back to Home; the tour map step still shows Next; F still shows both buttons at planning, as reviewed.',
                 'Not checked: S1, S2, F and G at 390×844, the installed Electron app, screen reader output, forced colours, 200% zoom, reduced motion beyond the CSS rule, and real persistence of the dismissed invitation.',
               ].join('\n\n'),
             },
@@ -237,7 +237,7 @@ window.CANVAS = {
       sections: [
         {
           title: 'F with each duplicate cut to one',
-          note: 'The second verifier run flagged two duplicates: after planning, the screen’s Open the map and the step card’s Next both move to the map; on Home, the sidebar and the No maps yet card both show Start a new map. Decisions: keep Open the map (the card shows “Press Open the map to continue.” instead of Next, as step 2 does with Start map), and keep the No maps yet button (the sidebar drops its copy on Home only).',
+          note: 'The second verifier run flagged two duplicates: after planning, the screen’s Open the map and the step card’s Next both move to the map; on Home, the sidebar and the No maps yet card both show Start a new map. Decisions: keep Open the map (the card shows “Press Open the map to continue.” instead of Next, as step 2 does with Start map), and keep the No maps yet button (the sidebar drops its copy on Home only). The third run flagged the completion card’s × and Back to Home: decision “remove 2”, so the × stays.',
           items: [
             {
               id: 'G-plan', name: 'Planning done, Open the map only', src: tour('format=spotlight&entry=oneButton&step=3&plan=4'), ...frame,
@@ -261,6 +261,17 @@ window.CANVAS = {
                 feedback: 'Picked ② the No maps yet button.',
               },
             },
+            {
+              id: 'G-done', name: 'Completion, × only', src: tour('format=spotlight&entry=oneButton&state=done'), ...frame,
+              note: {
+                idea: 'The completion card without Back to Home. The × closes the tour and returns to Home; Start my first map is the one button.',
+                pros: ['One way to close, the same × as every step card'],
+                cons: ['Closing at the end shows “Tour closed. Nothing was changed…” rather than the replay line'],
+                basedOn: ['A-done'],
+                disposition: 'keep',
+                feedback: 'remove 2 (Back to Home).',
+              },
+            },
           ],
         },
       ],
@@ -278,7 +289,7 @@ window.CANVAS = {
               id: 'W', name: 'Tour wording', src: 'variants/wording.html', width: 1100, height: 1900, boardWidth: 600,
               note: {
                 idea: 'Every line of the picked flow (A · Spotlight, E1’s welcome dialog, tour entry in Settings › Help, no Demo banner, one button per action): the seven steps, ticket-type lines, welcome dialog, Settings › Help row, step card, hand-off status, completion, and the messages after Not now and Exit tour.',
-                basedOn: ['A', 'E1', 'S1', 'F', 'G-plan', 'G-home'],
+                basedOn: ['A', 'E1', 'S1', 'F', 'G-plan', 'G-home', 'G-done'],
                 disposition: 'keep',
                 feedback: 'yes looks good to me',
                 pros: ['One place to approve or change wording before implementation'],

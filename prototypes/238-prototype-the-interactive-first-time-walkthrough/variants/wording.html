@@ -52,7 +52,7 @@
             ${row('Start map note', esc(copy.startMapNote))}
             ${row('Hand-off note', esc(copy.openNote))}
             ${row('Hand-off status', TOUR.demo.handOff.map(esc).join('<br>'))}
-            ${row('Completion', `<strong>${esc(c.title)}</strong>${esc(c.body)}<br><span class="k">Buttons:</span> ${esc(c.primary)} · ${esc(c.secondary)}<br>${esc(c.replay(where))}`)}
+            ${row('Completion', `<strong>${esc(c.title)}</strong>${esc(c.body)}<br><span class="k">Button:</span> ${esc(c.primary)} <span class="k">Close button (×):</span> ${esc(copy.exit)}<br>${esc(c.replay(where))}`)}
             ${row('After Not now', esc(copy.skipped(where)))}
             ${row('After Exit tour', esc(copy.exited(where)))}
           </tbody></table>`;
