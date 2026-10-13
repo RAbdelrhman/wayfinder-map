@@ -106,6 +106,17 @@ describe('SettleStore', () => {
     expect(Object.keys(await new SettleStore(path).choices(octo, 'octo/repo'))).toEqual(['5', '6']);
   });
 
+  it('keeps hand-edited mixed-case choices when the app saves another', async () => {
+    const path = await tempFile();
+    await writeFile(path, JSON.stringify({ 'github.com': { Octo: { 'octo/repo': { 1: { settled: true, at: OLD } } } } }), 'utf8');
+    const store = new SettleStore(path);
+    await store.set(octo, 'octo/repo', 2, { settled: true, at: RECENT });
+    expect(await store.choices(octo, 'octo/repo')).toEqual({ 1: { settled: true, at: OLD }, 2: { settled: true, at: RECENT } });
+    // The app's own lowercase entry wins over a hand-edited one for the same map.
+    await store.set(octo, 'octo/repo', 1, { settled: false, at: RECENT });
+    expect((await store.choices(octo, 'octo/repo'))[1]).toEqual({ settled: false, at: RECENT });
+  });
+
   it('keeps the last of repeated choices on one map', async () => {
     const store = new SettleStore(await tempFile());
     await store.set(octo, 'octo/repo', 9, { settled: true, at: OLD });

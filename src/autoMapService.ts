@@ -368,7 +368,8 @@ export class AutoMapService {
     for (const event of events) {
       if (archived()) break;
       try {
-        await this.publish({
+        await this.publish(
+          {
           id: `map:${event.repo.toLowerCase()}#${String(event.mapNumber)}:${String(event.id)}:${event.at}`,
           kind: 'unblocked',
           repo: event.repo,
@@ -377,7 +378,9 @@ export class AutoMapService {
           ticketNumber: event.ticket.number,
           ticketTitle: event.ticket.title,
           createdAt: event.at,
-        });
+          },
+          () => !archived(),
+        );
       } catch (error) {
         errors.push(error);
       }
@@ -444,9 +447,12 @@ export class AutoMapService {
     return { ratings, calibrations };
   }
 
-  /** Put a notice where the page's inbox will find it, and show it as an OS notification in the desktop app. */
-  private async publish(notice: AutoMapNotice): Promise<void> {
-    if (this.closed || !(await this.deps.notificationOn(notice.kind).catch(() => true)) || this.closed || this.notices.some((existing) => existing.id === notice.id)) return;
+  /**
+   * Put a notice where the page's inbox will find it, and show it as an OS notification in the desktop app.
+   * `wanted` is asked again after the settings read, so a notice made stale meanwhile is dropped.
+   */
+  private async publish(notice: AutoMapNotice, wanted: () => boolean = () => true): Promise<void> {
+    if (this.closed || !(await this.deps.notificationOn(notice.kind).catch(() => true)) || this.closed || !wanted() || this.notices.some((existing) => existing.id === notice.id)) return;
     this.notices = this.fresh([notice, ...this.notices]);
     await this.persistWithRetry();
     if (!this.closed) this.deps.desktop?.(desktopNotificationOf(notice));

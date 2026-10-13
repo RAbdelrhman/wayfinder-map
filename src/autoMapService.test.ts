@@ -607,6 +607,24 @@ describe('AutoMapService', () => {
       expect(h.desktop).toEqual([]);
     });
 
+    it('posts no ready notice for a map archived while the notification settings were read', async () => {
+      let archived = false;
+      const h = harness({
+        archived: () => archived,
+        notificationOn: async () => {
+          archived = true;
+          return true;
+        },
+      });
+      h.reply.ok = false;
+      h.reply.error = 'offline';
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      h.emit(next(12));
+      await h.service.flush();
+      expect(h.service.view().notices).toEqual([]);
+      expect(h.desktop).toEqual([]);
+    });
+
     it('posts no ready notice when the start was refused because the map was just archived', async () => {
       let archived = false;
       const h = harness({

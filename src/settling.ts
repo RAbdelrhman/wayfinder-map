@@ -97,15 +97,16 @@ function isObject(value: unknown): value is Json {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** One level of the file with its keys lowercased, so a hand-edited mixed-case key still applies. */
-function lowered(value: unknown): Json {
-  const out: Json = {};
-  if (!isObject(value)) return out;
-  for (const [key, child] of Object.entries(value)) {
-    const lower = key.toLowerCase();
-    out[lower] = isObject(out[lower]) && isObject(child) ? { ...out[lower], ...child } : child;
-  }
-  return out;
+/**
+ * The children of `parent` under `key` whatever their case, so a hand-edited mixed-case key still applies.
+ * The lowercase key the app writes comes last, so its entries win.
+ */
+function matching(parent: unknown, key: string): Json[] {
+  if (!isObject(parent)) return [];
+  return Object.entries(parent)
+    .filter(([name, child]) => name.toLowerCase() === key && isObject(child))
+    .sort(([a], [b]) => Number(a === key) - Number(b === key))
+    .map(([, child]) => child as Json);
 }
 
 /** Settle choices per host and login, so each account on the machine keeps its own. */
@@ -154,10 +155,9 @@ export class SettleStore {
     const host = account.host.toLowerCase();
     const login = account.login.toLowerCase();
     const repoKey = repo.toLowerCase();
-    const current = lowered(lowered(lowered(all)[host])[login])[repoKey];
     // Entries saved before hosts were added sit at the top level under the login; they belong to github.com.
-    const legacy = host === LEGACY_HOST ? lowered(lowered(all)[login])[repoKey] : undefined;
-    return { ...lowered(legacy), ...lowered(current) };
+    const users = [...(host === LEGACY_HOST ? matching(all, login) : []), ...matching(all, host).flatMap((entry) => matching(entry, login))];
+    return Object.assign({}, ...users.flatMap((user) => matching(user, repoKey))) as Json;
   }
 
   /** The whole file; `{}` only when it doesn't exist yet. */

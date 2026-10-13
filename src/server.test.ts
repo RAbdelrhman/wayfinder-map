@@ -1780,6 +1780,48 @@ describe('local clone for a hand-off', () => {
       }
     });
 
+    it('refuses an auto map batch for a map archived while its clone was looked up', async () => {
+      const { server, startThread } = liveT3();
+      const saved = new Map<number, { settled: boolean; at: string }>();
+      const store = {
+        choices: async () => Object.fromEntries(saved),
+        set: async (_account: SettleAccount, _repo: string, mapNumber: number, choice: { settled: boolean; at: string }) => void saved.set(mapNumber, choice),
+      };
+      const workspaces = resolver({ '/clone': '/clone' }, ['/clone']);
+      const resolve = workspaces.resolve.bind(workspaces);
+      let looking: () => void = () => undefined;
+      const lookingUp = new Promise<void>((done) => { looking = done; });
+      let release: () => void = () => undefined;
+      const released = new Promise<void>((done) => { release = done; });
+      workspaces.resolve = async (repo) => {
+        looking();
+        await released;
+        return resolve(repo);
+      };
+      const running = await serve({
+        startNextIntervalMs: 20,
+        t3: server,
+        fetcher: async ({ choices }) => ({ maps: [{ ...startMap, settled: choices?.[5]?.settled === true ? { reason: 'manual', since: choices[5].at } : null }], warnings: [] }),
+        changeChecker: async () => true,
+        workspaces,
+        settling: { account: async () => ({ host: 'github.com', login: 'octo' }), store },
+        // Settling reads the map's pull requests; a stub reader keeps that off GitHub.
+        mapWatcher: new MapWatcher({ readMap: async () => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }), readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) }),
+      });
+      try {
+        await fetch(`${running.url}/api/repos/octo/one/snapshot`);
+        const auto = post(running.url, '/api/repos/octo/one/start-next', { map: 5, auto: true, tickets: [{ ticket: 12, tier: 'mid' }] });
+        await lookingUp;
+        expect((await post(running.url, '/api/repos/octo/one/settle', { map: 5, settled: true })).status).toBe(200);
+        release();
+        expect((await auto).status).toBe(409);
+        expect(await batches(running.url)).toEqual([]);
+        expect(startThread).not.toHaveBeenCalled();
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
     it('needs a clone and at least one ticket on the map', async () => {
       const { server } = liveT3();
       const noClone = await serve({ t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({}, []) });
@@ -2136,6 +2178,47 @@ describe('settling maps', () => {
       expect((await post(`${running.url}/api/repos/octo/one/settle`, { map: 5 })).status).toBe(400);
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('opens no event stream on an archived map while the start-up check is still reading', async () => {
+    const autoMapStore = memoryAutoMapStore();
+    const first = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, fetcher: async () => ({ maps: [sampleMap], warnings: [] }), homeLoader: async () => home, handOffStore: new HandOffStore({ filePath: null }), autoMapStore, mapWatcher: new MapWatcher({ readMap: async () => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }), readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) }) });
+    await post(`${first.url}/api/auto-map/map`, { repo: 'octo/one', map: 5, op: 'enable' });
+    await new Promise<void>((resolve) => first.server.close(() => resolve()));
+
+    const readMap = vi.fn(async (): Promise<MapRead> => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }));
+    const mapWatcher = new MapWatcher({ readMap, readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) }, { intervalMs: 10 });
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((done) => { release = done; });
+    const running = await startServer({
+      config,
+      repo: null,
+      template: DEFAULT_TEMPLATE,
+      workspaceRoot: null,
+      t3,
+      fetcher: async () => {
+        await released;
+        return { maps: [{ ...sampleMap, settled: { reason: 'manual', since: '2026-10-01T09:00:00.000Z' } }], warnings: [] };
+      },
+      homeLoader: async () => home,
+      handOffStore: new HandOffStore({ filePath: null }),
+      autoMapStore,
+      mapWatcher,
+    });
+    try {
+      const stream = fetch(`${running.url}/api/repos/octo/one/events?map=5`);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(readMap).not.toHaveBeenCalled();
+      release();
+      expect((await stream).status).toBe(204);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(readMap).not.toHaveBeenCalled();
+    } finally {
+      await new Promise<void>((resolve) => {
+        running.server.close(() => resolve());
+        running.server.closeAllConnections();
+      });
     }
   });
 
