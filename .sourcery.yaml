@@ -1,3 +1,4 @@
 # Keep the approved HTML injection boundary out of scanner reviews.
 ignore:
   - src/ui/trustedHtml.ts
+  - prototypes/238-prototype-the-interactive-first-time-walkthrough/variants/trusted-html.js
