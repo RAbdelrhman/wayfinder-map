@@ -384,6 +384,7 @@ export async function startServer({
     accountRead = null;
     repoList = null;
     repositories.clear();
+    startupChecks.clear();
     prototypeCache.clear();
     prototypeFiles.clear();
     warmedPrototypes.clear();
@@ -468,18 +469,30 @@ export async function startServer({
     const choices = settle === null || account === null ? {} : await settle.store.choices(account, forRepo).catch(() => ({}));
     return new Set(Object.entries(choices).filter(([, choice]) => choice.settled).map(([number]) => Number(number)));
   };
-  /** Start-up's check on each repository, which an event stream opened before any snapshot waits for. */
+  /** Each repository's running check on which maps may be watched, made at start-up or by an event stream before any snapshot. */
   const startupChecks = new Map<string, Promise<(mapNumber: number) => boolean>>();
+  const startupCheck = (forRepo: string): Promise<(mapNumber: number) => boolean> => {
+    const key = forRepo.toLowerCase();
+    let check = startupChecks.get(key);
+    if (check === undefined) {
+      const made = watchableMaps(forRepo);
+      // Kept only while it runs: once done, the snapshot it read answers, or a later stream checks again.
+      void made.catch(() => undefined).finally(() => {
+        if (startupChecks.get(key) === made) startupChecks.delete(key);
+      });
+      startupChecks.set(key, made);
+      check = made;
+    }
+    return check;
+  };
   /**
    * Which maps an event stream must not watch: closed, archived or gone in the snapshot read last. With nothing
-   * read yet, as just after a restart, the start-up check on the repository answers instead. Every map is decided
-   * after the last wait, so one archived while another repository was checked is still caught.
+   * read yet, as just after a restart, the repository's start-up check answers instead, made now if there is none.
+   * Every map is decided after the last wait, so one archived while another repository was checked is still caught.
    */
   const unwatchable = async (targets: readonly MapWatchTarget[]): Promise<boolean[]> => {
     const checks = await Promise.all(
-      targets.map((target) =>
-        repositories.cached(target.repo) === null ? startupChecks.get(target.repo.toLowerCase())?.catch(() => () => false) : undefined,
-      ),
+      targets.map((target) => (repositories.cached(target.repo) === null ? startupCheck(target.repo).catch(() => () => false) : undefined)),
     );
     return targets.map((target, index) => {
       const cached = repositories.cached(target.repo);
@@ -752,11 +765,7 @@ export async function startServer({
     ...(onDesktopNotification === undefined ? {} : { desktop: onDesktopNotification }),
     ...(autoMapBatchMs === undefined ? {} : { batchMs: autoMapBatchMs }),
     archived: archivedNow,
-    watchable: (forRepo) => {
-      const check = watchableMaps(forRepo);
-      startupChecks.set(forRepo.toLowerCase(), check);
-      return check;
-    },
+    watchable: startupCheck,
   });
   await autoMaps.init();
 

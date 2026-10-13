@@ -361,7 +361,7 @@ describe('repository-scoped server', () => {
       { readMap, readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) },
       { intervalMs: 10 },
     );
-    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, mapWatcher, autoMapStore: memoryAutoMapStore(), handOffStore: new HandOffStore({ filePath: null }) });
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, fetcher: async () => ({ maps: [sampleMap], warnings: [] }), mapWatcher, autoMapStore: memoryAutoMapStore(), handOffStore: new HandOffStore({ filePath: null }) });
 
     try {
       expect((await fetch(`${running.url}/api/repos/octo/one/events`)).status).toBe(400);
@@ -403,7 +403,7 @@ describe('repository-scoped server', () => {
       }),
       readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }),
     }, { intervalMs: 10 });
-    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, mapWatcher });
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader: async () => home, fetcher: async () => ({ maps: [sampleMap, { ...sampleMap, number: 6 }], warnings: [] }), mapWatcher });
 
     try {
       expect((await fetch(`${running.url}/api/events`)).status).toBe(400);
@@ -2282,6 +2282,35 @@ describe('settling maps', () => {
       void reader.cancel().catch(() => undefined);
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(readMap.mock.calls.filter(([repo]) => repo === 'octo/one')).toEqual([]);
+    } finally {
+      await new Promise<void>((resolve) => {
+        running.server.close(() => resolve());
+        running.server.closeAllConnections();
+      });
+    }
+  });
+
+  it.each([
+    ['the map page', '/api/repos/octo/one/events?map=5'],
+    ['the inbox', '/api/events?watch=octo/one:5'],
+  ])('checks the archive before watching from %s a map in a repository with no Auto map and nothing read yet', async (_, path) => {
+    const readMap = vi.fn(async (): Promise<MapRead> => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }));
+    const mapWatcher = new MapWatcher({ readMap, readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) }, { intervalMs: 10 });
+    const fetcher = vi.fn<RepositoryFetcher>(async () => ({ maps: [{ ...sampleMap, settled: { reason: 'manual', since: '2026-10-01T09:00:00.000Z' } }], warnings: [] }));
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, fetcher, homeLoader: async () => home, handOffStore: new HandOffStore({ filePath: null }), mapWatcher });
+    try {
+      const response = await fetch(`${running.url}${path}`);
+      if (path.startsWith('/api/events')) {
+        const reader = response.body!.getReader();
+        let text = '';
+        while (!text.includes('watch-ended')) text += new TextDecoder().decode((await reader.read()).value);
+        void reader.cancel().catch(() => undefined);
+      } else {
+        expect(response.status).toBe(204);
+      }
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(readMap).not.toHaveBeenCalled();
     } finally {
       await new Promise<void>((resolve) => {
         running.server.close(() => resolve());
