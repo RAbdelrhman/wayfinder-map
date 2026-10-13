@@ -109,7 +109,7 @@ window.DemoApp = (() => {
   }
 
   function banner(s) {
-    if (!s.tourOn) return '';
+    if (!s.tourOn || entries[s.entry].banner === false) return '';
     return `<div class="demo-banner" role="note">${pill()}<span>${esc(copy.banner)}</span>
       <button type="button" class="demo-link" data-act="exit">${esc(copy.exit)}</button></div>`;
   }

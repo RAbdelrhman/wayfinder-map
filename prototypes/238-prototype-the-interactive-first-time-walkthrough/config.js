@@ -85,7 +85,8 @@ window.CANVAS = {
                 'Checked in Chromium: all three formats played through every step (Start map, planning, select #6, select #5, Open in T3 Code, Finish), plus Back, Exit tour, Esc and Back to Home. All three entry options checked through invite, Not now and Exit tour. Light and dark at 1280×800, and 390×844 for Spotlight, Panel and Story, with no horizontal page overflow. Text contrast measured against the composited background: lowest 4.76:1 in light and 5.15:1 in dark (fixed: Exit tour link was 3.78:1 in dark). Visible focus ring matches Settings; each step moves focus to its title and announces “Step N of 7” in a live region; Esc exits and returns focus to the tour entry.',
                 'Findings left open: in Spotlight, Tab can still reach dimmed controls (the build should make them inert); Spotlight’s card can cover the ticket it talks about at step 6; the Story demo window is small at 1280 wide and very small on a phone; on a phone, Panel shows only the current step.',
                 'Round 2 (Tour entry in Settings): S1 and S2 checked in Chromium at 1280×800 through first launch, Not now, the pulsing Settings gear, the Settings entry, and Take the tour starting the tour; focus moves to the Settings entry when Settings opens. The demo Settings page reuses the app’s own settings classes and copy from src/ui/settings.ts; the Help category and its icon are new. Dark theme spot-checked: hint text uses the app’s own muted colour.',
-                'Not checked: S1 and S2 at 390×844, the installed Electron app, screen reader output, forced colours, 200% zoom, reduced motion beyond the CSS rule, and real persistence of the dismissed invitation.',
+                'Round 3 (Without the Demo banner): the independent verifier (gpt-6.1-sol) flagged the banner’s Exit tour and the card’s × as a duplicate control; the user chose to remove the banner. Checked in Chromium at 1280×800: F has no banner and one Exit control at steps 3, 4 and 7, and the card still shows Demo; S1 still shows both as reviewed. The demo Home’s two Start a new map buttons are stand-in chrome; the build uses the real Home.',
+                'Not checked: S1, S2 and F at 390×844, the installed Electron app, screen reader output, forced colours, 200% zoom, reduced motion beyond the CSS rule, and real persistence of the dismissed invitation.',
               ].join('\n\n'),
             },
           ],
@@ -201,6 +202,33 @@ window.CANVAS = {
       ],
     },
     {
+      id: 'no-banner',
+      title: 'Without the Demo banner',
+      round: 3,
+      question: 'One way out of the tour: which Exit control stays?',
+      sections: [
+        {
+          title: 'S1 with the Demo banner removed',
+          note: 'The verifier flagged a duplicate control: the banner’s Exit tour link and the step card’s × both end the tour. Decision: “just remove the banner.” The step card’s Demo label, the Demo tags on the repository and planning screens, and the demo notes on Start map and Open in T3 Code still mark the demo. Escape still exits.',
+          items: [
+            {
+              id: 'F', name: 'Map step, no banner', src: tour('format=spotlight&entry=final&step=4'), ...frame,
+              note: {
+                idea: 'S1 without the Demo banner. The step card’s × is the only Exit control on screen.',
+                pros: ['One way out, next to the text being read', 'One less strip of chrome over the demo'],
+                cons: ['The page itself no longer says “demo” outside the card and the demo tags'],
+                basedOn: ['S1', 'A'],
+                disposition: 'keep',
+                feedback: 'just remove the banner',
+              },
+            },
+            { id: 'F-plan', name: 'Planning step, no banner', src: tour('format=spotlight&entry=final&step=3'), ...frame, note: { idea: 'While the demo plans, the card and the planning header both say Demo.', basedOn: ['S1'] } },
+            { id: 'F-handoff', name: 'Hand-off step, no banner', src: tour('format=spotlight&entry=final&step=7&sel=5&handoff=3'), ...frame, note: { idea: 'At the hand-off the card still carries the Demo label and ×.', basedOn: ['A-handoff'] } },
+          ],
+        },
+      ],
+    },
+    {
       id: 'wording',
       title: 'Wording',
       round: 1,
@@ -212,8 +240,8 @@ window.CANVAS = {
             {
               id: 'W', name: 'Tour wording', src: 'variants/wording.html', width: 1100, height: 1900, boardWidth: 600,
               note: {
-                idea: 'Every line of the picked flow (A · Spotlight, E1’s welcome dialog, tour entry in Settings › Help): the seven steps, ticket-type lines, welcome dialog, Settings › Help row, Demo banner, hand-off status, completion, and the messages after Not now and Exit tour.',
-                basedOn: ['A', 'E1', 'S1'],
+                idea: 'Every line of the picked flow (A · Spotlight, E1’s welcome dialog, tour entry in Settings › Help): the seven steps, ticket-type lines, welcome dialog, Settings › Help row, step card, hand-off status, completion, and the messages after Not now and Exit tour.',
+                basedOn: ['A', 'E1', 'S1', 'F'],
                 disposition: 'keep',
                 feedback: 'yes looks good to me',
                 pros: ['One place to approve or change wording before implementation'],

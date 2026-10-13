@@ -28,7 +28,7 @@
     <script>
       (() => {
         const { steps, copy, invite, entries, types, settingsTour } = window.TOUR;
-        const where = entries.settingsHelp.where;
+        const where = entries.final.where;
         const esc = Kit.esc;
         const row = (label, ...cells) => `<tr><td>${label}</td>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
         const stepRows = steps.map((s, i) => row(
@@ -39,7 +39,7 @@
         const c = copy.completion;
         document.getElementById('wording').innerHTML = `
           <h1>Tour wording</h1>
-          <p>Every line the tour shows, in order, for the picked flow: A · Spotlight, E1’s welcome dialog, and the tour entry in Settings › Help (S1).</p>
+          <p>Every line the tour shows, in order, for the picked flow: A · Spotlight, E1’s welcome dialog, the tour entry in Settings › Help (S1), and no Demo banner (F).</p>
           <h2>Steps</h2>
           <table><thead><tr><th>Step</th><th>Title and body</th><th>Prompt</th></tr></thead><tbody>${stepRows}</tbody></table>
           <h2>Ticket types (step 5)</h2>
@@ -48,7 +48,7 @@
           <table><thead><tr><th>Where</th><th>Text</th></tr></thead><tbody>
             ${row('Welcome dialog', `<strong>${esc(invite.title)}</strong>${esc(invite.body)}<br><span class="k">Buttons:</span> ${esc(invite.accept)} · ${esc(invite.decline)}<br><span class="k">Footnote:</span> You can take it later from ${esc(where)}.`)}
             ${row('Settings › Help', `<strong>${esc(settingsTour.title)}</strong>${esc(settingsTour.label)}: ${esc(settingsTour.hint)}<br><span class="k">Button:</span> ${esc(settingsTour.label)}`)}
-            ${row('Demo banner', `<span class="demo-pill">${esc(copy.demoPill)}</span> ${esc(copy.banner)} <span class="k">Link:</span> ${esc(copy.exit)}`)}
+            ${row('Step card', `<span class="demo-pill">${esc(copy.demoPill)}</span> ${esc(copy.stepOf(1, steps.length))} <span class="k">Close button (×):</span> ${esc(copy.exit)}`)}
             ${row('Start map note', esc(copy.startMapNote))}
             ${row('Hand-off note', esc(copy.openNote))}
             ${row('Hand-off status', TOUR.demo.handOff.map(esc).join('<br>'))}
