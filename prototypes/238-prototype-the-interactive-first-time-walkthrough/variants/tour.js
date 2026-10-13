@@ -97,9 +97,6 @@
     noop: () => {},
   };
 
-  // Same contract as src/ui/trustedHtml.ts: callers pass static markup or Kit.esc-escaped demo data.
-  function setTrustedHtml(el, html) { el.innerHTML = html; }
-
   /* ---------- shared step pieces ---------- */
 
   function stepControls(compact) {

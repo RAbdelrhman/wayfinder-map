@@ -23,6 +23,7 @@
   <body class="viz-root">
     <main class="wording" id="wording"></main>
     <script src="../../canvas/kit/kit.js"></script>
+    <script src="trusted-html.js"></script>
     <script src="icons.js"></script>
     <script src="tour-data.js"></script>
     <script>
@@ -30,8 +31,6 @@
         const { steps, copy, invite, entries, types, settingsTour } = window.TOUR;
         const where = entries.oneButton.where;
         const esc = Kit.esc;
-        // Same contract as src/ui/trustedHtml.ts: static markup and escaped tour data only.
-        const setTrustedHtml = (el, html) => { el.innerHTML = html; };
         const row = (label, ...cells) => `<tr><td>${label}</td>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
         const stepRows = steps.map((s, i) => row(
           `${i + 1} · ${esc(s.label)}`,
