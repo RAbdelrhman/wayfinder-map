@@ -30,6 +30,21 @@ const computedSinkRule = {
   },
 };
 
+const sinkSelectors = [
+  {
+    selector: 'AssignmentExpression > MemberExpression.left[computed=false][property.name=/^(innerHTML|outerHTML)$/]',
+    message: sinkMessage,
+  },
+  {
+    selector: 'AssignmentExpression > MemberExpression.left[computed=true][property.value=/^(innerHTML|outerHTML)$/]',
+    message: sinkMessage,
+  },
+  {
+    selector: 'MemberExpression[computed=false][property.name="insertAdjacentHTML"], MemberExpression[computed=true][property.value="insertAdjacentHTML"]',
+    message: sinkMessage,
+  },
+];
+
 export default defineConfig([
   {
     files,
@@ -54,20 +69,24 @@ export default defineConfig([
     plugins: { 'html-sinks': { rules: { 'no-computed-injection': computedSinkRule } } },
     rules: {
       'html-sinks/no-computed-injection': 'error',
-      'no-restricted-syntax': ['error',
-        {
-          selector: 'AssignmentExpression > MemberExpression.left[computed=false][property.name=/^(innerHTML|outerHTML)$/]',
-          message: sinkMessage,
-        },
-        {
-          selector: 'AssignmentExpression > MemberExpression.left[computed=true][property.value=/^(innerHTML|outerHTML)$/]',
-          message: sinkMessage,
-        },
-        {
-          selector: 'MemberExpression[computed=false][property.name="insertAdjacentHTML"], MemberExpression[computed=true][property.value="insertAdjacentHTML"]',
-          message: sinkMessage,
-        },
+      'no-restricted-syntax': ['error', ...sinkSelectors],
+    },
+  },
+  {
+    // The tour's demo (#239) must never reach GitHub, T3 Code or stored preferences:
+    // it imports only its own files and gets no network, storage or window globals.
+    files: ['src/ui/demo/**/*.ts'],
+    ignores: ['src/ui/demo/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{ regex: '^(?!\\./[^/]+$)', message: 'The demo imports only files in src/ui/demo, so it cannot reach real GitHub, T3 Code or preference code.' }],
+      }],
+      'no-restricted-globals': ['error',
+        ...['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'navigator', 'localStorage', 'sessionStorage', 'indexedDB',
+          'caches', 'BroadcastChannel', 'window', 'self', 'globalThis', 'document', 'location', 'open', 'postMessage', 'require', 'process']
+          .map((name) => ({ name, message: 'The demo must not use network, storage or window APIs.' })),
       ],
+      'no-restricted-syntax': ['error', ...sinkSelectors, { selector: 'ImportExpression', message: 'The demo does not load code at runtime.' }],
     },
   },
 ]);
