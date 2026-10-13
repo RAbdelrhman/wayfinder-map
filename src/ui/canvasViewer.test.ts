@@ -10,6 +10,8 @@ import {
   floatGeometry,
   readCanvasMessage,
   readCanvasRoute,
+  revealScroll,
+  stripEdges,
 } from './canvasViewer.js';
 import { canvasEntryAttrs } from './canvasEntry.js';
 import type { Prototype } from '../types.js';
@@ -145,6 +147,39 @@ describe('approved ACF4 shell', () => {
       expect(html).toContain('data-go="B"');
       expect(html.includes('Open the branch on GitHub')).toBe(size !== 'float');
     }
+  });
+  it('wraps the option tabs in a strip whose scroll buttons stay out of the tab order', () => {
+    const options = Array.from({ length: 18 }, (_, index) => ({ id: `O${String(index)}`, name: `Option ${String(index)}`, file: null }));
+    const browser = new Window();
+    setTrustedHtml(browser.document.body, canvasToolbarHtml(route, 'full', [{ id: 'many', title: 'Many', options }], 'many', 'O9', 'dom', false));
+    const strip = browser.document.querySelector('.vw-strip')!;
+    const tabs = strip.querySelector('.vw-options')!;
+    expect([...strip.children].map((el) => el.getAttribute('data-scroll') ?? el.className)).toEqual(['-1', 'segmented vw-options', '1']);
+    expect(tabs.querySelectorAll('[data-go]')).toHaveLength(19);
+    for (const button of strip.querySelectorAll('[data-scroll]')) {
+      expect(button.getAttribute('tabindex')).toBe('-1');
+      expect(button.getAttribute('aria-hidden')).toBe('true');
+    }
+    // The size switch and close button follow the strip rather than sitting inside it.
+    expect(strip.querySelector('[data-size], [data-close]')).toBeNull();
+    expect(browser.document.querySelectorAll('[data-size]')).toHaveLength(3);
+  });
+  it('reports which ends of the option strip hide options', () => {
+    expect(stripEdges(0, 400, 400)).toEqual({ start: false, end: false });
+    expect(stripEdges(0, 400, 900)).toEqual({ start: false, end: true });
+    expect(stripEdges(250, 400, 900)).toEqual({ start: true, end: true });
+    expect(stripEdges(500, 400, 900)).toEqual({ start: true, end: false });
+    // Subpixel widths do not leave a fade on a strip that fits.
+    expect(stripEdges(0.5, 400, 400.6)).toEqual({ start: false, end: false });
+  });
+  it('scrolls the open option fully into view, clear of the fade, and no further', () => {
+    // Already visible: stays put.
+    expect(revealScroll(100, 400, 200, 60, 36)).toBe(100);
+    // Past the right edge: just far enough that it ends a fade-width inside.
+    expect(revealScroll(0, 400, 700, 60, 36)).toBe(396);
+    // Before the left edge: starts a fade-width inside, never below zero.
+    expect(revealScroll(500, 400, 300, 60, 36)).toBe(264);
+    expect(revealScroll(500, 400, 10, 60, 36)).toBe(0);
   });
   it.each(['nw', 'ne', 'sw', 'se'])('resizes %s while retaining the opposite corner', (corner) => {
     const start = { left: 400, top: 300, width: 560, height: 380 };
