@@ -1607,6 +1607,36 @@ describe('local clone for a hand-off', () => {
         }
       });
 
+      it('after a restart with GitHub unreachable, watches nothing on a map the saved snapshot shows archived', async () => {
+        const store = memoryAutoMapStore();
+        const first = await serve({ autoMapStore: store, t3, ...(({ mapWatcher, fetcher }) => ({ mapWatcher, fetcher }))(watcherWhere([12])) });
+        try {
+          await autoMap(first.url, { repo: 'octo/one', map: 5, op: 'enable' });
+        } finally {
+          await new Promise<void>((resolve) => first.server.close(() => resolve()));
+        }
+        const readMap = vi.fn(async (): Promise<MapRead> => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }));
+        const mapWatcher = new MapWatcher({ readMap, readPullRequests: noPullRequests }, { intervalMs: 10 });
+        // Idle-archived when it was saved: no hand-made choice says so.
+        const saved: MapSnapshot = { repo: 'octo/one', fetchedAt: '2026-10-01T09:00:00.000Z', maps: [{ ...startMap, settled: { reason: 'idle', since: '2026-09-30T09:00:00.000Z' } }], hiddenMaps: 0, publicMaps: [], warnings: [] };
+        const fetcher = vi.fn<RepositoryFetcher>(async () => { throw new Error('offline'); });
+        const second = await serve({
+          autoMapStore: store,
+          mapWatcher,
+          t3,
+          fetcher,
+          snapshotCache: { persistence: { load: async () => structuredClone(saved), save: async () => undefined }, identity: async () => 'github.com/octo' },
+        });
+        try {
+          await vi.waitFor(() => expect(fetcher).toHaveBeenCalled());
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          expect(readMap).not.toHaveBeenCalled();
+          expect((await view(second.url)).maps).toMatchObject([{ repo: 'octo/one', mapNumber: 5, enabled: true }]);
+        } finally {
+          await new Promise<void>((resolve) => second.server.close(() => resolve()));
+        }
+      });
+
       it.each([1, 4])('turns the map off on a later usage-limit error with cap %i, including a drained queue', async (cap) => {
         const { server, sessions } = liveT3();
         const limited: ServerT3 = {
@@ -1818,6 +1848,34 @@ describe('local clone for a hand-off', () => {
         expect((await auto).status).toBe(409);
         expect(await batches(running.url)).toEqual([]);
         expect(startThread).not.toHaveBeenCalled();
+      } finally {
+        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      }
+    });
+
+    it('starts no queued Auto map ticket once its map is archived', async () => {
+      const { server, startThread, sessions } = liveT3();
+      const saved = new Map<number, { settled: boolean; at: string }>();
+      const running = await serve({
+        startNextIntervalMs: 20,
+        t3: server,
+        fetcher: async ({ choices }) => ({ maps: [{ ...startMap, settled: choices?.[5]?.settled === true ? { reason: 'manual', since: choices[5].at } : null }], warnings: [] }),
+        changeChecker: async () => true,
+        workspaces: resolver({ '/clone': '/clone' }, ['/clone']),
+        settling: { account: async () => ({ host: 'github.com', login: 'octo' }), store: { choices: async () => Object.fromEntries(saved), set: async (_account, _repo, mapNumber, choice) => void saved.set(mapNumber, choice) } },
+        mapWatcher: new MapWatcher({ readMap: async () => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }), readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) }),
+      });
+      try {
+        await fetch(`${running.url}/api/repos/octo/one/snapshot`);
+        expect((await post(running.url, '/api/repos/octo/one/start-next', { map: 5, auto: true, cap: 1, tickets: [{ ticket: 11, tier: 'mid' }, { ticket: 12, tier: 'mid' }] })).status).toBe(202);
+        // #11 takes the only slot; #12 waits behind it while the map is archived.
+        await settledBatch(running.url, (current) => current.items[0]?.status === 'started');
+        expect((await post(running.url, '/api/repos/octo/one/settle', { map: 5, settled: true })).status).toBe(200);
+        // #11's thread ends, freeing the slot.
+        sessions.set('thread-1', 'error');
+        const batch = await settledBatch(running.url, (current) => current.items.every((item) => item.status !== 'queued' && item.status !== 'starting'));
+        expect(batch.items.map((item) => [item.ticketNumber, item.status, item.reason])).toEqual([[11, 'started', null], [12, 'skipped', 'This map is archived.']]);
+        expect(startThread).toHaveBeenCalledTimes(1);
       } finally {
         await new Promise<void>((resolve) => running.server.close(() => resolve()));
       }

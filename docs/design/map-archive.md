@@ -24,8 +24,8 @@ The tickets that build it rename Settled to Archive and add the finished rule. T
 
 ## Account isolation
 
-- Choices are keyed by the signed-in GitHub login (`signedInLogin` in `src/server.ts`), so each account on the machine keeps its own archive. Archiving affects only that login's view; the GitHub issue and its tickets are never changed.
-- **Today's gap:** the keys hold the login only, as `follows.json` does. Two accounts with the same login on different GitHub hosts would share choices, even though the snapshot cache already scopes by host and login (`identity` in `src/repositoryStore.ts`). **Contract (#241):** key choices by host and login, reading today's entries as `github.com`. A renamed login starts with no choices, as it does for follows; that is accepted rather than keyed by user id, which would need a migration.
+- Choices are keyed by the signed-in GitHub host and login (`signedInSettleAccount` in `src/server.ts`), so each account on the machine keeps its own archive. Archiving affects only that login's view; the GitHub issue and its tickets are never changed.
+- Before #241 the keys held the login only, as `follows.json` still does, so the same login on two GitHub hosts shared choices. Since #241 choices are keyed by host and login, matching the snapshot cache's scope (`identity` in `src/repositoryStore.ts`), and entries from before read as `github.com`. A renamed login starts with no choices, as it does for follows; that is accepted rather than keyed by user id, which would need a migration.
 - Switching accounts applies the other login's choices on the next list. The on-disk snapshot cache is scoped by identity and choices (`persistedScope`, `src/repositoryStore.ts`), so one account's cached list is never shown to another.
 - Signed out: no manual choices apply and the archive endpoint answers `409` (`Sign in with GitHub to settle maps.`). Automatic archives still apply, because they need no login.
 - No cross-device sync in this version (out of scope on the map).

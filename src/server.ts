@@ -33,6 +33,7 @@ import { AuthFlow } from './authFlow.js';
 import { normalizeRepo, parseRepoPagePath } from './repoRoutes.js';
 import type { ScopedApiAction } from './repoRoutes.js';
 import { RepositoryStore } from './repositoryStore.js';
+import type { SnapshotPersistence } from './repositorySnapshotCache.js';
 import { RepositorySnapshotCache } from './repositorySnapshotCache.js';
 import type { RepositoryChangeChecker, RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './workspaces.js';
@@ -139,6 +140,11 @@ export interface ServeOptions {
   mapWatcher?: MapWatcher;
   /** Persists opened-map snapshots and events in the local app's state directory. */
   mapWatchStore?: MapWatchStateStore;
+  /**
+   * Where each repository's last snapshot is saved, and whose it is. Defaults to `~/.wayfinder-map` and the signed-in
+   * account, except when tests inject a `fetcher`, where nothing is saved unless given.
+   */
+  snapshotCache?: { persistence: SnapshotPersistence; identity: () => Promise<string | null> };
   /** Where the auto map's settings and notices live. Defaults to `~/.wayfinder-map/auto-maps.json`, except when tests inject a `fetcher`, where they stay in memory unless given. */
   autoMapStore?: AutoMapStateStore;
   /** How long the auto map waits to gather a map's tickets that became next into one batch. Tests shorten it. */
@@ -286,6 +292,7 @@ export async function startServer({
   onDesktopNotification,
   onNotificationsRead,
   settling,
+  snapshotCache,
   following,
 }: ServeOptions): Promise<RunningServer> {
   const detect = t3.detect ?? detectT3;
@@ -414,13 +421,13 @@ export async function startServer({
     typePrefix: config.typePrefix,
     ...(fetcher === undefined ? {} : { fetcher }),
     ...(changeChecker === undefined ? {} : { changeChecker }),
-    ...(fetcher === undefined ? {
+    ...(snapshotCache ?? (fetcher === undefined ? {
       persistence: new RepositorySnapshotCache(),
       identity: async () => {
         const account = await signedInAccount();
         return account.status === 'ready' && account.login !== null ? `${account.host}/${account.login}` : null;
       },
-    } : {}),
+    } : {})),
     ...(settle === null
       ? {}
       : {
@@ -505,12 +512,18 @@ export async function startServer({
     });
   };
   const watchableMaps = async (forRepo: string): Promise<(mapNumber: number) => boolean> => {
-    try {
-      const snapshot = await repositories.snapshot(forRepo);
+    const fromSnapshot = (snapshot: MapSnapshot): ((mapNumber: number) => boolean) => {
       const active = new Set(snapshot.maps.filter((map) => map.open && map.settled === null).map((map) => map.number));
       mapWatcher.reconcile(forRepo, active);
       return (mapNumber) => active.has(mapNumber);
+    };
+    try {
+      // A saved snapshot may be out of date, so this waits for the first live read before resuming anything.
+      return fromSnapshot(await repositories.currentForAction(forRepo));
     } catch {
+      // The live read failed: the saved snapshot, if one loaded, still knows every kind of archive.
+      const cached = repositories.cached(forRepo);
+      if (cached !== null) return fromSnapshot(cached);
       const archived = await archivedByHand(forRepo);
       for (const mapNumber of archived) mapWatcher.stop(forRepo, mapNumber);
       return (mapNumber) => !archived.has(mapNumber);
@@ -690,9 +703,11 @@ export async function startServer({
     onUsageStop: (batch) => {
       if (batch.auto) void autoMaps.usageStopped(batch).catch(() => undefined);
     },
-    startTicket: async ({ repo: batchRepo, mapNumber, item }) => {
+    startTicket: async ({ repo: batchRepo, mapNumber, item, auto }) => {
       const found = find(await repositories.currentForAction(batchRepo, [mapNumber]), mapNumber, item.ticketNumber);
       if (found === null) return { kind: 'skipped', reason: `#${String(item.ticketNumber)} is not on the map any more.` };
+      // An Auto map ticket that waited in the queue starts nothing once its map is archived.
+      if (auto && found.map.settled !== null) return { kind: 'skipped', reason: 'This map is archived.' };
       if (found.ticket.state !== 'frontier') return { kind: 'skipped', reason: `#${String(item.ticketNumber)} is ${found.ticket.state}, not next.` };
       const reply = await startTicketHandOff(batchRepo, found.map, found.ticket, { model: item.model, tier: item.tier, auto: item.auto ?? null, threadOnly: true });
       const text = (value: unknown): string | null => (typeof value === 'string' && value !== '' ? value : null);

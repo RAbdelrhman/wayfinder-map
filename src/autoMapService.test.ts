@@ -207,12 +207,17 @@ describe('AutoMapService', () => {
     it('watches nothing at start-up once closed', async () => {
       const first = harness();
       await first.service.change('octo/one', 5, { op: 'enable' });
-      const restarted = harness({ watchable: async () => () => true });
+      let release: () => void = () => undefined;
+      const checked = new Promise<void>((resolve) => { release = resolve; });
+      const restarted = harness({ watchable: async () => { await checked; return () => true; } });
       await restarted.store.save(await first.store.load());
       await restarted.service.init();
+      // Closed while the start-up check is still running.
       restarted.service.close();
+      release();
       await restarted.service.resumed;
       expect(restarted.watching.size).toBe(0);
+      expect(restarted.catchUps).toEqual([]);
     });
 
     it('is quiet after close', async () => {
@@ -621,6 +626,8 @@ describe('AutoMapService', () => {
       await h.service.change('octo/one', 5, { op: 'enable' });
       h.emit(next(12));
       await h.service.flush();
+      expect(h.submits).toHaveLength(1);
+      expect(archived).toBe(true);
       expect(h.service.view().notices).toEqual([]);
       expect(h.desktop).toEqual([]);
     });
@@ -644,6 +651,7 @@ describe('AutoMapService', () => {
       await h.service.change('octo/one', 5, { op: 'enable' });
       h.emit(next(12));
       await h.service.flush();
+      expect(archived).toBe(true);
       expect(h.service.view().notices).toEqual([]);
       expect((await store.load()).notices).toEqual([]);
       expect(h.desktop).toEqual([]);
@@ -662,6 +670,7 @@ describe('AutoMapService', () => {
       h.emit(next(11));
       h.emit(next(12));
       await h.service.flush();
+      expect(archived).toBe(true);
       expect(h.service.view().notices).toEqual([]);
       expect(h.desktop).toEqual([]);
     });

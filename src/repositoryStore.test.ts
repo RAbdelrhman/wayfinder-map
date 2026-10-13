@@ -199,6 +199,17 @@ describe('RepositoryStore settling', () => {
     expect(opened.maps.find((candidate) => candidate.number === 2)?.ticketsLoaded).toBe(false);
   });
 
+  it('applies a settle saved while the first read is in flight with the old choices', async () => {
+    const listed = deferred<FetchResult>();
+    const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher: () => listed.promise, choices: async () => ({}) });
+    const first = cache.snapshot('owner/repo');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const manual: MapSettlement = { reason: 'manual', since: '2026-09-26T12:00:00.000Z' };
+    expect(await cache.settle('owner/repo', 1, manual)).toBeNull();
+    listed.resolve({ maps: [map(1, null, true)], warnings: [] });
+    expect((await first).maps[0]?.settled).toEqual(manual);
+  });
+
   it('has nothing to settle before a repository is read', async () => {
     const { cache } = settlingStore([]);
     expect(await cache.settle('owner/repo', 1, null)).toBeNull();
