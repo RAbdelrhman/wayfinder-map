@@ -1768,7 +1768,8 @@ describe('local clone for a hand-off', () => {
     it('refuses an auto map batch for an archived map, but not a start by hand', async () => {
       const { server } = liveT3();
       const archived = { ...startMap, settled: { reason: 'manual' as const, since: '2026-10-01T09:00:00.000Z' } };
-      const running = await serve({ startNextIntervalMs: 20, t3: server, fetcher: async () => ({ maps: [archived], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
+      const mapWatcher = new MapWatcher({ readMap: async () => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }), readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) });
+      const running = await serve({ startNextIntervalMs: 20, t3: server, fetcher: async () => ({ maps: [archived], warnings: [] }), changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']), mapWatcher });
       try {
         const auto = await post(running.url, '/api/repos/octo/one/start-next', { map: 5, auto: true, tickets: [{ ticket: 12, tier: 'mid' }] });
         expect(auto.status).toBe(409);
@@ -2153,7 +2154,8 @@ describe('settling maps', () => {
     const dir = await mkdtemp(join(tmpdir(), 'wayfinder-settle-'));
     const path = join(dir, 'settled.json');
     await writeFile(path, '{"octo": ', 'utf8');
-    const { running: started } = settlingServer('octo', undefined, new SettleStore(path));
+    const stub = new MapWatcher({ readMap: async () => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }), readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) });
+    const { running: started } = settlingServer('octo', stub, new SettleStore(path));
     const running = await started;
     try {
       const response = await post(`${running.url}/api/repos/octo/one/settle`, { map: 5, settled: true });
