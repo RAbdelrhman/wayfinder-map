@@ -657,8 +657,8 @@
       t.checked ? S.include.add(+t.dataset.inc) : S.include.delete(+t.dataset.inc);
       paint();
     }
-    const isOption = canvas.options.some((o) => o.id === t.value);
-    if (t.dataset.pinOption !== undefined && isOption) S.pins[+t.dataset.pinOption].option = t.value;
+    const chosen = canvas.options.find((o) => o.id === t.value)?.id;
+    if (t.dataset.pinOption !== undefined && chosen) S.pins[+t.dataset.pinOption].option = chosen;
     if (t.dataset.attachOn !== undefined) {
       const a = S.pins[+t.dataset.attachOn];
       a.on = t.value;
@@ -667,8 +667,8 @@
       Object.assign(a, target ? { option: target.option, fx: target.fx, fy: target.fy } : { option: null, fx: null, fy: null });
       paint();
     }
-    if (t.dataset.cur !== undefined && isOption) {
-      S.option = t.value;
+    if (t.dataset.cur !== undefined && chosen) {
+      S.option = chosen;
       paint();
     }
   });

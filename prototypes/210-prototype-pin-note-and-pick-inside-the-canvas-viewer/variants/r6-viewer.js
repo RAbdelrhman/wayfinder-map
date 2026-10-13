@@ -641,8 +641,8 @@ Object.assign(Kit.icons, {
     const t = e.target;
     if (t.dataset.hue !== undefined) paint();
     if (t.dataset.colorval !== undefined && parseColor(t.value)) paint();
-    const isOption = canvas.options.some((o) => o.id === t.value);
-    if (t.dataset.itemOption !== undefined && isOption) S.items[+t.dataset.itemOption].option = t.value;
+    const chosen = canvas.options.find((o) => o.id === t.value)?.id;
+    if (t.dataset.itemOption !== undefined && chosen) S.items[+t.dataset.itemOption].option = chosen;
     if (t.dataset.attachOn !== undefined && /^(page|option|item:d+)$/.test(t.value)) {
       const a = S.items[+t.dataset.attachOn];
       a.on = t.value;
@@ -651,8 +651,8 @@ Object.assign(Kit.icons, {
       if (k !== null) a.option = S.items[k].option;
       paint();
     }
-    if (t.dataset.cur !== undefined && isOption) {
-      S.option = t.value;
+    if (t.dataset.cur !== undefined && chosen) {
+      S.option = chosen;
       paint();
     }
   });
