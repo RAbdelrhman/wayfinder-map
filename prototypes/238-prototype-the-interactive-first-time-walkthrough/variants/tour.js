@@ -97,6 +97,9 @@
     noop: () => {},
   };
 
+  // Same contract as src/ui/trustedHtml.ts: callers pass static markup or Kit.esc-escaped demo data.
+  function setTrustedHtml(el, html) { el.innerHTML = html; }
+
   /* ---------- shared step pieces ---------- */
 
   function stepControls(compact) {
@@ -237,11 +240,11 @@
     document.body.classList.toggle('is-touring', s.tourOn);
 
     if (story) {
-      root.innerHTML = `<div class="story">${storyChrome()}</div>`;
-      document.getElementById('story-scale').innerHTML = DemoApp.render(s);
+      setTrustedHtml(root, `<div class="story">${storyChrome()}</div>`);
+      setTrustedHtml(document.getElementById('story-scale'), DemoApp.render(s));
     } else {
       const layer = s.tourOn ? (format === 'panel' ? panelLayer() : spotlightLayer()) : inviteLayer();
-      root.innerHTML = `<div class="tour-shell${s.tourOn && format === 'panel' ? ' has-panel' : ''}">${DemoApp.render(s)}${s.tourOn && format === 'panel' ? layer : ''}</div>${s.tourOn && format === 'panel' ? '' : layer}${noteLayer()}`;
+      setTrustedHtml(root, `<div class="tour-shell${s.tourOn && format === 'panel' ? ' has-panel' : ''}">${DemoApp.render(s)}${s.tourOn && format === 'panel' ? layer : ''}</div>${s.tourOn && format === 'panel' ? '' : layer}${noteLayer()}`);
     }
     const step = steps[s.step];
     if (s.tourOn && !s.done && step.target && format !== 'spotlight') {

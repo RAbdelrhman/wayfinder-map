@@ -30,6 +30,8 @@
         const { steps, copy, invite, entries, types, settingsTour } = window.TOUR;
         const where = entries.oneButton.where;
         const esc = Kit.esc;
+        // Same contract as src/ui/trustedHtml.ts: static markup and escaped tour data only.
+        const setTrustedHtml = (el, html) => { el.innerHTML = html; };
         const row = (label, ...cells) => `<tr><td>${label}</td>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
         const stepRows = steps.map((s, i) => row(
           `${i + 1} · ${esc(s.label)}`,
@@ -37,7 +39,7 @@
           [s.hint && `Hint: ${esc(s.hint)}`, s.wait && `While waiting: ${esc(s.wait)}`, s.readyHint && `When ready: ${esc(s.readyHint)}`, s.cta && `Button: ${esc(s.cta)}`].filter(Boolean).join('<br>') || '<span class="k">Next</span>',
         )).join('');
         const c = copy.completion;
-        document.getElementById('wording').innerHTML = `
+        setTrustedHtml(document.getElementById('wording'), `
           <h1>Tour wording</h1>
           <p>Every line the tour shows, in order, for the picked flow: A · Spotlight, E1’s welcome dialog, the tour entry in Settings › Help (S1), no Demo banner (F), and one button per action (G).</p>
           <h2>Steps</h2>
@@ -55,7 +57,7 @@
             ${row('Completion', `<strong>${esc(c.title)}</strong>${esc(c.body)}<br><span class="k">Button:</span> ${esc(c.primary)} <span class="k">Close button (×):</span> ${esc(copy.exit)}<br>${esc(c.replay(where))}`)}
             ${row('After Not now', esc(copy.skipped(where)))}
             ${row('After Exit tour', esc(copy.exited(where)))}
-          </tbody></table>`;
+          </tbody></table>`);
       })();
     </script>
   </body>
