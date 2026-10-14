@@ -60,33 +60,58 @@ async function pageHtml() {
     <body class="viz-root"><div id="app"></div><script>${js}</script></body></html>`;
 }
 
-/** The card, the highlighted target and the window, as the user sees them now. */
-function measure() {
+/**
+ * The card, the highlight, and the part of the step's target that can be seen (cut by scrolling
+ * ancestors and the window), measured from the target itself rather than from the highlight.
+ */
+function measure(targetSelector) {
   const rect = (element) => {
     if (element === null) return null;
     const { left, top, right, bottom } = element.getBoundingClientRect();
     return { left, top, right, bottom };
   };
-  const pop = document.querySelector('.tour-pop');
+  const layer = document.getElementById('tour-layer');
+  const pop = layer.querySelector('.tour-pop');
+  const target = targetSelector === null ? null : layer.querySelector(`.tour-shell ${targetSelector}`);
+  let seen = rect(target);
+  for (let parent = target?.parentElement ?? null; seen !== null && parent !== null; parent = parent.parentElement) {
+    const style = getComputedStyle(parent);
+    if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+    const clip = parent.getBoundingClientRect();
+    seen = { left: Math.max(seen.left, clip.left), top: Math.max(seen.top, clip.top), right: Math.min(seen.right, clip.right), bottom: Math.min(seen.bottom, clip.bottom) };
+  }
+  if (seen !== null) seen = { left: Math.max(seen.left, 0), top: Math.max(seen.top, 0), right: Math.min(seen.right, window.innerWidth), bottom: Math.min(seen.bottom, window.innerHeight) };
   return {
     step: pop?.dataset.tourStep ?? 'none',
     // A card cut to fit must scroll its contents, not paint them past its edge onto the target.
     spills: pop !== null && pop.scrollHeight > pop.clientHeight && getComputedStyle(pop).overflowY === 'visible',
     pop: rect(pop),
-    hole: rect(document.querySelector('.tour-hole')),
+    hole: rect(layer.querySelector('.tour-hole')),
+    found: target !== null,
+    seen,
     width: window.innerWidth,
     height: window.innerHeight,
   };
 }
 
-function assertClear(m, where) {
+function assertClear(m, where, targetSelector) {
   assert.ok(m.pop !== null, `${where}: no card`);
   const inside = (r) => r.left >= 0 && r.top >= 0 && r.right <= m.width && r.bottom <= m.height;
   assert.ok(inside(m.pop), `${where}: card ${JSON.stringify(m.pop)} leaves the ${m.width}×${m.height} window`);
   assert.ok(!m.spills, `${where}: the card's contents spill past its ${JSON.stringify(m.pop)} box`);
-  if (m.hole === null) return; // A step with no target shows a centred card over a scrim.
-  assert.ok(inside(m.hole), `${where}: target ${JSON.stringify(m.hole)} is not fully in the ${m.width}×${m.height} window`);
-  assert.ok(!overlaps(m.pop, m.hole), `${where}: card ${JSON.stringify(m.pop)} covers target ${JSON.stringify(m.hole)}`);
+  if (targetSelector === null) {
+    assert.equal(m.hole, null, `${where}: a step with no target shows a highlight`);
+    return;
+  }
+  assert.ok(m.found, `${where}: no ${targetSelector} in the demo`);
+  assert.ok(m.hole !== null, `${where}: no highlight around ${targetSelector}`);
+  const { seen, hole } = m;
+  assert.ok(seen.right - seen.left >= 1 && seen.bottom - seen.top >= 1, `${where}: ${targetSelector} cannot be seen`);
+  assert.ok(inside(hole), `${where}: highlight ${JSON.stringify(hole)} is not fully in the ${m.width}×${m.height} window`);
+  // Whole pixels around a padded box: the highlight may round outwards by a pixel, never fall short.
+  const covers = hole.left <= seen.left + 1 && hole.top <= seen.top + 1 && hole.right >= seen.right - 1 && hole.bottom >= seen.bottom - 1;
+  assert.ok(covers, `${where}: highlight ${JSON.stringify(hole)} does not cover ${targetSelector} ${JSON.stringify(seen)}`);
+  assert.ok(!overlaps(m.pop, seen) && !overlaps(m.pop, hole), `${where}: card ${JSON.stringify(m.pop)} covers ${targetSelector} ${JSON.stringify(seen)}`);
 }
 
 describe('the Spotlight card stays clear of its target', { timeout: 120_000 }, () => {
@@ -107,38 +132,39 @@ describe('the Spotlight card stays clear of its target', { timeout: 120_000 }, (
       page.setDefaultTimeout(3000);
       await page.setContent(html);
       await page.evaluate(() => { window.tour.start(); });
-      const check = async (state) => {
-        const m = await page.evaluate(measure);
+      /** Checks the card against the target this state should highlight, or none. */
+      const check = async (state, target = null) => {
+        const m = await page.evaluate(measure, target);
         const where = `${String(viewport.width)}x${String(viewport.height)} ${m.step} (${state})`;
         if (shots !== undefined) await page.screenshot({ path: join(shots, `${where.replaceAll(/[^\w-]+/g, '-')}.png`) });
-        assertClear(m, where);
+        assertClear(m, where, target);
       };
       const press = (selector) => page.click(`#tour-layer ${selector}`);
       const next = () => press('[data-tour-act="next"]');
 
       await check('purpose');
       await next();
-      await check('goal');
+      await check('goal', '.demo-composer');
       await press('#demo-start');
-      await check('planning, running');
+      await check('planning, running', '#demo-plan');
       await page.evaluate(() => { window.runScript(); });
-      await check('planning, done');
+      await check('planning, done', '#demo-plan');
       await press('#demo-open-map');
-      await check('map');
+      await check('map', '.demo-canvas-inner');
       await next();
-      await check('types');
+      await check('types', '#demo-types');
       await next();
-      await check('blockers');
+      await check('blockers', '[data-ticket="6"]');
       await press('[data-ticket="6"]');
-      await check('blockers, #6 selected');
+      await check('blockers, #6 selected', '.demo-waiting');
       await next();
-      await check('handoff');
+      await check('handoff', '[data-ticket="5"]');
       await press('[data-ticket="5"]');
-      await check('handoff, #5 selected');
+      await check('handoff, #5 selected', '#demo-open');
       await press('#demo-open');
-      await check('handoff, running');
+      await check('handoff, running', '#demo-handoff');
       await page.evaluate(() => { window.runScript(); });
-      await check('handoff, done');
+      await check('handoff, done', '#demo-handoff');
       await next();
       assert.equal(await page.locator('#tour-layer .tour-done-icon').count(), 1, 'the tour did not reach its completion card');
       await page.close();
