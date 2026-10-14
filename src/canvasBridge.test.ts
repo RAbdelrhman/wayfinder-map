@@ -174,7 +174,7 @@ describe('sandboxed canvas bridge', () => {
       const stage = { ...size, style: {} as Record<string, string>, dataset: {} as Record<string, string> };
       const context = { stage, levels, ResizeObserver: class { constructor(callback: () => void) { observed.push(callback); } observe(): void {} }, String, Number, snapshots: [] as unknown[] };
       runInNewContext(
-        `${served().slice(0, served().indexOf('/*'))}${/function stageZoom[\s\S]*?\n}\n/.exec(served())?.[0] ?? ''}
+        `${served().slice(0, served().indexOf('/*'))}
          for (const level of levels) { stageZoom(stage, level); snapshots.push({ ...stage.style }); }`,
         context,
       );

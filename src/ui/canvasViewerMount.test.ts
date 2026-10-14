@@ -90,6 +90,9 @@ describe('preparing the canvas before the click', () => {
     expect(frames()[0]!.getAttribute('sandbox')).toBe('allow-scripts');
     expect(push).not.toHaveBeenCalled();
     expect(app.inert).toBe(false);
+    // Laid out so the canvas can boot at its opening size, but unseen and out of reach.
+    expect(viewer.hidden).toBe(false);
+    expect(viewer.inert).toBe(true);
     expect(viewer.classList.contains('is-warm')).toBe(true);
   });
 
