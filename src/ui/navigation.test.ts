@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MapSnapshot, OutsideTicket, Ticket, WayfinderMap } from '../types.js';
-import { createJumpDestinations, loadingMapRows, navFooterHtml, prototypeCountBadge, repoLabel, sidebarLoadsMaps, sidebarMaps, viewFromQuery } from './navigation.js';
+import { createJumpDestinations, loadingMapRows, navFooterHtml, opensJump, prototypeCountBadge, repoLabel, sidebarLoadsMaps, sidebarMaps, viewFromQuery } from './navigation.js';
 
 function ticket(number: number, title: string): Ticket {
   return {
@@ -172,5 +172,19 @@ describe('sidebar footer', () => {
       expect(html).not.toContain('id="models"');
       expect(html.includes('aria-current="page"')).toBe(page === 'settings');
     }
+  });
+});
+
+describe('opensJump', () => {
+  const shell = (inert: boolean): Pick<Element, 'hasAttribute'> => ({ hasAttribute: (name: string) => inert && name === 'inert' });
+
+  it('opens Jump to… on Ctrl+K or Cmd+K', () => {
+    expect(opensJump({ ctrlKey: true, metaKey: false, key: 'k' }, shell(false))).toBe(true);
+    expect(opensJump({ ctrlKey: false, metaKey: true, key: 'K' }, shell(false))).toBe(true);
+    expect(opensJump({ ctrlKey: false, metaKey: false, key: 'k' }, shell(false))).toBe(false);
+  });
+
+  it('leaves Ctrl+K alone while the tour or another overlay has made the app inert', () => {
+    expect(opensJump({ ctrlKey: true, metaKey: false, key: 'k' }, shell(true))).toBe(false);
   });
 });

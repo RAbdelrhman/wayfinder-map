@@ -93,6 +93,11 @@ export function navFooterHtml(page: NavigationPage): string {
   </div>`;
 }
 
+/** Ctrl+K or Cmd+K opens Jump to…, but not while something (the tour, the canvas viewer) has made the app inert. */
+export function opensJump(event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'key'>, shell: Pick<Element, 'hasAttribute'>): boolean {
+  return (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && !shell.hasAttribute('inert');
+}
+
 export function viewFromQuery(value: string | null): NavigationView {
   return value === 'table' || value === 'prototypes' ? value : 'map';
 }
@@ -744,7 +749,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
       event.stopImmediatePropagation();
       closeMenu(true);
     }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    if (opensJump(event, shell)) {
       event.preventDefault();
       event.stopPropagation();
       const trigger = topbarActionJump?.hidden === false ? topbarActionJump : sidebar.querySelector<HTMLElement>('[data-nav-action="jump"]');
