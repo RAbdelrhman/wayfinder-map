@@ -431,9 +431,13 @@ describe('keeping input inside the open card', () => {
     const tour = mount();
     if (step === 0) tour.invite();
     else { tour.start(); walkTo(step); }
+    const focused = q('.tour-actions button');
+    focused?.focus();
     const press = (selector: string): boolean => {
       const event = new browser.MouseEvent('mousedown', { bubbles: true, cancelable: true }) as unknown as Event;
       q(selector)?.dispatchEvent(event);
+      // The press must leave focus where it was, not just cancel the browser's default.
+      expect(doc.activeElement).toBe(focused);
       return event.defaultPrevented;
     };
     expect(press('.tour-scrim, .tour-block')).toBe(true);
