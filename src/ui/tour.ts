@@ -28,6 +28,35 @@ const TARGETS = {
   blockers: `[data-ticket="${String(BLOCKED_EXAMPLE)}"]`,
   handoff: `[data-ticket="${String(HAND_OFF_EXAMPLE)}"]`,
 } as const;
+/** The demo controls each step asks the user to press; the rest of the demo is inert behind the card. */
+const ALLOWED = {
+  purpose: [],
+  goal: ['#demo-start'],
+  planning: ['#demo-open-map'],
+  map: [],
+  types: [],
+  blockers: [`[data-ticket="${String(BLOCKED_EXAMPLE)}"]`],
+  // The hand-off status takes focus from Open in T3 Code once that disables.
+  handoff: [`[data-ticket="${String(HAND_OFF_EXAMPLE)}"]`, '#demo-open', '#demo-handoff'],
+} as const satisfies Record<keyof typeof TARGETS, readonly string[]>;
+const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]';
+
+/** Makes everything under `root` inert except `allowed` and the elements that hold them. */
+export function inertExcept(root: Element, allowed: readonly Element[]): void {
+  for (const child of root.children) {
+    if (allowed.includes(child)) continue;
+    if (allowed.some((element) => child.contains(element))) inertExcept(child, allowed);
+    else child.setAttribute('inert', '');
+  }
+}
+
+/** The controls Tab moves between inside `root`, in document order. */
+export function tabStops(root: Element): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((element) =>
+    element.closest('[inert], [hidden]') === null
+    && element.getAttribute('tabindex') !== '-1'
+    && !(element instanceof HTMLButtonElement && element.disabled));
+}
 
 export interface TourOptions {
   /** The app's own toast, for the Not now and Exit tour messages. */
@@ -215,8 +244,14 @@ export function mountTour(options: TourOptions): TourController {
     }
     const state = journey?.state();
     if (state === undefined) return;
-    // The card comes first so Tab runs from its buttons into the demo control the step asks for.
+    // The card comes first so Tab runs from its buttons into the demo control the step asks for,
+    // and the rest of the demo is inert so neither Tab nor a click reaches it.
     setTrustedHtml(stage, `${cardHtml(state)}<div class="tour-shell">${demoAppHtml(state)}</div>`);
+    const shell = stage.querySelector('.tour-shell');
+    if (shell !== null) {
+      const selectors = state.status === 'finished' ? [] : ALLOWED[stageOf(state).id];
+      inertExcept(shell, selectors.flatMap((selector) => [...shell.querySelectorAll(selector)]));
+    }
     placeSpotlight();
     const step = state.status === 'finished' ? 'finished' : stageOf(state).id;
     if (step !== drawnStep) {
@@ -255,6 +290,13 @@ export function mountTour(options: TourOptions): TourController {
     setApp(true);
   }
 
+  /** The control that opened the tour, or what a redraw put in its place: the same id, or Settings' new Product tour row. */
+  function replacementFor(element: HTMLElement): HTMLElement | null {
+    if (element.isConnected) return element;
+    if (element.id !== '') return doc.getElementById(element.id);
+    return element.hasAttribute('data-settings-tour') ? doc.querySelector<HTMLElement>('[data-settings-tour]') : null;
+  }
+
   function close(message: string | null): void {
     unsubscribe?.();
     unsubscribe = null;
@@ -268,7 +310,7 @@ export function mountTour(options: TourOptions): TourController {
     setApp(false);
     render();
     const settings = doc.getElementById('settings');
-    const back = returnFocus?.isConnected === true ? returnFocus : settings;
+    const back = (returnFocus === null ? null : replacementFor(returnFocus)) ?? settings;
     returnFocus = null;
     back?.focus({ preventScroll: true });
     if (message === null) return;
@@ -318,6 +360,27 @@ export function mountTour(options: TourOptions): TourController {
     else if (act === 'openMap') dispatch({ type: 'next' });
     else if (act === 'select') dispatch({ type: 'select', ticket: Number(demo.dataset['ticket']) });
     else if (act === 'openInT3') dispatch({ type: 'openInT3' });
+  });
+
+  // A press on the dimmed backdrop or the card's text would drop focus to the page; keep it where it is.
+  stage.addEventListener('mousedown', (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest(FOCUSABLE) === null || target?.closest('[inert]') !== null) event.preventDefault();
+  });
+
+  // Tab and Shift+Tab cycle through the open card and the one demo control its step allows.
+  doc.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab' || mode === 'closed' || event.defaultPrevented) return;
+    const stops = tabStops(stage);
+    if (stops.length === 0) return;
+    event.preventDefault();
+    const active = doc.activeElement;
+    // From focus outside the stops (the card's title, the hand-off status), go to the stop after or before it in the page.
+    const after = (element: HTMLElement): boolean => active !== null && active !== element && (active.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    const next = event.shiftKey
+      ? [...stops].reverse().find((element) => element !== active && !after(element)) ?? stops.at(-1)
+      : stops.find(after) ?? stops[0];
+    next?.focus({ preventScroll: true });
   });
 
   doc.addEventListener('keydown', (event) => {
