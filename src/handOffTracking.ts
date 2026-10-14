@@ -441,6 +441,13 @@ async function acquireStoreLock(lockPath: string): Promise<() => Promise<void>> 
         });
       };
     } catch (error) {
+      // Windows can report EPERM while another writer's deleted lock is still closing.
+      // Retry within the same acquisition budget; a permanent permission error still fails.
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') {
+        if (Date.now() - startedAt >= STORE_LOCK_TIMEOUT_MS) throw error;
+        await wait(STORE_LOCK_RETRY_MS);
+        continue;
+      }
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       try {
         const details = await stat(lockPath);

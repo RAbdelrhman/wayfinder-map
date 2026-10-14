@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, open, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -16,6 +16,11 @@ import {
 
 // Keep the tracker's default GitHub lookups off the network.
 vi.mock('./github.js', () => ({ gh: () => Promise.reject(new Error('GitHub is not available in tests.')) }));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, open: vi.fn(actual.open) };
+});
 
 const input = {
   repo: 'octo/one',
@@ -423,6 +428,37 @@ describe('HandOffStore', () => {
       expect(records.map((item) => item.id).sort()).toEqual(saved.map((item) => item.id).sort());
       await expect(readFile(`${filePath}.lock`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
     } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('retries a transient permission error opening the store lock without losing records', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    try {
+      const store = new HandOffStore({ filePath });
+      const first = await store.record(input);
+      vi.mocked(open).mockRejectedValueOnce(Object.assign(new Error('Lock deletion pending'), { code: 'EPERM' }));
+      const second = await store.record({ ...input, threadId: 'thread-2' });
+      const records = await new HandOffStore({ filePath }).list();
+      expect(records.map((item) => item.id).sort()).toEqual([first.id, second.id].sort());
+      await expect(readFile(`${filePath}.lock`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('fails a permission error once the store lock acquisition budget is exhausted', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    const permission = Object.assign(new Error('Access denied'), { code: 'EPERM' });
+    const clock = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(5000);
+    try {
+      vi.mocked(open).mockRejectedValueOnce(permission);
+      await expect(new HandOffStore({ filePath }).record(input)).rejects.toBe(permission);
+      await expect(readFile(filePath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      clock.mockRestore();
       await rm(directory, { recursive: true, force: true });
     }
   });
