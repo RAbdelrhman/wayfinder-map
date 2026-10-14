@@ -28,6 +28,10 @@ describe('githubRepoImageUrl', () => {
   it('rejects non-GitHub image URLs from metadata', async () => {
     await expect(githubRepoImageUrl('owner/repo', async () => 'https://example.com/logo.png')).resolves.toBeNull();
   });
+
+  it('rejects when gh fails, so a rate limit is not mistaken for a personal repository', async () => {
+    await expect(githubRepoImageUrl('owner/repo', async () => Promise.reject(new Error('API rate limit exceeded')))).rejects.toThrow('rate limit');
+  });
 });
 
 describe('resolveRepoIcon', () => {
@@ -46,5 +50,16 @@ describe('resolveRepoIcon', () => {
       'https://avatars.githubusercontent.com/u/123?s=64',
       expect.objectContaining({ headers: { 'User-Agent': 'Wayfinder' } }),
     );
+  });
+
+  it('rejects when the GitHub lookup fails, so the caller retries', async () => {
+    const fetchFn = vi.fn<typeof fetch>();
+    await expect(resolveRepoIcon('owner/repo', fetchFn, async () => Promise.reject(new Error('API rate limit exceeded')))).rejects.toThrow('rate limit');
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the avatar download fails', async () => {
+    const fetchFn = vi.fn<typeof fetch>(async () => new Response(null, { status: 503 }));
+    await expect(resolveRepoIcon('owner/repo', fetchFn, async () => 'https://avatars.githubusercontent.com/u/123?s=64')).rejects.toThrow('503');
   });
 });

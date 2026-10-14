@@ -80,6 +80,7 @@ const MIME: Record<string, string> = {
 
 /** How long a map's prototype list is reused before GitHub is asked again. */
 const PROTOTYPE_TTL_MS = 60_000;
+const REPO_ICON_RETRY_MS = 60_000;
 
 /**
  * Prototype files are repo code, so they run sandboxed: an opaque origin cannot read
@@ -1396,8 +1397,11 @@ export async function startServer({
         try {
           let pending = repoIcons.get(requestedRepo);
           if (pending === undefined) {
-            pending = resolveRepoIcon(requestedRepo);
-            repoIcons.set(requestedRepo, pending);
+            const repo = requestedRepo;
+            pending = resolveRepoIcon(repo);
+            repoIcons.set(repo, pending);
+            // A failed lookup (rate limit, offline) is retried a minute later instead of hiding the image all session.
+            pending.catch(() => setTimeout(() => repoIcons.delete(repo), REPO_ICON_RETRY_MS).unref());
           }
           const icon = await pending;
           if (icon === null) {

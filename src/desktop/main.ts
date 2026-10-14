@@ -276,7 +276,10 @@ async function completeSmokeTest(homeUrl: string): Promise<void> {
   }, 100);
 }
 
-app.setAppUserModelId('com.rabdelrhman.wayfinder');
+// The installed app owns this ID. Windows takes a taskbar button's icon and name from the Start
+// menu shortcut carrying it, so a dev run gets its own ID: otherwise the shortcut a dev Electron
+// leaves behind ("Electron", no icon) replaces the installed app's icon and shows up in search.
+app.setAppUserModelId(app.isPackaged ? 'com.rabdelrhman.wayfinder' : 'com.rabdelrhman.wayfinder.dev');
 const primaryInstance = app.requestSingleInstanceLock();
 if (!primaryInstance) {
   // The running copy raises its window on 'second-instance'. Say so, or this looks like a crash.
