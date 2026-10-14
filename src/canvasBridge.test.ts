@@ -159,7 +159,7 @@ describe('sandboxed canvas bridge', () => {
     it('gives each option frame a compositor layer, so scrolling does not repaint the pages inside', () => {
       const { append, style } = inject({});
       expect(append).toHaveBeenCalledWith(style);
-      expect(style.textContent).toBe('#stage .frame { will-change: transform; }');
+      expect(style.textContent).toBe('#stage .frame { will-change: transform; } #stage.wf-zoomed-in .frame { will-change: auto; }');
     });
     it('leaves snapshots and option pages, which have no board, alone', () => {
       expect(inject(null).append).not.toHaveBeenCalled();
@@ -171,14 +171,15 @@ describe('sandboxed canvas bridge', () => {
     /** Runs the served engine's zoom helper against a stand-in stage. */
     const zoomed = (levels: number[], size = { offsetWidth: 2000, offsetHeight: 3000 }) => {
       const observed: Array<() => void> = [];
-      const stage = { ...size, style: {} as Record<string, string>, dataset: {} as Record<string, string> };
+      const classes = new Set<string>();
+      const stage = { ...size, style: {} as Record<string, string>, dataset: {} as Record<string, string>, classList: { toggle: (name: string, on: boolean) => (on ? classes.add(name) : classes.delete(name)) } };
       const context = { stage, levels, ResizeObserver: class { constructor(callback: () => void) { observed.push(callback); } observe(): void {} }, String, Number, snapshots: [] as unknown[] };
       runInNewContext(
         `${served().slice(0, served().indexOf('/*'))}
          for (const level of levels) { stageZoom(stage, level); snapshots.push({ ...stage.style }); }`,
         context,
       );
-      return { stage, snapshots: context.snapshots as Array<Record<string, string>>, observed };
+      return { stage, classes, snapshots: context.snapshots as Array<Record<string, string>>, observed };
     };
     it('serves the engine with the helper and no CSS zoom assignment', () => {
       const original = readFileSync(new URL('../prototypes/canvas/canvas.js', import.meta.url)).toString();
@@ -203,6 +204,13 @@ describe('sandboxed canvas bridge', () => {
       stage.offsetHeight = 4000;
       observed[0]!();
       expect(stage.style['marginBottom']).toBe('-2000px');
+    });
+    it('holds the pages in layers only at 100% or zoomed out, because a layer keeps the scale it was rastered at', () => {
+      const { classes } = zoomed([0.5]);
+      expect(classes.has('wf-zoomed-in')).toBe(false);
+      expect(zoomed([1]).classes.has('wf-zoomed-in')).toBe(false);
+      expect(zoomed([1.25]).classes.has('wf-zoomed-in')).toBe(true);
+      expect(zoomed([2, 1]).classes.has('wf-zoomed-in')).toBe(false);
     });
     it('watches the stage once however often it zooms', () => {
       expect(zoomed([0.5, 0.8, 0.5, 1]).observed).toHaveLength(1);

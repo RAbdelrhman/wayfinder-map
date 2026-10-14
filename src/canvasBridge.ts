@@ -390,7 +390,7 @@ function canvasBridge(): void {
   const onBoard = (): void => {
     if (!document.querySelector('#stage')) return;
     const layers = document.createElement('style');
-    layers.textContent = '#stage .frame { will-change: transform; }';
+    layers.textContent = '#stage .frame { will-change: transform; } #stage.wf-zoomed-in .frame { will-change: auto; }';
     document.head.append(layers);
   };
   // Waiting for load also waits for every option iframe and its network requests.
@@ -416,6 +416,9 @@ function stageZoom(stage: HTMLElement, zoom: number): void {
   stage.style.transformOrigin = '0 0';
   stage.style.transform = zoom === 1 ? '' : `scale(${String(zoom)})`;
   hold(zoom);
+  // A layer keeps the scale it was rastered at, so zoomed in the pages would go soft. They are held in layers (for smooth panning)
+  // only while zoomed out or at 100%, where a stale raster is at worst scaled down.
+  stage.classList.toggle('wf-zoomed-in', zoom > 1);
   // Options report their height as they load, which changes the size the margins are taken from.
   if (stage.dataset['wfZoomWatch'] === undefined) {
     stage.dataset['wfZoomWatch'] = '';
