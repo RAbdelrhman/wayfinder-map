@@ -76,6 +76,16 @@ describe('canvas notes comment', () => {
     expect(data(comment).pins[0]!['note']).toBe('First line\r\nsecond --> line');
   });
 
+  it('never lets a name or note reach GitHub as HTML or break the line', () => {
+    const comment = canvasNotesComment(dom, [
+      { ...b, type: 'element', element: 'Card\n<!-- hide -->\n<img src=x>', selector: '#c', note: 'a < b' },
+    ]);
+    const visible = comment.slice(0, comment.indexOf(CANVAS_NOTES_MARKER));
+    expect(visible).toContain('1. **B · Split hero**, element "Card &lt;!-- hide --> &lt;img src=x>": a &lt; b');
+    expect(visible).not.toContain('<');
+    expect(data(comment).pins[0]!['element']).toBe('Card\n<!-- hide -->\n<img src=x>');
+  });
+
   it('writes the snapshot file and the option from the tile for a snapshot', () => {
     const snapshot: CanvasNotesContext = { branch: 'prototype/8-x', sha: SHA, source: 'page', pages: ['prototype-snapshot.html'], options: { 'prototype-snapshot.html': ['A'] } };
     const at = { page: 'prototype-snapshot.html', pageTitle: 'prototype-snapshot.html' };

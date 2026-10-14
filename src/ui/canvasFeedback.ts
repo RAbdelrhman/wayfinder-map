@@ -3,7 +3,7 @@
  * option, collected in a closable feedback panel, reviewed there and posted as one comment on the
  * prototype ticket. There is no pick here: the pick is made in the T3 Code thread for the pick ticket.
  */
-import { canvasNotesComment, markOrder, markScope, markTitle } from '../canvasNotes.js';
+import { CANVAS_NOTES_MARKER, canvasNotesComment, markOrder, markScope, markTitle } from '../canvasNotes.js';
 import type { CanvasMark, CanvasNotesContext, CanvasNotesSource } from '../canvasNotes.js';
 import { parsePrototypeFilePath } from '../prototypes.js';
 import { scopedApiPath } from '../repoRoutes.js';
@@ -70,7 +70,9 @@ interface Mark extends CanvasMark {
 }
 interface Session {
   marks: Mark[];
-  posted: { url: string | null } | null;
+  /** Set when the marks as they stand are exactly what was posted. */
+  posted: { url: string | null; body: string } | null;
+  posting: boolean;
   /** No bridge: the option the person says is showing. */
   chosen: string | null;
 }
@@ -106,14 +108,17 @@ async function postJson(url: string, body: unknown): Promise<unknown> {
 
 /** The comment as GitHub shows it: the hidden block for agents is left out of the preview. */
 export function commentPreviewHtml(markdown: string): string {
-  return renderMarkdown(markdown.replace(/\n*<!-- wayfinder:notes v1 [\s\S]*-->\s*$/, ''));
+  // The block is always last, and `--` inside it is escaped, so the last marker is the real one.
+  const at = markdown.lastIndexOf(CANVAS_NOTES_MARKER);
+  const visible = at < 0 ? markdown : markdown.slice(0, at).trimEnd();
+  return renderMarkdown(visible.replace(/&lt;/g, '<'));
 }
 
 export class CanvasFeedback {
   private readonly sessions = new Map<string, Session>();
   private nextId = 1;
   private nextRequest = 1;
-  private readonly requests = new Map<number, 'hover' | 'near' | FeedbackTool>();
+  private readonly requests = new Map<number, { purpose: 'hover' | 'near' | FeedbackTool; where: string }>();
   private hoverPending = false;
   private hoverAgain: { x: number; y: number } | null = null;
   private tool: FeedbackTool | null = null;
@@ -125,7 +130,6 @@ export class CanvasFeedback {
   private ptab: 'canvas' | 'project' | 'basic' = 'canvas';
   private hsv: Hsv | null = null;
   private markdownView = false;
-  private posting = false;
   private error: string | null = null;
   private notice: string | null = null;
   private noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -160,7 +164,7 @@ export class CanvasFeedback {
     if (!context) return null;
     let session = this.sessions.get(context.url);
     if (!session) {
-      session = { marks: [], posted: null, chosen: null };
+      session = { marks: [], posted: null, posting: false, chosen: null };
       this.sessions.set(context.url, session);
     }
     return session;
@@ -277,9 +281,9 @@ export class CanvasFeedback {
     const focus = document.activeElement instanceof HTMLElement && (this.aside.contains(document.activeElement) || this.popLayer.contains(document.activeElement))
       ? [...document.activeElement.attributes].find((attr) => attr.name.startsWith('data-fb-'))
       : undefined;
-    const caret = document.activeElement instanceof HTMLTextAreaElement || document.activeElement instanceof HTMLInputElement
-      ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] as const
-      : null;
+    const textField = (el: Element | null | undefined): el is HTMLTextAreaElement | HTMLInputElement =>
+      el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type === 'text');
+    const caret = textField(document.activeElement) ? ([document.activeElement.selectionStart, document.activeElement.selectionEnd] as const) : null;
     const { panel, canvas } = this.visibility(context.size);
     this.aside.hidden = !panel;
     this.canvas.hidden = !canvas;
@@ -293,7 +297,7 @@ export class CanvasFeedback {
     if (focus) {
       const target = [...document.querySelectorAll<HTMLElement>(`#canvas-viewer [${focus.name}]`)].find((el) => el.getAttribute(focus.name) === focus.value);
       target?.focus({ preventScroll: true });
-      if (caret && (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement)) target.setSelectionRange(caret[0], caret[1]);
+      if (caret && textField(target)) target.setSelectionRange(caret[0], caret[1]);
     }
   }
   private repaint(): void {
@@ -334,7 +338,10 @@ export class CanvasFeedback {
       ? `<div class="cf-capture" data-fb-capture tabindex="-1" aria-hidden="true"></div>`
       : '';
     const hint = this.hintHtml(context);
+    const focused =
+      document.activeElement instanceof HTMLElement && this.marksLayer.contains(document.activeElement) ? document.activeElement.dataset['fbMark'] : undefined;
     setTrustedHtml(this.marksLayer, `${capture}${hover}${marks}${hint}`);
+    if (focused) this.marksLayer.querySelector<HTMLElement>(`[data-fb-mark="${focused}"]`)?.focus({ preventScroll: true });
     this.placePopover();
   }
   private hintHtml(context: FeedbackContext): string {
@@ -359,7 +366,7 @@ export class CanvasFeedback {
     const variants = this.currentPage(context).options;
     const optionField =
       context.source === 'page' && mark.type === 'pin' && variants.length
-        ? `<label class="cf-field">Option<select class="input" data-fb-option="${String(mark.id)}"><option value=""${mark.option === null ? ' selected' : ''}>Whole page</option>${variants.map((v) => `<option value="${escapeHtml(v.id)}"${v.id === mark.option ? ' selected' : ''}>${escapeHtml(`${v.id} · ${v.name}`)}</option>`).join('')}</select></label>`
+        ? `<label class="cf-field">Option<select class="input" data-fb-option="${String(mark.id)}">${variants.map((v) => `<option value="${escapeHtml(v.id)}"${v.id === mark.option ? ' selected' : ''}>${escapeHtml(`${v.id} · ${v.name}`)}</option>`).join('')}</select></label>`
         : '';
     const color = mark.type === 'color' ? this.colorEditor(mark) : '';
     setTrustedHtml(
@@ -445,8 +452,9 @@ export class CanvasFeedback {
   }
   private card(context: FeedbackContext, posted: boolean): string {
     const ticket = context.ticket === null ? '' : `#${String(context.ticket)}`;
-    const md = this.comment(context);
-    const url = this.session()?.posted?.url ?? null;
+    const sent = posted ? this.session()?.posted : null;
+    const md = sent ? sent.body : this.comment(context);
+    const url = sent?.url ?? null;
     const open = posted && url ? `<a class="ghost cf-sm" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${icon(EXTERNAL)}Open</a>` : '';
     return `<article class="cf-gh" aria-label="${posted ? 'Posted' : 'Comment'} on ${ticket}">
       <header class="cf-gh-head"><span>${posted ? 'Posted' : 'Comment'} on <b>${escapeHtml(context.title)}</b></span>${open}</header>
@@ -458,13 +466,14 @@ export class CanvasFeedback {
     const ticket = context.ticket === null ? 'the prototype ticket' : `#${String(context.ticket)}`;
     const close = `<button type="button" class="iconbtn" data-fb-act="panel-close" aria-label="Close the feedback panel (${PANEL_KEY})" title="Close (${PANEL_KEY})">${icon(CLOSE)}</button>`;
     if (this.panel === 'review') {
+      const posting = this.session()?.posting ?? false;
       const error = this.error ? `<div class="cf-banner" role="alert">${icon(INFO)}<span>${escapeHtml(this.error)}</span></div>` : '';
-      const disabled = context.ticket === null ? ' disabled title="Wayfinder does not know this canvas’s ticket"' : this.posting ? ' disabled' : '';
+      const disabled = context.ticket === null ? ' disabled title="Wayfinder does not know this canvas’s ticket"' : posting ? ' disabled' : '';
       return `<header class="cf-panel-head"><button type="button" class="iconbtn" data-fb-act="panel-edit" aria-label="Back to edit">${icon(FEEDBACK_ICONS.left)}</button><h2>Review before posting</h2><span class="topbar-spacer"></span>${close}</header>
         <div class="cf-panel-body"><p class="cf-muted">Exactly what goes to ${ticket}. Your marks stay on the canvas while you read.</p>${this.card(context, false)}${error}</div>
-        <footer class="cf-panel-foot"><button type="button" class="ghost" data-fb-act="panel-edit">Edit</button><span class="topbar-spacer"></span><button type="button" class="primary" data-fb-act="post"${disabled}>${icon(FEEDBACK_ICONS.send)}${this.posting ? 'Posting…' : `Post to ${ticket}`}</button></footer>`;
+        <footer class="cf-panel-foot"><button type="button" class="ghost" data-fb-act="panel-edit">Edit</button><span class="topbar-spacer"></span><button type="button" class="primary" data-fb-act="post"${disabled}>${icon(FEEDBACK_ICONS.send)}${posting ? 'Posting…' : `Post to ${ticket}`}</button></footer>`;
     }
-    if (this.panel === 'posted') {
+    if (this.panel === 'posted' && this.session()?.posted) {
       const pick = context.pick === null ? 'the pick ticket' : `#${String(context.pick)}`;
       return `<header class="cf-panel-head"><span class="cf-ok">${icon(CHECK)}</span><h2>Posted to ${ticket}</h2><span class="topbar-spacer"></span>${close}</header>
         <div class="cf-panel-body"><p class="cf-muted">The agent picks these up for the next revision. When you stop revising, make the pick in the T3 Code thread for ${pick}.</p>${this.card(context, true)}</div>
@@ -529,12 +538,15 @@ export class CanvasFeedback {
     this.paintMarks();
   }
   onHit(hit: CanvasHit): void {
-    const purpose = this.requests.get(hit.requestId);
+    const asked = this.requests.get(hit.requestId);
     this.requests.delete(hit.requestId);
     const context = this.host.context();
-    if (!purpose || !context) return;
+    if (!asked || !context) return;
+    const purpose = asked.purpose;
+    if (purpose === 'hover') this.hoverPending = false;
+    // A late answer about another canvas, page or option describes nothing on screen.
+    if (asked.where !== this.where(context)) return;
     if (purpose === 'hover') {
-      this.hoverPending = false;
       this.hover = !hit.miss && hit.rect && hit.name ? { rect: hit.rect, name: hit.name } : null;
       this.paintMarks();
       if (this.hoverAgain) {
@@ -562,7 +574,9 @@ export class CanvasFeedback {
     }
     if (purpose !== this.tool) return;
     const page = this.currentPage(context);
-    const option = context.source === 'page' ? (context.variant && page.options.some((o) => o.id === context.variant) ? context.variant : null) : this.currentOption(context);
+    // A snapshot's pin starts on the option its tile opened, or the first; the popover can change it.
+    const option =
+      context.source === 'page' ? ((page.options.find((o) => o.id === context.variant) ?? page.options[0])?.id ?? null) : this.currentOption(context);
     const base = { page: page.id, pageTitle: page.title, option, optionName: this.optionName(context, page.id, option), note: '' };
     if (purpose === 'pin') {
       const anchor = anchorOf(hit);
@@ -575,9 +589,14 @@ export class CanvasFeedback {
     return this.add({ ...base, type: 'color', element, selector: hit.selector, from: color, to: color });
   }
   private nearFor: number | null = null;
+  private where(context: FeedbackContext): string {
+    return JSON.stringify([context.url, this.currentPage(context).id, this.currentOption(context)]);
+  }
   private request(purpose: 'hover' | 'near' | FeedbackTool, x: number, y: number): void {
     const requestId = this.nextRequest++;
-    this.requests.set(requestId, purpose);
+    const context = this.host.context();
+    if (!context) return;
+    this.requests.set(requestId, { purpose, where: this.where(context) });
     this.host.send({ type: 'hitTest', requestId, x, y, ...(purpose === 'color' ? { palette: true } : {}) });
   }
   private hoverAt(x: number, y: number): void {
@@ -676,6 +695,9 @@ export class CanvasFeedback {
     const context = this.host.context();
     if (context && this.tool && this.offReason(this.tool, context)) this.tool = null;
     this.hover = null;
+    this.hoverPending = false;
+    this.hoverAgain = null;
+    this.requests.clear();
     this.layout.clear();
     this.palette = [];
     if (context && this.editing !== null) {
@@ -697,23 +719,31 @@ export class CanvasFeedback {
   private async post(): Promise<void> {
     const context = this.host.context();
     const session = this.session();
-    if (!context || !session || context.ticket === null || this.posting || !session.marks.length) return;
+    if (!context || !session || context.ticket === null || session.posting || !session.marks.length) return;
     const repo = parsePrototypeFilePath(context.url.split(/[?#]/)[0] ?? '')?.repo;
     if (!repo) return;
-    this.posting = true;
+    const ticket = context.ticket;
+    const body = this.comment(context);
+    session.posting = true;
     this.error = null;
     this.paint();
+    // The person may edit, or open another canvas, while GitHub answers: only the sent body counts.
+    const here = (): boolean => this.session() === session;
     try {
-      const result = (await (this.host.post ?? postJson)(scopedApiPath(repo, 'canvas-notes'), { ticket: context.ticket, body: this.comment(context) })) as { url?: unknown };
-      session.posted = { url: typeof result.url === 'string' && result.url.startsWith('https://github.com/') ? result.url : null };
-      this.panel = 'posted';
-      this.editing = null;
-      this.tool = null;
-      this.say(`Posted to #${String(context.ticket)}.`);
+      const result = (await (this.host.post ?? postJson)(scopedApiPath(repo, 'canvas-notes'), { ticket, body })) as { url?: unknown };
+      const url = typeof result.url === 'string' && result.url.startsWith('https://github.com/') ? result.url : null;
+      const current = here() ? this.host.context() : null;
+      if (current && this.comment(current) === body) {
+        session.posted = { url, body };
+        if (this.panel === 'review') this.panel = 'posted';
+        this.editing = null;
+        this.tool = null;
+        this.say(`Posted to #${String(ticket)}.`);
+      } else if (here()) this.say(`Posted to #${String(ticket)}. Your later edits are not in it yet.`);
     } catch (error) {
-      this.error = `Couldn't post to #${String(context.ticket)}: ${(error as Error).message} Your notes are still here; try again.`;
+      if (here()) this.error = `Couldn't post to #${String(ticket)}: ${(error as Error).message} Your notes are still here; try again.`;
     } finally {
-      this.posting = false;
+      session.posting = false;
       this.repaint();
     }
   }

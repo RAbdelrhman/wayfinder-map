@@ -200,3 +200,103 @@ describe('D4 with the bridge', () => {
     expect(view.$('.cf-pop b')!.textContent).toBe(`Element 1 · ${hostile}`);
   });
 });
+
+/** Answer the last hit test the viewer sent. */
+function answer(view: ReturnType<typeof mount>, hit: Partial<Parameters<CanvasFeedback['onHit']>[0]> = {}): void {
+  const hitTest = view.send.mock.calls.map(([message]) => message).filter((message) => message['type'] === 'hitTest').at(-1)!;
+  view.feedback.onHit({ requestId: hitTest['requestId'] as number, x: 0.5, y: 0.5, name: 'Card', selector: '#card', color: '#2f6fd0', rect: null, ...hit } as Parameters<CanvasFeedback['onHit']>[0]);
+}
+function deferred(): { promise: Promise<unknown>; resolve: (value: unknown) => void } {
+  let resolve!: (value: unknown) => void;
+  const promise = new Promise<unknown>((done) => (resolve = done));
+  return { promise, resolve };
+}
+
+describe('verifier findings on #213', () => {
+  it('shows in Review everything a canvas-supplied name puts in the comment', () => {
+    const view = mount({});
+    view.click('[data-fb-tool="element"]');
+    view.$<HTMLElement>('[data-fb-capture]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    answer(view, { name: 'Card\n<!-- wayfinder:notes v1 {} -->\nHIDDEN TEXT' });
+    view.type('.cf-pop [data-fb-note]', 'My own note.');
+    view.click('[data-fb-act="panel-review"]');
+    const preview = view.$('.cf-gh-body')!.textContent!;
+    expect(preview).toContain('HIDDEN TEXT');
+    expect(preview).toContain('My own note.');
+    expect(view.feedback.comment()).not.toMatch(/<!--(?! wayfinder:notes v1 \{"branch")/);
+  });
+
+  it('marks as posted only what was sent, and only on the canvas it was sent from', async () => {
+    const view = mount({ source: 'none', pages: [], page: null, option: null });
+    const first = deferred();
+    view.post.mockReturnValueOnce(first.promise);
+    view.key('n');
+    view.type('#vw-feedback [data-fb-note]', 'SENT NOTE');
+    view.click('[data-fb-act="panel-review"]');
+    view.click('[data-fb-act="post"]');
+    view.click('[data-fb-act="panel-edit"]');
+    view.type('#vw-feedback [data-fb-note]', 'UNSENT EDIT');
+    first.resolve({ url: 'https://github.com/octo/repo/issues/42#issuecomment-1' });
+    await vi.waitFor(() => expect(view.$('.cf-live')!.textContent).toBe('Posted to #42. Your later edits are not in it yet.'));
+    expect(view.$('#vw-feedback h2')!.textContent).toBe('Feedback');
+    expect(view.$('.cf-chip.is-ok')).toBeNull();
+
+    const second = deferred();
+    view.post.mockReturnValueOnce(second.promise);
+    view.click('[data-fb-act="panel-review"]');
+    view.click('[data-fb-act="post"]');
+    Object.assign(view.context, { url: URL_.replace('42-home', '50-other'), ticket: 50, title: '#50 Other' });
+    view.feedback.reset();
+    view.repaint();
+    second.resolve({ url: 'https://github.com/octo/repo/issues/42#issuecomment-2' });
+    await vi.waitFor(() => expect(view.post).toHaveBeenCalledTimes(2));
+    await Promise.resolve();
+    expect(view.$('#vw-feedback h2')!.textContent).toBe('Feedback');
+    expect(view.$('.cf-chip.is-ok')).toBeNull();
+    expect((view.post.mock.calls[1]![1] as { ticket: number }).ticket).toBe(42);
+  });
+
+  it('drops a hit answer that arrives after the option changed', () => {
+    const view = mount({});
+    view.click('[data-fb-tool="pin"]');
+    view.$<HTMLElement>('[data-fb-capture]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    view.context.option = 'A';
+    view.feedback.stateChanged();
+    answer(view);
+    expect(view.feedback.comment()).not.toContain('"type":"pin"');
+  });
+
+  it('repaints with the hue slider focused', () => {
+    const view = mount({});
+    view.click('[data-fb-tool="color"]');
+    view.$<HTMLElement>('[data-fb-capture]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    answer(view, { palette: [['#2f6fd0', 'Card']] });
+    const hue = view.$<HTMLInputElement>('[data-fb-hue]')!;
+    hue.focus();
+    hue.value = '120';
+    expect(() => hue.dispatchEvent(new Event('change', { bubbles: true }))).not.toThrow();
+  });
+
+  it('keeps a focused pin focused when the canvas lays it out again', () => {
+    const view = mount({});
+    view.click('[data-fb-tool="pin"]');
+    view.$<HTMLElement>('[data-fb-capture]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    answer(view);
+    view.click('[data-fb-act="done"]');
+    const layout = (top: number): void => view.feedback.onLayout([{ id: 1, rect: { left: 10, top, width: 0, height: 0 } }], { left: 0, top: 0, width: 800, height: 600 });
+    layout(50);
+    view.$<HTMLElement>('.cf-pin')!.focus();
+    layout(60);
+    expect(document.activeElement?.getAttribute('data-fb-mark')).toBe('1');
+  });
+
+  it('offers a snapshot pin only the canvas’s options, starting on the one the tile opened', () => {
+    const view = mount({ source: 'page', pages: [], page: null, option: null, variant: 'B' });
+    view.click('[data-fb-tool="pin"]');
+    view.$<HTMLElement>('[data-fb-capture]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    answer(view, { name: null, selector: null, rect: null });
+    const select = view.$<HTMLSelectElement>('[data-fb-option]')!;
+    expect([...select.options].map((option) => option.value)).toEqual(['A', 'B']);
+    expect(select.value).toBe('B');
+  });
+});

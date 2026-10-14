@@ -81,6 +81,18 @@ export function markScope(mark: Pick<CanvasMark, 'option' | 'optionName'>): stri
   return mark.optionName && mark.optionName !== mark.option ? `${mark.option} · ${mark.optionName}` : mark.option;
 }
 
+/**
+ * Visible text as GitHub will show it. Names come from the canvas, so no `<` reaches GitHub as HTML:
+ * an HTML comment or tag in a name could hide the rest of the comment, there and in Review.
+ */
+function text(value: string): string {
+  return value.replace(/</g, '&lt;');
+}
+/** A name, on one line. */
+function name(value: string): string {
+  return text(value.replace(/\s+/g, ' ').trim());
+}
+
 /** Inline code that survives backticks inside the value. */
 function code(value: string): string {
   const ticks = '`'.repeat(Math.max(0, ...[...value.matchAll(/`+/g)].map((match) => match[0].length)) + 1);
@@ -88,16 +100,16 @@ function code(value: string): string {
 }
 
 function where(mark: CanvasMark, source: CanvasNotesSource): string {
-  if (mark.type === 'pin') return mark.near ? `pin on "${mark.near}"` : source === 'page' ? 'pin on the page' : 'pin';
-  if (mark.type === 'element') return `element "${mark.element ?? ''}"`;
-  if (mark.type === 'color') return `colour of "${mark.element ?? ''}": ${code(mark.from ?? '')} → ${code(mark.to ?? '')}`;
+  if (mark.type === 'pin') return mark.near ? `pin on "${name(mark.near)}"` : source === 'page' ? 'pin on the page' : 'pin';
+  if (mark.type === 'element') return `element "${name(mark.element ?? '')}"`;
+  if (mark.type === 'color') return `colour of "${name(mark.element ?? '')}": ${code(mark.from ?? '')} → ${code(mark.to ?? '')}`;
   return mark.option === null ? 'note' : 'note on the whole option';
 }
 
 /** A note's text as list-item content: later lines are indented so they stay inside the item. */
 function noteText(note: string): string {
-  const text = note.trim();
-  return text ? text.replace(/\r\n?/g, '\n').replace(/\n/g, '\n   ') : '_(no note)_';
+  const trimmed = note.trim();
+  return trimmed ? text(trimmed).replace(/\r\n?/g, '\n').replace(/\n/g, '\n   ') : '_(no note)_';
 }
 
 const round = (value: number): number => Math.round(Math.min(1, Math.max(0, value)) * 1000) / 1000;
@@ -129,12 +141,12 @@ export function canvasNotesComment(context: CanvasNotesContext, marks: readonly 
   const first = order.length ? marks[order[0]!]! : null;
   const at = `${code(context.branch)}${context.sha ? ` @ ${code(context.sha.slice(0, 7))}` : ''}`;
   const pageLabel = (mark: CanvasMark): string =>
-    context.source === 'page' || context.source === 'none' ? code(mark.page) : `page **${mark.pageTitle}**`;
+    context.source === 'page' || context.source === 'none' ? code(mark.page) : `page **${name(mark.pageTitle)}**`;
   const head = context.source === 'page' ? `${at} · snapshot` : `${at}${onePage && first ? ` · ${pageLabel(first)}` : ''}`;
   const lines = order.map((index, k) => {
     const mark = marks[index]!;
-    const scope = onePage ? `**${markScope(mark)}**` : `**${mark.pageTitle} · ${markScope(mark)}**`;
-    const file = context.source === 'page' && mark.option !== null ? `${code(mark.page)} · option **${mark.option}**` : scope;
+    const scope = onePage ? `**${name(markScope(mark))}**` : `**${name(mark.pageTitle)} · ${name(markScope(mark))}**`;
+    const file = context.source === 'page' && mark.option !== null ? `${code(mark.page)} · option **${name(mark.option)}**` : scope;
     return `${String(k + 1)}. ${file}, ${where(mark, context.source)}: ${noteText(mark.note)}`;
   });
   return `${CANVAS_NOTES_HEADING}\n${head}\n\n${lines.join('\n')}\n\n${CANVAS_NOTES_MARKER}${canvasNotesData(context, marks)} -->`;
