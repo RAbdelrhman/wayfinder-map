@@ -114,14 +114,15 @@ export function reduceDemo(state: DemoState, action: DemoAction): DemoState {
       return { ...state, selected: action.ticket, handOff: 0 };
     }
     case 'openInT3':
-      if (state.view !== 'map' || state.handOff > 0 || !canHandOff(demoTicket(state.selected ?? -1))) return state;
+      // Only the hand-off step hands a ticket off; earlier map steps leave it alone.
+      if (stage.id !== 'handoff' || state.handOff > 0 || !canHandOff(demoTicket(state.selected ?? -1))) return state;
       return { ...state, handOff: 1 };
     case 'exit':
       return { ...state, status: 'exited' };
     case 'planTick':
       return stage.id === 'planning' && state.plan < PLAN_DONE ? { ...state, plan: state.plan + 1 } : state;
     case 'handOffTick':
-      return state.view === 'map' && state.handOff > 0 && state.handOff < HAND_OFF_DONE ? { ...state, handOff: state.handOff + 1 } : state;
+      return stage.id === 'handoff' && state.handOff > 0 && state.handOff < HAND_OFF_DONE ? { ...state, handOff: state.handOff + 1 } : state;
   }
 }
 
@@ -152,7 +153,7 @@ type Ticking = 'plan' | 'handOff' | null;
 function wantedTicking(state: DemoState): Ticking {
   if (state.status !== 'running') return null;
   if (stageOf(state).id === 'planning' && state.plan < PLAN_DONE) return 'plan';
-  if (state.view === 'map' && state.handOff > 0 && state.handOff < HAND_OFF_DONE) return 'handOff';
+  if (stageOf(state).id === 'handoff' && state.handOff > 0 && state.handOff < HAND_OFF_DONE) return 'handOff';
   return null;
 }
 

@@ -75,11 +75,12 @@ export default defineConfig([
   {
     // The tour's demo (#239) must never reach GitHub, T3 Code or stored preferences:
     // it imports only its own files and gets no network, storage or window globals.
-    files: ['src/ui/demo/**/*.ts'],
+    files: ['src/ui/demo/**/*.{js,mjs,cjs,ts,mts,cts}'],
     ignores: ['src/ui/demo/**/*.test.ts'],
     rules: {
       'no-restricted-imports': ['error', {
-        patterns: [{ regex: '^(?!\\./[^/]+$)', message: 'The demo imports only files in src/ui/demo, so it cannot reach real GitHub, T3 Code or preference code.' }],
+        // A bare sibling name only: no extension (so no tests or other file kinds) and no separator of either kind.
+        patterns: [{ regex: '^(?!\\./[A-Za-z0-9_-]+$)', message: 'The demo imports only files in src/ui/demo, so it cannot reach real GitHub, T3 Code or preference code.' }],
       }],
       'no-restricted-globals': ['error',
         ...['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'navigator', 'localStorage', 'sessionStorage', 'indexedDB',

@@ -79,6 +79,11 @@ describe('the demo lint boundary', () => {
     "import x from 'some-package';",
     "import { y } from './nested/y';",
     "export { z } from '../z';",
+    "import { walk } from './demoJourney.test';",
+    "import { a } from './helper.js';",
+    "import { b } from './sub/b';",
+    String.raw`import { c } from '.\\..\\..\\github';`,
+    String.raw`import { d } from './x\\..\\..\\t3';`,
     "void import('./demoData');",
     "fetch('/api/maps');",
     "window.fetch('/api/maps');",
@@ -97,12 +102,18 @@ describe('the demo lint boundary', () => {
     expect(await errors(code)).not.toEqual([]);
   });
 
+  it('applies to JavaScript files in the demo too', async () => {
+    expect(await errors("fetch('/api/maps');", 'src/ui/demo/lintProbe.mjs')).not.toEqual([]);
+  });
+
   it('allows imports between demo files and timers', async () => {
     expect(await errors("import { DEMO_MAP } from './demoData';\nconst id = setInterval(() => DEMO_MAP, 1);\nclearInterval(id);")).toEqual([]);
   });
 
   it('covers every demo source file, and they pass it', async () => {
-    const sources = readdirSync('src/ui/demo').filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'));
+    const sources = readdirSync('src/ui/demo', { recursive: true, encoding: 'utf8' })
+      .map((file) => file.replaceAll('\\', '/'))
+      .filter((file) => /\.[cm]?[jt]s$/.test(file) && !file.endsWith('.test.ts'));
     expect(sources.length).toBeGreaterThan(0);
     for (const file of sources) {
       const filePath = `src/ui/demo/${file}`;

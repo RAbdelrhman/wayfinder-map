@@ -139,6 +139,12 @@ describe('the demo journey', () => {
     expect(clock.active()).toEqual([HAND_OFF_TICK_MS]);
     journey.dispatch({ type: 'next' });
     expect(stageId(journey)).toBe('handoff');
+    // One hand-off line per tick, and Next waits for the last one.
+    for (let handOff = 2; handOff <= HAND_OFF_DONE; handOff += 1) {
+      expect(canAdvance(journey.state())).toBe(false);
+      clock.tick();
+      expect(journey.state().handOff).toBe(handOff);
+    }
     clock.tick(5);
     expect(journey.state().handOff).toBe(HAND_OFF_DONE);
     expect(clock.active()).toEqual([]);
@@ -233,6 +239,8 @@ describe('the demo journey', () => {
     vi.advanceTimersByTime(PLAN_TICK_MS * PLAN_DONE);
     expect(journey.state().plan).toBe(PLAN_DONE);
     expect(vi.getTimerCount()).toBe(0);
+    for (let i = 0; i < 3; i += 1) journey.dispatch({ type: 'next' });
+    journey.dispatch({ type: 'select', ticket: BLOCKED_EXAMPLE });
     journey.dispatch({ type: 'next' });
     journey.dispatch({ type: 'select', ticket: HAND_OFF_EXAMPLE });
     journey.dispatch({ type: 'openInT3' });
@@ -256,6 +264,26 @@ describe('the demo journey', () => {
     journey.dispatch({ type: 'back' });
     journey.restart();
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('hands off only on the hand-off step, not on the earlier map steps', () => {
+    const clock = manualScheduler();
+    const journey = createDemoJourney({ scheduler: clock.scheduler });
+    journey.dispatch({ type: 'next' });
+    journey.dispatch({ type: 'startMap' });
+    clock.tick(PLAN_DONE);
+    journey.dispatch({ type: 'next' });
+    for (const id of ['map', 'types', 'blockers'] as const) {
+      expect(stageId(journey)).toBe(id);
+      journey.dispatch({ type: 'select', ticket: HAND_OFF_EXAMPLE });
+      journey.dispatch({ type: 'openInT3' });
+      journey.dispatch({ type: 'handOffTick' });
+      expect(journey.state().handOff).toBe(0);
+      expect(clock.active()).toEqual([]);
+      if (id === 'blockers') journey.dispatch({ type: 'select', ticket: BLOCKED_EXAMPLE });
+      journey.dispatch({ type: 'next' });
+    }
+    expect(stageId(journey)).toBe('handoff');
   });
 
   it('ignores ticks and selections outside the screens they belong to', () => {
