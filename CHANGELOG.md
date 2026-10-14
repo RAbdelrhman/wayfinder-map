@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.19](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.18...v0.2.19) (2026-10-14)
+
+
+### Bug Fixes
+
+* keep the tour's Spotlight card clear of its highlighted target ([#301](https://github.com/RAbdelrhman/wayfinder-map/issues/301)) ([da4e5fa](https://github.com/RAbdelrhman/wayfinder-map/commit/da4e5faf78ceac1fcafb1822b04ac81e1a6230cb))
+* unblock the Windows release, keep the taskbar icon, retry repo images ([#303](https://github.com/RAbdelrhman/wayfinder-map/issues/303)) ([db009c6](https://github.com/RAbdelrhman/wayfinder-map/commit/db009c6dd5980cb8889f26696bd30b60b7567d09))
+
 ## [0.2.18](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.17...v0.2.18) (2026-10-14)
 
 
