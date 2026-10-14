@@ -357,6 +357,12 @@ export function mountTour(options: TourOptions): TourController {
     else if (act === 'openInT3') dispatch({ type: 'openInT3' });
   });
 
+  // A press on the dimmed backdrop or the card's text would drop focus to the page; keep it where it is.
+  stage.addEventListener('mousedown', (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest(FOCUSABLE) === null || target?.closest('[inert]') !== null) event.preventDefault();
+  });
+
   // Tab and Shift+Tab cycle through the open card and the one demo control its step allows.
   doc.addEventListener('keydown', (event) => {
     if (event.key !== 'Tab' || mode === 'closed' || event.defaultPrevented) return;

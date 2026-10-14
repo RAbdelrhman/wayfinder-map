@@ -404,4 +404,23 @@ describe('keeping input inside the open card', () => {
     expect([...root.querySelectorAll('[inert]')].map((element) => element.tagName.toLowerCase() + (element.id === '' ? '' : `#${element.id}`))).toEqual(['nav', 'p', 'button#b']);
     expect(tabStops(root).map((element) => element.id)).toEqual(['c']);
   });
+
+  it.each([
+    ['the welcome dialog', 0],
+    ['a step card', 2],
+    ['the completion card', 8],
+  ])('keeps focus in place when the backdrop or card text of %s is pressed', (_, step) => {
+    const tour = mount();
+    if (step === 0) tour.invite();
+    else { tour.start(); walkTo(step); }
+    const press = (selector: string): boolean => {
+      const event = new browser.MouseEvent('mousedown', { bubbles: true, cancelable: true }) as unknown as Event;
+      q(selector)?.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(press('.tour-scrim, .tour-block')).toBe(true);
+    expect(press('.tour-body')).toBe(true);
+    expect(press('.tour-actions button')).toBe(false);
+    if (step === 2) expect(press('#demo-start')).toBe(false);
+  });
 });
