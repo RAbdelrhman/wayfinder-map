@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.2.18](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.17...v0.2.18) (2026-10-14)
+
+
+### Features
+
+* [#210](https://github.com/RAbdelrhman/wayfinder-map/issues/210) pin, note and pick prototype canvas (chosen: D4) ([b559010](https://github.com/RAbdelrhman/wayfinder-map/commit/b5590100590e67d7df16c423bf991025cd59a4e3))
+* add D3 with a key per tool, F's pins, a colour picker, E's panel and review, and no pick ([#210](https://github.com/RAbdelrhman/wayfinder-map/issues/210)) ([a697194](https://github.com/RAbdelrhman/wayfinder-map/commit/a697194419e184d8b2e611d9dc54468f92e646e3))
+* add D4, D3 without Attach, and record D3 feedback ([#210](https://github.com/RAbdelrhman/wayfinder-map/issues/210)) ([2e0f312](https://github.com/RAbdelrhman/wayfinder-map/commit/2e0f312ed52ff446799a0c23d3f6a6bd4da277e0))
+* add round 4 pin, note and pick directions D, E and F ([#210](https://github.com/RAbdelrhman/wayfinder-map/issues/210)) ([baf0cd9](https://github.com/RAbdelrhman/wayfinder-map/commit/baf0cd9e3994fe715a4cab04d8bbb7d94f01733a))
+* add round two feedback tools and draft recovery prototype ([5e0514a](https://github.com/RAbdelrhman/wayfinder-map/commit/5e0514a456f2143133f2fb8deba3c0fe075c7b79))
+* add the guided product tour and its entry points ([#298](https://github.com/RAbdelrhman/wayfinder-map/issues/298)) ([449b0f2](https://github.com/RAbdelrhman/wayfinder-map/commit/449b0f223bde472d6cba851d07ca5df0bf94aa2b))
+* add the isolated demo journey for the product tour ([#297](https://github.com/RAbdelrhman/wayfinder-map/issues/297)) ([6f03e49](https://github.com/RAbdelrhman/wayfinder-map/commit/6f03e49cb539570edce696f2d7df96e395a724bc))
+* persist archive choices per account and keep archived maps quiet ([#293](https://github.com/RAbdelrhman/wayfinder-map/issues/293)) ([145410f](https://github.com/RAbdelrhman/wayfinder-map/commit/145410fa8ad7cca1418a7cc62eb7c4b58d7d8e21))
+* pin notes on a canvas option and post them to the prototype ticket ([#299](https://github.com/RAbdelrhman/wayfinder-map/issues/299)) ([59ec378](https://github.com/RAbdelrhman/wayfinder-map/commit/59ec3780b361e06d2932f38308b2a9f209319bba))
+* prototype pin note and pick viewer directions for [#210](https://github.com/RAbdelrhman/wayfinder-map/issues/210) ([bc97258](https://github.com/RAbdelrhman/wayfinder-map/commit/bc9725858daf3a135776ab741355e840074d3f8c))
+* prototype the interactive first-time walkthrough ([#294](https://github.com/RAbdelrhman/wayfinder-map/issues/294)) ([e7e1e9f](https://github.com/RAbdelrhman/wayfinder-map/commit/e7e1e9fb618423b8ff66703e2be99206ef03bdf9))
+* refine anchored canvas feedback prototype for [#210](https://github.com/RAbdelrhman/wayfinder-map/issues/210) ([16f9ed5](https://github.com/RAbdelrhman/wayfinder-map/commit/16f9ed5876b55dff4591ea1f3b8f847f854eac2e))
+* split round 4 into pages and add D2 with A3's tools and a separate pick ([#210](https://github.com/RAbdelrhman/wayfinder-map/issues/210)) ([02d1bd6](https://github.com/RAbdelrhman/wayfinder-map/commit/02d1bd6e5b03e7fa05d50e2545adea82a5076425))
+
+
+### Bug Fixes
+
+* address [#210](https://github.com/RAbdelrhman/wayfinder-map/issues/210) verifier and review-bot findings ([5d3e88c](https://github.com/RAbdelrhman/wayfinder-map/commit/5d3e88ccf75b0baf54c9526fd53dcab49a5a132c))
+* keep feedback summaries in sync while editing ([c1a74c2](https://github.com/RAbdelrhman/wayfinder-map/commit/c1a74c2e9bb69f6d8aa47ca63e786dacb32c3f22))
+* keep maps synced without reloading on switches ([#287](https://github.com/RAbdelrhman/wayfinder-map/issues/287)) ([b7dc1d0](https://github.com/RAbdelrhman/wayfinder-map/commit/b7dc1d040a9522bd2da545282cc6ef2c7fdb9edb))
+* keep releases drafts until the Windows build attaches update metadata ([#285](https://github.com/RAbdelrhman/wayfinder-map/issues/285)) ([7fa2d4a](https://github.com/RAbdelrhman/wayfinder-map/commit/7fa2d4aebca5646ffae8988440a8cf6b1ff7d24a))
+* keep the app behind the tour inert while a tour card is open ([#300](https://github.com/RAbdelrhman/wayfinder-map/issues/300)) ([f4164f5](https://github.com/RAbdelrhman/wayfinder-map/commit/f4164f5812cc5318d1cc70f0cfe53d87c36826f8))
+* keep the canvas viewer's option strip inside the window ([#291](https://github.com/RAbdelrhman/wayfinder-map/issues/291)) ([42e4429](https://github.com/RAbdelrhman/wayfinder-map/commit/42e4429eee970714db2c3b2fddec97ccdefe9f54))
+* store select choices from the canvas's own lists ([#210](https://github.com/RAbdelrhman/wayfinder-map/issues/210)) ([9aaf668](https://github.com/RAbdelrhman/wayfinder-map/commit/9aaf668795a470e5d970666169e4b8f1010dac0a))
+* verify canvas packaging and approved resize shell ([b0cc729](https://github.com/RAbdelrhman/wayfinder-map/commit/b0cc729ba303bfc29fb73f32ebc2c392a327c853))
+
 ## [0.2.17](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.16...v0.2.17) (2026-10-08)
 
 
