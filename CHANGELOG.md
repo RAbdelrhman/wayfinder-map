@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.20](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.19...v0.2.20) (2026-10-14)
+
+
+### Bug Fixes
+
+* hold the canvas viewer to its quality bar ([#214](https://github.com/RAbdelrhman/wayfinder-map/issues/214)) ([#308](https://github.com/RAbdelrhman/wayfinder-map/issues/308)) ([1615c90](https://github.com/RAbdelrhman/wayfinder-map/commit/1615c9045dd9e491787abd0a941cdbe254768ef0))
+
 ## [0.2.19](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.18...v0.2.19) (2026-10-14)
 
 
