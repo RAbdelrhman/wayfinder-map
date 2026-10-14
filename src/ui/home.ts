@@ -35,6 +35,7 @@ import type { NotificationSettings } from '../notificationTypes.js';
 import type { MapEvent } from '../mapWatch.js';
 import { mountCanvasViewer } from './canvasViewer.js';
 import { setSyncedBusy, setSyncedLabel } from './syncedButton.js';
+import { mountTour, offerTourOnFirstLaunch } from './tour.js';
 
 function need<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -782,3 +783,5 @@ document.addEventListener('click', (event) => {
 });
 
 void show();
+// First launch: the product tour's welcome dialog, until it has been answered (#240).
+if (page.kind === 'home') offerTourOnFirstLaunch(mountTour({ toast, app: need('app') }));
