@@ -167,6 +167,7 @@ describe('the Spotlight card stays clear of its target', { timeout: 120_000 }, (
       await check('handoff, done', '#demo-handoff');
       await next();
       assert.equal(await page.locator('#tour-layer .tour-done-icon').count(), 1, 'the tour did not reach its completion card');
+      await check('completion');
       await page.close();
     });
   }
