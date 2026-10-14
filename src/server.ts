@@ -80,6 +80,7 @@ const MIME: Record<string, string> = {
 
 /** How long a map's prototype list is reused before GitHub is asked again. */
 const PROTOTYPE_TTL_MS = 60_000;
+const REPO_ICON_RETRY_MS = 60_000;
 
 /**
  * Prototype files are repo code, so they run sandboxed: an opaque origin cannot read
@@ -358,6 +359,9 @@ export async function startServer({
   const loadHome = homeLoader ?? ((labels: readonly string[]) => loadHomeState(labels));
   let homeState: HomeState | null = null;
   let homeRead: Promise<HomeState> | null = null;
+  // The newest discovery started. Unlike `homeRead` it survives completion, so requests sharing a
+  // finished read are not mistaken for ones a forced refresh replaced.
+  let latestHomeRead: Promise<HomeState> | null = null;
   let cacheRevision = Date.now();
   let cacheScope = `${String(cacheRevision)}-${randomUUID()}`;
   const json = (response: ServerResponse, status: number, body: unknown): void => {
@@ -923,10 +927,11 @@ export async function startServer({
           const labels = config.mapLabel === 'wayfinder:map' ? [config.mapLabel] : ['wayfinder:map', config.mapLabel];
           const scope = cacheScope;
           const read = force ? (homeRead = loadHome(labels)) : (homeRead ??= loadHome(labels));
+          latestHomeRead = read;
           try {
             const next = await read;
             if (scope !== cacheScope) throw new Error('GitHub account changed during discovery.');
-            if (homeRead !== read) throw new Error('Home discovery was replaced by a newer refresh.');
+            if (latestHomeRead !== read) throw new Error('Home discovery was replaced by a newer refresh.');
             observeAccount(next.account);
             homeState = next;
           } finally { if (homeRead === read) homeRead = null; }
@@ -1396,8 +1401,11 @@ export async function startServer({
         try {
           let pending = repoIcons.get(requestedRepo);
           if (pending === undefined) {
-            pending = resolveRepoIcon(requestedRepo);
-            repoIcons.set(requestedRepo, pending);
+            const repo = requestedRepo;
+            pending = resolveRepoIcon(repo);
+            repoIcons.set(repo, pending);
+            // A failed lookup (rate limit, offline) is retried a minute later instead of hiding the image all session.
+            pending.catch(() => setTimeout(() => repoIcons.delete(repo), REPO_ICON_RETRY_MS).unref());
           }
           const icon = await pending;
           if (icon === null) {

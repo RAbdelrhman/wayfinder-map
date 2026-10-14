@@ -12,15 +12,12 @@ export type RepoAvatarUrlFetcher = (repo: string) => Promise<string | null>;
 /**
  * A repository's image is its organization's avatar. Personal repositories have no image of
  * their own (the owner avatar is the person, often GitHub's default identicon), so they get none
- * and the UI keeps the monogram.
+ * and the UI keeps the monogram. A failed `gh` call (rate limit, offline) rejects instead of
+ * resolving to null, so the caller can retry rather than remember "no image".
  */
 export async function githubRepoImageUrl(repo: string, runGh: typeof gh = gh): Promise<string | null> {
-  try {
-    const value = (await runGh(['api', `repos/${repo}`, '--jq', 'if .owner.type == "Organization" then .owner.avatar_url else "" end'])).trim();
-    return isGithubImageUrl(value) ? value : null;
-  } catch {
-    return null;
-  }
+  const value = (await runGh(['api', `repos/${repo}`, '--jq', 'if .owner.type == "Organization" then .owner.avatar_url else "" end'])).trim();
+  return isGithubImageUrl(value) ? value : null;
 }
 
 function isGithubImageUrl(value: string): boolean {
@@ -58,25 +55,24 @@ function responseContentType(response: Response, imageUrl: string): string | nul
   return inferred.startsWith('image/') ? inferred : 'image/png';
 }
 
-/** Fetch the repository image as a same-origin image for the app's strict CSP. */
+/**
+ * Fetch the repository image as a same-origin image for the app's strict CSP. Resolves null when
+ * the repository has no image; rejects when GitHub could not be asked, so the answer is not cached.
+ */
 export async function resolveRepoIcon(
   repo: string,
   fetchFn: typeof fetch = fetch,
   avatarUrlFetcher: RepoAvatarUrlFetcher = (value) => githubRepoImageUrl(value),
 ): Promise<ResolvedRepoIcon | null> {
-  const avatarUrl = await avatarUrlFetcher(repo).catch(() => null);
+  const avatarUrl = await avatarUrlFetcher(repo);
   if (avatarUrl === null || !isGithubImageUrl(avatarUrl)) return null;
 
-  try {
-    const response = await fetchFn(avatarUrl, {
-      headers: { 'User-Agent': 'Wayfinder' },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!response.ok) return null;
-    const contentType = responseContentType(response, avatarUrl);
-    if (contentType === null) return null;
-    return { data: Buffer.from(await response.arrayBuffer()), contentType };
-  } catch {
-    return null;
-  }
+  const response = await fetchFn(avatarUrl, {
+    headers: { 'User-Agent': 'Wayfinder' },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error(`Repository image request failed with ${response.status}.`);
+  const contentType = responseContentType(response, avatarUrl);
+  if (contentType === null) return null;
+  return { data: Buffer.from(await response.arrayBuffer()), contentType };
 }

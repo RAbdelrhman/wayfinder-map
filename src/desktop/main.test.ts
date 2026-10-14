@@ -94,3 +94,8 @@ it('keeps the desktop runtime and tray after installer refusal, then cleans them
   expect(mocks.tray.destroy).toHaveBeenCalledTimes(1);
   expect(mocks.stopUpdates).toHaveBeenCalledTimes(1);
 });
+
+it('gives an unpackaged run its own app ID so it cannot take over the installed app taskbar icon', async () => {
+  await import('./main.js');
+  expect(mocks.app.setAppUserModelId).toHaveBeenCalledWith('com.rabdelrhman.wayfinder.dev');
+});

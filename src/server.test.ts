@@ -135,6 +135,21 @@ describe('repository-scoped server', () => {
       expect(homeLoader).toHaveBeenCalledTimes(2);
     } finally { await new Promise<void>((resolve) => running.server.close(() => resolve())); }
   });
+  it('answers every request that shares one in-flight Home discovery', async () => {
+    let finish: (value: HomeState) => void = () => undefined;
+    const homeLoader = vi.fn(() => new Promise<HomeState>((resolve) => { finish = resolve; }));
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader, accountReader: async () => home.account, fetcher: async () => ({ maps: [], warnings: [] }), handOffStore: new HandOffStore({ filePath: null }) });
+    try {
+      // The packaged app's window and its startup check both ask for Home before discovery finishes.
+      const first = fetch(`${running.url}/api/home`);
+      const second = fetch(`${running.url}/api/home`);
+      await vi.waitFor(() => expect(homeLoader).toHaveBeenCalledTimes(1));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      finish(home);
+      expect([(await first).status, (await second).status]).toEqual([200, 200]);
+      expect(homeLoader).toHaveBeenCalledTimes(1);
+    } finally { finish(home); await new Promise<void>((resolve) => running.server.close(() => resolve())); }
+  });
   it('rotates repository scope on a live host change even without Home discovery', async () => {
     let account = home.account;
     const fetcher = vi.fn(async () => ({ maps: [], warnings: [] }));
