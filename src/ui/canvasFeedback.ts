@@ -119,7 +119,10 @@ export class CanvasFeedback {
   private nextId = 1;
   private nextRequest = 1;
   private readonly requests = new Map<number, { purpose: 'hover' | 'near' | FeedbackTool; where: string; mark?: number }>();
-  private targets: { name: string; rect: Rect }[] = [];
+  /** Keyed by name and its place among same-named targets, so a key survives filtering and scrolling. */
+  private targets: { key: string; name: string; rect: Rect }[] = [];
+  /** Each moved pin's latest movement question; older answers are dropped. */
+  private readonly latestNear = new Map<number, number>();
   private hoverPending = false;
   private hoverAgain: { x: number; y: number } | null = null;
   private tool: FeedbackTool | null = null;
@@ -344,8 +347,8 @@ export class CanvasFeedback {
       ? this.targets
           .filter((target) => inside(target.rect))
           .map(
-            (target, k) =>
-              `<button type="button" class="cf-target" style="left:${String(target.rect.left)}px;top:${String(target.rect.top)}px;width:${String(target.rect.width)}px;height:${String(target.rect.height)}px" data-fb-target="${String(k)}" aria-label="${verb} ${escapeHtml(target.name)}"><span>${escapeHtml(target.name)}</span></button>`,
+            (target) =>
+              `<button type="button" class="cf-target" style="left:${String(target.rect.left)}px;top:${String(target.rect.top)}px;width:${String(target.rect.width)}px;height:${String(target.rect.height)}px" data-fb-target="${escapeHtml(target.key)}" aria-label="${verb} ${escapeHtml(target.name)}"><span>${escapeHtml(target.name)}</span></button>`,
           )
           .join('')
       : '';
@@ -554,7 +557,12 @@ export class CanvasFeedback {
     this.paintMarks();
   }
   onTargets(items: readonly { name: string; rect: Rect }[]): void {
-    this.targets = [...items];
+    const seen = new Map<string, number>();
+    this.targets = items.map((item) => {
+      const n = seen.get(item.name) ?? 0;
+      seen.set(item.name, n + 1);
+      return { key: `${item.name}#${String(n)}`, name: item.name, rect: item.rect };
+    });
     if (this.tool === 'element' || this.tool === 'color') this.paintMarks();
   }
   private askTargets(): void {
@@ -590,7 +598,8 @@ export class CanvasFeedback {
     if (purpose === 'near') {
       // A moved pin takes the name of whatever it now sits on.
       const mark = this.marks.find((candidate) => candidate.id === asked.mark);
-      if (mark) {
+      if (mark && this.latestNear.get(mark.id) === hit.requestId) {
+        this.latestNear.delete(mark.id);
         mark.near = hit.name;
         mark.x = clamp(hit.x, 0, 1);
         mark.y = clamp(hit.y, 0, 1);
@@ -625,6 +634,7 @@ export class CanvasFeedback {
     const context = this.host.context();
     if (!context) return;
     this.requests.set(requestId, { purpose, where: this.where(context), ...(mark === undefined ? {} : { mark }) });
+    if (purpose === 'near' && mark !== undefined) this.latestNear.set(mark, requestId);
     this.host.send({ type: 'hitTest', requestId, x, y, ...(purpose === 'color' ? { palette: true } : {}) });
   }
   private hoverAt(x: number, y: number): void {
@@ -780,7 +790,9 @@ export class CanvasFeedback {
     }
   }
   private moveSelected(mark: Mark): void {
-    // Ask the canvas what the pin now sits on, once the arrow keys settle.
+    // Ask the canvas what the pin now sits on, once the arrow keys settle. A question already out
+    // describes where the pin was, so its answer must not move it back.
+    this.latestNear.delete(mark.id);
     clearTimeout(this.nearTimer);
     this.nearTimer = setTimeout(() => {
       const rect = this.layout.get(mark.id);
@@ -878,7 +890,7 @@ export class CanvasFeedback {
       if (!button) return;
       const d = button.dataset;
       if (d['fbTarget'] !== undefined && (this.tool === 'element' || this.tool === 'color')) {
-        const picked = this.targets[Number(d['fbTarget'])];
+        const picked = this.targets.find((candidate) => candidate.key === d['fbTarget']);
         if (picked) this.request(this.tool, picked.rect.left + picked.rect.width / 2, picked.rect.top + picked.rect.height / 2);
         return;
       }

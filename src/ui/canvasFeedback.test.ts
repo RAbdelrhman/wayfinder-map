@@ -339,14 +339,56 @@ describe('verifier findings on #213', () => {
     layout();
     expect(document.activeElement?.hasAttribute('data-fb-capture')).toBe(true);
     view.feedback.onTargets([{ name: 'Continue card', rect: { left: 100, top: 40, width: 200, height: 80 } }]);
-    const target = view.$<HTMLButtonElement>('[data-fb-target="0"]')!;
+    const target = view.$<HTMLButtonElement>('[data-fb-target="Continue card#0"]')!;
     expect(target.getAttribute('aria-label')).toBe('Select Continue card');
     target.focus();
     layout();
-    expect(document.activeElement?.getAttribute('data-fb-target')).toBe('0');
+    expect(document.activeElement?.getAttribute('data-fb-target')).toBe('Continue card#0');
     view.send.mockClear();
-    view.click('[data-fb-target="0"]');
+    view.click('[data-fb-target="Continue card#0"]');
     expect(view.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'hitTest', x: 200, y: 80 }));
+  });
+
+  it('picks the target clicked, and keeps its focus when scrolling drops others from the list', () => {
+    const view = mount({ size: 'pane' });
+    view.click('[data-fb-tool="element"]');
+    view.feedback.onLayout([], { left: 0, top: 0, width: 800, height: 600 });
+    const rect = (left: number) => ({ left, top: 20, width: 100, height: 30 });
+    view.feedback.onTargets([
+      { name: 'Off screen', rect: rect(1000) },
+      { name: 'Header', rect: rect(10) },
+      { name: 'Visible', rect: rect(100) },
+    ]);
+    view.$<HTMLElement>('[data-fb-target="Visible#0"]')!.focus();
+    view.feedback.onTargets([{ name: 'Visible', rect: rect(100) }]);
+    expect(document.activeElement?.getAttribute('data-fb-target')).toBe('Visible#0');
+    view.send.mockClear();
+    view.click('[data-fb-target="Visible#0"]');
+    expect(view.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'hitTest', x: 150, y: 35 }));
+  });
+
+  it('keeps a pin where it was moved last, whatever order its answers arrive in', async () => {
+    vi.useFakeTimers();
+    try {
+      const view = mount({});
+      view.click('[data-fb-tool="pin"]');
+      view.$<HTMLElement>('[data-fb-capture]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      answer(view, { x: 0.1, name: 'Start' });
+      view.click('[data-fb-act="done"]');
+      view.feedback.onLayout([{ id: 1, rect: { left: 10, top: 10, width: 0, height: 0 } }], { left: 0, top: 0, width: 800, height: 600 });
+      const asks: number[] = [];
+      for (let i = 0; i < 2; i++) {
+        view.key('ArrowRight', view.$('[data-fb-mark="1"]')!);
+        await vi.advanceTimersByTimeAsync(250);
+        asks.push(view.send.mock.calls.map(([message]) => message).filter((message) => message['type'] === 'hitTest').at(-1)!['requestId'] as number);
+      }
+      const reply = (requestId: number, x: number, name: string): void => view.feedback.onHit({ requestId, x, y: 0.4, name, selector: null, color: null, rect: null });
+      reply(asks[1]!, 0.12, 'Latest');
+      reply(asks[0]!, 0.11, 'Old');
+      expect(view.feedback.comment()).toContain('"x":0.12,"y":0.4,"near":"Latest"');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('puts the selection layer above existing marks, as D4 does, so a marked element can be picked again', async () => {
