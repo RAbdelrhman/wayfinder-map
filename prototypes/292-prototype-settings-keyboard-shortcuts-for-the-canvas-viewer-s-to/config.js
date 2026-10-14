@@ -1,4 +1,4 @@
-﻿const A_NOTE = {
+const A_NOTE = {
   idea: 'The list is the editor. Each of the five rows ends in its key as a button. Click it (or Enter) and the button listens; the next letter or modifier combo saves on the spot. A clash stays in the row, names the tool that has the key and links to it. Escape keeps the old key. Changed rows show their default.',
   pros: [
     'One click from any key to changing it, with nothing else opening',
@@ -116,4 +116,3 @@ window.CANVAS = {
     },
   ],
 };
-
