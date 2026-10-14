@@ -1,0 +1,125 @@
+/* #292 · only what styles.css does not already have. Tokens are the app's own. */
+
+/* ---------- shell (a stand-in for navigation.ts's sidebar) ---------- */
+.k292-shell { display: grid; grid-template-columns: 210px minmax(0, 1fr); height: 100%; }
+.k292-shell[hidden] { display: none; }
+.k292-sidebar { display: flex; flex-direction: column; gap: 12px; padding: 22px 16px 16px; border-right: 1px solid var(--hairline); background: var(--surface-1); }
+.k292-sidebar a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--text-secondary); text-decoration: none; }
+.k292-sidebar a:hover { background: var(--wash); }
+.k292-sidebar .k292-brand { color: var(--text-primary); font-weight: 650; font-size: 17px; padding: 0 4px 14px; }
+.k292-sidebar .eyebrow { padding: 16px 10px 0; }
+.k292-footer { display: grid; grid-template-columns: 28px 1fr; align-items: center; gap: 8px; margin-top: auto; }
+.k292-footer a { grid-column: 1 / -1; background: var(--wash); color: var(--text-primary); }
+.k292-avatar { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--hairline); border-radius: 50%; font-size: 12px; background: var(--plane); }
+.k292 .topbar { gap: 10px; padding: 0 20px 0 14px; }
+.k292 :is(.k292-sidebar, .topbar) :is(a, button):focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+/* Back to canvas: where the viewer's Shortcuts button left you. */
+.k292-back { gap: 7px; }
+.k292-back-ctx { padding-left: 8px; margin-left: 2px; border-left: 1px solid var(--hairline); color: var(--text-muted); font-size: 12px; }
+
+/* ---------- the section ---------- */
+.k292-section { scroll-margin-top: 24px; transition: box-shadow 0.4s ease-out; }
+.k292-section.is-arriving { box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-claimed) 35%, transparent); }
+.k292-lede { margin: 0 0 6px; max-width: 520px; line-height: 1.6; }
+.k292-icon { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 8px; background: var(--wash); color: var(--text-secondary); }
+.k292-icon .i { width: 15px; height: 15px; }
+.k292 kbd:not(.cf-hint kbd) { font-size: 12px; line-height: 20px; padding: 0 7px; min-width: 24px; text-align: center; display: inline-block; color: var(--text-primary); }
+.k292-plus { margin: 0 3px; color: var(--text-muted); font-size: 12px; }
+.k292-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.settings-page .k292-help { display: flex; align-items: flex-start; gap: 8px; margin: -6px 0 14px 42px; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+.k292-help .i { width: 15px; height: 15px; margin-top: 2px; }
+.k292-help.is-error { color: var(--state-failed); }
+.k292-help.is-error kbd { color: var(--text-primary); }
+.k292-fix { margin-left: 6px; padding: 0; color: var(--accent-text); font-size: 12px; }
+.k292-fix:hover { color: var(--text-primary); }
+.k292-default { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.k292-default kbd { color: var(--text-secondary); }
+.k292-chip { padding: 3px 9px; font-size: 12px; }
+.k292-save.is-saved { color: var(--handoff-pr-ready); font-weight: 600; }
+.k292-reset { border-top: 1px solid var(--hairline); }
+.k292 [aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
+
+/* A · every row's key is the button that records a new one. */
+.k292-list { list-style: none; margin: 0; padding: 0; }
+.k292-item + .k292-item { border-top: 1px solid var(--hairline); }
+.settings-page .k292-row { gap: 12px; padding: 13px 0; }
+.k292-key { display: inline-flex; align-items: center; justify-content: flex-end; gap: 0; min-width: 132px; height: 36px; padding: 0 10px; border: 1px solid var(--hairline); border-radius: 8px; background: none; color: var(--text-primary); }
+.k292-key:hover { background: var(--wash); }
+.k292-change { margin-left: 10px; color: var(--text-muted); font-size: 12px; }
+.k292-key:hover .k292-change { color: var(--text-primary); }
+.k292-key.is-capturing, .k292-capture.is-capturing { border: 1.5px dashed var(--state-claimed); background: color-mix(in srgb, var(--state-claimed) 8%, transparent); justify-content: center; }
+.k292-item.is-error .k292-key.is-capturing, .k292-editor.is-error .k292-capture { border-color: var(--state-failed); background: color-mix(in srgb, var(--state-failed) 7%, transparent); }
+.k292-wait { color: var(--text-secondary); font-size: 12.5px; animation: k292-blink 1.2s ease-in-out infinite; }
+@keyframes k292-blink { 50% { opacity: 0.45; } }
+
+/* B · a list that picks, beside one editor. */
+.k292-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 18px; padding: 8px 0 18px; }
+.k292-pick { display: grid; gap: 2px; align-content: start; }
+.k292-pick-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 10px 8px 8px; border: 1px solid transparent; border-radius: 10px; background: none; text-align: left; font-weight: 500; color: var(--text-primary); }
+.k292-pick-row:hover { background: var(--wash); }
+.k292-pick-row.is-on { border-color: var(--hairline); background: var(--wash); }
+.k292-pick-row.is-on .k292-icon { background: var(--surface-1); color: var(--text-primary); }
+.k292-pick-row .grow { flex: 1; }
+.k292-pick-key { display: inline-flex; align-items: center; }
+.k292-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--state-claimed); }
+.k292-editor { display: grid; gap: 12px; align-content: start; padding: 16px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--plane); }
+.settings-page .k292-editor h4 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; }
+.k292-editor h4 .i { width: 16px; height: 16px; color: var(--text-secondary); }
+.settings-page .k292-ed-hint { margin: -6px 0 0; }
+.k292-ed-body { display: grid; gap: 12px; justify-items: start; }
+.k292-current { display: flex; align-items: center; min-height: 64px; width: 100%; justify-content: center; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-1); }
+.k292-current kbd, .k292-capture kbd { font-size: 16px; line-height: 30px; padding: 0 12px; min-width: 36px; }
+.k292-capture { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 64px; border-radius: 10px; color: var(--text-primary); }
+.k292-editor .k292-help { margin: 0; }
+.k292-saved { justify-self: start; margin: 0; }
+.k292-ed-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+.k292-ed-foot .hint { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+
+/* Reset: the real .dialog, listing the five defaults. */
+.k292-dialog { width: min(440px, calc(100vw - 32px)); padding: 20px; }
+.k292-reset-list { list-style: none; margin: 0 0 18px; padding: 0; }
+.k292-reset-list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 13px; }
+.k292-reset-list li + li { border-top: 1px solid var(--hairline); }
+.k292-reset-list .grow { flex: 1; }
+.k292-was kbd { color: var(--text-muted); text-decoration: line-through; }
+.k292-arrow { color: var(--text-muted); }
+.k292-dialog-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.k292-dialog :is(button):focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+/* ---------- the viewer ---------- */
+.k292 .vw { position: fixed; }
+.k292 .vw[hidden] { display: none; }
+.k292-canvas { display: grid; place-items: start center; overflow: auto; background: var(--plane); }
+.k292-canvas img { display: block; width: min(100%, 1100px); height: auto; margin: 18px auto; border-radius: 8px; box-shadow: var(--shadow-preview); }
+.k292-canvas.is-tool img { cursor: crosshair; }
+.k292-shortcuts { padding: 4px 8px; border-color: transparent; font-size: 12.5px; }
+.k292-shortcuts:focus-visible, .k292 .cf-toggle:focus-visible { outline: 2px solid var(--state-claimed); outline-offset: 2px; }
+.k292-note { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: 10px; }
+.k292-note p { margin: 0; color: var(--text-secondary); }
+.k292 .vw-bar kbd, .k292 .cf-toolgroup .seg kbd, .k292 .cf-toggle kbd { font-size: 10.5px; line-height: 16px; padding: 0 4px; min-width: 0; color: var(--text-muted); border-bottom-width: 1px; background: none; }
+
+
+/* ---------- narrow ---------- */
+@media (max-width: 1050px) {
+  .k292-shell { grid-template-columns: 180px minmax(0, 1fr); }
+  .k292-split { grid-template-columns: minmax(0, 1fr); }
+  .settings-page .k292-row { flex-wrap: nowrap; }
+  .settings-page .k292-row .grow { flex-basis: auto; }
+}
+@media (max-width: 720px) {
+  .k292-shell { grid-template-columns: 56px minmax(0, 1fr); }
+  .k292-sidebar { padding: 18px 10px; align-items: center; }
+  .k292-sidebar > :not(.k292-brand), .k292-footer { display: none; }
+  .k292-sidebar .k292-brand { font-size: 0; padding: 0; }
+  .k292-sidebar .i { width: 22px; height: 22px; }
+  .k292-back-ctx { display: none; }
+  .settings-page .k292-row { flex-wrap: wrap; }
+  .settings-page .k292-row .grow { flex-basis: calc(100% - 42px); }
+  .k292-key { margin-left: 42px; }
+  .settings-page .k292-help { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .k292-wait { animation: none; }
+  .k292-section { transition: none; }
+}
