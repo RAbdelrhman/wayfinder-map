@@ -252,19 +252,22 @@ async function completeSmokeTest(homeUrl: string): Promise<void> {
   if (markerPath === undefined || runtime === null) return;
 
   let homeStatus: number;
+  let homeError: string | undefined;
   try {
     const response = await fetch(new URL('/api/home', homeUrl));
     homeStatus = response.status;
     // Drain the response before closing the server so the smoke request cannot
-    // leave an active keep-alive socket behind.
-    await response.arrayBuffer();
-  } catch {
+    // leave an active keep-alive socket behind. A failure keeps its body so CI shows why.
+    const body = await response.text();
+    if (!response.ok) homeError = body.slice(0, 1_000);
+  } catch (error) {
     homeStatus = 0;
+    homeError = (error as Error).message;
   }
   const port = Number(new URL(homeUrl).port);
   await writeFile(
     markerPath,
-    JSON.stringify({ route: new URL(homeUrl).pathname || '/', homeStatus, port, version: app.getVersion() }),
+    JSON.stringify({ route: new URL(homeUrl).pathname || '/', homeStatus, homeError, port, version: app.getVersion() }),
     'utf8',
   );
   setTimeout(() => {
@@ -276,7 +279,10 @@ async function completeSmokeTest(homeUrl: string): Promise<void> {
   }, 100);
 }
 
-app.setAppUserModelId('com.rabdelrhman.wayfinder');
+// The installed app owns this ID. Windows takes a taskbar button's icon and name from the Start
+// menu shortcut carrying it, so a dev run gets its own ID: otherwise the shortcut a dev Electron
+// leaves behind ("Electron", no icon) replaces the installed app's icon and shows up in search.
+app.setAppUserModelId(app.isPackaged ? 'com.rabdelrhman.wayfinder' : 'com.rabdelrhman.wayfinder.dev');
 const primaryInstance = app.requestSingleInstanceLock();
 if (!primaryInstance) {
   // The running copy raises its window on 'second-instance'. Say so, or this looks like a crash.

@@ -1,6 +1,6 @@
 {
   "name": "wayfinder-map",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "description": "Interactive map of a repo's wayfinder maps, with one-click ticket hand-off to T3 Code",
   "type": "module",
   "main": "dist/desktop.cjs",
@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:canvas": "node --test prototypes/canvas/tools/check.test.mjs",
+    "test:tour-layout": "node --test scripts/check-tour-layout.mjs",
     "canvas:create": "node scripts/create-canvas.mjs",
     "capture:prototype-thumbnails": "node prototypes/canvas/tools/capture-thumbnails.mjs",
     "lint": "eslint src/ scripts/",
@@ -42,6 +43,7 @@
     "eslint": "^9.39.5",
     "globals": "^17.13.0",
     "happy-dom": "^20.14.5",
+    "playwright-core": "^1.64.1",
     "sharp": "0.35.4",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.71.1",

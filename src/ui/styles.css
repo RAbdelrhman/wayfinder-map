@@ -8313,7 +8313,7 @@ body.is-touring { overflow: hidden; }
 .tour-scrim { inset: 0; }
 .tour-hole { position: fixed; z-index: 21; border-radius: 12px; box-shadow: 0 0 0 3px var(--accent-fill); pointer-events: none; }
 .tour-pop {
-  position: fixed; z-index: 30; width: 360px; padding: 16px 18px 14px; border-radius: 14px;
+  position: fixed; z-index: 30; width: 360px; padding: 16px 18px 14px; border-radius: 14px; overflow: auto;
   background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--hairline); box-shadow: var(--shadow);
 }
 .tour-pop.is-center { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 440px; }

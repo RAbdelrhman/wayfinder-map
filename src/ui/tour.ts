@@ -6,6 +6,7 @@ import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { escapeHtml } from './markdown.js';
 import { setTrustedHtml } from './trustedHtml.js';
+import { placeCard, visibleBox } from './tourPlacement.js';
 import { stepAnnouncement, TOUR_COPY, TOUR_STEPS } from './tourCopy.js';
 import { rememberTour, shouldInviteToTour, TOUR_KEY } from './tourPreference.js';
 
@@ -39,6 +40,8 @@ const ALLOWED = {
   // The hand-off status takes focus from Open in T3 Code once that disables.
   handoff: [`[data-ticket="${String(HAND_OFF_EXAMPLE)}"]`, '#demo-open', '#demo-handoff'],
 } as const satisfies Record<keyof typeof TARGETS, readonly string[]>;
+/** Matches the styles' bottom-sheet breakpoint. */
+const SHEET_QUERY = '(max-width: 760px)';
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]';
 
 /** Makes everything under `root` inert except `allowed` and the elements that hold them. */
@@ -185,20 +188,21 @@ export function mountTour(options: TourOptions): TourController {
 
   function placeSpotlight(): void {
     const state = journey?.state();
-    if (mode !== 'tour' || state === undefined || state.status !== 'running') return;
+    const view = doc.defaultView;
+    if (mode !== 'tour' || state === undefined || state.status !== 'running' || view === null) return;
     const target = targetFor(state);
     const pop = stage.querySelector<HTMLElement>('.tour-pop');
     if (target === null || pop === null) return;
     target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    const W = view.innerWidth;
+    const H = view.innerHeight;
     const pad = 6;
-    const rect = target.getBoundingClientRect();
+    // Only the part of the target that can be seen: a canvas wider than a phone is cut by its scroller.
+    const seen = visibleBox(target, view);
     // Whole pixels, so the four dimming blocks meet without hairline seams.
-    const x0 = Math.floor(rect.left - pad);
-    const y0 = Math.floor(rect.top - pad);
-    const hole = { x: x0, y: y0, w: Math.ceil(rect.right + pad) - x0, h: Math.ceil(rect.bottom + pad) - y0 };
-    const view = doc.defaultView;
-    const W = view?.innerWidth ?? 0;
-    const H = view?.innerHeight ?? 0;
+    const x0 = Math.max(0, Math.floor(seen.x - pad));
+    const y0 = Math.max(0, Math.floor(seen.y - pad));
+    const hole = { x: x0, y: y0, w: Math.min(W, Math.ceil(seen.x + seen.w + pad)) - x0, h: Math.min(H, Math.ceil(seen.y + seen.h + pad)) - y0 };
     const [top, bottom, left, right] = stage.querySelectorAll<HTMLElement>('.tour-block');
     const place = (element: HTMLElement | undefined | null, x: number, y: number, w: number, h: number): void => {
       if (element === undefined || element === null) return;
@@ -210,22 +214,20 @@ export function mountTour(options: TourOptions): TourController {
     place(right, hole.x + hole.w, hole.y, W - hole.x - hole.w, hole.h);
     place(stage.querySelector<HTMLElement>('.tour-hole'), hole.x, hole.y, hole.w, hole.h);
 
-    if (W < 760) return; // The card is a bottom sheet on narrow screens.
-    const pw = pop.offsetWidth;
-    const ph = pop.offsetHeight;
-    const gap = 14;
-    const clampY = (y: number): number => Math.max(12, Math.min(y, H - ph - 12));
-    const clampX = (x: number): number => Math.max(12, Math.min(x, W - pw - 12));
-    let x: number;
-    let y: number;
-    const below = hole.y + hole.h + gap + ph < H - 12;
-    if (hole.w > 480 && below) { x = clampX(hole.x + hole.w - pw); y = hole.y + hole.h + gap; }
-    else if (hole.x + hole.w + gap + pw < W - 12) { x = hole.x + hole.w + gap; y = clampY(hole.y); }
-    else if (hole.x - gap - pw > 12) { x = hole.x - gap - pw; y = clampY(hole.y); }
-    else if (below) { x = clampX(hole.x); y = hole.y + hole.h + gap; }
-    else { x = clampX(hole.x); y = Math.max(12, hole.y - gap - ph); }
-    pop.style.left = `${String(x)}px`;
-    pop.style.top = `${String(y)}px`;
+    // The same breakpoint as the styles that make the card a bottom sheet.
+    const sheet = view.matchMedia?.(SHEET_QUERY).matches ?? W <= 760;
+    const heightAt = (width: number): number => {
+      Object.assign(pop.style, { width: `${String(width)}px`, maxHeight: 'none' });
+      return pop.offsetHeight;
+    };
+    const spot = placeCard(hole, { view: { w: W, h: H }, sheet, heightAt });
+    Object.assign(pop.style, {
+      left: `${String(spot.x)}px`,
+      top: `${String(spot.y)}px`,
+      bottom: 'auto',
+      width: `${String(spot.w)}px`,
+      maxHeight: spot.maxH === null ? 'none' : `${String(spot.maxH)}px`,
+    });
   }
 
   function render(): void {
