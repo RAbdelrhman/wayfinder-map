@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 
 import type { DemoScheduler } from './demo/demoJourney.js';
-import { offerTourOnFirstLaunch, mountTour } from './tour.js';
+import { inertExcept, offerTourOnFirstLaunch, mountTour, tabStops } from './tour.js';
 import type { TourController } from './tour.js';
 import { TOUR_COPY } from './tourCopy.js';
+import { setTrustedHtml } from './trustedHtml.js';
 import { rememberTour, shouldInviteToTour, TOUR_KEY, tourOutcome } from './tourPreference.js';
 
 let browser: Window;
@@ -30,7 +31,7 @@ const scheduler: DemoScheduler = {
 
 beforeEach(() => {
   browser = new Window({ url: 'http://localhost/', width: 1280, height: 800 });
-  for (const name of ['Element', 'HTMLElement', 'HTMLButtonElement'] as const) vi.stubGlobal(name, browser[name]);
+  for (const name of ['Node', 'Element', 'HTMLElement', 'HTMLButtonElement'] as const) vi.stubGlobal(name, browser[name]);
   doc = browser.document as unknown as Document;
   app = doc.createElement('div');
   app.id = 'app';
@@ -64,6 +65,25 @@ const click = (selector: string): void => {
   // As a keyboard user does: focus the control, then press it.
   element.focus();
   element.click();
+};
+/** Presses Tab (or Shift+Tab) where focus is, and returns what focus moved to. */
+const tab = (shift = false): string => {
+  const target = doc.activeElement ?? doc.body;
+  target.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'Tab', shiftKey: shift, bubbles: true, cancelable: true }) as unknown as Event);
+  return name(doc.activeElement);
+};
+/** A short name for a control: its tour action, ticket, or id. */
+const name = (element: Element | null): string => {
+  if (!(element instanceof HTMLElement)) return '';
+  return element.dataset['tourAct'] ?? (element.dataset['ticket'] === undefined ? element.id : `#${element.dataset['ticket']}`);
+};
+/** The demo controls behind the card that can still be pressed or reached with Tab. */
+const liveDemoControls = (): string[] => {
+  const shell = q('.tour-shell');
+  if (shell === null) return [];
+  return [...shell.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]')]
+    .filter((element) => element.closest('[inert]') === null && element.getAttribute('tabindex') !== '-1' && !(element instanceof HTMLButtonElement && element.disabled))
+    .map(name);
 };
 const escape = (): void => { doc.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }) as unknown as Event); };
 
@@ -195,8 +215,6 @@ describe('the guided tour', () => {
 
     note();
     expect(q('[data-tour-act="next"]')).toBeNull();
-    click('[data-ticket="5"]');
-    expect(q('[data-tour-act="next"]')).toBeNull();
     click('[data-ticket="6"]');
     expect(doc.activeElement?.getAttribute('data-ticket')).toBe('6');
     expect(q('.demo-waiting')?.textContent).toContain('Waiting on #3 and #5');
@@ -270,6 +288,23 @@ describe('the guided tour', () => {
     expect(q('.demo-transcript')?.children).toHaveLength(0);
   });
 
+  it('returns focus to the Product tour row when Settings redrew it while the tour ran', () => {
+    const row = (): HTMLButtonElement => {
+      const button = doc.createElement('button');
+      button.setAttribute('data-settings-tour', '');
+      app.append(button);
+      return button;
+    };
+    const first = row();
+    first.focus();
+    const tour = mount();
+    tour.start();
+    first.remove();
+    const redrawn = row();
+    escape();
+    expect(doc.activeElement).toBe(redrawn);
+  });
+
   it('returns focus to the control that opened it', () => {
     const entry = doc.createElement('button');
     doc.body.append(entry);
@@ -280,5 +315,93 @@ describe('the guided tour', () => {
     escape();
     expect(doc.activeElement).toBe(entry);
     expect(entry.classList.contains('tour-pulse')).toBe(false);
+  });
+});
+
+describe('keeping input inside the open card', () => {
+  it('cycles Tab through the welcome dialog and keeps the app behind it out of reach', () => {
+    offerTourOnFirstLaunch(mount(), storage);
+    expect(doc.activeElement?.id).toBe('tour-title');
+    expect(tab()).toBe('not-now');
+    expect(tab()).toBe('take-tour');
+    expect(tab()).toBe('not-now');
+    expect(tab(true)).toBe('take-tour');
+    expect(app.hasAttribute('inert')).toBe(true);
+    q('#tour-title')?.focus();
+    expect(tab(true)).toBe('take-tour');
+  });
+
+  it('cycles Tab through the completion card only, with the whole demo behind it inert', () => {
+    mount().start();
+    walkTo(8);
+    expect(liveDemoControls()).toEqual([]);
+    // The title sits between the × and Start my first map, so Tab from it goes forward.
+    expect(tab()).toBe('first-map');
+    expect(tab()).toBe('exit');
+    expect(tab()).toBe('first-map');
+    expect(tab(true)).toBe('exit');
+    expect(tab(true)).toBe('first-map');
+  });
+
+  it.each([
+    [1, []],
+    [2, ['demo-start']],
+    [3, []],
+    [4, []],
+    [5, []],
+    [6, ['#6']],
+    [7, ['#5']],
+  ])('at step %i leaves only %j live in the demo', (step, live) => {
+    mount().start();
+    walkTo(step);
+    expect(liveDemoControls()).toEqual(live);
+  });
+
+  it('allows Open the map once planning finishes', () => {
+    mount().start();
+    walkTo(3);
+    runScript();
+    expect(liveDemoControls()).toEqual(['demo-open-map']);
+  });
+
+  it('allows Open in T3 Code once #5 is selected, until the hand-off starts', () => {
+    mount().start();
+    walkTo(7);
+    click('[data-ticket="5"]');
+    expect(liveDemoControls()).toEqual(['#5', 'demo-open']);
+    click('#demo-open');
+    expect(liveDemoControls()).toEqual(['#5']);
+  });
+
+  it("Tab runs from the card into the step's control and back to the card", () => {
+    mount().start();
+    walkTo(2);
+    expect(doc.activeElement?.id).toBe('tour-title');
+    expect(tab()).toBe('back');
+    expect(tab()).toBe('demo-start');
+    expect(tab()).toBe('exit');
+    expect(tab()).toBe('back');
+    expect(tab(true)).toBe('exit');
+    expect(tab(true)).toBe('demo-start');
+  });
+
+  it('Tab at the hand-off step reaches #5 and Open in T3 Code, then moves on from the hand-off status', () => {
+    mount().start();
+    walkTo(7);
+    expect(tab()).toBe('back');
+    expect(tab()).toBe('#5');
+    click('[data-ticket="5"]');
+    expect(tab()).toBe('demo-open');
+    click('#demo-open');
+    expect(doc.activeElement?.id).toBe('demo-handoff');
+    expect(tab()).toBe('exit');
+  });
+
+  it('inertExcept leaves the allowed elements and their ancestors live', () => {
+    const root = doc.createElement('div');
+    setTrustedHtml(root, '<nav><a href="/" id="a">a</a></nav><main><p>text</p><section><button id="b">b</button><button id="c">c</button></section></main>');
+    inertExcept(root, [root.querySelector('#c')!]);
+    expect([...root.querySelectorAll('[inert]')].map((element) => element.tagName.toLowerCase() + (element.id === '' ? '' : `#${element.id}`))).toEqual(['nav', 'p', 'button#b']);
+    expect(tabStops(root).map((element) => element.id)).toEqual(['c']);
   });
 });

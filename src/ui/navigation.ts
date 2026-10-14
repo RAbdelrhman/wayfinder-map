@@ -461,6 +461,8 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     const existingFooter = sidebar.querySelector<HTMLElement>('.nav-footer');
     const treeScroll = sidebar.querySelector<HTMLElement>('.tree')?.scrollTop ?? null;
     const railScroll = sidebar.querySelector<HTMLElement>('.mini-repos')?.scrollTop ?? null;
+    // A redraw replaces the focused link (Settings, after the tour closes, say); focus its replacement.
+    const focusedId = document.activeElement instanceof HTMLElement && sidebar.contains(document.activeElement) ? document.activeElement.id : '';
     const logo = '<img class="app-logo" src="/wayfinder-icon.svg" alt="" width="30" height="30" />';
     setTrustedHtml(sidebar, `<nav class="navigation" aria-label="Primary">
       <div class="nav-open-content side" id="nav-content"${expanded ? '' : ' hidden'}>
@@ -490,6 +492,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     const rail = sidebar.querySelector<HTMLElement>('.mini-repos');
     if (tree !== null && treeScroll !== null) tree.scrollTop = treeScroll;
     if (rail !== null && railScroll !== null) rail.scrollTop = railScroll;
+    if (focusedId !== '' && !sidebar.contains(document.activeElement)) document.getElementById(focusedId)?.focus({ preventScroll: true });
     if (!revealedLocation && repositoryListLoaded) {
       const here = sidebar.querySelector<HTMLElement>(expanded ? '.tree .row.is-on, .tree .row.is-trail' : '.mini-repos .is-here');
       if (here !== null) {
