@@ -1065,4 +1065,3 @@ function cssHex(value: string): string | null {
   context.fillStyle = value.trim();
   return typeof context.fillStyle === 'string' && HEX.test(context.fillStyle) ? context.fillStyle : null;
 }
-
