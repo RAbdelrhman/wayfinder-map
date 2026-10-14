@@ -252,19 +252,22 @@ async function completeSmokeTest(homeUrl: string): Promise<void> {
   if (markerPath === undefined || runtime === null) return;
 
   let homeStatus: number;
+  let homeError: string | undefined;
   try {
     const response = await fetch(new URL('/api/home', homeUrl));
     homeStatus = response.status;
     // Drain the response before closing the server so the smoke request cannot
-    // leave an active keep-alive socket behind.
-    await response.arrayBuffer();
-  } catch {
+    // leave an active keep-alive socket behind. A failure keeps its body so CI shows why.
+    const body = await response.text();
+    if (!response.ok) homeError = body.slice(0, 1_000);
+  } catch (error) {
     homeStatus = 0;
+    homeError = (error as Error).message;
   }
   const port = Number(new URL(homeUrl).port);
   await writeFile(
     markerPath,
-    JSON.stringify({ route: new URL(homeUrl).pathname || '/', homeStatus, port, version: app.getVersion() }),
+    JSON.stringify({ route: new URL(homeUrl).pathname || '/', homeStatus, homeError, port, version: app.getVersion() }),
     'utf8',
   );
   setTimeout(() => {

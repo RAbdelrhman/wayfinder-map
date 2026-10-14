@@ -359,6 +359,9 @@ export async function startServer({
   const loadHome = homeLoader ?? ((labels: readonly string[]) => loadHomeState(labels));
   let homeState: HomeState | null = null;
   let homeRead: Promise<HomeState> | null = null;
+  // The newest discovery started. Unlike `homeRead` it survives completion, so requests sharing a
+  // finished read are not mistaken for ones a forced refresh replaced.
+  let latestHomeRead: Promise<HomeState> | null = null;
   let cacheRevision = Date.now();
   let cacheScope = `${String(cacheRevision)}-${randomUUID()}`;
   const json = (response: ServerResponse, status: number, body: unknown): void => {
@@ -924,10 +927,11 @@ export async function startServer({
           const labels = config.mapLabel === 'wayfinder:map' ? [config.mapLabel] : ['wayfinder:map', config.mapLabel];
           const scope = cacheScope;
           const read = force ? (homeRead = loadHome(labels)) : (homeRead ??= loadHome(labels));
+          latestHomeRead = read;
           try {
             const next = await read;
             if (scope !== cacheScope) throw new Error('GitHub account changed during discovery.');
-            if (homeRead !== read) throw new Error('Home discovery was replaced by a newer refresh.');
+            if (latestHomeRead !== read) throw new Error('Home discovery was replaced by a newer refresh.');
             observeAccount(next.account);
             homeState = next;
           } finally { if (homeRead === read) homeRead = null; }
