@@ -26,7 +26,8 @@ import { markPullRequests } from './mapWatch.js';
 import type { MapEvent } from './mapWatch.js';
 import { listRepositories, loadHomeState, readAccount } from './home.js';
 import type { HomeAccount, HomeState } from './home.js';
-import { fetchAllPrototypes, fetchBranchFile, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, fetchTicketWithParent, gh } from './github.js';
+import { fetchAllPrototypes, fetchBranchFile, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, fetchTicketWithParent, gh, ghProblem, postIssueComment } from './github.js';
+import { isCanvasNotesComment } from './canvasNotes.js';
 import { viewerPrototypeBytes } from './canvasBridge.js';
 import { PrototypeFileCache } from './prototypeFileCache.js';
 import { AuthFlow } from './authFlow.js';
@@ -1235,6 +1236,27 @@ export async function startServer({
         return;
       }
 
+      // Canvas notes (#213): one comment on a prototype ticket, and only a canvas-notes comment.
+      if (requestedRepo !== null && scoped?.action === 'canvas-notes' && request.method === 'POST') {
+        const body = (await readBody(request)) as { ticket?: unknown; body?: unknown };
+        const ticketNumber = Number(body.ticket);
+        if (!Number.isSafeInteger(ticketNumber) || ticketNumber <= 0 || !isCanvasNotesComment(body.body)) {
+          json(response, 400, { error: 'Name a prototype ticket and send the canvas notes comment.' });
+          return;
+        }
+        try {
+          const ticket = await fetchTicket(requestedRepo, ticketNumber, config.typePrefix);
+          if (ticket?.type !== 'prototype') {
+            json(response, 404, { error: `#${String(ticketNumber)} is not a prototype ticket.` });
+            return;
+          }
+          json(response, 200, await postIssueComment(requestedRepo, ticketNumber, body.body));
+        } catch (error) {
+          json(response, 502, { error: ghProblem(error) });
+        }
+        return;
+      }
+
       if (requestedRepo !== null && scoped?.action === 'settle' && request.method === 'POST') {
         const body = (await readBody(request)) as { map?: unknown; settled?: unknown };
         const mapNumber = Number(body.map);
@@ -1636,7 +1658,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow|start-next|auto-rate)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow|start-next|auto-rate|canvas-notes)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;

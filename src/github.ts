@@ -115,6 +115,20 @@ export async function ghIncludingHeaders(args: string[]): Promise<string> {
   }
 }
 
+/** Post a comment on an issue. The body goes through stdin: a long comment overflows Windows' command line. */
+export async function postIssueComment(repo: string, number: number, body: string): Promise<{ url: string }> {
+  const args = ['api', '--method', 'POST', `repos/${repo}/issues/${String(number)}/comments`, '--input', '-'];
+  const stdout = await new Promise<string>((resolve, reject) => {
+    const child = execFile('gh', args, { maxBuffer: 16 * 1024 * 1024, windowsHide: true, env: ghEnv }, (error, out, err) => {
+      if (error) reject(new GhError(ghTextOutput(err).trim() || error.message, args));
+      else resolve(plainGhOutput(ghTextOutput(out)));
+    });
+    child.stdin?.end(JSON.stringify({ body }));
+  });
+  const posted = JSON.parse(stdout) as { html_url?: unknown };
+  return { url: typeof posted.html_url === 'string' ? posted.html_url : `https://github.com/${repo}/issues/${String(number)}` };
+}
+
 async function ghJson<T>(args: string[]): Promise<T> {
   return JSON.parse(await gh(args)) as T;
 }

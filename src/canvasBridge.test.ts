@@ -144,6 +144,7 @@ describe('sandboxed canvas bridge', () => {
   });
   it('validates the parent and known options; exposes no API operation', () => {
     const listeners = new Map<string, (event?: unknown) => void>();
+    const documentListeners = new Map<string, (event?: unknown) => void>();
     const parent = { postMessage: vi.fn() },
       replace = vi.fn();
     const window = {
@@ -158,9 +159,10 @@ describe('sandboxed canvas bridge', () => {
         readyState: 'loading',
         querySelector: () => null,
         querySelectorAll: () => [],
-        addEventListener: (name: string, fn: (event?: unknown) => void) => listeners.set(name, fn),
+        addEventListener: (name: string, fn: (event?: unknown) => void) => documentListeners.set(name, fn),
       },
       URL,
+      Element: class {},
     });
     listeners.get('DOMContentLoaded')?.();
     expect(parent.postMessage.mock.calls.find(([message]) => message.type === 'ready')?.[0]).toMatchObject({
@@ -175,7 +177,14 @@ describe('sandboxed canvas bridge', () => {
     expect(replace).not.toHaveBeenCalled();
     listeners.get('message')?.({ source: parent, data: { wf: 1, type: 'go', page: 'p', option: 'B' } });
     expect(replace).toHaveBeenCalledWith('#p/B');
-    listeners.get('keydown')?.({ key: 'Escape' });
+    documentListeners.get('keydown')?.({ key: 'Escape' });
     expect(parent.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'key', key: 'Escape' }, '*');
+    // A tool key the canvas left alone goes to the viewer; one the canvas used (P, its page menu) does not.
+    listeners.get('keydown')?.({ key: 'e', defaultPrevented: false, target: null });
+    expect(parent.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'key', key: 'E' }, '*');
+    parent.postMessage.mockClear();
+    listeners.get('keydown')?.({ key: 'p', defaultPrevented: true, target: null });
+    listeners.get('keydown')?.({ key: 'f', ctrlKey: true, defaultPrevented: false, target: null });
+    expect(parent.postMessage).not.toHaveBeenCalled();
   });
 });

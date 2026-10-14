@@ -24,6 +24,7 @@ function canvasBridge(): void {
     },
     true,
   );
+  const TOOL_KEYS = ['P', 'E', 'C', 'N', 'F'];
   type Item = { id?: string; name?: string; src?: string; kind?: string; styles?: string[] };
   type Page = { id?: string; title?: string; name?: string; sections?: { items?: Item[] }[]; items?: Item[] };
   type Config = {
@@ -80,6 +81,8 @@ function canvasBridge(): void {
     });
   };
   const ready = (): void => {
+    // A newly presented option has not seen the marks yet.
+    document.querySelector('#present-frame')?.addEventListener('load', queueLayout);
     post({ type: 'document', id: documentId });
     post({
       type: 'ready',
@@ -96,9 +99,234 @@ function canvasBridge(): void {
     });
     state();
   };
+  // ---------- annotation (#213): hit tests, tracked marks and scrolling ----------
+  // Each document answers for itself, or hands the request to the option it is presenting.
+  type Rect = { left: number; top: number; width: number; height: number };
+  // A pin keeps its place on the element under it (ax, ay inside that element), so it follows inner scrollers too.
+  type Tracked = { id: number; x?: number; y?: number; selector?: string; ax?: number; ay?: number };
+  let tracked: Tracked[] = [];
+  let layoutQueued = false;
+  // Once the viewer asks, every scroll reports a layout, so targets move even with no marks yet.
+  let tracking = false;
+  const presentFrame = (): HTMLIFrameElement | null => {
+    if (!document.querySelector('#present-view:not([hidden])')) return null;
+    const frame = document.querySelector<HTMLIFrameElement>('#present-frame');
+    return frame?.contentWindow ? frame : null;
+  };
+  const clip = (text: string): string => {
+    const flat = text.replace(/\s+/g, ' ').trim();
+    return flat.length > 40 ? `${flat.slice(0, 39)}…` : flat;
+  };
+  const LEAF = /^(BUTTON|A|H[1-6]|LABEL|SUMMARY|LEGEND|TH|TD|LI|P|SPAN|STRONG|B|EM|SMALL|DT|DD|FIGCAPTION|CAPTION|OPTION)$/;
+  const BOX = /^(SECTION|ARTICLE|ASIDE|NAV|HEADER|FOOTER|MAIN|FORM|DIALOG|LI|DIV|FIELDSET)$/;
+  /** A name a person would use: its label, its short text, or "<heading> card" for a box with a heading. */
+  const nameOf = (start: Element | null): string | null => {
+    if (!start || start === document.body || start === document.documentElement) return null;
+    for (let node: Element | null = start; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+      const label = node.getAttribute('aria-label') ?? node.getAttribute('title') ?? node.getAttribute('alt');
+      if (label?.trim()) return clip(label);
+      const text = (node.textContent ?? '').trim();
+      if (text && text.length <= 40 && LEAF.test(node.tagName)) return clip(text);
+      const heading = BOX.test(node.tagName) ? node.querySelector('h1, h2, h3, h4, h5, h6, [role="heading"]') : null;
+      if (heading?.textContent?.trim()) {
+        const kind = /^(DIV|LI|ARTICLE)$/.test(node.tagName) ? 'card' : node.tagName.toLowerCase();
+        return clip(`${heading.textContent} ${kind}`);
+      }
+    }
+    return start.tagName.toLowerCase();
+  };
+  const selectorOf = (start: Element): string => {
+    const parts: string[] = [];
+    for (let node: Element | null = start; node && node !== document.documentElement; node = node.parentElement) {
+      if (node.id && document.querySelectorAll('#' + CSS.escape(node.id)).length === 1) {
+        parts.unshift('#' + CSS.escape(node.id));
+        break;
+      }
+      const tag = node.tagName;
+      const same = node.parentElement ? [...node.parentElement.children].filter((child) => child.tagName === tag) : [];
+      parts.unshift(tag.toLowerCase() + (same.length > 1 ? `:nth-of-type(${String(same.indexOf(node) + 1)})` : ''));
+    }
+    return parts.join(' > ');
+  };
+  const hexOf = (value: string): string | null => {
+    const m = /rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:\s*[,/]\s*([\d.]+%?))?/.exec(value);
+    if (!m || (m[4] !== undefined && parseFloat(m[4]) === 0)) return null;
+    return '#' + [m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('');
+  };
+  const colorOf = (el: Element): string => {
+    const style = getComputedStyle(el);
+    return hexOf(style.backgroundColor) ?? hexOf(style.color) ?? '#000000';
+  };
+  /** The colours this option uses most, each named by the first element that uses it. */
+  const palette = (): [string, string][] => {
+    const seen = new Map<string, { name: string; count: number }>();
+    for (const el of [...document.body.querySelectorAll('*')].slice(0, 800)) {
+      const style = getComputedStyle(el);
+      for (const hex of [hexOf(style.backgroundColor), hexOf(style.color)]) {
+        if (!hex) continue;
+        const entry = seen.get(hex);
+        if (entry) entry.count++;
+        else seen.set(hex, { name: nameOf(el) ?? hex, count: 1 });
+      }
+    }
+    return [...seen]
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 12)
+      .map(([hex, entry]) => [hex, entry.name]);
+  };
+  const docSize = (): { width: number; height: number } => {
+    const root = document.documentElement;
+    return { width: Math.max(root.scrollWidth, innerWidth), height: Math.max(root.scrollHeight, innerHeight) };
+  };
+  const rectOf = (rect: Rect): Rect => ({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+  const offset = (rect: Rect, by: Rect): Rect => ({ ...rect, left: rect.left + by.left, top: rect.top + by.top });
+  const hitHere = (requestId: number, x: number, y: number, colors: boolean): void => {
+    const hit = document.elementFromPoint(x, y);
+    const size = docSize();
+    const element = hit && hit !== document.body && hit !== document.documentElement ? hit : null;
+    const box = element?.getBoundingClientRect();
+    post({
+      type: 'hit',
+      requestId,
+      x: (x + scrollX) / size.width,
+      y: (y + scrollY) / size.height,
+      name: nameOf(element),
+      selector: element ? selectorOf(element) : null,
+      color: element ? colorOf(element) : null,
+      rect: element ? rectOf(element.getBoundingClientRect()) : null,
+      ...(box && box.width > 0 && box.height > 0 ? { ax: (x - box.left) / box.width, ay: (y - box.top) / box.height } : {}),
+      ...(colors ? { palette: palette() } : {}),
+    });
+  };
+  /** Named elements on screen, for Tab and Enter while selecting (D4: "Hover or Tab to an element"). */
+  const targetsHere = (): void => {
+    const seen = new Set<string>();
+    const items: { name: string; selector: string; rect: Rect }[] = [];
+    for (const el of document.body.querySelectorAll('h1, h2, h3, h4, h5, h6, button, a, label, input, select, textarea, img, [aria-label], [role], li, article, section, nav, header, footer, aside, form, figure, table')) {
+      const box = el.getBoundingClientRect();
+      if (box.width < 8 || box.height < 8 || box.bottom < 0 || box.right < 0 || box.top > innerHeight || box.left > innerWidth) continue;
+      const name = nameOf(el);
+      const key = `${name ?? ''}|${String(Math.round(box.left))}|${String(Math.round(box.top))}`;
+      if (!name || seen.has(key)) continue;
+      seen.add(key);
+      items.push({ name, selector: selectorOf(el), rect: rectOf(box) });
+      if (items.length >= 150) break;
+    }
+    post({ type: 'targets', items });
+  };
+  const layoutHere = (): void => {
+    layoutQueued = false;
+    const size = docSize();
+    post({
+      type: 'layout',
+      marks: tracked.map((mark) => {
+        if (mark.selector !== undefined) {
+          let el: Element | null = null;
+          try {
+            el = document.querySelector(mark.selector);
+          } catch {
+            /* A selector from another revision. */
+          }
+          const rect = el ? rectOf(el.getBoundingClientRect()) : null;
+          if (rect && typeof mark.ax === 'number' && typeof mark.ay === 'number')
+            return { id: mark.id, rect: { left: rect.left + mark.ax * rect.width, top: rect.top + mark.ay * rect.height, width: 0, height: 0 } };
+          if (rect || mark.x === undefined) return { id: mark.id, rect };
+        }
+        return { id: mark.id, rect: { left: (mark.x ?? 0) * size.width - scrollX, top: (mark.y ?? 0) * size.height - scrollY, width: 0, height: 0 } };
+      }),
+      viewport: { left: 0, top: 0, width: innerWidth, height: innerHeight },
+    });
+  };
+  const queueLayout = (): void => {
+    const frame = presentFrame();
+    if (frame) {
+      frame.contentWindow?.postMessage({ wf: 1, type: 'marks', marks: tracked }, '*');
+      return;
+    }
+    if (layoutQueued || !tracking) return;
+    layoutQueued = true;
+    requestAnimationFrame(layoutHere);
+  };
+  window.addEventListener('scroll', queueLayout, { capture: true, passive: true });
+  window.addEventListener('resize', queueLayout);
+  const annotate = (message: Record<string, unknown>): boolean => {
+    const frame = presentFrame();
+    const box = frame ? frame.getBoundingClientRect() : null;
+    if (message['type'] === 'hitTest' && typeof message['requestId'] === 'number' && typeof message['x'] === 'number' && typeof message['y'] === 'number') {
+      const { requestId, x, y } = message as { requestId: number; x: number; y: number };
+      const colors = message['palette'] === true;
+      if (frame && box) {
+        // The canvas's own chrome (its notes, its toolbar) can sit over the option: that point is not on it.
+        if (x < box.left || y < box.top || x > box.right || y > box.bottom || document.elementFromPoint(x, y) !== frame)
+          post({ type: 'hit', requestId, miss: true });
+        else frame.contentWindow?.postMessage({ wf: 1, type: 'hitTest', requestId, x: x - box.left, y: y - box.top, palette: colors }, '*');
+      } else hitHere(requestId, x, y, colors);
+      return true;
+    }
+    if (message['type'] === 'marks' && Array.isArray(message['marks'])) {
+      tracking = true;
+      tracked = (message['marks'] as unknown[]).filter(
+        (mark): mark is Tracked => typeof mark === 'object' && mark !== null && typeof (mark as Tracked).id === 'number',
+      ).slice(0, 500);
+      queueLayout();
+      return true;
+    }
+    if (message['type'] === 'targets') {
+      if (frame) frame.contentWindow?.postMessage({ wf: 1, type: 'targets' }, '*');
+      else targetsHere();
+      return true;
+    }
+    if (message['type'] === 'scroll' && typeof message['dx'] === 'number' && typeof message['dy'] === 'number') {
+      const { dx, dy } = message as { dx: number; dy: number };
+      const x = typeof message['x'] === 'number' ? message['x'] : 0,
+        y = typeof message['y'] === 'number' ? message['y'] : 0;
+      if (frame && box) frame.contentWindow?.postMessage({ wf: 1, type: 'scroll', dx, dy, x: x - box.left, y: y - box.top }, '*');
+      else {
+        // The wheel goes to whatever would scroll under the pointer: an inner pane, or the page.
+        let node: Element | null = document.elementFromPoint(x, y);
+        for (; node && node !== document.documentElement && node !== document.body; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          const overflow = `${style.overflow} ${style.overflowY} ${style.overflowX}`;
+          if (/auto|scroll/.test(overflow) && (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth)) break;
+        }
+        if (node && node !== document.documentElement && node !== document.body) node.scrollBy(dx, dy);
+        else window.scrollBy(dx, dy);
+      }
+      return true;
+    }
+    return false;
+  };
+  /** Hits and layouts from the presented option, moved into this document's coordinates. */
+  const relay = (message: Record<string, unknown>): void => {
+    const box = presentFrame()?.getBoundingClientRect();
+    if (!box) return;
+    const by = { left: box.left, top: box.top, width: 0, height: 0 };
+    if (message['type'] === 'hit') {
+      const rect = message['rect'] as Rect | null | undefined;
+      post({ ...message, ...(rect ? { rect: offset(rect, by) } : {}) });
+    }
+    if (message['type'] === 'targets' && Array.isArray(message['items'])) {
+      const items = (message['items'] as { name: string; selector: string; rect: Rect }[]).map((item) => ({
+        name: item.name,
+        selector: item.selector,
+        rect: offset(item.rect, by),
+      }));
+      post({ type: 'targets', items });
+    }
+    if (message['type'] === 'layout' && Array.isArray(message['marks'])) {
+      const marks = (message['marks'] as { id: number; rect: Rect | null }[]).map((mark) => ({ id: mark.id, rect: mark.rect ? offset(mark.rect, by) : null }));
+      post({ type: 'layout', marks, viewport: { left: box.left, top: box.top, width: box.width, height: box.height } });
+    }
+  };
+
   window.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (typeof event.data !== 'object' || event.data === null) return;
     const message = event.data as Record<string, unknown>;
+    if (event.source !== parent && message['wf'] === 1 && (message['type'] === 'hit' || message['type'] === 'layout' || message['type'] === 'targets')) {
+      if (event.source === presentFrame()?.contentWindow) relay(message);
+      return;
+    }
+    if (event.source === parent && message['wf'] === 1 && annotate(message)) return;
     if (event.source !== parent) {
       // Escape from an option document does not bubble through an iframe.
       const child = [...document.querySelectorAll('iframe')].some((frame) => frame.contentWindow === event.source);
@@ -117,6 +345,10 @@ function canvasBridge(): void {
       }
       if (child && message['wf'] === 1 && message['type'] === 'back') {
         post({ type: 'back' });
+        return;
+      }
+      if (child && message['wf'] === 1 && message['type'] === 'key' && typeof message['key'] === 'string' && TOOL_KEYS.includes(message['key'])) {
+        post({ type: 'key', key: message['key'] });
         return;
       }
       if (!child || message['wf'] !== 1 || message['type'] !== 'key' || message['key'] !== 'Escape') return;
@@ -146,6 +378,14 @@ function canvasBridge(): void {
     },
     true,
   );
+  // The viewer's tool keys (#213), when the canvas left them alone: this runs after the engine's own
+  // document listener, so a key the engine used (P for its page menu) stays the engine's.
+  window.addEventListener('keydown', (event) => {
+    const key = event.key.length === 1 ? event.key.toUpperCase() : '';
+    if (!TOOL_KEYS.includes(key) || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]')) return;
+    post({ type: 'key', key });
+  });
   // Waiting for load also waits for every option iframe and its network requests.
   if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', ready);
   else ready();
