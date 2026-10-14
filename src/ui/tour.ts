@@ -373,7 +373,7 @@ export function mountTour(options: TourOptions): TourController {
     // From focus outside the stops (the card's title, the hand-off status), go to the stop after or before it in the page.
     const after = (element: HTMLElement): boolean => active !== null && active !== element && (active.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
     const next = event.shiftKey
-      ? stops.findLast((element) => element !== active && !after(element)) ?? stops.at(-1)
+      ? [...stops].reverse().find((element) => element !== active && !after(element)) ?? stops.at(-1)
       : stops.find(after) ?? stops[0];
     next?.focus({ preventScroll: true });
   });
