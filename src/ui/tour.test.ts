@@ -305,6 +305,24 @@ describe('the guided tour', () => {
     expect(doc.activeElement).toBe(redrawn);
   });
 
+  it('returns focus to the replacement of a redrawn link with the same id, not the tour entry', () => {
+    const link = doc.createElement('a');
+    link.id = 'nav-home';
+    link.href = '/';
+    app.append(link);
+    const entry = doc.createElement('button');
+    entry.setAttribute('data-settings-tour', '');
+    app.append(entry);
+    link.focus();
+    const tour = mount();
+    tour.start();
+    link.remove();
+    const redrawn = link.cloneNode(true) as HTMLAnchorElement;
+    app.append(redrawn);
+    escape();
+    expect(doc.activeElement).toBe(redrawn);
+  });
+
   it('returns focus to the control that opened it', () => {
     const entry = doc.createElement('button');
     doc.body.append(entry);

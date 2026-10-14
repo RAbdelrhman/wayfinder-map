@@ -290,6 +290,13 @@ export function mountTour(options: TourOptions): TourController {
     setApp(true);
   }
 
+  /** The control that opened the tour, or what a redraw put in its place: the same id, or Settings' new Product tour row. */
+  function replacementFor(element: HTMLElement): HTMLElement | null {
+    if (element.isConnected) return element;
+    if (element.id !== '') return doc.getElementById(element.id);
+    return element.hasAttribute('data-settings-tour') ? doc.querySelector<HTMLElement>('[data-settings-tour]') : null;
+  }
+
   function close(message: string | null): void {
     unsubscribe?.();
     unsubscribe = null;
@@ -303,9 +310,7 @@ export function mountTour(options: TourOptions): TourController {
     setApp(false);
     render();
     const settings = doc.getElementById('settings');
-    // Settings may redraw its Help section while the tour runs; its new Product tour row is the same entry.
-    const entry = doc.querySelector<HTMLElement>('[data-settings-tour]');
-    const back = returnFocus?.isConnected === true ? returnFocus : entry ?? settings;
+    const back = (returnFocus === null ? null : replacementFor(returnFocus)) ?? settings;
     returnFocus = null;
     back?.focus({ preventScroll: true });
     if (message === null) return;

@@ -93,6 +93,20 @@ export function navFooterHtml(page: NavigationPage): string {
   </div>`;
 }
 
+const NAV_KEYS = ['data-nav-action', 'data-nav-disclose', 'data-nav-retry', 'data-nav-flyout-trigger', 'href'] as const;
+
+/** A selector that finds the same sidebar control after a redraw: its id, its data-nav-* value, or its link. */
+export function sidebarFocusKey(element: Element): string | null {
+  if (element.id !== '') return `#${CSS.escape(element.id)}`;
+  const name = NAV_KEYS.find((key) => element.hasAttribute(key));
+  return name === undefined ? null : `${element.tagName.toLowerCase()}[${name}="${CSS.escape(element.getAttribute(name) ?? '')}"]`;
+}
+
+/** The visible control a key names: the expanded and folded sidebars both draw some controls, and one is hidden. */
+export function findSidebarControl(sidebar: ParentNode, key: string): HTMLElement | null {
+  return [...sidebar.querySelectorAll<HTMLElement>(key)].find((element) => element.closest('[hidden]') === null) ?? null;
+}
+
 /** Ctrl+K or Cmd+K opens Jump to…, but not while something (the tour, the canvas viewer) has made the app inert. */
 export function opensJump(event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'key'>, shell: Pick<Element, 'hasAttribute'>): boolean {
   return (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && !shell.hasAttribute('inert');
@@ -466,8 +480,8 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     const existingFooter = sidebar.querySelector<HTMLElement>('.nav-footer');
     const treeScroll = sidebar.querySelector<HTMLElement>('.tree')?.scrollTop ?? null;
     const railScroll = sidebar.querySelector<HTMLElement>('.mini-repos')?.scrollTop ?? null;
-    // A redraw replaces the focused link (Settings, after the tour closes, say); focus its replacement.
-    const focusedId = document.activeElement instanceof HTMLElement && sidebar.contains(document.activeElement) ? document.activeElement.id : '';
+    // A redraw replaces the focused control (a repo row, or Settings after the tour closes); focus its replacement.
+    const focused = document.activeElement instanceof HTMLElement && sidebar.contains(document.activeElement) ? sidebarFocusKey(document.activeElement) : null;
     const logo = '<img class="app-logo" src="/wayfinder-icon.svg" alt="" width="30" height="30" />';
     setTrustedHtml(sidebar, `<nav class="navigation" aria-label="Primary">
       <div class="nav-open-content side" id="nav-content"${expanded ? '' : ' hidden'}>
@@ -497,7 +511,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     const rail = sidebar.querySelector<HTMLElement>('.mini-repos');
     if (tree !== null && treeScroll !== null) tree.scrollTop = treeScroll;
     if (rail !== null && railScroll !== null) rail.scrollTop = railScroll;
-    if (focusedId !== '' && !sidebar.contains(document.activeElement)) document.getElementById(focusedId)?.focus({ preventScroll: true });
+    if (focused !== null && !sidebar.contains(document.activeElement)) findSidebarControl(sidebar, focused)?.focus({ preventScroll: true });
     if (!revealedLocation && repositoryListLoaded) {
       const here = sidebar.querySelector<HTMLElement>(expanded ? '.tree .row.is-on, .tree .row.is-trail' : '.mini-repos .is-here');
       if (here !== null) {
