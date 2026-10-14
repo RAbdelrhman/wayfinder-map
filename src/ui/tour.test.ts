@@ -124,6 +124,19 @@ describe('the first-launch invitation', () => {
     expect([...doc.querySelectorAll('.tour-layer')].every((element) => (element as HTMLElement).hidden)).toBe(true);
   });
 
+  it('makes the app behind the dialog inert, and leaves inert that another feature set', () => {
+    offerTourOnFirstLaunch(mount(), storage);
+    expect(app.hasAttribute('inert')).toBe(true);
+    click('[data-tour-act="not-now"]');
+    expect(app.hasAttribute('inert')).toBe(false);
+
+    app.setAttribute('inert', '');
+    const tour = mount();
+    tour.start();
+    escape();
+    expect(app.hasAttribute('inert')).toBe(true);
+  });
+
   it('Escape answers Not now', () => {
     offerTourOnFirstLaunch(mount(), storage);
     escape();

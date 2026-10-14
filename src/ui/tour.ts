@@ -32,7 +32,7 @@ const TARGETS = {
 export interface TourOptions {
   /** The app's own toast, for the Not now and Exit tour messages. */
   toast: (message: string, ms?: number) => void;
-  /** The real app, made inert while the demo covers it. */
+  /** The real app, made inert while the welcome dialog or the demo covers it. */
   app?: HTMLElement | null;
   /** Leaves for Start a new map after the completion card. */
   navigate?: (url: string) => void;
@@ -232,22 +232,27 @@ export function mountTour(options: TourOptions): TourController {
     else if (key === '#demo-open') stage.querySelector<HTMLElement>('#demo-handoff')?.focus({ preventScroll: true });
   }
 
+  /** Whether the app was already inert (the canvas viewer, say) before the tour opened, so closing leaves it so. */
+  let appWasInert = false;
+
   function setApp(inert: boolean): void {
-    if (options.app === undefined || options.app === null) return;
-    if (inert) options.app.setAttribute('inert', '');
-    else options.app.removeAttribute('inert');
+    const app = options.app;
+    if (app === undefined || app === null) return;
+    if (inert) app.setAttribute('inert', '');
+    else if (!appWasInert) app.removeAttribute('inert');
   }
 
   function open(next: Mode): void {
     if (mode === 'closed') {
       const active = doc.activeElement;
       returnFocus = active instanceof HTMLElement && active !== doc.body && !layer.contains(active) ? active : null;
+      appWasInert = options.app?.hasAttribute('inert') ?? false;
     }
     mode = next;
     layer.hidden = false;
     layer.dataset['mode'] = next;
     doc.body.classList.toggle('is-touring', next === 'tour');
-    setApp(next === 'tour');
+    setApp(true);
   }
 
   function close(message: string | null): void {
