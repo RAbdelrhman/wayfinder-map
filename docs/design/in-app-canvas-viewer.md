@@ -22,7 +22,7 @@ The wrapper announces readiness at DOM readiness, rather than waiting for every 
 
 Files use `/proto/<owner>/<repo>/<branch>/<sha>/viewer-9/<path>`. The rendition segment versions the injected wrapper and engine adaptation as well as the SHA-addressed repo bytes. Bump `PROTOTYPE_HOST_VERSION` when either adaptation changes. Versioned SHA responses keep the original CSP and have immutable caching; legacy branch and unversioned SHA URLs remain uncached. The server keeps a 50 MB LRU of raw commit bytes and coalesces reads. Prototype lists queue up to 64 relevant files per unseen SHA with three reads at once. The last viewer iframe stays mounted after close.
 
-The sandbox headers and `sandbox="allow-scripts"` iframe are unchanged. The wrapper provides no API proxy. Installed-app validation, provider hand-offs, performance measurements for #214, annotations/picking and release work remain separate.
+The sandbox headers and `sandbox="allow-scripts"` iframe are unchanged. The wrapper provides no API proxy. Installed-app validation, provider hand-offs, annotations/picking and release work remain separate. The #214 measurements are below.
 
 ### Pins and notes in #213
 
@@ -36,6 +36,27 @@ The sandbox headers and `sandbox="allow-scripts"` iframe are unchanged. The wrap
 - **No bridge:** after the 3 s timeout, pins, elements and colours are off. Notes still work on the whole page or on an option the person picks in "Which option is showing?", from the prototype's variant list.
 - **Posting:** `POST /api/repos/<owner>/<repo>/canvas-notes` takes `{ ticket, body }`. It only accepts a canvas-notes comment, on a ticket labelled as a prototype, from Wayfinder's own origin. A canvas's `Origin: null` gets 403. The body goes to `gh api` through stdin.
 - **The comment:** a `### Canvas notes from Wayfinder` heading, `branch @ sha` with the page, then one numbered line per mark: whole page first, then options in the canvas's order. Lines use element names. Positions (`x`, `y` as fractions of the option's document), selectors and colours go in `<!-- wayfinder:notes v1 {...} -->` for agents.
+
+### Polish pass in #214
+
+The map's quality bar, measured on the finished viewer (with #213) in the localhost page and in the desktop app, on 2026-10-14. Machine: an i7-8750H laptop (6 cores, UHD 630 and GTX 1060 Max-Q), which is a modest "typical laptop". Chromium 155 headless drove the localhost page; the desktop app was Electron 44.4.3 in a visible window, driven over the debug port with real mouse and key events. The laptop was at 100% CPU from other applications for most runs, so tails are pessimistic. Boards: #163 (3 option pages, light) and #196 (16 frames, heavy). The server cache and the browser cache were warm.
+
+| Bar | Before | After |
+| --- | --- | --- |
+| Warm open under 300 ms, animated, no blank flash | Click to canvas ready: #163 137–240 ms, #196 280–411 ms. The stage was empty for 150–420 ms (a tile that previews a live page has no screenshot to show), then the canvas faded in over 150 ms. | Pointer rests on the tile for 400 ms (typical): canvas on screen after 11–23 ms, no empty frames, desktop and localhost alike. Click with no lead-in (touch, fast click): desktop #163 73 ms, #196 202 ms (p90 321); localhost #163 115 ms, #196 394 ms on the loaded laptop. The 220 ms expansion animation plays in every case. |
+| 60 fps pan | #196 60.6 fps; #163 33–39 fps (p95 67–83 ms). | #163 and #196 60.6 fps, p99 17 ms, no frame over 20 ms. Desktop #196: 60.6 fps. |
+| 60 fps zoom | CSS `zoom`: #196 11.4 fps (p95 233 ms, 19 long tasks) on the board alone; 47.6 fps inside the viewer. One step took a median 50 ms (p95 167) on #196 and 104 ms on #163. | `transform: scale`: #196 57.8–60.8 fps, #163 51–55 fps (one step median 27 ms). Desktop #196: 61.0 fps, p99 16.9 ms. |
+| Esc or Back restores the exact map position | Held: scroll, zoom, selection and URL identical after Esc and after Back. | Same, on both surfaces (map zoomed to 120%, scrolled to 311,197). Esc stopped working about 1.5 s after opening when a tile preview on the page behind took keyboard focus; fixed. |
+| Switching options or pages never reloads | Held: four options and a page switch sent no `ready` or `document` message, and the iframe element and `src` were unchanged. | Same, on both surfaces. |
+
+What changed:
+
+- **The canvas loads before the click.** Resting the pointer on a tile for 120 ms (or keyboard focus on it, or pressing on it) mounts the canvas in the viewer's frame, laid out invisibly at the size it will open at (`.vw.is-warm`), so a 16-frame board has booted by the time the click lands. The click then opens the frame that is already there. Nothing is shown or announced until the click, history is untouched, and the app stays live. The previous behaviour (the last frame stays mounted after Close) is unchanged. The frame's 150 ms fade is gone: it only delayed a canvas that had already painted.
+- **Zoom is a transform.** `viewerPrototypeBytes` swaps the engine's `$('stage').style.zoom = …` for `stageZoom`, which scales `#stage` from its top-left corner and pulls the scroll area in with negative margins while zoomed out. A resize observer keeps the margins right as options report their height. Scroll extents and frame positions match CSS zoom within 2 px at every step on #196 and #163. Every prototype branch carries the identical engine line, so this reaches old canvases the same way the `location.hash` rewrite does. This answers the Fog question: CSS `zoom` does not hold 60 fps on a large board.
+- **Option frames get a compositor layer.** On a canvas board the wrapper adds `#stage .frame { will-change: transform }`. Without it, every scroll step repainted the pages inside, which held #163's pan to 33–39 fps. Text stays sharp at 200%.
+- **Focus.** A tile preview on the page behind can call `focus()` on itself while the viewer is open (the Start next preview does, 1.5 s after load). The viewer now returns focus to Close when a hidden preview frame takes it. Escape forwarding also changed: with a dialog open in the canvas page, Escape is the page's if the dialog closed or the key was cancelled, and otherwise closes the viewer. A modal that closes on Escape still takes the first press and the viewer takes the second.
+
+Left open, filed as follow-ups: unprepared opens of heavy boards still show an empty stage for about 200 ms on the desktop (up to about 400 ms on the loaded laptop), and prefetch spends many REST calls on every server start.
 
 The observations below describe the pre-implementation baseline measured for #206.
 
@@ -150,7 +171,7 @@ Switching options or pages goes through `go`, which changes only the hash, so th
 ## Open questions for the map's Fog
 
 - **Pins drawn inside or over the canvas.** Pins have to follow pan and zoom at 60 fps. The wrapper could draw them inside the canvas, which keeps them in sync with no per-frame messages. The viewer could draw them as an overlay, which keeps all pin UI in Wayfinder but needs a `layout` message every frame while panning. This shapes the pin prototype (#210).
-- **60 fps pan and zoom with the engine's CSS `zoom`.** `#stage` zooms with CSS `zoom`, which re-lays out the board on every step. Whether that holds 60 fps on large boards on a typical laptop is unmeasured. If it doesn't, the engine fix is a `transform: scale`. A measurement for #214.
+- ~~**60 fps pan and zoom with the engine's CSS `zoom`.**~~ Measured in #214: it does not hold 60 fps on a large board, so zoom is a transform now. See "Polish pass in #214".
 - **Whether the server cache should persist to disk** so a warm open survives an app restart. The bar only says "once the branch is cached".
 - **Where the injection lives.** Either rewrite HTML on `/proto/` responses (simple; touches repo bytes in flight) or serve a Wayfinder-owned shell page that loads the canvas. The second needs a nested frame and breaks relative paths, so the rewrite is favoured, but the build ticket should confirm it.
 - **Clipboard inside the sandbox.** The engine's "copy feedback" flow relies on manual select and copy. The desktop app denies every permission request (`src/desktop/main.ts:300`), so `navigator.clipboard` in the canvas will not work in-app. That is probably fine once the in-canvas pick posts the comment itself.

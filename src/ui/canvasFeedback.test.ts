@@ -2,10 +2,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CanvasFeedback } from './canvasFeedback.js';
 import type { FeedbackContext } from './canvasFeedback.js';
+import { PROTOTYPE_HOST_VERSION } from '../prototypes.js';
 import { setTrustedHtml } from './trustedHtml.js';
 
 const SHA = 'a'.repeat(40);
-const URL_ = `/proto/octo/repo/prototype%2F42-home/${SHA}/viewer-9/prototypes/42/index.html`;
+const URL_ = `/proto/octo/repo/prototype%2F42-home/${SHA}/${PROTOTYPE_HOST_VERSION}/prototypes/42/index.html`;
 const variants = [
   { id: 'A', name: 'Greeting' },
   { id: 'B', name: 'Split hero' },
