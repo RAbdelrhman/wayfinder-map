@@ -55,6 +55,18 @@ describe('Settings page', () => {
     expect(settingsBodyHtml(view(), 'account')).toContain('data-settings-logout');
   });
 
+  it('keeps the product tour in Settings › Help, as a Product tour row with one Take the tour button', () => {
+    expect(settingsCategory('help')).toBe('help');
+    expect(settingsNavigationHtml('help')).toContain('href="/settings?section=help" data-settings-category="help" aria-current="location"><span data-icon="help" aria-hidden="true"></span>Help</a>');
+    const help = settingsBodyHtml(view(), 'help');
+    expect(help).toContain('<h3 id="settings-tour-title">Product tour</h3>');
+    expect(help).toContain('A two-minute walkthrough with a demo project. Nothing touches GitHub.');
+    expect(help.match(/data-settings-tour/g)).toHaveLength(1);
+    expect(settingsBodyHtml(view(), 'appearance')).not.toContain('data-settings-tour');
+    const control = { id: '', getAttribute: () => null, matches: () => false, hasAttribute: (name: string) => name === 'data-settings-tour' } as unknown as Element;
+    expect(focusKeyOf(control)).toBe('[data-settings-tour]');
+  });
+
   it('keeps calibration and model controls focused after asynchronous redraws', () => {
     for (const attribute of ['data-settings-calibration', 'data-settings-model', 'data-settings-effort']) {
       const control = { getAttribute: (name: string) => name === attribute ? 'simple' : null } as unknown as Element;

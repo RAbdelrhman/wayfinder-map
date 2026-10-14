@@ -30,6 +30,12 @@ to this page; its separate theme and model-default buttons have been removed.
 The ticket panel's Defaults link opens Tasks & models. Ticket-specific tier and
 model overrides remain in the ticket panel.
 
+A sixth category, Help, was added for the product tour (#238, option S1; built in
+#240). It holds one Product tour row whose Take the tour button replays the tour.
+`src/ui/settings.test.ts` covers the category link, the row and its focus key, and
+`src/ui/tour.test.ts` covers the tour it opens. The Help page was checked in
+Chromium at 1280×800.
+
 Existing storage keys and settings APIs are retained. Loading failures expose a
 retry action, failed API saves restore the previous choice, and redraws preserve
 keyboard focus and the Advanced section's open state.
