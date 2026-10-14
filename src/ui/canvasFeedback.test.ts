@@ -392,7 +392,8 @@ describe('verifier findings on #213', () => {
   it('puts the selection layer above existing marks, as D4 does, so a marked element can be picked again', async () => {
     const { readFile } = await import('node:fs/promises');
     const css = await readFile(`${process.cwd()}/src/ui/styles.css`, 'utf8');
-    const z = (selector: string): number => Number(new RegExp(`${selector.replace(/[.]/g, '\\.')} \\{[^}]*z-index: (\\d+)`).exec(css)?.[1]);
+    const literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const z = (selector: string): number => Number(new RegExp(`${literal(selector)} \\{[^}]*z-index: (\\d+)`).exec(css)?.[1]);
     expect(z('.vw-canvas.is-selecting .cf-capture')).toBeGreaterThan(z('.cf-pin'));
     expect(z('.cf-target')).toBeGreaterThan(z('.cf-el'));
   });
