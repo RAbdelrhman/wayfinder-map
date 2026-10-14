@@ -8,7 +8,7 @@
   Uses installed Google Chrome (or CHROME_PATH). Run with `bun run test:tour-layout`; set
   TOUR_LAYOUT_SHOTS to a folder to keep a screenshot of every checked state.
 */
-/* global document, window -- page.evaluate runs these callbacks in the browser. */
+/* global document, getComputedStyle, window -- page.evaluate runs these callbacks in the browser. */
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -70,7 +70,8 @@ function measure() {
   const pop = document.querySelector('.tour-pop');
   return {
     step: pop?.dataset.tourStep ?? 'none',
-    scrolls: pop !== null && pop.scrollHeight > pop.clientHeight,
+    // A card cut to fit must scroll its contents, not paint them past its edge onto the target.
+    spills: pop !== null && pop.scrollHeight > pop.clientHeight && getComputedStyle(pop).overflowY === 'visible',
     pop: rect(pop),
     hole: rect(document.querySelector('.tour-hole')),
     width: window.innerWidth,
@@ -82,6 +83,7 @@ function assertClear(m, where) {
   assert.ok(m.pop !== null, `${where}: no card`);
   const inside = (r) => r.left >= 0 && r.top >= 0 && r.right <= m.width && r.bottom <= m.height;
   assert.ok(inside(m.pop), `${where}: card ${JSON.stringify(m.pop)} leaves the ${m.width}×${m.height} window`);
+  assert.ok(!m.spills, `${where}: the card's contents spill past its ${JSON.stringify(m.pop)} box`);
   if (m.hole === null) return; // A step with no target shows a centred card over a scrim.
   assert.ok(inside(m.hole), `${where}: target ${JSON.stringify(m.hole)} is not fully in the ${m.width}×${m.height} window`);
   assert.ok(!overlaps(m.pop, m.hole), `${where}: card ${JSON.stringify(m.pop)} covers target ${JSON.stringify(m.hole)}`);
