@@ -167,4 +167,22 @@ describe('preparing the canvas before the click', () => {
     expect(viewer.hidden).toBe(true);
     expect(viewer.classList.contains('is-warm')).toBe(false);
   });
+
+  it('still settles when the canvas announced itself but a stalled resource keeps it from finishing loading', () => {
+    const { app, viewer } = setup();
+    on(entryFor(app, 42), 'pointerover');
+    vi.advanceTimersByTime(200);
+    const prepared = frames()[0]!;
+    browser.dispatchEvent(
+      Object.assign(new browser.Event('message'), {
+        source: prepared.contentWindow,
+        data: { wf: 1, type: 'ready', source: 'dom', pages: [] },
+      }),
+    );
+    expect(viewer.classList.contains('is-warm')).toBe(true);
+    vi.advanceTimersByTime(3100);
+    expect(viewer.classList.contains('is-warm')).toBe(false);
+    expect(viewer.hidden).toBe(true);
+    expect(viewer.inert).toBe(true);
+  });
 });

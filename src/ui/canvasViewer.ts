@@ -356,7 +356,8 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
   let origin: HTMLElement | null = null,
     restoreState: (() => void) | undefined;
   let scrolls: { element: HTMLElement; selector: string | null; left: number; top: number }[] = [];
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined,
+    settleTimer: ReturnType<typeof setTimeout> | undefined;
   let pendingFile: string | null = null;
   let documentIds: string[] = [], documentIndex = -1;
   let stripScroll = 0,
@@ -501,8 +502,10 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
         frame?.classList.add('is-ready');
         paint();
       }
-      settle();
     }, 3000);
+    // Kept apart from the timer above, which the canvas's `ready` clears: a resource that never finishes must not leave the viewer laid out.
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(settle, 3000);
   };
   const openFrame = (route: CanvasRoute): void => {
     pendingFile = route.file;

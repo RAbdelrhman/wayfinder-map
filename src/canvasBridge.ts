@@ -373,16 +373,8 @@ function canvasBridge(): void {
     (event) => {
       if (event.key !== 'Escape') return;
       // The engine uses Escape first for its page menu and presentation mode.
-      if (document.querySelector('#present-view:not([hidden]), #pages-menu:not([hidden])')) return;
-      const dialogs = document.querySelectorAll('dialog[open]').length;
-      if (dialogs === 0) {
-        post({ type: 'key', key: 'Escape' });
-        return;
-      }
-      // A dialog is open: Escape is the page's only if the page or the browser used it, by closing the dialog or cancelling the key.
-      setTimeout(() => {
-        if (!event.defaultPrevented && document.querySelectorAll('dialog[open]').length >= dialogs) post({ type: 'key', key: 'Escape' });
-      });
+      if (document.querySelector('#present-view:not([hidden]), #pages-menu:not([hidden]), dialog[open]')) return;
+      post({ type: 'key', key: 'Escape' });
     },
     true,
   );
