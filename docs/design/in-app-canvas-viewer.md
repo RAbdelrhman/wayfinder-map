@@ -58,7 +58,7 @@ What changed:
 - **Option frames get a compositor layer.** On a canvas board the wrapper adds `#stage .frame { will-change: transform }`. Without it, every scroll step repainted the pages inside, which held #163's pan to 33–39 fps. Text stays sharp at 200%.
 - **Focus.** A tile preview on the page behind can call `focus()` on itself while the viewer is open (the Start next preview does, 1.5 s after load). The viewer now returns focus to Close when a hidden preview frame takes it. Escape forwarding is unchanged: while a canvas page shows a dialog, its page menu or presentation mode, Escape is the page's first.
 
-Gaps left open, each a sub-issue of map #205: #304 (an unprepared open of a heavy board still shows an empty stage), #305 (zoom steps on boards with heavy pages still cost frames, and a pan shows a rare single long frame: one 150 ms frame in the final desktop run, two frames over 33 ms in one localhost run, none in the others) and #306 (prefetch spends about 275 REST calls per server start, measured; it exhausted the shared GitHub quota twice during this work).
+Gaps left open, each a sub-issue of map #205: #304 (an unprepared open of a heavy board still shows an empty stage), #305 (zoom steps on boards with heavy pages still cost frames, and a pan shows a rare single long frame: one 150 ms frame in the final desktop run, two frames over 33 ms in one localhost run, none in the others) and #306 (prefetch spends about 275 REST calls per server start, measured; it exhausted the shared GitHub quota twice during this work), and #307 (the hand-off server tests time out under load, on `main` too).
 
 The observations below describe the pre-implementation baseline measured for #206.
 
