@@ -8366,8 +8366,12 @@ body.is-touring { overflow: hidden; }
 .cf-poplayer { z-index: 3; }
 .cf-layer > *, .cf-poplayer > * { pointer-events: auto; }
 .cf-capture { position: absolute; inset: 0; z-index: 0; outline: 2px dashed var(--state-claimed); outline-offset: -4px; cursor: crosshair; }
-.vw-canvas.is-selecting .cf-capture { cursor: pointer; }
-.cf-hover { position: absolute; z-index: 1; border: 2px solid var(--state-claimed); border-radius: 6px; background: color-mix(in srgb, var(--state-claimed) 10%, transparent); pointer-events: none !important; }
+.vw-canvas.is-selecting .cf-capture { z-index: 4; cursor: pointer; }
+.cf-target { position: absolute; z-index: 5; padding: 0; border: 2px dashed transparent; border-radius: 6px; background: none; cursor: pointer; }
+.cf-target:hover, .cf-target:focus-visible { border-color: var(--state-claimed); background: color-mix(in srgb, var(--state-claimed) 10%, transparent); outline: none; }
+.cf-target span { position: absolute; top: -26px; left: -2px; display: none; padding: 2px 8px; border-radius: 6px; background: #1b1b1a; color: #f3f2ee; font-size: 12px; white-space: nowrap; }
+.cf-target:focus-visible span { display: inline-block; }
+.cf-hover { position: absolute; z-index: 6; border: 2px solid var(--state-claimed); border-radius: 6px; background: color-mix(in srgb, var(--state-claimed) 10%, transparent); pointer-events: none !important; }
 .cf-hover span { position: absolute; top: -26px; left: -2px; padding: 2px 8px; border-radius: 6px; background: #1b1b1a; color: #f3f2ee; font-size: 12px; white-space: nowrap; }
 /* Pins sit above element outlines, so a pin inside an annotated element stays clickable. */
 .cf-pin { position: absolute; z-index: 3; display: grid; place-items: center; width: 28px; height: 28px; margin: -30px 0 0 0; padding: 0; border: 2px solid #fff; border-radius: 50% 50% 50% 0; background: var(--accent-fill); color: #fff; font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); transition: transform 0.12s ease-out; transform-origin: bottom left; }

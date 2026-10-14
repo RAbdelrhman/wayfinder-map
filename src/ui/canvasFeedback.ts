@@ -118,7 +118,8 @@ export class CanvasFeedback {
   private readonly sessions = new Map<string, Session>();
   private nextId = 1;
   private nextRequest = 1;
-  private readonly requests = new Map<number, { purpose: 'hover' | 'near' | FeedbackTool; where: string }>();
+  private readonly requests = new Map<number, { purpose: 'hover' | 'near' | FeedbackTool; where: string; mark?: number }>();
+  private targets: { name: string; rect: Rect }[] = [];
   private hoverPending = false;
   private hoverAgain: { x: number; y: number } | null = null;
   private tool: FeedbackTool | null = null;
@@ -337,18 +338,31 @@ export class CanvasFeedback {
     const capture = this.tool && !this.offReason(this.tool, context)
       ? `<div class="cf-capture" data-fb-capture tabindex="-1" aria-hidden="true"></div>`
       : '';
+    const selecting = (this.tool === 'element' || this.tool === 'color') && capture;
+    const verb = this.tool === 'color' ? 'Pick the colour of' : 'Select';
+    const targets = selecting
+      ? this.targets
+          .filter((target) => inside(target.rect))
+          .map(
+            (target, k) =>
+              `<button type="button" class="cf-target" style="left:${String(target.rect.left)}px;top:${String(target.rect.top)}px;width:${String(target.rect.width)}px;height:${String(target.rect.height)}px" data-fb-target="${String(k)}" aria-label="${verb} ${escapeHtml(target.name)}"><span>${escapeHtml(target.name)}</span></button>`,
+          )
+          .join('')
+      : '';
     const hint = this.hintHtml(context);
     const focused =
-      document.activeElement instanceof HTMLElement && this.marksLayer.contains(document.activeElement) ? document.activeElement.dataset['fbMark'] : undefined;
-    setTrustedHtml(this.marksLayer, `${capture}${hover}${marks}${hint}`);
-    if (focused) this.marksLayer.querySelector<HTMLElement>(`[data-fb-mark="${focused}"]`)?.focus({ preventScroll: true });
+      document.activeElement instanceof HTMLElement && this.marksLayer.contains(document.activeElement)
+        ? [...document.activeElement.attributes].find((attr) => attr.name.startsWith('data-fb-'))
+        : undefined;
+    setTrustedHtml(this.marksLayer, `${capture}${hover}${marks}${targets}${hint}`);
+    if (focused) [...this.marksLayer.querySelectorAll<HTMLElement>(`[${focused.name}]`)].find((el) => el.getAttribute(focused.name) === focused.value)?.focus({ preventScroll: true });
     this.placePopover();
   }
   private hintHtml(context: FeedbackContext): string {
     if (this.notice) return `<div class="cf-hint is-soft" role="status">${icon(INFO)}${escapeHtml(this.notice)}</div>`;
     if (this.editing !== null) return '';
     if (this.tool === 'pin') return `<div class="cf-hint" role="status">${icon(FEEDBACK_ICONS.pin)}Click to drop a pin. Enter drops one in the middle; arrow keys move it. <kbd>Esc</kbd> stops.</div>`;
-    if (this.tool === 'element') return `<div class="cf-hint" role="status">${icon(FEEDBACK_ICONS.cursor)}Hover an element, then click it. <kbd>Esc</kbd> stops.</div>`;
+    if (this.tool === 'element') return `<div class="cf-hint" role="status">${icon(FEEDBACK_ICONS.cursor)}Hover or Tab to an element, then click or press Enter. <kbd>Esc</kbd> stops.</div>`;
     if (this.tool === 'color') return `<div class="cf-hint" role="status">${icon(FEEDBACK_ICONS.drop)}Pick an element to change its colour. <kbd>Esc</kbd> stops.</div>`;
     if (this.bridged(context) && context.option === null && context.source !== 'loading')
       return `<div class="cf-hint is-soft" role="status">${icon(INFO)}Open an option to pin it. Notes work here too.</div>`;
@@ -535,7 +549,22 @@ export class CanvasFeedback {
   onLayout(marks: readonly { id: number; rect: Rect | null }[], viewport: Rect): void {
     this.layout = new Map(marks.map((mark) => [mark.id, mark.rect]));
     this.viewport = viewport;
+    // The canvas moved: what can be selected moved with it.
+    this.askTargets();
     this.paintMarks();
+  }
+  onTargets(items: readonly { name: string; rect: Rect }[]): void {
+    this.targets = [...items];
+    if (this.tool === 'element' || this.tool === 'color') this.paintMarks();
+  }
+  private askTargets(): void {
+    if (this.tool === 'element' || this.tool === 'color') this.host.send({ type: 'targets' });
+  }
+  /** A tool key pressed while focus was inside the canvas, which the canvas left alone. */
+  canvasKey(key: string): void {
+    const tool = FEEDBACK_TOOLS.find((candidate) => candidate.key === key);
+    if (tool) this.useTool(tool.id);
+    else if (key === PANEL_KEY) this.togglePanel();
   }
   onHit(hit: CanvasHit): void {
     const asked = this.requests.get(hit.requestId);
@@ -560,7 +589,7 @@ export class CanvasFeedback {
     if (hit.palette) this.palette = hit.palette;
     if (purpose === 'near') {
       // A moved pin takes the name of whatever it now sits on.
-      const mark = this.marks.find((candidate) => candidate.id === this.nearFor);
+      const mark = this.marks.find((candidate) => candidate.id === asked.mark);
       if (mark) {
         mark.near = hit.name;
         mark.x = clamp(hit.x, 0, 1);
@@ -588,15 +617,14 @@ export class CanvasFeedback {
     const color = hit.color && HEX.test(hit.color) ? hit.color : '#000000';
     return this.add({ ...base, type: 'color', element, selector: hit.selector, from: color, to: color });
   }
-  private nearFor: number | null = null;
   private where(context: FeedbackContext): string {
     return JSON.stringify([context.url, this.currentPage(context).id, this.currentOption(context)]);
   }
-  private request(purpose: 'hover' | 'near' | FeedbackTool, x: number, y: number): void {
+  private request(purpose: 'hover' | 'near' | FeedbackTool, x: number, y: number, mark?: number): void {
     const requestId = this.nextRequest++;
     const context = this.host.context();
     if (!context) return;
-    this.requests.set(requestId, { purpose, where: this.where(context) });
+    this.requests.set(requestId, { purpose, where: this.where(context), ...(mark === undefined ? {} : { mark }) });
     this.host.send({ type: 'hitTest', requestId, x, y, ...(purpose === 'color' ? { palette: true } : {}) });
   }
   private hoverAt(x: number, y: number): void {
@@ -671,6 +699,8 @@ export class CanvasFeedback {
     this.tool = this.tool === id ? null : id;
     this.hover = null;
     this.editing = null;
+    this.targets = [];
+    this.askTargets();
     this.repaint();
     this.marksLayer.querySelector<HTMLElement>('[data-fb-capture]')?.focus({ preventScroll: true });
   }
@@ -698,6 +728,8 @@ export class CanvasFeedback {
     this.hoverPending = false;
     this.hoverAgain = null;
     this.requests.clear();
+    this.targets = [];
+    this.askTargets();
     this.layout.clear();
     this.palette = [];
     if (context && this.editing !== null) {
@@ -753,8 +785,7 @@ export class CanvasFeedback {
     this.nearTimer = setTimeout(() => {
       const rect = this.layout.get(mark.id);
       if (!rect) return;
-      this.nearFor = mark.id;
-      this.request('near', rect.left, rect.top);
+      this.request('near', rect.left, rect.top, mark.id);
     }, 200);
   }
   private nearTimer: ReturnType<typeof setTimeout> | undefined;
@@ -846,6 +877,11 @@ export class CanvasFeedback {
       const button = target?.closest<HTMLElement>('button');
       if (!button) return;
       const d = button.dataset;
+      if (d['fbTarget'] !== undefined && (this.tool === 'element' || this.tool === 'color')) {
+        const picked = this.targets[Number(d['fbTarget'])];
+        if (picked) this.request(this.tool, picked.rect.left + picked.rect.width / 2, picked.rect.top + picked.rect.height / 2);
+        return;
+      }
       if (d['fbTool']) return this.useTool(d['fbTool'] as ToolId);
       if (d['fbTab']) {
         this.paneTab = d['fbTab'] === 'feedback' ? 'feedback' : 'canvas';
@@ -924,14 +960,14 @@ export class CanvasFeedback {
       }
     });
     root.addEventListener('pointermove', (event) => {
-      if (!(this.tool === 'element' || this.tool === 'color') || !(event.target instanceof Element) || !event.target.closest('[data-fb-capture]')) return;
+      if (!(this.tool === 'element' || this.tool === 'color') || !(event.target instanceof Element) || !event.target.closest('[data-fb-capture], [data-fb-target]')) return;
       const box = this.canvas.getBoundingClientRect();
       this.hoverAt(event.clientX - box.left, event.clientY - box.top);
     });
     root.addEventListener(
       'wheel',
       (event) => {
-        if (!(event.target instanceof Element) || !event.target.closest('[data-fb-capture]')) return;
+        if (!(event.target instanceof Element) || !event.target.closest('[data-fb-capture], [data-fb-target]')) return;
         event.preventDefault();
         const box = this.canvas.getBoundingClientRect();
         this.host.send({ type: 'scroll', dx: event.deltaX, dy: event.deltaY, x: event.clientX - box.left, y: event.clientY - box.top });

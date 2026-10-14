@@ -81,6 +81,16 @@ describe('wrapper hit tests and marks (#213)', () => {
     expect(page.sent('hit').at(-1)).toEqual({ wf: 1, type: 'hit', requestId: 2, miss: true });
   });
 
+  it('lists the named elements on screen for keyboard selection', () => {
+    const page = boot('<main><article><h3>Continue</h3><p>Text</p></article><button aria-label="Close">×</button><span>tiny</span></main>');
+    for (const el of document.querySelectorAll('main *'))
+      (el as HTMLElement).getBoundingClientRect = () => ({ left: 10, top: 20, width: el.tagName === 'SPAN' ? 4 : 120, height: 30, right: 130, bottom: 50, x: 10, y: 20, toJSON: () => ({}) });
+    page.from({ type: 'targets' });
+    const names = (page.sent('targets').at(-1)!['items'] as { name: string }[]).map((item) => item.name);
+    expect(names).toEqual(expect.arrayContaining(['Continue', 'Continue card', 'Close']));
+    expect(names).not.toContain('tiny');
+  });
+
   it('reports where tracked marks are, and ignores requests from anything but its parent', async () => {
     const page = boot('<main><p id="a">A</p></main>');
     page.send({ type: 'marks', marks: [{ id: 7, x: 0, y: 0 }] });

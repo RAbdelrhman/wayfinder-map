@@ -5,7 +5,7 @@ import type { FeedbackContext } from './canvasFeedback.js';
 import { setTrustedHtml } from './trustedHtml.js';
 
 const SHA = 'a'.repeat(40);
-const URL_ = `/proto/octo/repo/prototype%2F42-home/${SHA}/viewer-7/prototypes/42/index.html`;
+const URL_ = `/proto/octo/repo/prototype%2F42-home/${SHA}/viewer-8/prototypes/42/index.html`;
 const variants = [
   { id: 'A', name: 'Greeting' },
   { id: 'B', name: 'Split hero' },
@@ -288,6 +288,81 @@ describe('verifier findings on #213', () => {
     view.$<HTMLElement>('.cf-pin')!.focus();
     layout(60);
     expect(document.activeElement?.getAttribute('data-fb-mark')).toBe('1');
+  });
+
+  it('gives each moved pin its own answer, whatever order the answers arrive in', async () => {
+    vi.useFakeTimers();
+    try {
+      const view = mount({});
+      view.click('[data-fb-tool="pin"]');
+      for (const x of [0.1, 0.6]) {
+        view.$<HTMLElement>('[data-fb-capture]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        answer(view, { x, y: 0.5, name: `Start ${String(x)}` });
+        view.click('[data-fb-act="done"]');
+        view.click('[data-fb-tool="pin"]');
+        view.click('[data-fb-tool="pin"]');
+      }
+      view.feedback.onLayout(
+        [
+          { id: 1, rect: { left: 10, top: 10, width: 0, height: 0 } },
+          { id: 2, rect: { left: 300, top: 10, width: 0, height: 0 } },
+        ],
+        { left: 0, top: 0, width: 800, height: 600 },
+      );
+      const asks: number[] = [];
+      for (const id of [1, 2]) {
+        view.key('ArrowRight', view.$(`[data-fb-mark="${String(id)}"]`)!);
+        await vi.advanceTimersByTimeAsync(250);
+        asks.push(view.send.mock.calls.map(([message]) => message).filter((message) => message['type'] === 'hitTest').at(-1)!['requestId'] as number);
+      }
+      const reply = (requestId: number, x: number, name: string): void =>
+        view.feedback.onHit({ requestId, x, y: 0.4, name, selector: null, color: null, rect: null });
+      reply(asks[1]!, 0.7, 'Second');
+      reply(asks[0]!, 0.2, 'First');
+      const pins = JSON.parse(view.feedback.comment().split('wayfinder:notes v1 ')[1]!.replace(/ -->$/, '')).pins as { x: number; near: string }[];
+      expect(pins.map((pin) => [pin.near, pin.x])).toEqual([
+        ['First', 0.2],
+        ['Second', 0.7],
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets Tab and Enter pick an element the canvas named, and keeps focus as the canvas moves', () => {
+    const view = mount({ size: 'pane' });
+    view.click('[data-fb-tool="element"]');
+    expect(view.send).toHaveBeenCalledWith({ type: 'targets' });
+    expect(view.$('.cf-hint')!.textContent).toBe('Hover or Tab to an element, then click or press Enter. Esc stops.');
+    view.$<HTMLElement>('[data-fb-capture]')!.focus();
+    const layout = (): void => view.feedback.onLayout([], { left: 0, top: 0, width: 800, height: 600 });
+    layout();
+    expect(document.activeElement?.hasAttribute('data-fb-capture')).toBe(true);
+    view.feedback.onTargets([{ name: 'Continue card', rect: { left: 100, top: 40, width: 200, height: 80 } }]);
+    const target = view.$<HTMLButtonElement>('[data-fb-target="0"]')!;
+    expect(target.getAttribute('aria-label')).toBe('Select Continue card');
+    target.focus();
+    layout();
+    expect(document.activeElement?.getAttribute('data-fb-target')).toBe('0');
+    view.send.mockClear();
+    view.click('[data-fb-target="0"]');
+    expect(view.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'hitTest', x: 200, y: 80 }));
+  });
+
+  it('puts the selection layer above existing marks, as D4 does, so a marked element can be picked again', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const css = await readFile(`${process.cwd()}/src/ui/styles.css`, 'utf8');
+    const z = (selector: string): number => Number(new RegExp(`${selector.replace(/[.]/g, '\\.')} \\{[^}]*z-index: (\\d+)`).exec(css)?.[1]);
+    expect(z('.vw-canvas.is-selecting .cf-capture')).toBeGreaterThan(z('.cf-pin'));
+    expect(z('.cf-target')).toBeGreaterThan(z('.cf-el'));
+  });
+
+  it('takes tool keys the canvas left alone while focus was inside it', () => {
+    const view = mount({});
+    view.feedback.canvasKey('E');
+    expect(view.$('[data-fb-tool="element"]')!.getAttribute('aria-pressed')).toBe('true');
+    view.feedback.canvasKey('F');
+    expect(view.$<HTMLElement>('#vw-feedback')!.hidden).toBe(true);
   });
 
   it('offers a snapshot pin only the canvas’s options, starting on the one the tile opened', () => {

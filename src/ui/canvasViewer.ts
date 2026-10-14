@@ -47,7 +47,8 @@ export type CanvasMessage =
   | { wf: 1; type: 'state'; page: string | null; option: string | null; presenting: boolean }
   | { wf: 1; type: 'back' }
   | { wf: 1; type: 'document'; id: string }
-  | { wf: 1; type: 'key'; key: 'Escape' }
+  | { wf: 1; type: 'key'; key: 'Escape' | 'P' | 'E' | 'C' | 'N' | 'F' }
+  | { wf: 1; type: 'targets'; items: { name: string; rect: CanvasRect }[] }
   | ({ wf: 1; type: 'hit' } & CanvasHit)
   | { wf: 1; type: 'layout'; marks: { id: number; rect: CanvasRect | null }[]; viewport: CanvasRect };
 export interface CanvasRect {
@@ -89,7 +90,13 @@ export function readCanvasMessage(value: unknown): CanvasMessage | null {
   if (!record(value) || value['wf'] !== 1) return null;
   if (value['type'] === 'back') return { wf: 1, type: 'back' };
   if (value['type'] === 'document' && typeof value['id'] === 'string') return { wf: 1, type: 'document', id: value['id'] };
-  if (value['type'] === 'key' && value['key'] === 'Escape') return value as CanvasMessage;
+  if (value['type'] === 'key' && ['Escape', 'P', 'E', 'C', 'N', 'F'].includes(String(value['key']))) return value as CanvasMessage;
+  if (value['type'] === 'targets') {
+    const items = value['items'];
+    if (!Array.isArray(items) || items.length > 200) return null;
+    if (!items.every((item: unknown) => record(item) && typeof item['name'] === 'string' && item['name'].length <= 200 && isRect(item['rect']))) return null;
+    return { wf: 1, type: 'targets', items: items as { name: string; rect: CanvasRect }[] };
+  }
   if (value['type'] === 'hit') return readHit(value);
   if (value['type'] === 'layout') {
     const marks = value['marks'];
@@ -665,6 +672,8 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       optionId = message.option;
       feedback.stateChanged();
     }
+    if (message.type === 'targets') return feedback.onTargets(message.items);
+    if (message.type === 'key' && message.key !== 'Escape') return feedback.canvasKey(message.key);
     if (message.type === 'key' && feedback.escape()) return;
     if ((message.type === 'key' || message.type === 'back') && routing.current) routing.close();
     paint();

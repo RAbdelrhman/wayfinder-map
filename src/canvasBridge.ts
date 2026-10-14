@@ -24,6 +24,7 @@ function canvasBridge(): void {
     },
     true,
   );
+  const TOOL_KEYS = ['P', 'E', 'C', 'N', 'F'];
   type Item = { id?: string; name?: string; src?: string; kind?: string; styles?: string[] };
   type Page = { id?: string; title?: string; name?: string; sections?: { items?: Item[] }[]; items?: Item[] };
   type Config = {
@@ -105,6 +106,8 @@ function canvasBridge(): void {
   type Tracked = { id: number; x?: number; y?: number; selector?: string; ax?: number; ay?: number };
   let tracked: Tracked[] = [];
   let layoutQueued = false;
+  // Once the viewer asks, every scroll reports a layout, so targets move even with no marks yet.
+  let tracking = false;
   const presentFrame = (): HTMLIFrameElement | null => {
     if (!document.querySelector('#present-view:not([hidden])')) return null;
     const frame = document.querySelector<HTMLIFrameElement>('#present-frame');
@@ -195,6 +198,22 @@ function canvasBridge(): void {
       ...(colors ? { palette: palette() } : {}),
     });
   };
+  /** Named elements on screen, for Tab and Enter while selecting (D4: "Hover or Tab to an element"). */
+  const targetsHere = (): void => {
+    const seen = new Set<string>();
+    const items: { name: string; rect: Rect }[] = [];
+    for (const el of document.body.querySelectorAll('h1, h2, h3, h4, h5, h6, button, a, label, input, select, textarea, img, [aria-label], [role], li, article, section, nav, header, footer, aside, form, figure, table')) {
+      const box = el.getBoundingClientRect();
+      if (box.width < 8 || box.height < 8 || box.bottom < 0 || box.right < 0 || box.top > innerHeight || box.left > innerWidth) continue;
+      const name = nameOf(el);
+      const key = `${name ?? ''}|${String(Math.round(box.left))}|${String(Math.round(box.top))}`;
+      if (!name || seen.has(key)) continue;
+      seen.add(key);
+      items.push({ name, rect: rectOf(box) });
+      if (items.length >= 150) break;
+    }
+    post({ type: 'targets', items });
+  };
   const layoutHere = (): void => {
     layoutQueued = false;
     const size = docSize();
@@ -224,7 +243,7 @@ function canvasBridge(): void {
       frame.contentWindow?.postMessage({ wf: 1, type: 'marks', marks: tracked }, '*');
       return;
     }
-    if (layoutQueued || !tracked.length) return;
+    if (layoutQueued || !tracking) return;
     layoutQueued = true;
     requestAnimationFrame(layoutHere);
   };
@@ -245,10 +264,16 @@ function canvasBridge(): void {
       return true;
     }
     if (message['type'] === 'marks' && Array.isArray(message['marks'])) {
+      tracking = true;
       tracked = (message['marks'] as unknown[]).filter(
         (mark): mark is Tracked => typeof mark === 'object' && mark !== null && typeof (mark as Tracked).id === 'number',
       ).slice(0, 500);
       queueLayout();
+      return true;
+    }
+    if (message['type'] === 'targets') {
+      if (frame) frame.contentWindow?.postMessage({ wf: 1, type: 'targets' }, '*');
+      else targetsHere();
       return true;
     }
     if (message['type'] === 'scroll' && typeof message['dx'] === 'number' && typeof message['dy'] === 'number') {
@@ -280,6 +305,10 @@ function canvasBridge(): void {
       const rect = message['rect'] as Rect | null | undefined;
       post({ ...message, ...(rect ? { rect: offset(rect, by) } : {}) });
     }
+    if (message['type'] === 'targets' && Array.isArray(message['items'])) {
+      const items = (message['items'] as { name: string; rect: Rect }[]).map((item) => ({ name: item.name, rect: offset(item.rect, by) }));
+      post({ type: 'targets', items });
+    }
     if (message['type'] === 'layout' && Array.isArray(message['marks'])) {
       const marks = (message['marks'] as { id: number; rect: Rect | null }[]).map((mark) => ({ id: mark.id, rect: mark.rect ? offset(mark.rect, by) : null }));
       post({ type: 'layout', marks, viewport: { left: box.left, top: box.top, width: box.width, height: box.height } });
@@ -289,7 +318,7 @@ function canvasBridge(): void {
   window.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (typeof event.data !== 'object' || event.data === null) return;
     const message = event.data as Record<string, unknown>;
-    if (event.source !== parent && message['wf'] === 1 && (message['type'] === 'hit' || message['type'] === 'layout')) {
+    if (event.source !== parent && message['wf'] === 1 && (message['type'] === 'hit' || message['type'] === 'layout' || message['type'] === 'targets')) {
       if (event.source === presentFrame()?.contentWindow) relay(message);
       return;
     }
@@ -312,6 +341,10 @@ function canvasBridge(): void {
       }
       if (child && message['wf'] === 1 && message['type'] === 'back') {
         post({ type: 'back' });
+        return;
+      }
+      if (child && message['wf'] === 1 && message['type'] === 'key' && typeof message['key'] === 'string' && TOOL_KEYS.includes(message['key'])) {
+        post({ type: 'key', key: message['key'] });
         return;
       }
       if (!child || message['wf'] !== 1 || message['type'] !== 'key' || message['key'] !== 'Escape') return;
@@ -341,6 +374,14 @@ function canvasBridge(): void {
     },
     true,
   );
+  // The viewer's tool keys (#213), when the canvas left them alone: this runs after the engine's own
+  // document listener, so a key the engine used (P for its page menu) stays the engine's.
+  window.addEventListener('keydown', (event) => {
+    const key = event.key.length === 1 ? event.key.toUpperCase() : '';
+    if (!TOOL_KEYS.includes(key) || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]')) return;
+    post({ type: 'key', key });
+  });
   // Waiting for load also waits for every option iframe and its network requests.
   if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', ready);
   else ready();

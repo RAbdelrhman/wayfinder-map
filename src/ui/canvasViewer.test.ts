@@ -255,6 +255,10 @@ describe('pin and note messages and routes (#213)', () => {
     expect(readCanvasMessage({ wf: 1, type: 'hit', requestId: 3, miss: true })).toEqual({ wf: 1, type: 'hit', requestId: 3, miss: true });
     expect(readCanvasMessage({ ...hit, palette: [['#ffffff', 'Page'], ['red', 'Bad'], ['#000000', 9]] })).toMatchObject({ palette: [['#ffffff', 'Page']] });
     expect(readCanvasMessage({ wf: 1, type: 'layout', marks: [{ id: 1, rect }, { id: 2, rect: null }], viewport: rect })).not.toBeNull();
+    expect(readCanvasMessage({ wf: 1, type: 'targets', items: [{ name: 'Card', rect }] })).not.toBeNull();
+    expect(readCanvasMessage({ wf: 1, type: 'key', key: 'E' })).toEqual({ wf: 1, type: 'key', key: 'E' });
+    expect(readCanvasMessage({ wf: 1, type: 'key', key: 'X' })).toBeNull();
+    expect(readCanvasMessage({ wf: 1, type: 'targets', items: [{ name: 'Card', rect: { left: 1 } }] })).toBeNull();
     for (const value of [
       { ...hit, color: 'red; background:url(x)' },
       { ...hit, x: Number.NaN },
