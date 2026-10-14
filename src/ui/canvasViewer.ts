@@ -48,7 +48,7 @@ export type CanvasMessage =
   | { wf: 1; type: 'back' }
   | { wf: 1; type: 'document'; id: string }
   | { wf: 1; type: 'key'; key: 'Escape' | 'P' | 'E' | 'C' | 'N' | 'F' }
-  | { wf: 1; type: 'targets'; items: { name: string; rect: CanvasRect }[] }
+  | { wf: 1; type: 'targets'; items: { name: string; selector: string; rect: CanvasRect }[] }
   | ({ wf: 1; type: 'hit' } & CanvasHit)
   | { wf: 1; type: 'layout'; marks: { id: number; rect: CanvasRect | null }[]; viewport: CanvasRect };
 export interface CanvasRect {
@@ -94,8 +94,19 @@ export function readCanvasMessage(value: unknown): CanvasMessage | null {
   if (value['type'] === 'targets') {
     const items = value['items'];
     if (!Array.isArray(items) || items.length > 200) return null;
-    if (!items.every((item: unknown) => record(item) && typeof item['name'] === 'string' && item['name'].length <= 200 && isRect(item['rect']))) return null;
-    return { wf: 1, type: 'targets', items: items as { name: string; rect: CanvasRect }[] };
+    if (
+      !items.every(
+        (item: unknown) =>
+          record(item) &&
+          typeof item['name'] === 'string' &&
+          item['name'].length <= 200 &&
+          typeof item['selector'] === 'string' &&
+          item['selector'].length <= 2000 &&
+          isRect(item['rect']),
+      )
+    )
+      return null;
+    return { wf: 1, type: 'targets', items: items as { name: string; selector: string; rect: CanvasRect }[] };
   }
   if (value['type'] === 'hit') return readHit(value);
   if (value['type'] === 'layout') {

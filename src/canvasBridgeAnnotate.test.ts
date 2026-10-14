@@ -89,6 +89,8 @@ describe('wrapper hit tests and marks (#213)', () => {
     const names = (page.sent('targets').at(-1)!['items'] as { name: string }[]).map((item) => item.name);
     expect(names).toEqual(expect.arrayContaining(['Continue', 'Continue card', 'Close']));
     expect(names).not.toContain('tiny');
+    const items = page.sent('targets').at(-1)!['items'] as { name: string; selector: string }[];
+    expect(items.find((item) => item.name === 'Close')?.selector).toBe('body > main > button');
   });
 
   it('reports where tracked marks are, and ignores requests from anything but its parent', async () => {

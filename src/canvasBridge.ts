@@ -201,7 +201,7 @@ function canvasBridge(): void {
   /** Named elements on screen, for Tab and Enter while selecting (D4: "Hover or Tab to an element"). */
   const targetsHere = (): void => {
     const seen = new Set<string>();
-    const items: { name: string; rect: Rect }[] = [];
+    const items: { name: string; selector: string; rect: Rect }[] = [];
     for (const el of document.body.querySelectorAll('h1, h2, h3, h4, h5, h6, button, a, label, input, select, textarea, img, [aria-label], [role], li, article, section, nav, header, footer, aside, form, figure, table')) {
       const box = el.getBoundingClientRect();
       if (box.width < 8 || box.height < 8 || box.bottom < 0 || box.right < 0 || box.top > innerHeight || box.left > innerWidth) continue;
@@ -209,7 +209,7 @@ function canvasBridge(): void {
       const key = `${name ?? ''}|${String(Math.round(box.left))}|${String(Math.round(box.top))}`;
       if (!name || seen.has(key)) continue;
       seen.add(key);
-      items.push({ name, rect: rectOf(box) });
+      items.push({ name, selector: selectorOf(el), rect: rectOf(box) });
       if (items.length >= 150) break;
     }
     post({ type: 'targets', items });
@@ -306,7 +306,11 @@ function canvasBridge(): void {
       post({ ...message, ...(rect ? { rect: offset(rect, by) } : {}) });
     }
     if (message['type'] === 'targets' && Array.isArray(message['items'])) {
-      const items = (message['items'] as { name: string; rect: Rect }[]).map((item) => ({ name: item.name, rect: offset(item.rect, by) }));
+      const items = (message['items'] as { name: string; selector: string; rect: Rect }[]).map((item) => ({
+        name: item.name,
+        selector: item.selector,
+        rect: offset(item.rect, by),
+      }));
       post({ type: 'targets', items });
     }
     if (message['type'] === 'layout' && Array.isArray(message['marks'])) {

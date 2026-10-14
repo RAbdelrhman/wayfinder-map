@@ -5,7 +5,7 @@ import type { FeedbackContext } from './canvasFeedback.js';
 import { setTrustedHtml } from './trustedHtml.js';
 
 const SHA = 'a'.repeat(40);
-const URL_ = `/proto/octo/repo/prototype%2F42-home/${SHA}/viewer-8/prototypes/42/index.html`;
+const URL_ = `/proto/octo/repo/prototype%2F42-home/${SHA}/viewer-9/prototypes/42/index.html`;
 const variants = [
   { id: 'A', name: 'Greeting' },
   { id: 'B', name: 'Split hero' },
@@ -338,32 +338,30 @@ describe('verifier findings on #213', () => {
     const layout = (): void => view.feedback.onLayout([], { left: 0, top: 0, width: 800, height: 600 });
     layout();
     expect(document.activeElement?.hasAttribute('data-fb-capture')).toBe(true);
-    view.feedback.onTargets([{ name: 'Continue card', rect: { left: 100, top: 40, width: 200, height: 80 } }]);
-    const target = view.$<HTMLButtonElement>('[data-fb-target="Continue card#0"]')!;
+    view.feedback.onTargets([{ name: 'Continue card', selector: '#continue', rect: { left: 100, top: 40, width: 200, height: 80 } }]);
+    const target = view.$<HTMLButtonElement>('[data-fb-target="#continue"]')!;
     expect(target.getAttribute('aria-label')).toBe('Select Continue card');
     target.focus();
     layout();
-    expect(document.activeElement?.getAttribute('data-fb-target')).toBe('Continue card#0');
+    expect(document.activeElement?.getAttribute('data-fb-target')).toBe('#continue');
     view.send.mockClear();
-    view.click('[data-fb-target="Continue card#0"]');
+    view.click('[data-fb-target="#continue"]');
     expect(view.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'hitTest', x: 200, y: 80 }));
   });
 
-  it('picks the target clicked, and keeps its focus when scrolling drops others from the list', () => {
+  it('picks the target clicked, and keeps its focus when scrolling drops others, even with repeated names', () => {
     const view = mount({ size: 'pane' });
     view.click('[data-fb-tool="element"]');
     view.feedback.onLayout([], { left: 0, top: 0, width: 800, height: 600 });
-    const rect = (left: number) => ({ left, top: 20, width: 100, height: 30 });
-    view.feedback.onTargets([
-      { name: 'Off screen', rect: rect(1000) },
-      { name: 'Header', rect: rect(10) },
-      { name: 'Visible', rect: rect(100) },
-    ]);
-    view.$<HTMLElement>('[data-fb-target="Visible#0"]')!.focus();
-    view.feedback.onTargets([{ name: 'Visible', rect: rect(100) }]);
-    expect(document.activeElement?.getAttribute('data-fb-target')).toBe('Visible#0');
+    const save = (n: number, left: number) => ({ name: 'Save', selector: `main > button:nth-of-type(${String(n)})`, rect: { left, top: 20, width: 100, height: 30 } });
+    const second = '[data-fb-target="main > button:nth-of-type(2)"]';
+    view.feedback.onTargets([{ name: 'Off screen', selector: '#far', rect: { left: 1000, top: 20, width: 100, height: 30 } }, save(1, 0), save(2, 100), save(3, 300)]);
+    view.$<HTMLElement>(second)!.focus();
+    // The first Save scrolled away: the second keeps its identity and its focus.
+    view.feedback.onTargets([save(2, 100), save(3, 300)]);
+    expect(document.activeElement?.getAttribute('data-fb-target')).toBe('main > button:nth-of-type(2)');
     view.send.mockClear();
-    view.click('[data-fb-target="Visible#0"]');
+    view.click(second);
     expect(view.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'hitTest', x: 150, y: 35 }));
   });
 

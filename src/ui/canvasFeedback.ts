@@ -119,7 +119,7 @@ export class CanvasFeedback {
   private nextId = 1;
   private nextRequest = 1;
   private readonly requests = new Map<number, { purpose: 'hover' | 'near' | FeedbackTool; where: string; mark?: number }>();
-  /** Keyed by name and its place among same-named targets, so a key survives filtering and scrolling. */
+  /** Keyed by the element's selector, which the canvas sends: it survives filtering and scrolling. */
   private targets: { key: string; name: string; rect: Rect }[] = [];
   /** Each moved pin's latest movement question; older answers are dropped. */
   private readonly latestNear = new Map<number, number>();
@@ -556,13 +556,8 @@ export class CanvasFeedback {
     this.askTargets();
     this.paintMarks();
   }
-  onTargets(items: readonly { name: string; rect: Rect }[]): void {
-    const seen = new Map<string, number>();
-    this.targets = items.map((item) => {
-      const n = seen.get(item.name) ?? 0;
-      seen.set(item.name, n + 1);
-      return { key: `${item.name}#${String(n)}`, name: item.name, rect: item.rect };
-    });
+  onTargets(items: readonly { name: string; selector: string; rect: Rect }[]): void {
+    this.targets = items.map((item) => ({ key: item.selector, name: item.name, rect: item.rect }));
     if (this.tool === 'element' || this.tool === 'color') this.paintMarks();
   }
   private askTargets(): void {
