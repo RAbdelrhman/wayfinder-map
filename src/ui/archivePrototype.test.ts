@@ -54,7 +54,7 @@ describe.each(['a', 'b'] as const)('Archive option %s', (option) => {
 });
 
 /** Round 2 options load the real canvas kit and the shared fixtures; saves complete at once. */
-function roundTwo(option: 'c' | 'd'): { window: Window; click: (selector: string) => void; text: (selector: string) => string; fixture: (value: string) => void } {
+function roundTwo(option: 'c' | 'd' | 'e'): { window: Window; click: (selector: string) => void; text: (selector: string) => string; fixture: (value: string) => void } {
   const window = new Window({ settings: { enableJavaScriptEvaluation: true } });
   const variants = '../../prototypes/288-prototype-the-archive-controls-and-the-archived-maps-view/variants/';
   const html = readFileSync(new URL(`${variants}${option}.html`, import.meta.url), 'utf8');
@@ -81,6 +81,42 @@ function roundTwo(option: 'c' | 'd'): { window: Window; click: (selector: string
 }
 
 const REASONS = ['Archived by you', 'Closed', 'Finished', 'Idle 30 days'];
+
+describe('Archive option E: open from the preview', () => {
+  it.each(['.r2d-detail-graph', '#r2d-detail-title', '.r2e-preview .dest'])(
+    'opens from %s while keeping the selected map archived', (target) => {
+      const { window, click, text } = roundTwo('e');
+      click('.r2d-door');
+      click('#r2d-opt-121');
+      expect(window.document.querySelector('.r2d-float')).toBeNull();
+      const preview = window.document.querySelector('.r2e-preview');
+      expect(preview?.tagName).toBe('A');
+      expect(preview?.getAttribute('data-open')).toBe('121');
+      expect(window.document.querySelectorAll('.r2d-detail [data-open]')).toHaveLength(1);
+      expect(preview?.querySelector('button, a, input, select')).toBeNull();
+      click(target);
+      expect(text('.r2d-float')).toContain('Opening it keeps it archived');
+      click('.r2d-float [data-view="archived"]');
+      expect(window.document.querySelector('#r2d-opt-121')).not.toBeNull();
+      void window.happyDOM.abort();
+    },
+  );
+
+  it('restores separately without opening the map', () => {
+    const { window, click, text } = roundTwo('e');
+    click('.r2d-door');
+    click('#r2d-opt-208');
+    const restore = window.document.querySelector('.r2d-detail [data-restore="208"]');
+    expect(restore?.closest('[data-open]')).toBeNull();
+    click('.r2d-detail [data-restore="208"]');
+    expect(window.document.querySelector('.r2d-float')).toBeNull();
+    expect(window.document.querySelector('#r2d-opt-208')).toBeNull();
+    expect(text('#r2-toast')).toContain('It stays active until you archive it again.');
+    click('[data-view="active"]');
+    expect(window.document.querySelector('[data-map-card="208"]')).not.toBeNull();
+    void window.happyDOM.abort();
+  });
+});
 
 describe('Archive option C: one list, two views', () => {
   it('archives from a card, opens an archived map without restoring it, and restores it from the map', () => {

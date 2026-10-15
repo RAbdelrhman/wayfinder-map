@@ -52,3 +52,18 @@ Page `round-2`, options C and D, each with `basedOn: ['A', 'B']`, plus 390px fra
 - Re-ran canvas validation, `git diff --check`, typecheck, lint and the focused Vitest file after the Opus handoff. All passed; focused tests: 10 of 10.
 - Inspected the running C archive view and the saved Opus screenshots of C and D.
 - Full suite `bun run test --maxWorkers=4`: 1400 passed, one failed in `src/desktop/updaterEnabled.test.ts`, the not-ready UI retry readiness assertion. This run is not green. No updater code was changed, and no baseline attribution is claimed from this run.
+
+## Round 3: D with a clickable preview
+
+Posted feedback: https://github.com/RAbdelrhman/wayfinder-map/issues/288#issuecomment-6195105901. C was too small; the user preferred D's appearance and wanted a larger click target. The user explicitly answered yes to opening from the large right preview, including its graph and title, while the left list selects and Restore stays separate.
+
+E is a new option based on D. Original D files and behavior remain intact. The graph, title, destination and counts form one semantic Open link with a visible Open map affordance. It replaces the redundant Open map button. Archive facts and Restore remain outside the link, with no nested controls. Opening leaves the map archived.
+
+Opus 5.5 was attempted for this iteration but immediately hit its API rate limit. The parent applied this scoped interaction change to the existing Opus layout. The resulting E is still awaiting review; no final layout or wording approval is recorded.
+
+- Canvas validator, typecheck and lint passed. Focused tests: 14 passed, including four E cases covering graph/title/destination opening, retained archive state, independent list selection, and Restore without accidental Open.
+- Browser: light and dark at desktop and 390px. No horizontal overflow. Preview target measured 588 by 370px at 1280px.
+- Real Tab/Shift+Tab shows a 2px focus ring on the semantic anchor; Enter opens it while retaining archived state. Hover inspected. Open-label contrast measured 5.11:1 in light and 4.78:1 in dark.
+- Empty/read-error and loading skeleton/status inspected. Loading has no Open target.
+- Full suite `bun run test --maxWorkers=4`: 1404 passed, one failed in updaterEnabled.test.ts at its stoppedPolls assertion. No updater code changed. This is not a green full-suite claim.
+- Not checked: screen reader, exhaustive keyboard traversal, non-text contrast, E save-error specifically, installed app, live persistence.
