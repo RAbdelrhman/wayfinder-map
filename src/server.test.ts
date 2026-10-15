@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { get as httpGet } from 'node:http';
 import type { Server } from 'node:http';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,7 +29,11 @@ const externalProcess = vi.hoisted(() => vi.fn(() => { throw new Error('Server r
 vi.mock('node:child_process', async (importOriginal) => ({
   ...await importOriginal<typeof import('node:child_process')>(),
   execFile: externalProcess,
+  execFileSync: externalProcess,
+  exec: externalProcess,
+  execSync: externalProcess,
   spawn: externalProcess,
+  spawnSync: externalProcess,
 }));
 afterEach(() => {
   const calls = externalProcess.mock.calls.map((call) => (call as unknown[]).slice(0, 2));
@@ -54,6 +59,13 @@ vi.mock('./handOffTracking.js', async (importOriginal) => {
 });
 
 vi.mock('./clipboard.js', () => ({ copyToClipboard: vi.fn(async () => undefined) }));
+
+it('blocks and records synchronous subprocess attempts before they can run', () => {
+  expect(() => execFileSync('gh', ['--version'])).toThrow('Server route tests must fake external processes.');
+  expect(externalProcess.mock.calls).toEqual([['gh', ['--version']]]);
+  // This test deliberately exercises the boundary; route tests must still leave it untouched.
+  externalProcess.mockClear();
+});
 
 const config: Config = {
   repo: null,

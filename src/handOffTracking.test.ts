@@ -463,6 +463,33 @@ describe('HandOffStore', () => {
     }
   });
 
+  it.each(['write', 'close'] as const)('propagates a lock %s failure and removes the owned lock', async (failure) => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    const permission = Object.assign(new Error('Access denied after opening'), { code: 'EPERM' });
+    const realFs = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+    let attempts = 0;
+    vi.mocked(open).mockImplementationOnce(async (...args) => {
+      attempts++;
+      const handle = await realFs.open(...args);
+      if (failure === 'write') vi.spyOn(handle, 'writeFile').mockRejectedValueOnce(permission);
+      else {
+        const close = handle.close.bind(handle);
+        vi.spyOn(handle, 'close').mockImplementationOnce(async () => { await close(); throw permission; });
+      }
+      return handle;
+    });
+    try {
+      const store = new HandOffStore({ filePath });
+      await expect(store.record(input)).rejects.toBe(permission);
+      expect(attempts).toBe(1);
+      await expect(readFile(`${filePath}.lock`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(store.record(input)).resolves.toMatchObject({ threadId: input.threadId });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('reclaims a stale store lock before writing', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
     const filePath = join(directory, 'hand-offs.json');
