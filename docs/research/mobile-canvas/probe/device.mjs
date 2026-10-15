@@ -1,8 +1,11 @@
 // #221 research probe (real Android WebView via adb + DevTools). See ../../mobile-canvas-rendering.md.
 // Drive canvases in a real Android System WebView (the probe APK) over adb + the WebView's DevTools socket.
+// Inputs: c223.tar and c207.tar in the working directory, each a tar of that canvas branch's checkout (prototypes/ and the files it links outside it),
+// and the probe APK from android/ installed as dev.wayfinder.probe. Pinch runs on the board, after Present is closed.
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
-const DEV = ['-s', 'emulator-5556'];
+// With several devices attached, pick one with ANDROID_SERIAL (adb reads it). It ran on emulator-5556.
+const DEV = [];
 const adb = (...a) => execFileSync('adb', [...DEV, ...a], { maxBuffer: 1 << 26, env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
 const sh = (cmd) => adb('shell', cmd).toString();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
