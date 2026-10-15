@@ -67,6 +67,8 @@ const C_NOTE = {
     'The help or clash line still pushes the rows below it down while recording',
   ],
   basedOn: ['A', 'B', 'A1', 'B1'],
+  disposition: 'keep',
+  feedback: 'Keep C. User confirmed in the T3 Code thread on 2026-10-15.',
 };
 
 window.CANVAS = {
