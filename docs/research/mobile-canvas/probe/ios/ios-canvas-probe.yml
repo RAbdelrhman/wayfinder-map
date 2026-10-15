@@ -1,0 +1,33 @@
+# #221 research probe. Not wired into CI: it ran from a throwaway branch (probe/221-ios-sim) at
+# .github/workflows/ios-canvas-probe.yml, because Windows can't run the iOS Simulator.
+name: iOS canvas probe
+
+on:
+  push:
+    branches: ['probe/221-ios-sim']
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check out the two real canvases
+        run: |
+          git fetch origin 'prototype/223-prototype-the-following-screens-sign-in-repos-map-view-ticket-de:c223ref' 'prototype/207-prototype-the-in-app-canvas-viewer-shell:c207ref'
+          mkdir -p "$RUNNER_TEMP/work"
+          git worktree add "$RUNNER_TEMP/work/c223" c223ref
+          git worktree add "$RUNNER_TEMP/work/c207" c207ref
+      - name: Run the probe
+        run: WORK="$RUNNER_TEMP/work" bash docs/research/mobile-canvas/probe/ios/run.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-canvas-probe
+          path: ${{ runner.temp }}/work/out
