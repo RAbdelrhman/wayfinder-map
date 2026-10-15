@@ -77,7 +77,7 @@ window.P292 = (() => {
       return { kind: 'pending', mods: parts({ ctrl: event.ctrlKey, alt: event.altKey, shift: event.shiftKey }) };
     }
     if (event.metaKey) return { kind: 'invalid', text: 'The Windows key belongs to the system. Use Shift, Alt or Ctrl.' };
-    const letter = /^Key([A-Z])$/.exec(event.code)?.[1];
+    const letter = event.key.length === 1 && /^[a-z]$/i.test(event.key) ? event.key.toUpperCase() : null;
     if (!letter) return { kind: 'invalid', text: 'Use a letter, alone or with Shift, Alt or Ctrl.' };
     const binding = { key: letter, ...(event.ctrlKey ? { ctrl: true } : {}), ...(event.altKey ? { alt: true } : {}), ...(event.shiftKey ? { shift: true } : {}) };
     const owner = Object.entries(keys).find(([id, b]) => id !== tool && same(b, binding));
@@ -89,7 +89,7 @@ window.P292 = (() => {
 
   /** Whether a keydown in the viewer matches a binding. */
   const matches = (event, b) =>
-    /^Key([A-Z])$/.exec(event.code)?.[1] === b.key && !!event.ctrlKey === !!b.ctrl && !!event.altKey === !!b.alt && !!event.shiftKey === !!b.shift && !event.metaKey;
+    event.key.length === 1 && event.key.toUpperCase() === b.key && !!event.ctrlKey === !!b.ctrl && !!event.altKey === !!b.alt && !!event.shiftKey === !!b.shift && !event.metaKey;
 
   return { TOOLS, NAME, defaults, label, spoken, kbd, same, read, matches };
 })();

@@ -6,7 +6,7 @@
   Usage: node <canvas>/tools/serve.mjs [port]
 */
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,15 +36,27 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
-createServer(async (request, response) => {
-  const path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
+const REAL_ROOT = await realpath(ROOT);
+export async function previewResponse(request, response) {
+  let path;
+  try {
+    path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
+  } catch {
+    response.writeHead(400).end('Invalid path');
+    return;
+  }
   const file = resolve(join(ROOT, path));
   if (file !== ROOT && !file.startsWith(ROOT + sep)) {
     response.writeHead(403).end('Forbidden');
     return;
   }
   try {
-    const body = await readFile(file);
+    const target = await realpath(file);
+    if (target !== REAL_ROOT && !target.startsWith(REAL_ROOT + sep)) {
+      response.writeHead(403).end('Forbidden');
+      return;
+    }
+    const body = await readFile(target);
     response.writeHead(200, {
       'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
       'content-security-policy': CSP,
@@ -54,7 +66,8 @@ createServer(async (request, response) => {
   } catch {
     response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end(`Not found: ${path}`);
   }
-}).listen(PORT, '127.0.0.1', () => {
+}
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) createServer(previewResponse).listen(PORT, '127.0.0.1', () => {
   const path = relative(ROOT, join(CANVAS, 'index.html')).split(sep).map(encodeURIComponent).join('/');
   console.log(`Canvas: http://127.0.0.1:${PORT}/${path}`);
 });
