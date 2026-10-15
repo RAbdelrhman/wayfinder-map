@@ -414,6 +414,20 @@ function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+async function removeFailedStoreLock(lockPath: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await unlink(lockPath);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') return;
+      if ((code !== 'EPERM' && code !== 'EBUSY') || attempt >= 3) throw error;
+      await wait(STORE_LOCK_RETRY_MS * (attempt + 1));
+    }
+  }
+}
+
 async function acquireStoreLock(lockPath: string): Promise<() => Promise<void>> {
   const startedAt = Date.now();
   const token = randomUUID();
@@ -454,7 +468,7 @@ async function acquireStoreLock(lockPath: string): Promise<() => Promise<void>> 
       await handle.close();
     } catch (error) {
       await handle.close().catch(() => undefined);
-      await unlink(lockPath).catch(() => undefined);
+      await removeFailedStoreLock(lockPath).catch(() => undefined);
       throw error;
     }
     return async () => {
