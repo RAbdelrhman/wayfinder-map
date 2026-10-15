@@ -706,6 +706,33 @@ describe('repository-scoped server', () => {
     }
   });
 
+  it('copies grilling cards through the hand-off route even with a legacy saved template', async () => {
+    const grillingMap = {
+      ...sampleMap,
+      tickets: sampleMap.tickets.map((ticket) => ({ ...ticket, type: 'grilling' as const })),
+    };
+    const running = await startServer({
+      config, repo: null, template: 'Ticket #{{ticketNumber}}', workspaceRoot: null, t3,
+      fetcher: async () => ({ maps: [grillingMap], warnings: [] }), homeLoader: async () => home,
+    });
+    try {
+      const response = await fetch(`${running.url}/api/repos/octo/one/hand-off`, {
+        method: 'POST', headers: { 'content-type': 'application/json', origin: running.url },
+        body: JSON.stringify({ map: 5, ticket: 11, copyOnly: true }),
+      });
+      expect(response.status).toBe(200);
+      const data = await response.json() as { prompt: string; copied: boolean };
+      expect(data.copied).toBe(true);
+      expect(data.prompt).toContain("Use T3 Code's structured question cards");
+      expect(data.prompt).toContain('Submit exactly one question per card');
+      expect(data.prompt).toContain('actual user response');
+      expect(data.prompt).toContain('is not agreement');
+      expect(data.prompt).toContain('Ticket #11');
+    } finally {
+      await closeServer(running.server);
+    }
+  });
+
   it('keeps the Home shell available when discovery reports an account error', async () => {
     const signedOut = { ...home, account: { ...home.account, status: 'signed-out' as const, login: null } };
     const running = await startServer({
