@@ -53,6 +53,54 @@ describe('renderTemplate', () => {
 });
 
 describe('buildPrompt', () => {
+  describe.each([['map', map], ['standalone', null]] as const)('%s grilling hand-offs', (_name, parentMap) => {
+    it.each(['', ' \n\t '])('uses the complete default prompt for a blank saved template %j', (template) => {
+      const input = { repo: 'owner/repo', map: parentMap, ticket: { ...ticket, type: 'grilling' as const } };
+      const prompt = buildPrompt({ ...input, template });
+      expect(prompt).toBe(buildPrompt(input));
+      expect(prompt).toContain(`#${ticket.number} ${ticket.title}`);
+      expect(prompt).toContain(ticket.url);
+      expect(prompt).toContain(ticket.body);
+      expect(prompt).toContain('create and enter a dedicated');
+    });
+
+    it.each([
+      ['default', undefined],
+      ['custom with type steps', '{{typeSteps}}\nTicket {{ticketNumber}}'],
+      ['legacy custom', 'Ticket {{ticketNumber}}'],
+      ['empty custom', ''],
+    ])('retains the question-card contract with a %s template', (_label, template) => {
+      const prompt = buildPrompt({
+        repo: 'owner/repo', map: parentMap, ticket: { ...ticket, type: 'grilling' }, template,
+        worktree: { branch: 'feature/grilling', baseBranch: 'main' },
+      });
+      const normalized = prompt.replace(/\s+/g, ' ');
+      expect(prompt.match(/Use T3 Code's structured question cards/g)).toHaveLength(1);
+      for (const instruction of [
+        'Discover the question skill/tool actually available in this thread',
+        "Claude's AskUserQuestion and Codex's request_user_input",
+        'only when its tool instructions and current mode permit it',
+        "submit the card and yield until the user's response arrives",
+        'Never use t3_pending_request_respond to answer for the user',
+        'Submit exactly one question per card',
+        'recommended answer clearly marked, explaining the tradeoff',
+        'Wait for an actual user response before asking the next question, recording a decision, answering or closing the ticket, or implementing the decision',
+        'A default or preselected option, silence, timeout, cancellation, empty tool result, or unsubmitted form is not agreement',
+        'If no permitted structured question mechanism is available, stop and report that limitation',
+        'The user owns every product decision',
+        'They decide the answer, you don\'t',
+        'file a prototype ticket that shows the options',
+        'Never record a layout, a placement or a control as decided here',
+      ]) expect(normalized).toContain(instruction);
+      expect(prompt).not.toContain('{{typeSteps}}');
+    });
+  });
+
+  it.each(['task', 'research', 'prototype', null] as const)('does not impose grilling cards on %s tickets', (type) => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type } });
+    expect(prompt).not.toContain("Use T3 Code's structured question cards");
+  });
+
   it('tells the agent to grill the user on human-in-the-loop tickets', () => {
     for (const type of ['grilling', 'prototype'] as const) {
       const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type } });
