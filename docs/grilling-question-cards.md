@@ -30,6 +30,8 @@ available, report that limitation and leave the ticket and decision open.
 `buildPrompt` serves map and standalone ticket hand-offs, including the server's
 prompt and launch paths. Grilling instructions live in `typeSteps`; templates
 without that placeholder receive the full grilling contract as a prefix.
+Blank or whitespace-only grilling templates use the complete default prompt,
+preserving the ticket question, identity, worktree context, and map rules.
 `AGENTS.md`, also imported by `CLAUDE.md`, covers direct repository sessions.
 Tests exercise default, custom, legacy, and empty templates, map and standalone
 tickets, prepared worktrees, and isolation from other ticket types. Existing

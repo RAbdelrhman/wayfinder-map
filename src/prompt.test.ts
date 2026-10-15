@@ -54,6 +54,16 @@ describe('renderTemplate', () => {
 
 describe('buildPrompt', () => {
   describe.each([['map', map], ['standalone', null]] as const)('%s grilling hand-offs', (_name, parentMap) => {
+    it.each(['', ' \n\t '])('uses the complete default prompt for a blank saved template %j', (template) => {
+      const input = { repo: 'owner/repo', map: parentMap, ticket: { ...ticket, type: 'grilling' as const } };
+      const prompt = buildPrompt({ ...input, template });
+      expect(prompt).toBe(buildPrompt(input));
+      expect(prompt).toContain(`#${ticket.number} ${ticket.title}`);
+      expect(prompt).toContain(ticket.url);
+      expect(prompt).toContain(ticket.body);
+      expect(prompt).toContain('create and enter a dedicated');
+    });
+
     it.each([
       ['default', undefined],
       ['custom with type steps', '{{typeSteps}}\nTicket {{ticketNumber}}'],

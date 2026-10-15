@@ -273,7 +273,11 @@ export function renderTemplate(template: string, values: Readonly<Record<string,
 
 /** The prompt a click on a ticket hands to T3 Code. */
 export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInput): string {
-  const chosenTemplate = template ?? (map ? DEFAULT_TEMPLATE : DEFAULT_STANDALONE_TEMPLATE);
+  const defaultTemplate = map ? DEFAULT_TEMPLATE : DEFAULT_STANDALONE_TEMPLATE;
+  // A blank grilling template still needs the ticket question and worktree context.
+  const chosenTemplate = ticket.type === 'grilling' && !template?.trim()
+    ? defaultTemplate
+    : template ?? defaultTemplate;
   const blockedLine =
     ticket.openBlockers.length > 0
       ? `\nBlocked by: ${ticket.openBlockers.map((number) => `#${number}`).join(', ')}`
