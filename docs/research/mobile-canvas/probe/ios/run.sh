@@ -60,13 +60,14 @@ done
 # Probe fixes in the WKWebView app, file mode, one at a time.
 TEXTADJUST="document.documentElement.style.webkitTextSizeAdjust='100%'"
 TRANSFORM="var s=document.getElementById('stage');var z=getComputedStyle(s).zoom;s.style.zoom=1;s.style.transform='scale('+z+')';s.style.transformOrigin='0 0'"
+PERFRAME="document.documentElement.style.webkitTextSizeAdjust='100%';var s=document.getElementById('stage');var z=parseFloat(getComputedStyle(s).zoom);s.style.zoom=1;document.querySelectorAll('.viewport').forEach(function(v){var f=v.querySelector('iframe');f.style.transform='scale('+(parseFloat(f.dataset.scale)*z)+')';v.style.width=(parseFloat(v.style.width)*z)+'px';v.style.height=(parseFloat(v.style.height)*z)+'px';v.parentElement.style.width=v.style.width})"
 HIDENOTES="document.getElementById('notes').click()"
 for c in c223 c207; do
   entry=ENTRY_$c; entry=${!entry}; item=ITEM_$c; item=${!item}
-  for fixcase in board-textadjust board-transform present-hidenotes; do
+  for fixcase in board-textadjust board-transform board-perframe present-hidenotes; do
     view=${fixcase%%-*}; fix=${fixcase#*-}
     hash=""; [ "$view" = present ] && hash="#$item"
-    case $fix in textadjust) js=$TEXTADJUST;; transform) js=$TRANSFORM;; hidenotes) js=$HIDENOTES;; esac
+    case $fix in textadjust) js=$TEXTADJUST;; transform) js=$TRANSFORM;; perframe) js=$PERFRAME;; hidenotes) js=$HIDENOTES;; esac
     result="result-$c-file-$fixcase.json"; rm -f "$DATA/Documents/$result"
     xcrun simctl terminate "$UDID" dev.wayfinder.probe || true
     xcrun simctl launch "$UDID" dev.wayfinder.probe -mode file -url "file://$DATA/Documents/$entry$hash" -root "$DATA/Documents/$c" -out "$DATA/Documents/$result" -js "$js"
