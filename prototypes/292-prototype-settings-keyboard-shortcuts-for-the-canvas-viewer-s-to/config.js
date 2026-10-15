@@ -68,7 +68,7 @@ const C_NOTE = {
   ],
   basedOn: ['A', 'B', 'A1', 'B1'],
   disposition: 'keep',
-  feedback: 'Keep C. User confirmed in the T3 Code thread on 2026-10-15.',
+  feedback: 'Keep C. User confirmed in the T3 Code thread on 2026-10-15. After seeing C5 the user asked that Reset show and restore only the shortcuts that differ from their defaults (Pin and Note there), not all five; that adjustment is page D.',
 };
 
 window.CANVAS = {
@@ -196,7 +196,8 @@ window.CANVAS.pages.push({
           pros: ['The confirmation names exactly what will change', 'Unchanged keys remain untouched and do not show a Saved marker'],
           cons: ['The confirmation is a partial list; the main section still shows all five defaults'],
           basedOn: ['C', 'C5'],
-          feedback: 'Requested by the user: Show and reset only changed shortcuts. Revised visual awaiting review.',
+          disposition: 'keep',
+          feedback: 'Keep D (Recommended). User confirmed in the T3 Code question card on 2026-10-15. Show and reset only changed shortcuts.',
         },
       }],
     },
@@ -214,7 +215,7 @@ window.CANVAS.pages.push({
     {
       title: 'Design review',
       items: [{ id: 'review-d', kind: 'note', name: 'Design review',
-        text: 'Sources: C’s existing rows, dialog and shared src/ui/styles.css tokens. The user explicitly chose the changed-only count/list/reset behavior. This round retains C and its source options. The prior form-submit buttons failed under the production allow-scripts iframe; explicit JavaScript dialog.close actions replace submission. Verified in headless Edge with sandbox=allow-scripts: zero changes disables Reset; one/two changes produce the exact count and rows; Cancel and Escape preserve edits; Reset restores changed assignments and shows Saved only on those rows. Dark/light dialog visually inspected at 1280x800; at 390x844 the dialog is 356px wide and document width remains 390px. The initial verification script incorrectly tried to click an aria-disabled button; corrected to assert the disabled state. Not checked: installed app, screen reader speech, forced colors, every platform shortcut and real persistence. C’s prior theme, responsive and token-pair contrast findings remain applicable to the unchanged styling.',
+        text: 'Sources: C’s existing rows, dialog and shared src/ui/styles.css tokens. The user explicitly chose the changed-only count/list/reset behavior. This round retains C and its source options. The prior form-submit buttons failed under the production allow-scripts iframe; explicit JavaScript dialog.close actions replace submission. Verified in headless Edge with sandbox=allow-scripts, light and dark (31 scripted checks): zero changes disables Reset and opens no dialog; one/two changes produce the exact singular/plural title and only the changed rows; Cancel focused on open; Escape, pointer Cancel and Enter on Cancel preserve edits; pointer and Tab+Enter Reset restore only the changed assignments, announce “2 shortcuts restored to defaults” (or “1 shortcut restored to default”), and show Saved only on the restored rows. Dark/light dialog visually inspected at 1280x800; at 390x844 the dialog is 356px wide and document width remains 390px. The initial verification script incorrectly tried to click an aria-disabled button; corrected to assert the disabled state. Not checked: installed app, screen reader speech, forced colors, every platform shortcut and real persistence. C’s prior theme, responsive and token-pair contrast findings remain applicable to the unchanged styling.',
       }],
     },
   ],
