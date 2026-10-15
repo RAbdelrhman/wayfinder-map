@@ -2,7 +2,7 @@
 import '../../canvas/tools/check.test.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkLinkedAssets } from './check.mjs';
+import { checkLinkedAssets, checkPrototype } from './check.mjs';
 import { previewResponse } from './serve.mjs';
 import { readFileSync, mkdtempSync, symlinkSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,6 +14,18 @@ test('linked script and stylesheet sandbox problems are checked', () => {
   const errors = checkLinkedAssets('variants/page.html', p => files[p.replaceAll('\\', '/')], p => p.replaceAll('\\', '/') in files);
   assert.ok(errors.some(e => e.includes('fetch')));
   assert.ok(errors.some(e => e.includes('root CSS')));
+});
+
+test('single-page sections and legacy variants inspect linked scripts without crashing', () => {
+  const files = { 'page.html': '<script src="code.js"></script>', 'code.js': 'fetch("data")' };
+  const disk = { read: p => files[p], exists: p => p in files };
+  const item = { id: 'A', src: 'page.html', note: 'Example' };
+  for (const content of [{ sections: [{ items: [item] }] }, { variants: [item] }]) {
+    const result = checkPrototype({ title: 'Example', question: 'Which?', ...content }, disk);
+    assert.ok(result.errors.some(message => message.includes('fetch')));
+  }
+  assert.ok(checkPrototype(undefined, disk).errors.length);
+  assert.ok(checkPrototype({ title: 'Example', question: 'Which?', sections: [{ items: [{ ...item, src: 'missing.html' }] }] }, disk).errors.length);
 });
 
 test('letters follow the produced key rather than the physical layout position', () => {

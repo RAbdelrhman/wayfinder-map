@@ -24,16 +24,23 @@ export function checkLinkedAssets(entry, read, exists, visited = new Set()) {
   return errors;
 }
 
+export function checkPrototype(config, { read, exists }) {
+  const result = checkCanvas(config, { read, exists });
+  // Invalid config and missing page files already have useful diagnostics.
+  if (result.errors.length) return result;
+  const pages = config.pages ?? [{ sections: config.sections ?? [{ items: config.variants }] }];
+  const visited = new Set();
+  for (const page of pages) for (const section of page.sections) for (const item of section.items ?? []) {
+    if (item.src && !/^[a-z]+:/i.test(item.src)) result.errors.push(...checkLinkedAssets(item.src.split(/[?#]/)[0], read, exists, visited));
+  }
+  return result;
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const read = path => readFileSync(join(dir, path), 'utf8');
   const exists = path => existsSync(join(dir, path));
-  const config = loadConfig(read('config.js'));
-  const result = checkCanvas(config, { read, exists });
-  const visited = new Set();
-  for (const page of config.pages) for (const section of page.sections) for (const item of section.items) {
-    if (item.src && !/^[a-z]+:/i.test(item.src)) result.errors.push(...checkLinkedAssets(item.src.split(/[?#]/)[0], read, exists, visited));
-  }
+  const result = checkPrototype(loadConfig(read('config.js')), { read, exists });
   result.errors.push(...checkSharedCanvasCopies(dirname(dir)));
   for (const message of result.warnings) console.log(`warn ${message}`);
   for (const message of result.errors) console.log(`error ${message}`);
