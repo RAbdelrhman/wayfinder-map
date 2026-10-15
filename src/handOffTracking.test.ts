@@ -438,8 +438,13 @@ describe('HandOffStore', () => {
     try {
       const store = new HandOffStore({ filePath });
       const first = await store.record(input);
+      const before = vi.mocked(open).mock.calls.length;
       vi.mocked(open).mockRejectedValueOnce(Object.assign(new Error('Lock deletion pending'), { code: 'EPERM' }));
       const second = await store.record({ ...input, threadId: 'thread-2' });
+      expect(vi.mocked(open).mock.calls.slice(before).map((args) => args.slice(0, 2))).toEqual([
+        [`${filePath}.lock`, 'wx'],
+        [`${filePath}.lock`, 'wx'],
+      ]);
       const records = await new HandOffStore({ filePath }).list();
       expect(records.map((item) => item.id).sort()).toEqual([first.id, second.id].sort());
       await expect(readFile(`${filePath}.lock`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
@@ -452,10 +457,15 @@ describe('HandOffStore', () => {
     const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
     const filePath = join(directory, 'hand-offs.json');
     const permission = Object.assign(new Error('Access denied'), { code: 'EPERM' });
-    const clock = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(5000);
+    const clock = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValue(5000);
+    const before = vi.mocked(open).mock.calls.length;
     try {
-      vi.mocked(open).mockRejectedValueOnce(permission);
+      vi.mocked(open).mockRejectedValueOnce(permission).mockRejectedValueOnce(permission);
       await expect(new HandOffStore({ filePath }).record(input)).rejects.toBe(permission);
+      expect(vi.mocked(open).mock.calls.slice(before).map((args) => args.slice(0, 2))).toEqual([
+        [`${filePath}.lock`, 'wx'],
+        [`${filePath}.lock`, 'wx'],
+      ]);
       await expect(readFile(filePath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
     } finally {
       clock.mockRestore();
