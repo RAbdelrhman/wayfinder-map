@@ -140,9 +140,10 @@ export async function startWayfinder(
 
   let closePromise: Promise<void> | null = null;
   const close = (): Promise<void> => {
-    closePromise ??= (() => {
+    closePromise ??= (async () => {
       t3.close();
-      return closeServer(running.server);
+      await closeServer(running.server);
+      await running.flushPrototypeFiles?.();
     })();
     return closePromise;
   };

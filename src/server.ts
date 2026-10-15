@@ -2,7 +2,8 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { homedir } from 'node:os';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { buildAutoDecision, MODEL_CHANGE_REASONS } from './autoDecision.js';
 import { AutoMapService, parseAutoMapChange } from './autoMapService.js';
@@ -207,6 +208,7 @@ export interface UpdaterService {
 export interface RunningServer {
   server: Server;
   url: string;
+  flushPrototypeFiles?: () => Promise<void>;
 }
 
 function writeJson(response: ServerResponse, status: number, body: unknown): void {
@@ -298,30 +300,15 @@ export async function startServer({
   following,
 }: ServeOptions): Promise<RunningServer> {
   const detect = t3.detect ?? detectT3;
-  const prototypeFiles = new PrototypeFileCache(fetchBranchFile);
-  const warmedPrototypes = new Set<string>();
-  const warmQueue: { repo: string; branch: string; sha: string; file: string }[] = [];
-  let warming = 0;
-  const warmFiles = (): void => {
-    while (warming < 3 && warmQueue.length) {
-      const entry = warmQueue.shift()!;
-      warming++;
-      void prototypeFiles.get(entry.repo, entry.branch, entry.file, entry.sha).catch(() => undefined).finally(() => { warming--; warmFiles(); });
-    }
-  };
-  const warmPrototypes = (forRepo: string, prototypes: readonly Prototype[]): void => {
-    for (const prototype of prototypes) {
-      if (!prototype.sha || !prototype.preview) continue;
-      const key = `${forRepo}@${prototype.sha}`;
-      if (warmedPrototypes.has(key)) continue;
-      warmedPrototypes.add(key);
-      if (warmedPrototypes.size > 256) warmedPrototypes.delete(warmedPrototypes.values().next().value!);
-      const dir = prototype.preview.replace(/[^/]+$/, '');
-      const files = [...new Set([prototype.preview, ...(/(?:^|\/)index\.html$/.test(prototype.preview) ? ['canvas.js', 'canvas.css', 'config.js', 'kit/kit.js', 'kit/kit.css'].map((file) => dir + file) : []), ...prototype.files.filter((file) => /\.(?:html?|css|js|svg|png|jpe?g|webp)$/i.test(file) && !/(?:^|\/)(?:tools|assets\/protos)\//.test(file))])].slice(0, 64);
-      for (const file of files) warmQueue.push({ repo: forRepo, branch: prototype.branch, sha: prototype.sha, file });
-    }
-    warmFiles();
-  };
+  // No speculative file downloads. Existing previews and viewer preparation request what they need.
+  const prototypeFiles = new PrototypeFileCache(fetchBranchFile, undefined, fetcher === undefined ? async () => {
+    const account = await signedInAccount();
+    if (account.status !== 'ready') return null;
+    const scope = createHash('sha256').update(JSON.stringify([account.host, account.login])).digest('hex');
+    return join(homedir(), '.wayfinder-map', 'prototype-files-v1', scope);
+  } : undefined);
+  const readPrototypeFile = (forRepo: string, ref: string, file: string): Promise<Buffer> =>
+    prototypeFiles.get(forRepo, ref, file, /^[a-f0-9]{40}$/i.test(ref) ? ref : undefined);
   const defaultUpdater: UpdaterService = {
     async check(): Promise<UpdaterStatus> {
       const currentVersion = WAYFINDER_VERSION;
@@ -399,8 +386,6 @@ export async function startServer({
     startupChecks.clear();
     prototypeCache.clear();
     prototypeFiles.clear();
-    warmedPrototypes.clear();
-    warmQueue.length = 0;
   };
   const observeAccount = (account: HomeAccount): void => {
     const previous = lastAccount ?? homeState?.account;
@@ -600,10 +585,9 @@ export async function startServer({
     if (!force && cached !== undefined && Date.now() - cached.at < PROTOTYPE_TTL_MS) return cached.list;
     // Cache the ticket read as well: branches on settled maps need their ticket numbers.
     const list = map === null || map === undefined
-      ? repositories.snapshot(forRepo, false, snapshot.maps.map((candidate) => candidate.number)).then((loaded) => fetchAllPrototypes(forRepo, loaded.maps))
-      : fetchPrototypes(forRepo, map);
+      ? repositories.snapshot(forRepo, false, snapshot.maps.map((candidate) => candidate.number)).then((loaded) => fetchAllPrototypes(forRepo, loaded.maps, readPrototypeFile))
+      : fetchPrototypes(forRepo, map, readPrototypeFile);
     prototypeCache.set(key, { at: Date.now(), list });
-    void list.then((prototypes) => { if (prototypeCache.get(key)?.list === list) warmPrototypes(forRepo, prototypes); }, () => undefined);
     list.catch(() => { if (prototypeCache.get(key)?.list === list) prototypeCache.delete(key); });
     return list;
   };
@@ -1662,7 +1646,7 @@ export async function startServer({
   url = `http://${config.host}:${String(port)}`;
   server.once('close', () => authFlow.cancel());
 
-  return { server, url };
+  return { server, url, flushPrototypeFiles: () => prototypeFiles.flush() };
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {

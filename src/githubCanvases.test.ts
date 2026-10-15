@@ -13,6 +13,7 @@ vi.mock('node:child_process', () => {
 });
 
 import { fetchPrototypes } from './github.js';
+import { PrototypeFileCache } from './prototypeFileCache.js';
 
 const map: WayfinderMap = {
   number: 4,
@@ -86,6 +87,24 @@ describe('independent canvas discovery', () => {
       variants: [{ id: 'A', title: 'Home', page: `${home}variants/a.html`, shot: null }],
     });
     expect(execFileMock.mock.calls.every(([, args]) => args[0] === 'api' && !args.includes('--method'))).toBe(true);
+  });
+
+  it('shares discovery file reads with the immutable cache instead of reading configs twice', async () => {
+    branch([`${home}config.js`, `${home}variants/a.html`], files);
+    const read = vi.fn(async (_repo: string, _ref: string, path: string) => {
+      if (path === 'prototype-snapshot.html') return Buffer.from('<h1>Snapshot</h1>');
+      const content = files[path as keyof typeof files];
+      if (content === undefined) throw new Error('missing');
+      return Buffer.from(content);
+    });
+    const cache = new PrototypeFileCache(read);
+    const cached = (repo: string, ref: string, file: string) => cache.get(repo, ref, file, ref);
+    await fetchPrototypes('owner/repo', map, cached);
+    const count = read.mock.calls.length;
+    await fetchPrototypes('owner/repo', map, cached);
+    expect(read).toHaveBeenCalledTimes(count);
+    expect(read.mock.calls.filter(([, , path]) => path === `${home}config.js`)).toHaveLength(1);
+    expect(execFileMock.mock.calls.filter(([, args]) => args.some((arg) => /contents.*\?ref=/.test(arg)))).toHaveLength(0);
   });
 
   it('finds a canvas after only a variant changes', async () => {
