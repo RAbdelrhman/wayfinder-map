@@ -1,11 +1,13 @@
 // #221 research probe: a bare WKWebView, set up the way react-native-webview loads a cached canvas.
-// Launch args: -mode file|http, -url <url>, -root <dir> (file mode: allowingReadAccessTo), -out <result.json>
+// Launch args: -mode file|http, -url <url>, -root <dir> (file mode: allowingReadAccessTo), -out <result.json>,
+// -js <script> (run 4 s after load, before measuring)
 import UIKit
 import WebKit
 
 final class Controller: UIViewController, WKNavigationDelegate {
   let web = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
   var out = ""
+  var script = ""
 
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -19,6 +21,7 @@ final class Controller: UIViewController, WKNavigationDelegate {
       return args[i + 1]
     }
     out = arg("-out") ?? ""
+    script = arg("-js") ?? ""
     guard let raw = arg("-url"), let url = URL(string: raw) else { return }
     if arg("-mode") == "file", let root = arg("-root"), !root.isEmpty {
       web.loadFileURL(url, allowingReadAccessTo: URL(fileURLWithPath: root, isDirectory: true))
@@ -28,7 +31,12 @@ final class Controller: UIViewController, WKNavigationDelegate {
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-    DispatchQueue.main.asyncAfter(deadline: .now() + 4) { self.measure() }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+      if self.script.isEmpty { self.measure(); return }
+      self.web.evaluateJavaScript(self.script) { _, _ in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.measure() }
+      }
+    }
   }
 
   func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {

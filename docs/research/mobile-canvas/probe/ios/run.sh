@@ -43,7 +43,7 @@ for c in c223 c207; do
     hash=""; [ "$view" = present ] && hash="#$item"
     # Mobile Safari, http.
     xcrun simctl openurl "$UDID" "$BASE/$entry$hash"
-    shot "$c-safari-http-$view" 10
+    shot "$c-safari-http-$view" 25
     xcrun simctl terminate "$UDID" com.apple.mobilesafari || true
     # WKWebView app, http and file.
     for mode in http file; do
@@ -55,6 +55,23 @@ for c in c223 c207; do
       shot "$c-wkwebview-$mode-$view" 9
       cp "$DATA/Documents/$result" "$OUT/" || echo "no result for $c $mode $view"
     done
+  done
+done
+# Probe fixes in the WKWebView app, file mode, one at a time.
+TEXTADJUST="document.documentElement.style.webkitTextSizeAdjust='100%'"
+TRANSFORM="var s=document.getElementById('stage');var z=getComputedStyle(s).zoom;s.style.zoom=1;s.style.transform='scale('+z+')';s.style.transformOrigin='0 0'"
+HIDENOTES="document.getElementById('notes').click()"
+for c in c223 c207; do
+  entry=ENTRY_$c; entry=${!entry}; item=ITEM_$c; item=${!item}
+  for fixcase in board-textadjust board-transform present-hidenotes; do
+    view=${fixcase%%-*}; fix=${fixcase#*-}
+    hash=""; [ "$view" = present ] && hash="#$item"
+    case $fix in textadjust) js=$TEXTADJUST;; transform) js=$TRANSFORM;; hidenotes) js=$HIDENOTES;; esac
+    result="result-$c-file-$fixcase.json"; rm -f "$DATA/Documents/$result"
+    xcrun simctl terminate "$UDID" dev.wayfinder.probe || true
+    xcrun simctl launch "$UDID" dev.wayfinder.probe -mode file -url "file://$DATA/Documents/$entry$hash" -root "$DATA/Documents/$c" -out "$DATA/Documents/$result" -js "$js"
+    shot "$c-wkwebview-file-$fixcase" 9
+    cp "$DATA/Documents/$result" "$OUT/" || echo "no result for $c $fixcase"
   done
 done
 ls -la "$OUT"
