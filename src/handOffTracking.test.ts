@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, open, readFile, rm, unlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -16,6 +16,11 @@ import {
 
 // Keep the tracker's default GitHub lookups off the network.
 vi.mock('./github.js', () => ({ gh: () => Promise.reject(new Error('GitHub is not available in tests.')) }));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, open: vi.fn(actual.open), unlink: vi.fn(actual.unlink) };
+});
 
 const input = {
   repo: 'octo/one',
@@ -422,6 +427,118 @@ describe('HandOffStore', () => {
       const records = await new HandOffStore({ filePath }).list();
       expect(records.map((item) => item.id).sort()).toEqual(saved.map((item) => item.id).sort());
       await expect(readFile(`${filePath}.lock`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('retries a transient permission error opening the store lock without losing records', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    try {
+      const store = new HandOffStore({ filePath });
+      const first = await store.record(input);
+      const before = vi.mocked(open).mock.calls.length;
+      vi.mocked(open).mockRejectedValueOnce(Object.assign(new Error('Lock deletion pending'), { code: 'EPERM' }));
+      const second = await store.record({ ...input, threadId: 'thread-2' });
+      expect(vi.mocked(open).mock.calls.slice(before).map((args) => args.slice(0, 2))).toEqual([
+        [`${filePath}.lock`, 'wx'],
+        [`${filePath}.lock`, 'wx'],
+      ]);
+      const records = await new HandOffStore({ filePath }).list();
+      expect(records.map((item) => item.id).sort()).toEqual([first.id, second.id].sort());
+      await expect(readFile(`${filePath}.lock`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('fails a permission error once the store lock acquisition budget is exhausted', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    const permission = Object.assign(new Error('Access denied'), { code: 'EPERM' });
+    const clock = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValue(5000);
+    const before = vi.mocked(open).mock.calls.length;
+    try {
+      vi.mocked(open).mockRejectedValueOnce(permission).mockRejectedValueOnce(permission);
+      await expect(new HandOffStore({ filePath }).record(input)).rejects.toBe(permission);
+      expect(vi.mocked(open).mock.calls.slice(before).map((args) => args.slice(0, 2))).toEqual([
+        [`${filePath}.lock`, 'wx'],
+        [`${filePath}.lock`, 'wx'],
+      ]);
+      await expect(readFile(filePath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      clock.mockRestore();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['write', 'close'] as const)('propagates a lock %s failure and removes the owned lock', async (failure) => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    const permission = Object.assign(new Error('Access denied after opening'), { code: 'EPERM' });
+    const realFs = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+    let attempts = 0;
+    vi.mocked(open).mockImplementationOnce(async (...args) => {
+      attempts++;
+      const handle = await realFs.open(...args);
+      if (failure === 'write') vi.spyOn(handle, 'writeFile').mockRejectedValueOnce(permission);
+      else {
+        const close = handle.close.bind(handle);
+        vi.spyOn(handle, 'close').mockImplementationOnce(async () => { await close(); throw permission; });
+      }
+      return handle;
+    });
+    try {
+      const store = new HandOffStore({ filePath });
+      await expect(store.record(input)).rejects.toBe(permission);
+      expect(attempts).toBe(1);
+      await expect(readFile(`${filePath}.lock`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(store.record(input)).resolves.toMatchObject({ threadId: input.threadId });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('recovers from a transient failed-lock deletion while preserving the write error', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    const writeError = Object.assign(new Error('Token write failed'), { code: 'EPERM' });
+    const realFs = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+    vi.mocked(open).mockImplementationOnce(async (...args) => {
+      const handle = await realFs.open(...args);
+      vi.spyOn(handle, 'writeFile').mockRejectedValueOnce(writeError);
+      return handle;
+    });
+    vi.mocked(unlink).mockRejectedValueOnce(Object.assign(new Error('Deletion temporarily blocked'), { code: 'EPERM' }));
+    try {
+      const store = new HandOffStore({ filePath });
+      await expect(store.record(input)).rejects.toBe(writeError);
+      await expect(readFile(`${filePath}.lock`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(store.record(input)).resolves.toMatchObject({ threadId: input.threadId });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('bounds failed-lock deletion retries and preserves the original initialization error', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
+    const filePath = join(directory, 'hand-offs.json');
+    const writeError = new Error('Original token write failure');
+    const deletionError = Object.assign(new Error('Deletion denied'), { code: 'EPERM' });
+    const realFs = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+    vi.mocked(open).mockImplementationOnce(async (...args) => {
+      const handle = await realFs.open(...args);
+      vi.spyOn(handle, 'writeFile').mockRejectedValueOnce(writeError);
+      return handle;
+    });
+    const before = vi.mocked(unlink).mock.calls.length;
+    for (let attempt = 0; attempt < 4; attempt++) vi.mocked(unlink).mockRejectedValueOnce(deletionError);
+    try {
+      await expect(new HandOffStore({ filePath }).record(input)).rejects.toBe(writeError);
+      expect(vi.mocked(unlink).mock.calls.length - before).toBe(4);
+      // Permanent denial leaves the owned lock for the existing stale-lock policy.
+      expect(await readFile(`${filePath}.lock`, 'utf8')).toBe('');
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

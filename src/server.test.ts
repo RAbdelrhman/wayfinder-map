@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { get as httpGet } from 'node:http';
+import type { Server } from 'node:http';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +10,7 @@ import type { Config } from './config.js';
 import type { HomeState } from './home.js';
 import { DEFAULT_PROGRESS_SETTINGS, ProgressError } from './progress.js';
 import type { ProgressState } from './progress.js';
-import { DEFAULT_TEMPLATE, startServer } from './server.js';
+import { DEFAULT_TEMPLATE, startServer as startRealServer } from './server.js';
 import type { ServerT3 } from './server.js';
 import type { RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver } from './workspaces.js';
@@ -22,6 +24,48 @@ import { memoryNotificationSettings } from './notifications.js';
 import { memoryAutoMapStore } from './autoMapStore.js';
 import { SettleStore } from './settling.js';
 import type { SettleAccount } from './settling.js';
+
+const externalProcess = vi.hoisted(() => vi.fn(() => { throw new Error('Server route tests must fake external processes.'); }));
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...await importOriginal<typeof import('node:child_process')>(),
+  execFile: externalProcess,
+  execFileSync: externalProcess,
+  exec: externalProcess,
+  execSync: externalProcess,
+  spawn: externalProcess,
+  spawnSync: externalProcess,
+}));
+afterEach(() => {
+  const calls = externalProcess.mock.calls.map((call) => (call as unknown[]).slice(0, 2));
+  externalProcess.mockClear();
+  expect(calls, 'No child process may escape the server fixture').toEqual([]);
+});
+
+vi.mock('./handOffTracking.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./handOffTracking.js')>();
+  return {
+    ...actual,
+    HandOffTracker: class extends actual.HandOffTracker {
+      constructor(...[store, client, options]: ConstructorParameters<typeof actual.HandOffTracker>) {
+        super(store, client, {
+          lookupPullRequests: async () => [],
+          lookupPullRequestState: async () => null,
+          lookupTicketClosed: async () => null,
+          ...options,
+        });
+      }
+    },
+  };
+});
+
+vi.mock('./clipboard.js', () => ({ copyToClipboard: vi.fn(async () => undefined) }));
+
+it('blocks and records synchronous subprocess attempts before they can run', () => {
+  expect(() => execFileSync('gh', ['--version'])).toThrow('Server route tests must fake external processes.');
+  expect(externalProcess.mock.calls).toEqual([['gh', ['--version']]]);
+  // This test deliberately exercises the boundary; route tests must still leave it untouched.
+  externalProcess.mockClear();
+});
 
 const config: Config = {
   repo: null,
@@ -61,6 +105,30 @@ const home: HomeState = {
   warning: null,
 };
 
+async function closeServer(server: Server): Promise<void> {
+  const closed = new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  // Fetch pools keep-alive sockets, including responses whose bodies a status-only assertion leaves unread.
+  server.closeAllConnections();
+  await closed;
+}
+
+/** Route tests use real HTTP, but never the account, GitHub, or disk-backed watch state. */
+function startServer(options: Parameters<typeof startRealServer>[0]) {
+  return startRealServer({
+    fetcher: async () => ({ maps: [], warnings: [] }),
+    homeLoader: async () => home,
+    repoLister: async () => home.repositories,
+    autoMapStore: memoryAutoMapStore(),
+    accountReader: async () => home.account,
+    changeChecker: async () => false,
+    mapWatcher: new MapWatcher({
+      readMap: async () => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }),
+      readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }),
+    }),
+    handOffStore: new HandOffStore({ filePath: null }),
+    ...options,
+  });
+}
 const sampleTicket: Ticket = {
   number: 11,
   title: 'Retire API agents',
@@ -117,7 +185,7 @@ describe('repository-scoped server', () => {
         expect(response.status).toBe(200);
       }
       expect(scopes.every((scope) => scope !== undefined && scope === scopes[0])).toBe(true);
-    } finally { await new Promise<void>((resolve) => running.server.close(() => resolve())); }
+    } finally { await closeServer(running.server); }
   });
 
   it('deduplicates Home discovery and changes the cache scope when the GitHub identity changes', async () => {
@@ -133,7 +201,7 @@ describe('repository-scoped server', () => {
       expect(changed.headers.get('x-wayfinder-cache-scope')).not.toBe(before!.headers.get('x-wayfinder-cache-scope'));
       await fetch(`${running.url}/api/home`);
       expect(homeLoader).toHaveBeenCalledTimes(2);
-    } finally { await new Promise<void>((resolve) => running.server.close(() => resolve())); }
+    } finally { await closeServer(running.server); }
   });
   it('answers every request that shares one in-flight Home discovery', async () => {
     let finish: (value: HomeState) => void = () => undefined;
@@ -148,7 +216,7 @@ describe('repository-scoped server', () => {
       finish(home);
       expect([(await first).status, (await second).status]).toEqual([200, 200]);
       expect(homeLoader).toHaveBeenCalledTimes(1);
-    } finally { finish(home); await new Promise<void>((resolve) => running.server.close(() => resolve())); }
+    } finally { finish(home); await closeServer(running.server); }
   });
   it('rotates repository scope on a live host change even without Home discovery', async () => {
     let account = home.account;
@@ -163,7 +231,7 @@ describe('repository-scoped server', () => {
       expect(changed.headers.get('x-wayfinder-cache-scope')).not.toBe(before.headers.get('x-wayfinder-cache-scope'));
       await fetch(`${running.url}/api/repos/octo/one/snapshot`);
       expect(fetcher).toHaveBeenCalledTimes(2);
-    } finally { await new Promise<void>((resolve) => running.server.close(() => resolve())); }
+    } finally { await closeServer(running.server); }
   });
 
   it('starts fresh Home discovery for manual Sync and rejects the replaced read', async () => {
@@ -179,7 +247,7 @@ describe('repository-scoped server', () => {
       finish(home);
       expect((await old).ok).toBe(false);
       expect(await (await fetch(`${running.url}/api/home`)).json()).toMatchObject({ repositories: ['octo/fresh'] });
-    } finally { finish(home); await new Promise<void>((resolve) => running.server.close(() => resolve())); }
+    } finally { finish(home); await closeServer(running.server); }
   });
 
   it('serves a dedicated Settings document for direct category links', async () => {
@@ -195,7 +263,7 @@ describe('repository-scoped server', () => {
       expect(html).not.toContain('settings-dialog');
       expect(html).not.toContain('models-dialog');
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -225,7 +293,7 @@ describe('repository-scoped server', () => {
       expect(homeLoader).not.toHaveBeenCalled();
       expect(fetcher).not.toHaveBeenCalled();
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -234,7 +302,7 @@ describe('repository-scoped server', () => {
     try {
       expect((await getWithHeaders(`${running.url}/api/home`, { host })).status).toBe(403);
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -260,7 +328,7 @@ describe('repository-scoped server', () => {
       const foreignOrigin = await getWithHeaders(`${running.url}/api/home`, { host: `${host}:${port}`, origin: 'https://attacker.example' });
       expect(foreignOrigin.status).toBe(403);
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -307,7 +375,7 @@ describe('repository-scoped server', () => {
       await fetch(running.url + '/api/desktop/notifications/read', { method: 'POST' });
       expect(notificationsRead).toHaveBeenCalledOnce();
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -338,7 +406,7 @@ describe('repository-scoped server', () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ shown: false });
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -362,7 +430,7 @@ describe('repository-scoped server', () => {
       expect(await draftPage.text()).toContain('src="/home.js"');
       expect(await mapPage.text()).toContain('src="/app.js"');
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -476,7 +544,7 @@ describe('repository-scoped server', () => {
       expect(fetcher).toHaveBeenCalledTimes(1);
     } finally {
       mapWatcher.close();
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -503,7 +571,7 @@ describe('repository-scoped server', () => {
       expect(snapshot.maps[0]?.pullRequests).toEqual([{ ticket: 11, ...open }]);
     } finally {
       mapWatcher.close();
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -531,7 +599,7 @@ describe('repository-scoped server', () => {
       expect(oneAgain).toEqual(one);
       expect(fetcher).toHaveBeenCalledTimes(2);
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -574,7 +642,7 @@ describe('repository-scoped server', () => {
       expect(changeChecker).toHaveBeenNthCalledWith(2, 'octo/one', [5]);
       expect(fetcher).toHaveBeenCalledTimes(3);
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -601,7 +669,7 @@ describe('repository-scoped server', () => {
       expect(data.ticket.title).toBe('Retire API agents');
       expect(data.map).toEqual({ number: 5, title: 'Roadmap v1' });
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -634,7 +702,7 @@ describe('repository-scoped server', () => {
       expect(data.prompt).toContain('#11 Retire API agents');
       expect(data.prompt).toContain('octo/one');
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -654,7 +722,7 @@ describe('repository-scoped server', () => {
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({ account: { status: 'signed-out' } });
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -677,7 +745,7 @@ describe('repository-scoped server', () => {
       await fetch(`${running.url}/api/repositories?refresh=1`);
       expect(repoLister).toHaveBeenCalledTimes(2);
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -701,7 +769,7 @@ describe('repository-scoped server', () => {
       expect(response.status).toBe(200);
       await vi.waitFor(() => expect(onShutdown).toHaveBeenCalledTimes(1));
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -758,7 +826,7 @@ describe('repository-scoped server', () => {
       await expect(installRes.json()).resolves.toEqual({ installing: true });
       expect(install).toHaveBeenCalledTimes(1);
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -807,7 +875,7 @@ describe('repository-scoped server', () => {
       expect(response.status).toBe(200);
       await vi.waitFor(() => expect(install).toHaveBeenCalledTimes(1));
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -868,7 +936,7 @@ describe('repository-scoped server', () => {
       expect(data).toHaveProperty('status');
       expect(data).toHaveProperty('currentVersion');
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
       requests.mockRestore();
     }
   });
@@ -911,7 +979,7 @@ describe('local clone for a hand-off', () => {
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({ status: 'ready', path: '/clone', canChoose: false });
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -932,7 +1000,7 @@ describe('local clone for a hand-off', () => {
       await expect(picked.json()).resolves.toEqual({ status: 'ready', path: '/picked', canChoose: true });
       expect(chooseDirectory).toHaveBeenCalledTimes(1);
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -948,7 +1016,7 @@ describe('local clone for a hand-off', () => {
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({ cancelled: true, status: 'choose' });
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -970,7 +1038,7 @@ describe('local clone for a hand-off', () => {
       expect(chooseDirectory).toHaveBeenNthCalledWith(1, 'clone');
       expect(chooseDirectory).toHaveBeenNthCalledWith(2, 'clone');
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -1001,7 +1069,7 @@ describe('local clone for a hand-off', () => {
       expect(chooseDirectory).toHaveBeenCalledWith('clone');
       expect(cloneRepository).toHaveBeenCalledWith('octo/one', '/destination');
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -1042,7 +1110,7 @@ describe('local clone for a hand-off', () => {
       await expect(response.json()).resolves.toMatchObject({ error: message, status: 'choose', canChoose: false });
       expect(cloneRepository).toHaveBeenCalledWith('octo/one', '/destination');
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -1058,7 +1126,7 @@ describe('local clone for a hand-off', () => {
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toMatchObject({ error: 'That folder is not a checkout of octo/one.', status: 'choose' });
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -1079,7 +1147,7 @@ describe('local clone for a hand-off', () => {
       await expect(response.json()).resolves.toMatchObject({ rung: 'thread' });
       expect(startThread).toHaveBeenCalledWith(expect.objectContaining({ workspaceRoot: '/clone' }));
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -1154,7 +1222,7 @@ describe('local clone for a hand-off', () => {
       const acknowledgedResponse = await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } });
       await expect(acknowledgedResponse.json()).resolves.toMatchObject({ handOffs: [{ id: handOffId, acknowledged: true }] });
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -1222,7 +1290,7 @@ describe('local clone for a hand-off', () => {
         expect((await start(running.url)).status).toBe(409);
         expect(startThread).toHaveBeenCalledTimes(2);
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1235,7 +1303,7 @@ describe('local clone for a hand-off', () => {
         expect(statuses.sort()).toEqual([200, 409]);
         expect(startThread).toHaveBeenCalledTimes(1);
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1252,7 +1320,7 @@ describe('local clone for a hand-off', () => {
         });
         expect(copy.status).toBe(200);
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
   });
@@ -1297,20 +1365,15 @@ describe('local clone for a hand-off', () => {
     const batches = async (url: string): Promise<Array<{ id: string; status: string; stop: unknown; items: Array<{ ticketNumber: number; status: string; reason: string | null; handOffId: string | null }> }>> =>
       ((await (await fetch(`${url}/api/start-next`, { headers: { origin: url } })).json()) as { batches: never }).batches;
     async function settled(url: string, until: (items: Array<{ status: string }>) => boolean) {
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        const [batch] = await batches(url);
-        if (batch !== undefined && until(batch.items)) return batch;
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      throw new Error('The batch never settled.');
+      return settledBatch(url, (batch) => until(batch.items));
     }
     async function settledBatch(url: string, until: (batch: Awaited<ReturnType<typeof batches>>[number]) => boolean) {
-      for (let attempt = 0; attempt < 100; attempt += 1) {
+      return vi.waitFor(async () => {
         const [batch] = await batches(url);
-        if (batch !== undefined && until(batch)) return batch;
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      throw new Error('The batch never settled.');
+        expect(batch, 'The server should publish a batch').toBeDefined();
+        expect(until(batch!), 'The batch should reach the requested state').toBe(true);
+        return batch!;
+      }, { timeout: 4000 });
     }
     const serveNext = (server: ServerT3) => serve({ startNextIntervalMs: 20, t3: server, fetcher: async () => ({ maps: [startMap], warnings: [] }), workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
 
@@ -1333,7 +1396,7 @@ describe('local clone for a hand-off', () => {
         expect(status.handOffs.map((item) => [item.ticketNumber, item.tier]).sort()).toEqual([[11, 'hard'], [12, 'mid'], [13, 'simple']]);
         expect(new Set(status.handOffs.map((item) => item.threadId)).size).toBe(3);
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1353,7 +1416,7 @@ describe('local clone for a hand-off', () => {
         expect(after?.items.map((item) => item.status)).toEqual(['started', 'back-to-next', 'back-to-next']);
         expect((await post(running.url, '/api/start-next/stop', { id: 'nope' })).status).toBe(404);
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1371,7 +1434,7 @@ describe('local clone for a hand-off', () => {
         ]);
         expect(startThread).toHaveBeenCalledTimes(2);
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1396,7 +1459,7 @@ describe('local clone for a hand-off', () => {
         expect(stopped.stop).toMatchObject({ kind: 'usage-limit', ticketNumber: 11, resetsAt: '4:00 PM' });
         expect(stopped.items.map((item) => item.status)).toEqual(['started', 'back-to-next']);
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1427,7 +1490,7 @@ describe('local clone for a hand-off', () => {
         expect(byTicket(11)).toMatchObject({ tier: 'hard', auto: { scoring: { reason: 'touches 6 files' }, overrides: [] } });
         expect(byTicket(12)).toMatchObject({ tier: 'simple', auto: { proposed: { tier: 'hard' }, final: { tier: 'simple' }, overrides: ['tier', 'model'] } });
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1456,7 +1519,7 @@ describe('local clone for a hand-off', () => {
         expect(byTicket(11)).toMatchObject({ ticketType: 'task', selection: 'user', tierMapping: { mid: { model: 'gpt-5.6-terra' } }, calibration: { shadow: { tier: 'hard', rater: { model: 'gpt-5.6-luna' } } } });
         expect(byTicket(12)).toMatchObject({ ticketType: 'prototype', calibration: null });
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1469,7 +1532,7 @@ describe('local clone for a hand-off', () => {
         expect((await post(running.url, '/api/hand-offs/model-change', { id: 'nope', at: '2026-10-01T00:00:00.000Z', reason: 'because' })).status).toBe(400);
         expect((await post(running.url, '/api/hand-offs/model-change', { id: 7, reason: 'preference' })).status).toBe(400);
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1493,7 +1556,7 @@ describe('local clone for a hand-off', () => {
         await settledBatch(running.url, (current) => current.status === 'stopped');
         expect(await usage()).toEqual({ codex: { state: 'limited', observedAt: expect.any(String) as string } });
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1539,7 +1602,7 @@ describe('local clone for a hand-off', () => {
           const status = (await (await fetch(`${running.url}/api/hand-offs`, { headers: { origin: running.url } })).json()) as { handOffs: Array<{ ticketNumber: number; tier: string }> };
           expect(status.handOffs.map((item) => [item.ticketNumber, item.tier])).toEqual([[12, 'mid']]);
         } finally {
-          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+          await closeServer(running.server);
         }
       });
 
@@ -1552,7 +1615,7 @@ describe('local clone for a hand-off', () => {
           expect(batch.items.map((item) => item.ticketNumber)).toEqual([11, 12, 13]);
           expect(startThread).toHaveBeenCalledTimes(3);
         } finally {
-          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+          await closeServer(running.server);
         }
       });
 
@@ -1562,13 +1625,16 @@ describe('local clone for a hand-off', () => {
         const running = await serve({ startNextIntervalMs: 20, autoMapBatchMs: 5, mapWatcher, t3: server, fetcher, changeChecker: async () => true, workspaces: resolver({ '/clone': '/clone' }, ['/clone']) });
         try {
           // Something else watches the map, so it is read, but its auto map is off.
-          const stop = mapWatcher.watch('octo/one', 5, () => undefined);
-          await vi.waitFor(() => expect(readMap.mock.calls.length).toBeGreaterThan(2));
+          let next!: () => void;
+          const becameNext = new Promise<void>((resolve) => { next = resolve; });
+          const stop = mapWatcher.watch('octo/one', 5, (event) => { if (event.type === 'ticket-next') next(); });
+          await becameNext;
+          expect(readMap).toHaveBeenCalledTimes(2);
           stop();
           expect(startThread).not.toHaveBeenCalled();
           expect(await batches(running.url)).toEqual([]);
         } finally {
-          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+          await closeServer(running.server);
         }
       });
 
@@ -1578,7 +1644,7 @@ describe('local clone for a hand-off', () => {
         try {
           await autoMap(first.url, { repo: 'octo/one', map: 5, op: 'enable', tier: 'hard' });
         } finally {
-          await new Promise<void>((resolve) => first.server.close(() => resolve()));
+          await closeServer(first.server);
         }
         const { server, startThread } = liveT3();
         const { readMap, mapWatcher, fetcher } = watcherWhere([12]);
@@ -1590,7 +1656,7 @@ describe('local clone for a hand-off', () => {
           await settledBatch(second.url, (current) => current.items.every((item) => item.status === 'started'));
           expect(startThread).toHaveBeenCalledTimes(1);
         } finally {
-          await new Promise<void>((resolve) => second.server.close(() => resolve()));
+          await closeServer(second.server);
         }
       });
 
@@ -1600,7 +1666,7 @@ describe('local clone for a hand-off', () => {
         try {
           await autoMap(first.url, { repo: 'octo/one', map: 5, op: 'enable', tier: 'hard' });
         } finally {
-          await new Promise<void>((resolve) => first.server.close(() => resolve()));
+          await closeServer(first.server);
         }
         const { server, startThread } = liveT3();
         const readMap = vi.fn(async (): Promise<MapRead> => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }));
@@ -1618,7 +1684,7 @@ describe('local clone for a hand-off', () => {
           expect(startThread).not.toHaveBeenCalled();
           expect((await view(second.url)).maps).toMatchObject([{ repo: 'octo/one', mapNumber: 5, enabled: true, tier: 'hard' }]);
         } finally {
-          await new Promise<void>((resolve) => second.server.close(() => resolve()));
+          await closeServer(second.server);
         }
       });
 
@@ -1628,7 +1694,7 @@ describe('local clone for a hand-off', () => {
         try {
           await autoMap(first.url, { repo: 'octo/one', map: 5, op: 'enable' });
         } finally {
-          await new Promise<void>((resolve) => first.server.close(() => resolve()));
+          await closeServer(first.server);
         }
         const readMap = vi.fn(async (): Promise<MapRead> => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }));
         const mapWatcher = new MapWatcher({ readMap, readPullRequests: noPullRequests }, { intervalMs: 10 });
@@ -1648,7 +1714,7 @@ describe('local clone for a hand-off', () => {
           expect(readMap).not.toHaveBeenCalled();
           expect((await view(second.url)).maps).toMatchObject([{ repo: 'octo/one', mapNumber: 5, enabled: true }]);
         } finally {
-          await new Promise<void>((resolve) => second.server.close(() => resolve()));
+          await closeServer(second.server);
         }
       });
 
@@ -1685,7 +1751,7 @@ describe('local clone for a hand-off', () => {
           await new Promise((resolve) => setTimeout(resolve, 60));
           expect(readMap.mock.calls.length).toBe(readsAtStop);
         } finally {
-          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+          await closeServer(running.server);
         }
       });
 
@@ -1706,7 +1772,7 @@ describe('local clone for a hand-off', () => {
           expect((await view(running.url)).settings).toEqual({ cap: 6, tierModels: { hard: { instanceId: 'codex', model: 'gpt-5.6-sol' } }, rater: { kind: 'logic' }, calibration: { kind: 'off' } });
           expect((await post(running.url, '/api/auto-map/settings', { cap: 99 })).status).toBe(400);
         } finally {
-          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+          await closeServer(running.server);
         }
       });
 
@@ -1717,7 +1783,7 @@ describe('local clone for a hand-off', () => {
           expect(response.status).toBe(403);
           expect((await view(running.url)).maps).toEqual([]);
         } finally {
-          await new Promise<void>((resolve) => running.server.close(() => resolve()));
+          await closeServer(running.server);
         }
       });
     });
@@ -1744,7 +1810,7 @@ describe('local clone for a hand-off', () => {
         // Percentages and account IDs never reach the response.
         expect(body).not.toMatch(/acct-secret|usedPercent|used_percentage/);
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1755,7 +1821,7 @@ describe('local clone for a hand-off', () => {
         const response = await fetch(`${running.url}/api/provider-usage`, { headers: { origin: running.url } });
         await expect(response.json()).resolves.toEqual({ providers: {} });
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1776,7 +1842,7 @@ describe('local clone for a hand-off', () => {
         expect((await rate({ map: 5, tickets: [11] })).status).toBe(400);
         expect((await rate({ map: 6, tickets: [11], model: { instanceId: 'codex', model: 'm' } })).status).toBe(404);
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1806,7 +1872,7 @@ describe('local clone for a hand-off', () => {
         expect(startThread).toHaveBeenCalledTimes(1);
         expect((await batches(running.url))[0]).toMatchObject({ auto: true });
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1822,7 +1888,7 @@ describe('local clone for a hand-off', () => {
         expect(await batches(running.url)).toEqual([]);
         expect((await post(running.url, '/api/repos/octo/one/start-next', { map: 5, tickets: [{ ticket: 12 }] })).status).toBe(202);
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1864,7 +1930,7 @@ describe('local clone for a hand-off', () => {
         expect(await batches(running.url)).toEqual([]);
         expect(startThread).not.toHaveBeenCalled();
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1892,7 +1958,7 @@ describe('local clone for a hand-off', () => {
         expect(batch.items.map((item) => [item.ticketNumber, item.status, item.reason])).toEqual([[11, 'started', null], [12, 'skipped', 'This map is archived.']]);
         expect(startThread).toHaveBeenCalledTimes(1);
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1902,7 +1968,7 @@ describe('local clone for a hand-off', () => {
       try {
         expect((await post(noClone.url, '/api/repos/octo/one/start-next', { map: 5, tickets: [{ ticket: 11 }] })).status).toBe(409);
       } finally {
-        await new Promise<void>((resolve) => noClone.server.close(() => resolve()));
+        await closeServer(noClone.server);
       }
       const running = await serveNext(server);
       try {
@@ -1910,7 +1976,7 @@ describe('local clone for a hand-off', () => {
         expect((await post(running.url, '/api/repos/octo/one/start-next', { map: 5, tickets: [{ ticket: 99 }] })).status).toBe(400);
         expect((await post(running.url, '/api/repos/octo/one/start-next', { map: 6, tickets: [{ ticket: 11 }] })).status).toBe(404);
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
   });
@@ -1943,7 +2009,7 @@ describe('local clone for a hand-off', () => {
         handOffs: [{ status: 'untracked', stale: false, threadId: null }],
       });
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -1969,7 +2035,7 @@ describe('local clone for a hand-off', () => {
         expect(copy).not.toHaveBeenCalled();
         expect(startThread).not.toHaveBeenCalled();
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -1981,7 +2047,7 @@ describe('local clone for a hand-off', () => {
         expect(response.status).toBe(400);
         await expect(response.json()).resolves.toEqual({ error: 'Say what you want to accomplish first.' });
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -2001,7 +2067,7 @@ describe('local clone for a hand-off', () => {
         });
         expect(startThread).not.toHaveBeenCalled();
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -2032,7 +2098,7 @@ describe('local clone for a hand-off', () => {
         const [input] = startThread.mock.calls[0] ?? [];
         expect(input?.prompt(null)).toContain('Turn this into a map.');
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
 
@@ -2056,7 +2122,7 @@ describe('local clone for a hand-off', () => {
         await expect(response.json()).resolves.toEqual({ opened: true });
         expect(focus).toHaveBeenCalledOnce();
       } finally {
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await closeServer(running.server);
       }
     });
   });
@@ -2090,7 +2156,7 @@ describe('progress panel endpoints', () => {
       expect(rejected.status).toBe(400);
       await expect(rejected.json()).resolves.toEqual({ error: 'Choose a goal of 3, 5, 8.' });
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 });
@@ -2146,7 +2212,7 @@ describe('following public maps', () => {
       expect(unfollowed.maps).toEqual([]);
       expect(unfollowed.publicMaps[0]?.followed).toBe(false);
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -2160,14 +2226,14 @@ describe('following public maps', () => {
       expect((await post(`${running.url}/api/repos/octo/one/follow`, { map: 8, followed: false })).status).toBe(200);
       expect(store.set).toHaveBeenCalledTimes(1);
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
     const { running: anonymous } = followingServer(null);
     const signedOut = await anonymous;
     try {
       expect((await post(`${signedOut.url}/api/repos/octo/one/follow`, { map: 7, followed: true })).status).toBe(409);
     } finally {
-      await new Promise<void>((resolve) => signedOut.server.close(() => resolve()));
+      await closeServer(signedOut.server);
     }
   });
 });
@@ -2219,7 +2285,7 @@ describe('settling maps', () => {
       expect(refreshed.maps[0]?.settled).toMatchObject({ reason: 'manual' });
       expect(fetcher).toHaveBeenLastCalledWith(expect.objectContaining({ choices: { 5: expect.objectContaining({ settled: true }) } }));
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -2239,7 +2305,7 @@ describe('settling maps', () => {
       const snapshot = (await (await fetch(`${running.url}/api/repos/octo/one/snapshot?refresh=1`)).json()) as { maps: WayfinderMap[] };
       expect(snapshot.maps[0]?.settled).toBeNull();
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
       await rm(dir, { recursive: true, force: true });
     }
   });
@@ -2252,7 +2318,7 @@ describe('settling maps', () => {
       expect((await post(`${running.url}/api/repos/octo/one/settle`, { map: 'x', settled: true })).status).toBe(400);
       expect((await post(`${running.url}/api/repos/octo/one/settle`, { map: 5 })).status).toBe(400);
     } finally {
-      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+      await closeServer(running.server);
     }
   });
 
@@ -2263,7 +2329,7 @@ describe('settling maps', () => {
     const autoMapStore = memoryAutoMapStore();
     const first = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, fetcher: async () => ({ maps: [sampleMap], warnings: [] }), homeLoader: async () => home, handOffStore: new HandOffStore({ filePath: null }), autoMapStore, mapWatcher: new MapWatcher({ readMap: async () => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }), readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) }) });
     await post(`${first.url}/api/auto-map/map`, { repo: 'octo/one', map: 5, op: 'enable' });
-    await new Promise<void>((resolve) => first.server.close(() => resolve()));
+    await closeServer(first.server);
 
     const readMap = vi.fn(async (): Promise<MapRead> => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }));
     const mapWatcher = new MapWatcher({ readMap, readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) }, { intervalMs: 10 });
@@ -2315,7 +2381,7 @@ describe('settling maps', () => {
     const stub = () => new MapWatcher({ readMap: async () => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }), readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) });
     const first = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, fetcher: async () => ({ maps: [sampleMap], warnings: [] }), homeLoader: async () => home, handOffStore: new HandOffStore({ filePath: null }), autoMapStore, mapWatcher: stub() });
     await post(`${first.url}/api/auto-map/map`, { repo: 'octo/two', map: 5, op: 'enable' });
-    await new Promise<void>((resolve) => first.server.close(() => resolve()));
+    await closeServer(first.server);
 
     const readMap = vi.fn(async (_repo: string, _mapNumber: number): Promise<MapRead> => ({ status: 'unchanged', rateLimit: null, pollIntervalSeconds: null }));
     const mapWatcher = new MapWatcher({ readMap, readPullRequests: async () => ({ byTicket: new Map(), lastCommits: new Map(), rateLimit: null }) }, { intervalMs: 10 });
