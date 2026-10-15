@@ -2,21 +2,28 @@
 
 ## Prototype variant thumbnails
 
-The decision-board fixture uses source screenshots for every prototype variant it
-shows. When a prototype variant changes, fetch the prototype refs and refresh the
-board images from the repo root with:
+This viewer uses shared thumbnails such as `43-A.jpg` and `39-board.jpg` from
+`prototypes/canvas/assets/protos/`. Refresh them from their source branches with:
 
 ```sh
 git fetch origin
 bun run capture:prototype-thumbnails
 ```
 
-The capture tool archives each source prototype branch, then uses Playwright's
-Chromium browser at 1280 × 720 to refresh the matching image in
-`assets/protos/`. Install the browser once with `npx playwright install chromium`
-if Playwright reports that Chromium is missing. Run `bun run test:canvas` to check
-that every board variant has an image and that a missing image falls back to its
-variant sketch.
+That shared command captures source prototype pages with Chromium at 1280 x 720
+and writes to `prototypes/canvas/assets/protos/`. If Chromium is missing, install
+it with `npx playwright install chromium`. There is no ticket-local capture tool.
+
+Validate this ticket's configuration, page HTML and linked scripts/styles with:
+
+```sh
+node prototypes/292-prototype-settings-keyboard-shortcuts-for-the-canvas-viewer-s-to/tools/check.mjs
+node --test prototypes/292-prototype-settings-keyboard-shortcuts-for-the-canvas-viewer-s-to/tools/check.test.mjs
+```
+
+The checker does not exercise runtime thumbnail fallback behavior. The test entry
+runs both the canonical shared-canvas suite and this ticket's regression tests.
+`bun run test:canvas` runs the shared suite alone.
 
 An in-repo board for design decisions. It lays out options side by side: full pages, style directions, component sheets, palettes, type, and layered compositions. The user compares them, opens any one full size, and picks.
 
