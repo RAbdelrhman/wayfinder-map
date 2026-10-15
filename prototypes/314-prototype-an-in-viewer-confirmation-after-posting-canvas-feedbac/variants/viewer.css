@@ -1,0 +1,78 @@
+/* #314 on the shipped D4 viewer. Everything not prefixed p314- is src/ui/styles.css as shipped. */
+.p314 { position: relative; height: 100vh; margin: 0; overflow: hidden; }
+.p314-map { position: absolute; inset: 0; display: grid; grid-template-rows: 56px 1fr; background: var(--plane); }
+.p314-map .topbar { display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid var(--hairline); background: var(--surface-1); font-weight: 650; }
+.p314-map-body { overflow: hidden; padding: 20px; }
+.p314-map-body img { width: 100%; border-radius: 10px; opacity: 0.85; }
+.p314.has-pane .vw { --vw-pane: min(600px, 52vw); }
+
+/* The canvas in the frame: the #292 option as a picture, with the shipped pin and element marks. */
+.p314-canvas { display: flex; flex-direction: column; background: #f4f4f1; }
+.p314-art { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.p314 .cf-panel-foot button { white-space: nowrap; }
+.p314-art img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+.p314-art .cf-layer { pointer-events: none; }
+.p314-art .cf-layer > * { pointer-events: auto; }
+
+.p314-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.p314-row .topbar-spacer { flex: 1; }
+.p314 .cf-sm .i { width: 14px; height: 14px; }
+.p314 a.ghost { text-decoration: none; }
+.p314 .primary.cf-sm, .p314 .ghost.cf-sm { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+
+/* Shared: the spinner on Posting… */
+.p314-spin { display: inline-block; width: 13px; height: 13px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: p314-spin 0.8s linear infinite; }
+@keyframes p314-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .p314-spin { animation: none; border-right-color: currentColor; opacity: 0.6; } }
+.p314 .primary:disabled .p314-spin { opacity: 1; }
+
+/* A: the receipt in the panel. */
+.p314-dest { display: grid; gap: 4px; padding: 12px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--plane); }
+.p314-k { color: var(--text-muted); font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; }
+.p314-dest-t { color: var(--text-primary); font-weight: 600; line-height: 1.35; text-decoration: none; }
+a.p314-dest-t:hover { color: var(--accent-text); text-decoration: underline; }
+a.p314-dest-t:focus-visible, .p314 a.ghost:focus-visible, .p314-chip:focus-visible, .p314-pop:focus-visible, .p314-bar .iconbtn:focus-visible, .p314-dialog button:focus-visible, .p314 summary:focus-visible { outline: 2px solid var(--state-claimed); outline-offset: 2px; }
+.p314-dest .p314-row { margin-top: 6px; }
+.p314-next { display: grid; gap: 8px; padding: 12px; border-radius: 10px; background: color-mix(in srgb, var(--state-claimed) 10%, transparent); }
+.p314-next h3 { margin: 0; font-size: 13px; }
+.p314-next p { margin: 0; color: var(--text-secondary); line-height: 1.45; }
+.p314-copied { overflow-wrap: anywhere; }
+.p314-what summary { color: var(--text-secondary); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.p314-what[open] summary { margin-bottom: 8px; }
+.p314-banner-t { display: grid; gap: 4px; justify-items: start; min-width: 0; }
+.p314-banner-t span { color: var(--text-secondary); line-height: 1.45; }
+.p314-already .i { color: var(--handoff-pr-ready) !important; }
+
+/* B: the bar over the canvas. */
+.p314-bar { position: relative; z-index: 4; display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--hairline); background: color-mix(in srgb, var(--state-frontier) 12%, var(--surface-1)); color: var(--text-primary); font-size: 13px; }
+.p314-bar.is-warn { background: color-mix(in srgb, var(--state-blocked) 20%, var(--surface-1)); }
+.p314-bar .cf-ok { width: 28px; height: 28px; }
+.p314-bar-ic { display: grid; flex: none; place-items: center; width: 28px; height: 28px; color: var(--handoff-needs-you); }
+.p314-bar-t { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.p314-bar-t span { color: var(--text-secondary); }
+.p314-bar-t b:focus { outline: none; }
+.p314-bar .p314-row { flex: none; }
+.p314-bar .iconbtn { width: 30px; height: 30px; flex: none; }
+.p314.has-pane .p314-bar { flex-wrap: wrap; }
+.p314.has-pane .p314-bar-t { flex-basis: calc(100% - 90px); }
+.p314.has-pane .p314-bar .p314-row { order: 3; margin-left: 40px; }
+
+.p314-dialog { width: min(440px, calc(100vw - 32px)); padding: 18px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-1); color: var(--text-primary); box-shadow: var(--shadow); font-size: 13px; }
+.p314-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+.p314-dialog h2 { margin: 0 0 6px; font-size: 16px; }
+.p314-dialog p { margin: 0 0 14px; color: var(--text-secondary); line-height: 1.5; }
+.p314-danger { color: var(--state-failed); }
+
+/* C: the chip and its popover. */
+.p314-anchor { position: relative; display: inline-flex; }
+button.p314-chip { border: 0; font: inherit; font-size: 12.5px; cursor: pointer; }
+button.p314-chip:hover { filter: brightness(0.96); }
+.p314-chip.is-busy { background: var(--wash); color: var(--text-secondary); }
+.p314-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; display: grid; gap: 8px; width: 320px; padding: 14px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-1); color: var(--text-primary); box-shadow: var(--shadow); font-size: 13px; text-align: left; white-space: normal; }
+.p314-pop h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; }
+.p314-pop h2 .i { width: 16px; height: 16px; color: var(--handoff-pr-ready); }
+.p314-pop.is-warn h2 .i { color: var(--handoff-needs-you); }
+.p314-pop p { margin: 0; line-height: 1.45; }
+.p314-next-t { font-weight: 600; }
+.p314-panechip { display: flex; justify-content: flex-end; padding: 6px 12px; border-bottom: 1px solid var(--hairline); background: var(--surface-1); }
+.p314-panechip .p314-pop { right: 0; }
