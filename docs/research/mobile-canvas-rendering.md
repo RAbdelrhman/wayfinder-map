@@ -2,7 +2,7 @@
 
 Research for [#221](https://github.com/RAbdelrhman/wayfinder-map/issues/221) on map #217 (A Wayfinder mobile app).
 
-**Answer: partly.** Both canvases tested load and run on a real iOS `WKWebView` (iOS 26.4 Simulator), on a real Android System WebView 124, and on desktop WebKit and Chromium, with no script errors. That holds once the app downloads every file the canvas references, including two files outside `prototypes/`. Present (one option full screen) works, and a phone-sized canvas looks right there. The board doesn't:
+**Answer: partly.** Both canvases tested load and run on a real iOS `WKWebView` (iOS 26.4 Simulator), on a real Android System WebView 124, and on desktop WebKit and Chromium, with no script errors on the engines where errors were captured (desktop WebKit and Chromium, and the Android WebView; not the iOS Simulator runs, which only show that pages drew). That holds once the app downloads every file the canvas references, including two files outside `prototypes/`. Present (one option full screen) works, and a phone-sized canvas looks right there. The board doesn't:
 
 - **Broken board thumbnails on every mobile WebView we ran.** On iOS `WKWebView` and Mobile Safari each thumbnail shows its page in a small patch in the frame's top-left corner and white everywhere else, or a cropped, enlarged corner. The real Android WebView 124 lays each frame out at a fraction of its width. Only desktop Chromium 153 draws them right. Moving the board from CSS `zoom` to `transform: scale()` was tried on iOS two ways, and **neither fixed it**. Don't count on live thumbnails on the phone.
 - **Overlapping text on iOS.** iOS text autosizing inflates the canvas's text but not its line heights, so notes pile on top of each other. `-webkit-text-size-adjust: 100%` fixes it.
@@ -10,7 +10,7 @@ Research for [#221](https://github.com/RAbdelrhman/wayfinder-map/issues/221) on 
 
 ## How it was tested
 
-- **Canvases:** two real canvases, downloaded through the GitHub REST API (`git/trees/{branch}?recursive=1`, then one `git/blobs/{sha}` request per file), as the phone app would.
+- **Canvases:** two real canvases. The desktop and Android runs used files downloaded through the GitHub REST API (`git/trees/{branch}?recursive=1`, then one `git/blobs/{sha}` request per file), as the phone app would. The iOS Simulator runs used full git checkouts of the two branches, not the API download.
   - `prototype/223-…` (#223, the mobile following screens, 16 phone-sized frames at 390 × 844).
   - `prototype/207-…` (#207, the in-app canvas viewer shell, 6 desktop-sized pages at 1440 × 900, 5 pages).
 - **iOS, real:** an iPhone 17 Pro on the **iOS 26.4 Simulator**, run on a GitHub `macos-26` runner because Windows can't run the Simulator ([`probe/ios/`](mobile-canvas/probe/ios/), CI run 38739375640 on a throwaway branch). Two ways in:
@@ -37,11 +37,11 @@ The scripts are in [`mobile-canvas/probe/`](mobile-canvas/probe/). Run them from
 | #207 | Desktop Chromium (Playwright, Android profile) | http, file | none | 533 (412), page shrunk to fit | 30% | none at 533, but text is shrunk | all |
 | #223 | **Android System WebView 124** | file (app-private files dir) | none | 412 (412) | 28% | none | 16 / 16 loaded, but over-zoomed (see Zoom) |
 | #207 | **Android System WebView 124** | file (app-private files dir) | none | 532 (412), page shrunk to fit | 30% | none at 532, but text is shrunk | all loaded, over-zoomed |
-| #223 | **iOS 26.4 `WKWebView`** | file (app `Documents`), http | none seen¹ | 402 (402), board scrolls to 575 | 27% | not measured (top bar clipped at the right edge) | 16 / 16 present, but each painted in a small top-left patch (see Zoom) |
-| #207 | **iOS 26.4 `WKWebView`** | file (app `Documents`), http | none seen¹ | 402 (402), board scrolls to 558 | 29% | not measured (top bar clipped at the right edge) | all present, same top-left patches |
+| #223 | **iOS 26.4 `WKWebView`** | file (app `Documents`), http | none seen¹ | 402 (402), page scroll width 575 | 27% | not measured (top bar clipped at the right edge) | screenshots show frames drawn (the probe read only 6 and could not see inside them), but each painted in a small top-left patch (see Zoom) |
+| #207 | **iOS 26.4 `WKWebView`** | file (app `Documents`), http | none seen¹ | 402 (402), page scroll width 558 | 29% | not measured (top bar clipped at the right edge) | screenshots show frames drawn, same top-left patches |
 | #223, #207 | **iOS 26.4 Mobile Safari** | http | not captured | same as `WKWebView` | same | same | same patches |
 
-¹ The `WKWebView` probe doesn't capture console errors. It shows that every page loaded and drew, not that nothing was logged. Frames sit at an opaque origin (the canvas's own `sandbox`), so the probe can't read inside them either.
+¹ The `WKWebView` probe doesn't capture console errors. It shows only that frames drew in the screenshots, not that nothing was logged or that every frame loaded. Frames sit at an opaque origin (the canvas's own `sandbox`), so the probe can't read inside them either.
 
 "Errors: none" is after the fix in the next section. Before it, every variant page 404'd on one stylesheet. "Loaded" means each frame navigated to its page and has text in it. It doesn't mean the frame painted correctly: check the screenshots for that.
 
@@ -94,7 +94,7 @@ The app has to fetch the closure, not just the folder: scan the `.html`, `.css` 
 
 ### Scripts
 
-No script errors or failed requests on any engine, in any load mode, including the real WebView 124 (once the missing stylesheet was fetched). The engine's scripts ran: the board built every frame, page frames navigated and filled with content, option notes rendered, and Present and its theme and notes toggles responded. The help `<dialog>`, the feedback form and the ↗ links weren't exercised. The sandbox rules in the canvas README (relative paths, no modules or `fetch`, no storage) are what make the `file://` mode work as well.
+No script errors or failed requests on desktop WebKit and Chromium or the real Android WebView 124, in any load mode tried (once the missing stylesheet was fetched). The iOS Simulator probe does not capture errors, so for iOS this only means the pages drew. The engine's scripts ran: the board built every frame, page frames navigated and filled with content, option notes rendered, and Present and its theme and notes toggles responded. The help `<dialog>`, the feedback form and the ↗ links weren't exercised. The sandbox rules in the canvas README (relative paths, no modules or `fetch`, no storage) are what make the `file://` mode work as well.
 
 Two things the real WebView showed about the app around the canvas:
 
@@ -124,7 +124,7 @@ Not tested here, and the app has to handle these:
 ## Recommended rendering approach
 
 1. **Fetch through the GitHub API and cache to disk.** Read the branch tree once, then download the blobs under `prototypes/<canvas>/` plus the out-of-folder files they reference, into the app's cache directory keyed by blob SHA. Don't count on reaching the desktop server: it already serves canvases with the right sandbox, but a phone off the home network can't reach it.
-2. **Load from `file://` in `react-native-webview`.** Use `allowFileAccess` on Android and `allowingReadAccessToURL` set to the cache folder on iOS. `file://` rendered the same as the sandboxed `http` mode on every engine, and it avoids adding a native module for a local HTTP server.
+2. **Load from `file://` in `react-native-webview`.** Use `allowFileAccess` on Android and `allowingReadAccessToURL` set to the cache folder on iOS. `file://` rendered the same as the sandboxed `http` mode on desktop WebKit, desktop Chromium and the iOS `WKWebView` (the Android WebView was tried with `file://` only), and it avoids adding a native module for a local HTTP server.
 
    **Rendering parity isn't security parity.** `file://` responses carry no CSP, so the desktop's `sandbox` header doesn't apply. Canvas files are repo code, and this research did not test how isolated they are from the app. Before shipping, do two things. First, load the canvas inside an `<iframe sandbox="allow-scripts">` from a small host page, so canvas code runs at an opaque origin. Second, leave `onMessage` unset, or accept only a fixed message shape, so canvas code can't reach the GitHub token or native APIs. Verify both on a device.
 3. **Don't show the live board on the phone. Open one option at a time in Present.** The board's thumbnails are broken on iOS and on the Android WebView we ran, and a fix by swapping `zoom` for `transform` didn't work. Present is what works on both platforms (for #207's desktop-sized pages, only the left part shows):
