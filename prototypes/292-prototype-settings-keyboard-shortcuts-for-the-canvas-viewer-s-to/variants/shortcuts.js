@@ -2,6 +2,7 @@
   #292: Settings › Keyboard shortcuts for the canvas viewer's five tool keys.
   ?dir=a  A · the list is the editor: each row's key is a button that records a new one.
   ?dir=b  B · a read-only list beside one focused editor for the chosen key.
+  ?dir=c  C · round 2: B's compact rows that record in place like A, without the extra headings.
   ?start=viewer opens in the viewer, whose Shortcuts button lands on Settings; Back to canvas
   returns to the same option, tool and panel. ?state=land|capture|saved|clash|reset opens Settings
   in that state for the board. Every change stays in this page.
@@ -9,7 +10,7 @@
 (() => {
   const { TOOLS, NAME, defaults, label, spoken, kbd, same, read, matches } = P292;
   const q = new URLSearchParams(location.search);
-  const DIR = q.get('dir') === 'b' ? 'b' : 'a';
+  const DIR = ['b', 'c'].includes(q.get('dir')) ? q.get('dir') : 'a';
   const STATE = q.get('state');
   const STATIC = STATE !== null;
   const icon = (name) => Kit.icon(name);
@@ -130,7 +131,7 @@
   // B · a list that picks, and one editor for the picked key.
   function pickB(t) {
     const on = S.selected === t.id;
-    return `<button type="button" class="k292-pick-row${on ? ' is-on' : ''}" data-select="${t.id}" aria-pressed="${on}" aria-controls="k-editor"><span class="k292-icon">${icon(t.icon)}</span><span class="grow">${t.name}</span>${changed(t.id) ? '<span class="k292-dot" title="Changed from the default"></span><span class="k292-sr">, changed from the default,</span>' : ''}<span class="k292-pick-key">${kbd(S.keys[t.id])}</span></button>`;
+    return `<button type="button" class="k292-pick-row${on ? ' is-on' : ''}" data-select="${t.id}" aria-pressed="${on}" aria-controls="k-editor"><span class="k292-icon">${icon(t.icon)}</span><span class="grow">${t.name}</span>${changed(t.id) ? '<span class="k292-dot" aria-hidden="true"></span><span class="k292-sr">, changed from the default,</span>' : ''}<span class="k292-pick-key">${kbd(S.keys[t.id])}</span></button>`;
   }
   function editorB() {
     const t = TOOL[S.selected];
@@ -145,12 +146,42 @@
     return `<div class="k292-editor${cap ? ' is-capturing' : ''}${S.error ? ' is-error' : ''}" id="k-editor" role="region" aria-labelledby="k-ed-title"><h4 id="k-ed-title">${icon(t.icon)}${t.name}</h4><p class="hint k292-ed-hint">${t.hint}. Works while a canvas is open.</p><div class="k292-ed-body">${big}</div>${note}${foot}</div>`;
   }
 
+  // C · B's compact rows; the row records in place, as A's key does.
+  function rowC(t) {
+    const b = S.keys[t.id];
+    const cap = S.capturing === t.id;
+    const err = S.error?.tool === t.id;
+    const saved = !cap && S.saved && (S.saved.tool === t.id || S.saved.tool === 'all');
+    const was = changed(t.id) ? `, changed from ${spoken(t.key)}` : '';
+    const name = cap ? `Recording a new ${t.name} shortcut. Now ${spoken(b)}.` : `${t.name} shortcut, ${spoken(b)}${was}. Change`;
+    const mark = saved
+      ? `<span class="k292c-saved">${icon('check')}Saved</span>`
+      : changed(t.id) && !cap
+        ? `<span class="k292-dot" aria-hidden="true"></span>`
+        : '';
+    return `<li class="k292c-item${cap ? ' is-capturing' : ''}${err ? ' is-error' : ''}"><button type="button" class="k292-pick-row k292c-row" data-edit="${t.id}"${cap ? ` aria-describedby="k-help-${t.id}"` : ''} aria-label="${name}"><span class="k292-icon">${icon(t.icon)}</span><span class="grow">${t.name}</span>${mark}<span class="k292c-key${cap ? ' is-capturing' : ''}">${cap ? listening() : kbd(b)}</span></button>${cap ? helpLine(t) : ''}</li>`;
+  }
+
   function resetRow() {
     const none = allDefault();
     return `<div class="settings-row k292-reset"><span class="grow">Reset to defaults<span class="hint">${none ? 'All five use the keys Wayfinder ships with.' : 'Put all five back to P, E, C, N and F.'}</span></span><button type="button" class="ghost" data-act="reset"${none ? ' aria-disabled="true"' : ''}>${icon('undo')}Reset…</button></div>`;
   }
 
+  function settingsHtmlC() {
+    const none = allDefault();
+    const note = S.saved
+      ? `<span class="settings-save-note k292-save is-saved k292c-save">${icon('check')}Saved · ${esc(S.saved.text)}</span>`
+      : `<span class="settings-save-note k292-save">${icon('check')}Changes save automatically</span>`;
+    return `<header class="settings-page-heading"><div><h1>Settings</h1><p>Make Wayfinder work your way.</p></div>${note}</header>
+      <div class="settings-page-layout"><nav class="settings-categories" aria-label="Settings categories">${nav()}</nav><div>
+        <header class="settings-category-heading"><h2 id="k-title" tabindex="-1">Keyboard shortcuts</h2><p>Keys for the canvas viewer’s tools. Click one, then press a letter, alone or with Shift, Alt or Ctrl.</p></header>
+        <section class="settings-section k292-section k292-c${S.arriving ? ' is-arriving' : ''}" aria-labelledby="k-title"><ul class="k292c-list" aria-label="Canvas viewer shortcuts">${TOOLS.map(rowC).join('')}</ul>
+        <div class="k292c-foot"><span>Defaults: P, E, C, N and F</span><button type="button" class="ghost" data-act="reset"${none ? ' aria-disabled="true"' : ''}>${icon('undo')}Reset…</button></div></section>
+      </div></div>`;
+  }
+
   function settingsHtml() {
+    if (DIR === 'c') return settingsHtmlC();
     const lede = '<p class="hint k292-lede">These keys work while a canvas is open. Use a letter, alone or with Shift, Alt or Ctrl.</p>';
     const body =
       DIR === 'a'

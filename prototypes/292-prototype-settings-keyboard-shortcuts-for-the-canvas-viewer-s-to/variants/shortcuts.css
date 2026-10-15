@@ -44,7 +44,9 @@
 .k292-list { list-style: none; margin: 0; padding: 0; }
 .k292-item + .k292-item { border-top: 1px solid var(--hairline); }
 .settings-page .k292-row { gap: 12px; padding: 13px 0; }
-.k292-key { display: inline-flex; align-items: center; justify-content: flex-end; gap: 0; min-width: 132px; height: 36px; padding: 0 10px; border: 1px solid var(--hairline); border-radius: 8px; background: none; color: var(--text-primary); }
+.k292-key { display: inline-flex; align-items: center; justify-content: center; gap: 0; min-width: 132px; height: 36px; padding: 0 10px; border: 1px solid var(--hairline); border-radius: 8px; background: none; color: var(--text-primary); }
+/* Focus moves to the heading on arrival for screen readers; it is not a control, so no ring. */
+.settings-page #k-title:focus { outline: none; }
 .k292-key:hover { background: var(--wash); }
 .k292-change { margin-left: 10px; color: var(--text-muted); font-size: 12px; }
 .k292-key:hover .k292-change { color: var(--text-primary); }
@@ -99,6 +101,20 @@
 .k292-note p { margin: 0; color: var(--text-secondary); }
 .k292 .vw-bar kbd, .k292 .cf-toolgroup .seg kbd, .k292 .cf-toggle kbd { font-size: 10.5px; line-height: 16px; padding: 0 4px; min-width: 0; color: var(--text-muted); border-bottom-width: 1px; background: none; }
 
+/* C · round 2: B's compact rows; the row's keycap records in place, as in A. */
+.settings-page .k292-c { max-width: 560px; }
+.k292c-list { list-style: none; display: grid; gap: 2px; margin: 0; padding: 4px 0 8px; }
+.k292c-row .k292-icon { transition: background 0.12s; }
+.k292c-row:hover .k292-icon, .k292c-row:focus-visible .k292-icon { background: var(--surface-1); color: var(--text-primary); }
+.k292c-key { display: inline-flex; align-items: center; min-height: 28px; padding: 0 2px; border: 1px solid transparent; border-radius: 7px; }
+.k292c-key.is-capturing { padding: 0 10px; border: 1.5px dashed var(--state-claimed); background: color-mix(in srgb, var(--state-claimed) 8%, transparent); }
+.k292c-item.is-capturing .k292c-row { border-color: var(--hairline); background: var(--wash); }
+.k292c-item.is-error .k292c-key.is-capturing { border-color: var(--state-failed); background: color-mix(in srgb, var(--state-failed) 7%, transparent); }
+.settings-page .k292c-item .k292-help { margin: 6px 0 8px 50px; }
+/* The shipped .cf-chip.is-ok is 3.96:1 in light, so C marks a save with text only. */
+.k292c-saved { display: inline-flex; align-items: center; gap: 5px; color: var(--handoff-pr-ready); font-size: 12px; font-weight: 600; }
+.k292c-saved .i { width: 14px; height: 14px; }
+.k292c-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0 0 8px; border-top: 1px solid var(--hairline); color: var(--text-muted); font-size: 12.5px; }
 
 /* ---------- narrow ---------- */
 @media (max-width: 1050px) {
@@ -118,6 +134,7 @@
   .settings-page .k292-row .grow { flex-basis: calc(100% - 42px); }
   .k292-key { margin-left: 42px; }
   .settings-page .k292-help { margin-left: 0; }
+  .settings-page .k292c-item .k292-help { margin-left: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .k292-wait { animation: none; }
