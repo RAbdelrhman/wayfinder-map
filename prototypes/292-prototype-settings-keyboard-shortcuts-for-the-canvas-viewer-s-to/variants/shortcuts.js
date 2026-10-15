@@ -322,10 +322,15 @@
       const was = changed(t.id) ? `<span class="k292-was">${kbd(S.keys[t.id])}</span><span class="k292-arrow" aria-hidden="true">→</span><span class="k292-sr">, goes back to</span>` : '';
       return `<li><span class="k292-icon">${icon(t.icon)}</span><span class="grow">${t.name}</span>${was}${kbd(t.key)}</li>`;
     }).join('');
-    dialog.innerHTML = `<form method="dialog"><div class="dialog-head"><h2 id="reset-title">Reset all five shortcuts?</h2></div><p class="hint" id="reset-desc">They go back to the keys Wayfinder ships with, and save straight away.</p><ul class="k292-reset-list">${items}</ul><div class="k292-dialog-foot"><button type="submit" class="ghost" value="cancel" autofocus>Cancel</button><button type="submit" class="primary" value="reset">Reset shortcuts</button></div></form>`;
+    dialog.innerHTML = `<form method="dialog"><div class="dialog-head"><h2 id="reset-title">Reset all five shortcuts?</h2></div><p class="hint" id="reset-desc">They go back to the keys Wayfinder ships with, and save straight away.</p><ul class="k292-reset-list">${items}</ul><div class="k292-dialog-foot"><button type="button" class="ghost" data-reset-result="cancel" autofocus>Cancel</button><button type="button" class="primary" data-reset-result="reset">Reset shortcuts</button></div></form>`;
     dialog.returnValue = '';
     dialog.showModal();
   }
+  // The viewer allows scripts but blocks form submissions, including method=dialog.
+  $('#reset-dialog').addEventListener('click', (event) => {
+    const button = event.target instanceof Element ? event.target.closest('[data-reset-result]') : null;
+    if (button) $('#reset-dialog').close(button.dataset.resetResult);
+  });
   $('#reset-dialog').addEventListener('close', () => {
     const dialog = $('#reset-dialog');
     if (dialog.returnValue === 'reset') {
