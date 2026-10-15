@@ -10,7 +10,7 @@
 (() => {
   const { TOOLS, NAME, defaults, label, spoken, kbd, same, read, matches } = P292;
   const q = new URLSearchParams(location.search);
-  const DIR = ['b', 'c'].includes(q.get('dir')) ? q.get('dir') : 'a';
+  const DIR = ['b', 'c', 'd'].includes(q.get('dir')) ? q.get('dir') : 'a';
   const STATE = q.get('state');
   const STATIC = STATE !== null;
   const icon = (name) => Kit.icon(name);
@@ -60,6 +60,7 @@
     S.keys.pin = { key: 'P', shift: true };
     S.keys.note = { key: 'M' };
   }
+  if (STATE === 'reset-one') S.keys.pin = { key: 'P', shift: true };
 
   const ariaKeys = (b) => [b.ctrl && 'Control', b.alt && 'Alt', b.shift && 'Shift', b.key].filter(Boolean).join('+');
   const changed = (id) => !same(S.keys[id], TOOL[id].key);
@@ -151,7 +152,7 @@
     const b = S.keys[t.id];
     const cap = S.capturing === t.id;
     const err = S.error?.tool === t.id;
-    const saved = !cap && S.saved && (S.saved.tool === t.id || S.saved.tool === 'all');
+    const saved = !cap && S.saved && (S.saved.tool === t.id || S.saved.tool === 'all' || S.saved.tools?.includes(t.id));
     const was = changed(t.id) ? `, changed from ${spoken(t.key)}` : '';
     const name = cap ? `Recording a new ${t.name} shortcut. Now ${spoken(b)}.` : `${t.name} shortcut, ${spoken(b)}${was}. Change`;
     const mark = saved
@@ -181,7 +182,7 @@
   }
 
   function settingsHtml() {
-    if (DIR === 'c') return settingsHtmlC();
+    if (DIR === 'c' || DIR === 'd') return settingsHtmlC();
     const lede = '<p class="hint k292-lede">These keys work while a canvas is open. Use a letter, alone or with Shift, Alt or Ctrl.</p>';
     const body =
       DIR === 'a'
@@ -315,14 +316,18 @@
   }
 
   // ---------- reset ----------
+  let resetTargets = [];
   function openReset() {
     if (allDefault()) return announce('All five shortcuts already use their defaults.');
     const dialog = $('#reset-dialog');
-    const items = TOOLS.map((t) => {
+    resetTargets = DIR === 'd' ? TOOLS.filter((t) => changed(t.id)) : TOOLS;
+    const count = resetTargets.length;
+    const title = DIR === 'd' ? `Reset ${count} changed shortcut${count === 1 ? '' : 's'}?` : 'Reset all five shortcuts?';
+    const items = resetTargets.map((t) => {
       const was = changed(t.id) ? `<span class="k292-was">${kbd(S.keys[t.id])}</span><span class="k292-arrow" aria-hidden="true">→</span><span class="k292-sr">, goes back to</span>` : '';
       return `<li><span class="k292-icon">${icon(t.icon)}</span><span class="grow">${t.name}</span>${was}${kbd(t.key)}</li>`;
     }).join('');
-    dialog.innerHTML = `<form method="dialog"><div class="dialog-head"><h2 id="reset-title">Reset all five shortcuts?</h2></div><p class="hint" id="reset-desc">They go back to the keys Wayfinder ships with, and save straight away.</p><ul class="k292-reset-list">${items}</ul><div class="k292-dialog-foot"><button type="button" class="ghost" data-reset-result="cancel" autofocus>Cancel</button><button type="button" class="primary" data-reset-result="reset">Reset shortcuts</button></div></form>`;
+    dialog.innerHTML = `<form method="dialog"><div class="dialog-head"><h2 id="reset-title">${title}</h2></div><p class="hint" id="reset-desc">${DIR === 'd' ? 'Only the shortcuts below return to their defaults and save immediately.' : 'They go back to the keys Wayfinder ships with, and save straight away.'}</p><ul class="k292-reset-list">${items}</ul><div class="k292-dialog-foot"><button type="button" class="ghost" data-reset-result="cancel" autofocus>Cancel</button><button type="button" class="primary" data-reset-result="reset">Reset shortcuts</button></div></form>`;
     dialog.returnValue = '';
     dialog.showModal();
   }
@@ -334,6 +339,15 @@
   $('#reset-dialog').addEventListener('close', () => {
     const dialog = $('#reset-dialog');
     if (dialog.returnValue === 'reset') {
+      if (DIR === 'd') {
+        const ids = resetTargets.map((t) => t.id);
+        for (const t of resetTargets) S.keys[t.id] = { ...t.key };
+        const text = `${ids.length} shortcut${ids.length === 1 ? '' : 's'} restored to default${ids.length === 1 ? '' : 's'}`;
+        showSaved({ tools: ids, text });
+        repaint('#k-title');
+        announce(`Saved. ${text}.`);
+        return;
+      }
       S.keys = defaults();
       showSaved({ tool: 'all', text: 'All five shortcuts are back to P, E, C, N and F' });
       repaint('#k-title');
@@ -458,6 +472,6 @@
   });
 
   paint();
-  if (STATE === 'reset') openReset();
+  if (STATE === 'reset' || STATE === 'reset-one') openReset();
   if (S.capturing) $(`[data-edit="${S.capturing}"]`)?.focus();
 })();
