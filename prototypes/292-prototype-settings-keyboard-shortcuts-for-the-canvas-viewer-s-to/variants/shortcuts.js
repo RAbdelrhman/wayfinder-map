@@ -10,7 +10,9 @@
 (() => {
   const { TOOLS, NAME, defaults, label, spoken, kbd, same, read, matches } = P292;
   const q = new URLSearchParams(location.search);
-  const DIR = ['b', 'c', 'd'].includes(q.get('dir')) ? q.get('dir') : 'a';
+  const requestedDirection = q.get('dir');
+  // Only fixed literals enter generated HTML; never return query text after validation.
+  const DIR = requestedDirection === 'b' ? 'b' : requestedDirection === 'c' ? 'c' : requestedDirection === 'd' ? 'd' : 'a';
   const STATE = q.get('state');
   const STATIC = STATE !== null;
   const icon = (name) => Kit.icon(name);
