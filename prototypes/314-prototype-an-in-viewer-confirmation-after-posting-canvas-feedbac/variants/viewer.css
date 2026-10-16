@@ -76,3 +76,4 @@ button.p314-chip:hover { filter: brightness(0.96); }
 .p314-next-t { font-weight: 600; }
 .p314-panechip { display: flex; justify-content: flex-end; padding: 6px 12px; border-bottom: 1px solid var(--hairline); background: var(--surface-1); }
 .p314-panechip .p314-pop { right: 0; }
+.p314-msg { color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }

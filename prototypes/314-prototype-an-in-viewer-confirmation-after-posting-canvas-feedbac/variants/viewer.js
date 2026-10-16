@@ -4,12 +4,15 @@
  * from src/ui/styles.css. Only the confirmation pieces (p314-*) are new.
  *
  * ?dir=A|B|C      A: receipt in the panel · B: bar over the canvas · C: toolbar chip and popover
+ *       B2|B3     round 2: B with A's Copy message; B2 copies and opens the thread, B3 sends to it
+ * ?t3=sending|done|fail (B2, B3) ?t3fail=1 (B3: the first send fails)
  * ?state=review|posting|posted|failed|repost
  * ?size=full|pane ?fail=1 (the first post fails) ?thread=0 (no tracked T3 Code thread)
  */
 (() => {
   const q = new URLSearchParams(location.search);
-  const DIR = ['A', 'B', 'C'].includes(q.get('dir')) ? q.get('dir') : 'A';
+  const DIR = ['A', 'B', 'C', 'B2', 'B3'].includes(q.get('dir')) ? q.get('dir') : 'A';
+  const IS_B = DIR[0] === 'B';
   const STATES = ['review', 'posting', 'posted', 'failed', 'repost'];
   const S = {
     state: STATES.includes(q.get('state')) ? q.get('state') : 'review',
@@ -21,17 +24,19 @@
     bar: true, // B: the bar over the canvas is showing
     pop: true, // C: the chip's popover is open
     copied: false,
+    t3fail: q.get('t3fail') === '1', // B3: the first send fails
     dialog: false, // B: the post-again check is open
     view: 'rendered',
+    t3: ['sending', 'done', 'fail'].includes(q.get('t3')) ? q.get('t3') : null,
     when: 'just now',
   };
   if (S.state === 'repost') {
     S.when = '4 minutes ago';
-    if (DIR === 'B') S.dialog = true;
+    if (IS_B) S.dialog = true;
     if (DIR === 'C') S.pop = false;
   }
-  if (S.state === 'posted' && DIR === 'B') S.panelOpen = false;
-  if (S.size === 'pane') S.tab = DIR === 'B' && S.state === 'posted' ? 'canvas' : 'feedback';
+  if (S.state === 'posted' && IS_B) S.panelOpen = false;
+  if (S.size === 'pane') S.tab = IS_B && S.state === 'posted' ? 'canvas' : 'feedback';
 
   const T = {
     n: 292,
@@ -164,11 +169,39 @@
 
   // ---------- B: the bar over the canvas ----------
   function bar() {
-    if (DIR !== 'B') return '';
+    if (!IS_B) return '';
     if (S.state === 'failed')
       return `<div class="p314-bar is-warn" role="alert"><span class="p314-bar-ic">${icon('info')}</span><div class="p314-bar-t"><b>Not posted to ${where}</b><span>GitHub did not answer in time. Your ${MARKS.length} notes are still here. If the connection dropped while posting, check ${ticket} before you try again.</span></div><div class="p314-row">${viewLink(`Check ${ticket}`)}<button type="button" class="primary cf-sm" data-act="post">${icon('retry')}Try again</button></div></div>`;
     if (!posted() || !S.bar) return '';
+    if (DIR !== 'B') return remixBar();
     return `<div class="p314-bar" role="status" aria-labelledby="p314-bar-h"><span class="cf-ok">${icon('check')}</span><div class="p314-bar-t"><b id="p314-bar-h" tabindex="-1">Posted to ${where}</b><span>${t3} The agent doesn’t see these notes until you tell it.</span></div><div class="p314-row">${viewLink()}${openT3()}</div><button type="button" class="iconbtn" data-act="bar-close" aria-label="Dismiss the posted message">${icon('close')}</button></div>`;
+  }
+
+  // ---------- Round 2: B with A's Copy message, opening the thread in the same click ----------
+  // B2 copies the message and opens the thread; B3 sends the message into the thread, then opens it.
+  const MSG = `Canvas notes are posted on ${ticket}: ${T.url}`;
+  function remixBar() {
+    const close = `<button type="button" class="iconbtn" data-act="bar-close" aria-label="Dismiss the posted message">${icon('close')}</button>`;
+    const shell = (cls, role, ic, head, text, row) =>
+      `<div class="p314-bar${cls}" role="${role}" aria-labelledby="p314-bar-h">${ic}<div class="p314-bar-t"><b id="p314-bar-h" tabindex="-1">${head}</b>${text}</div><div class="p314-row">${row}</div>${close}</div>`;
+    const ok = `<span class="cf-ok">${icon('check')}</span>`;
+    const quote = `<span class="p314-msg">${DIR === 'B3' ? 'Sends' : 'Copies'}: “${esc(MSG)}”</span>`;
+    const copyOnly = `<button type="button" class="primary cf-sm" data-act="copy">${icon('copy')}${S.copied ? 'Copied' : 'Copy message for T3 Code'}</button>`;
+    if (!S.thread)
+      return shell('', 'status', ok, `Posted to ${where}`, `<span>${t3} Wayfinder doesn’t know this ticket’s thread, so paste the message there yourself.</span>${quote}`, `${viewLink()}${copyOnly}`);
+    if (DIR === 'B2') {
+      if (S.t3 === 'done')
+        return shell('', 'status', ok, `Posted to ${where}`, `<span>Message copied and your T3 Code thread for ${ticket} is open. Paste it there to continue.</span>`, `${viewLink()}<button type="button" class="ghost cf-sm" data-act="t3go">${icon('play')}Copy and open again</button>`);
+      return shell('', 'status', ok, `Posted to ${where}`, `<span>${t3} The agent doesn’t see these notes until you tell it.</span>${quote}`, `${viewLink()}<button type="button" class="primary cf-sm" data-act="t3go">${icon('play')}Copy message and open T3 Code</button>`);
+    }
+    // B3
+    if (S.t3 === 'sending')
+      return shell('', 'status', ok, `Posted to ${where}`, `<span>Sending the link to your T3 Code thread for ${ticket}…</span>${quote}`, `${viewLink()}<button type="button" class="primary cf-sm" disabled aria-busy="true"><span class="p314-spin" aria-hidden="true"></span>Sending…</button>`);
+    if (S.t3 === 'done')
+      return shell('', 'status', ok, `Posted to ${where} · sent to T3 Code`, `<span>Your T3 Code thread for ${ticket} has the link, and the agent is reading it. Continue there.</span>`, `${viewLink()}<button type="button" class="primary cf-sm" data-open-handoff="h-292" data-to="the T3 Code thread for ${ticket}">${icon('play')}Open T3 Code thread</button>`);
+    if (S.t3 === 'fail')
+      return shell(' is-warn', 'alert', `<span class="p314-bar-ic">${icon('info')}</span>`, `Posted to ${where} · not sent to T3 Code`, `<span>T3 Code isn’t running, so the message didn’t reach the thread. The notes are safe on GitHub.</span>${quote}`, `${copyOnly}<button type="button" class="ghost cf-sm" data-act="t3go">${icon('retry')}Try sending again</button>`);
+    return shell('', 'status', ok, `Posted to ${where}`, `<span>${t3} Send the link so the agent picks up these notes.</span>${quote}`, `${viewLink()}<button type="button" class="primary cf-sm" data-act="t3go">${icon('send')}Send to T3 Code</button>`);
   }
 
   // ---------- panel (canvasFeedback.ts panelHtml()) ----------
@@ -223,7 +256,7 @@
     const s = S.state;
     if (s === 'review' || s === 'posting' || s === 'failed') return reviewPanel();
     if (DIR === 'A') return s === 'repost' ? reviewPanel() : receiptA();
-    if (DIR === 'B') {
+    if (IS_B) {
       if (s === 'repost') return reviewPanel();
       return `<header class="cf-panel-head"><span class="cf-ok">${icon('check')}</span><h2 id="p314-h" tabindex="-1">Posted to ${where}</h2><span class="topbar-spacer"></span>${S.size === 'full' ? closeBtn : ''}</header>
         <div class="cf-panel-body"><p class="cf-muted">${t3}</p>${card(true)}</div>
@@ -282,14 +315,15 @@
       }
       S.state = 'posted';
       S.when = 'just now';
+      S.t3 = null;
       S.bar = true;
       S.pop = true;
-      if (DIR === 'B') {
+      if (IS_B) {
         S.panelOpen = false;
         if (S.size === 'pane') S.tab = 'canvas';
       }
       say(`Posted to GitHub, ${ticket}. ${t3}`);
-      paint(DIR === 'C' ? '#p314-pop' : DIR === 'B' ? '#p314-bar-h' : '#p314-h');
+      paint(DIR === 'C' ? '#p314-pop' : IS_B ? '#p314-bar-h' : '#p314-h');
     }, 1200);
   }
 
@@ -315,7 +349,7 @@
       return paint('[data-act="panel"]');
     }
     if (act === 'post') {
-      if (DIR === 'B' && posted()) {
+      if (IS_B && posted()) {
         S.dialog = true;
         return paint();
       }
@@ -335,6 +369,24 @@
       say('Copied. Paste it in your T3 Code thread.');
       Kit.toast(`Copied ${DIR === 'A' ? 'a message' : 'the comment link'} for your T3 Code thread`);
       return paint(`[data-act="copy"]`);
+    }
+    if (act === 't3go') {
+      if (DIR === 'B2') {
+        S.t3 = 'done';
+        say(`Message copied. Opening your T3 Code thread for ${ticket}.`);
+        Kit.toast(`Copied, and would open the T3 Code thread for ${ticket}`);
+        return paint('#p314-bar-h');
+      }
+      S.t3 = 'sending';
+      say(`Sending to your T3 Code thread for ${ticket}…`);
+      paint();
+      setTimeout(() => {
+        S.t3 = S.t3fail ? 'fail' : 'done';
+        S.t3fail = false;
+        say(S.t3 === 'done' ? `Sent to your T3 Code thread for ${ticket}.` : 'Not sent to T3 Code. The notes are safe on GitHub.');
+        paint('#p314-bar-h');
+      }, 1000);
+      return;
     }
     if (act === 'fresh') {
       Kit.toast('Would clear these notes and start new feedback');
