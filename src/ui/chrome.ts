@@ -67,6 +67,15 @@ const STATIC_ICONS: Record<string, string> = {
   hand: icons.HAND,
   help: icons.HELP,
   flame: icons.FLAME,
+  archive: icons.ARCHIVE,
+  restore: icons.RESTORE,
+  closed: icons.CLOSED,
+  flag: icons.FLAG,
+  clock: icons.CLOCK,
+  'eye-off': icons.EYE_OFF,
+  pause: icons.PAUSE,
+  alert: icons.ALERT,
+  back: icons.BACK,
 };
 
 /** Fills every `data-icon` element under `root`, so static markup can name an icon. */

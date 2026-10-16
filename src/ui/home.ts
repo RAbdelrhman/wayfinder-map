@@ -3,8 +3,8 @@ import { readRouteJson, routeData } from './routeData.js';
 import type { HomeState } from '../home.js';
 import type { AuthFlowState } from '../authFlow.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
-import { mapPath, normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
-import type { MapSnapshot, WayfinderMap } from '../types.js';
+import { normalizeRepo, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
+import type { MapSnapshot } from '../types.js';
 import { bindUpdater, paintIcons, paintRepoIcons, repoIconHtml, updateAccountMark } from './chrome.js';
 import type { AccountMark, AccountProfile } from './chrome.js';
 import * as icons from './icons.js';
@@ -26,8 +26,11 @@ import { readHomeRecency, recordRepositoryOpened } from './homeRecency.js';
 import { homeLoadingMarkup, readHomeShape, rememberHomeShape, renderHomeLanding } from './homeLanding.js';
 import { handOffCardHtml, homeHandOffHistoryHtml, mountHandOffs, recentHandOffs } from './handOffs.js';
 import { mountMapEventInbox } from './mapEventInbox.js';
-import { countRunningHandOffs, mapMatchesRepositorySearch, needsYouTicketNumbers, repositoryLoadErrorHtml, repositoryLoadingHtml, repositoryPageHtml } from './repositoryView.js';
-import type { RepositoryHandOffStatus } from './repositoryView.js';
+import { repositoryLoadErrorHtml, repositoryLoadingHtml } from './repositoryView.js';
+import type { RepositoryView } from './repositoryView.js';
+import { mountRepositoryPage } from './repositoryPage.js';
+import type { RepositoryPage, ToastAction } from './repositoryPage.js';
+import type { AutoMapView } from '../autoMapService.js';
 import { desktopNotificationFor, handOffTransitionNotifications, mapEventNotification, mountNotificationInbox } from './notifications.js';
 import type { NewInboxNotification } from './notifications.js';
 import { DEFAULT_NOTIFICATION_SETTINGS, readNotificationSettings } from '../notificationTypes.js';
@@ -52,14 +55,15 @@ const handOffSurface = mountHandOffs();
 mountCanvasViewer(need('app'));
 const notificationInbox = mountNotificationInbox();
 mountMapEventInbox((event: MapEvent) => {
-  const openMap = repositoryPageCards?.repo.toLowerCase() === event.repo.toLowerCase()
-    ? repositoryPageCards.maps.find((map) => map.number === event.mapNumber)
+  const shown = repositoryPage?.snapshot();
+  const openMap = shown?.repo.toLowerCase() === event.repo.toLowerCase()
+    ? shown.maps.find((map) => map.number === event.mapNumber)
     : undefined;
   const notification = mapEventNotification(event, openMap?.title ?? 'Map #' + String(event.mapNumber));
   if (notification !== null) void publishNotification(notification);
 }, notificationInbox);
 let homeHandOffHistoryKey = '';
-let repositoryPageCards: { repo: string; root: HTMLElement; maps: readonly WayfinderMap[] } | null = null;
+let repositoryPage: RepositoryPage | null = null;
 let previousHomeHandOffRecords: readonly HandOffStatusDto[] | null = null;
 let notificationSettings: NotificationSettings = { ...DEFAULT_NOTIFICATION_SETTINGS };
 let notificationSettingsChanged = false;
@@ -116,8 +120,7 @@ handOffSurface.subscribe((records) => {
   notificationInbox.reconcileHandOffs(records);
   for (const notification of handOffTransitionNotifications(previous ?? [], records)) void publishNotification(notification);
   renderHomeHandOffHistory(records);
-  const cards = repositoryPageCards;
-  if (cards !== null && cards.root.isConnected) paintRepositoryHandOffCounts(cards.repo, cards.root, cards.maps, records);
+  repositoryPage?.refresh();
 });
 
 function setSynced(text: string): void {
@@ -134,13 +137,24 @@ function setSyncBusy(busy: boolean): void {
 
 let toastTimer = 0;
 
-function toast(message: string, ms = 4200): void {
-  els.toast.textContent = message;
+/** Shows a message, with one optional action button that stays a little longer. */
+function toast(message: string, ms: number | ToastAction = 4200): void {
+  const action = typeof ms === 'number' ? null : ms;
+  if (action === null) {
+    els.toast.textContent = message;
+  } else {
+    setTrustedHtml(els.toast, `<span>${escapeHtml(message)}</span><button type="button">${escapeHtml(action.label)}</button>`);
+    els.toast.querySelector('button')?.addEventListener('click', () => {
+      els.toast.hidden = true;
+      action.run();
+    });
+  }
+  els.toast.classList.toggle('has-action', action !== null);
   els.toast.hidden = false;
   window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
     els.toast.hidden = true;
-  }, ms);
+  }, typeof ms === 'number' ? ms : 6000);
 }
 
 /** Writes markup into the page and hydrates the icons it named. */
@@ -513,138 +527,70 @@ function bindRepoPicker(
   });
 }
 
-function bindRepositoryMaps(repo: string, maps: readonly WayfinderMap[], settledOpen: boolean): void {
-  const root = els.main.querySelector<HTMLElement>('[data-repository-page]');
-  const search = root?.querySelector<HTMLInputElement>('#repo-map-search');
-  const noMatch = root?.querySelector<HTMLElement>('[data-repo-map-no-match]');
-  const resultCount = root?.querySelector<HTMLElement>('[data-repo-map-count]');
-  if (root === null || root === undefined || search === null || search === undefined || noMatch === null || noMatch === undefined || resultCount === null || resultCount === undefined) return;
+/** Whether Auto map is on, per map, so Archived maps can say it is paused. Read once per page. */
+let autoMapsOn: Set<string> | null = null;
+const autoMapKey = (repo: string, mapNumber: number): string => `${repo.toLowerCase()}#${String(mapNumber)}`;
 
-  const byNumber = new Map(maps.map((map) => [map.number, map]));
-  const cards = [...root.querySelectorAll<HTMLElement>('.wf-maps [data-map-card]')];
-  const rows = [...root.querySelectorAll<HTMLElement>('.wf-settled-list [data-map-card]')];
-  const toggle = root.querySelector<HTMLButtonElement>('[data-settled-toggle]');
-  const toggleLabel = root.querySelector<HTMLElement>('[data-settled-label]');
-  const list = root.querySelector<HTMLElement>('.wf-settled-list');
-  let open = settledOpen;
-  let settledVisible = rows.length;
-
-  const shows = (element: HTMLElement): boolean => {
-    const map = byNumber.get(Number(element.dataset['mapNumber']));
-    const show = map !== undefined && mapMatchesRepositorySearch(map, search.value);
-    element.hidden = !show;
-    return show;
-  };
-  const paintToggle = (): void => {
-    if (toggle === null || toggleLabel === null || list === null) return;
-    toggle.setAttribute('aria-expanded', String(open));
-    toggle.classList.toggle('is-open', open);
-    toggleLabel.textContent = open ? 'Hide settled' : `Show ${String(settledVisible)} settled`;
-    list.hidden = !open;
-    toggle.closest<HTMLElement>('[data-repo-settled]')?.toggleAttribute('hidden', settledVisible === 0);
-  };
-  const update = (): void => {
-    const visible = cards.filter(shows).length;
-    settledVisible = rows.filter(shows).length;
-    const query = search.value.trim();
-    noMatch.hidden = visible > 0;
-    noMatch.textContent = query !== '' ? `No active maps match “${query}”.` : 'Every map here has settled.';
-    resultCount.textContent = `Showing ${String(visible)} of ${String(cards.length)} active maps and ${String(settledVisible)} of ${String(rows.length)} settled.`;
-    paintToggle();
-  };
-
-  const settle = async (mapNumber: number, settled: boolean, button: HTMLButtonElement): Promise<void> => {
-    button.disabled = true;
-    try {
-      const snapshot = await postJson<MapSnapshot>(scopedApiPath(repo, 'settle'), { map: mapNumber, settled });
-      paintRepository(repo, snapshot, open);
-      // The list was redrawn, so put focus back where the map went.
-      els.main.querySelector<HTMLElement>(settled ? '[data-settled-toggle]' : `[data-settle-map="${String(mapNumber)}"]`)?.focus();
-      const title = byNumber.get(mapNumber)?.title ?? '';
-      toast(settled ? `Settled #${String(mapNumber)} ${title}. GitHub is unchanged.` : `#${String(mapNumber)} ${title} is active again.`);
-    } catch (error) {
-      button.disabled = false;
-      toast((error as Error).message || 'Could not change this map.', 8000);
-    }
-  };
-
-  root.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement;
-    if (toggle !== null && target.closest('[data-settled-toggle]') === toggle) {
-      open = !open;
-      paintToggle();
-      return;
-    }
-    const settleButton = target.closest<HTMLButtonElement>('[data-settle-map], [data-unsettle-map]');
-    if (settleButton === null) return;
-    const settled = settleButton.dataset['settleMap'] !== undefined;
-    const mapNumber = Number(settled ? settleButton.dataset['settleMap'] : settleButton.dataset['unsettleMap']);
-    if (Number.isSafeInteger(mapNumber)) void settle(mapNumber, settled, settleButton);
-  });
-  search.addEventListener('input', update);
-  update();
+function loadAutoMaps(): void {
+  if (autoMapsOn !== null) return;
+  autoMapsOn = new Set();
+  void getJson<AutoMapView>('/api/auto-map')
+    .then((view) => {
+      autoMapsOn = new Set(view.maps.filter((map) => map.enabled).map((map) => autoMapKey(map.repo, map.mapNumber)));
+      repositoryPage?.refresh();
+    })
+    .catch(() => undefined);
 }
 
-function paintRepositoryHandOffCounts(
-  repo: string,
-  root: HTMLElement,
-  maps: readonly WayfinderMap[],
-  handOffs: readonly RepositoryHandOffStatus[],
-): void {
-  if (!root.isConnected) return;
-  const counts = countRunningHandOffs(repo, handOffs);
-  for (const badge of root.querySelectorAll<HTMLElement>('[data-map-handoffs]')) {
-    const mapNumber = Number(badge.dataset['mapHandoffs']);
-    if (!Number.isSafeInteger(mapNumber)) continue;
-    const count = counts.get(mapNumber) ?? 0;
-    setTrustedHtml(badge, count === 0 ? '' : `<span data-icon="bolt" aria-hidden="true"></span>${String(count)} running in T3 Code`);
-    paintIcons(badge);
-    badge.hidden = count === 0;
-  }
-  const mapsByNumber = new Map(maps.map((map) => [map.number, map]));
-  for (const badge of root.querySelectorAll<HTMLAnchorElement>('[data-map-needs-you]')) {
-    const mapNumber = Number(badge.dataset['mapNeedsYou']);
-    const map = mapsByNumber.get(mapNumber);
-    if (map === undefined) continue;
-    const tickets = needsYouTicketNumbers(repo, map, handOffs);
-    const firstTicket = tickets[0];
-    badge.hidden = firstTicket === undefined;
-    setTrustedHtml(badge, firstTicket === undefined ? '' : `<span data-icon="bell" aria-hidden="true"></span>${String(tickets.length)} needs you`);
-    if (firstTicket !== undefined) badge.href = `${mapPath(repo, map.number)}?view=map&ticket=${String(firstTicket)}`;
-    paintIcons(badge);
-  }
+function repositoryViewOf(search: string): RepositoryView {
+  return new URLSearchParams(search).get('view') === 'archived' ? 'archived' : 'active';
+}
+
+function mountRepository(repo: string): RepositoryPage {
+  const endpoint = scopedApiPath(repo, 'snapshot');
+  return mountRepositoryPage(
+    {
+      root: els.main,
+      repo,
+      paint: (html) => paint(html, 'repository-sheet'),
+      saveArchive: (mapNumber, archived) => postJson<MapSnapshot>(scopedApiPath(repo, 'settle'), { map: mapNumber, settled: archived }),
+      readMap: (mapNumber) => getJson<MapSnapshot>(`${endpoint}?map=${String(mapNumber)}`),
+      toast: (message, action) => toast(message, action ?? 4200),
+      adopted: (snapshot) => navigation?.setSnapshot(snapshot, null),
+      viewChanged: (view, href) => {
+        if (`${window.location.pathname}${window.location.search}` !== href) window.history.pushState(null, '', href);
+        document.title = `${view === 'archived' ? 'Archived maps · ' : ''}${repo} · Wayfinder`;
+        navigation?.setRepositoryView(view);
+      },
+      drawn: () => bindPublicMaps(repo),
+      handOffs: () => handOffSurface.getRecords(),
+      autoMap: (mapNumber) => autoMapsOn?.has(autoMapKey(repo, mapNumber)) ?? false,
+      login: () => cachedAccount?.login ?? null,
+      stacked: () => window.matchMedia('(max-width: 820px)').matches,
+    },
+    repositoryViewOf(window.location.search),
+  );
 }
 
 async function renderRepository(repo: string, refresh: boolean): Promise<void> {
-  document.title = `${repo} · Wayfinder`;
+  const view = repositoryViewOf(window.location.search);
+  document.title = `${view === 'archived' ? 'Archived maps · ' : ''}${repo} · Wayfinder`;
   remember(repo);
-  void syncAccountMark();
+  void syncAccountMark().then(() => repositoryPage?.refresh());
+  loadAutoMaps();
+  repositoryPage ??= mountRepository(repo);
   const endpoint = scopedApiPath(repo, 'snapshot');
   const cached = routeData().peek<MapSnapshot>(endpoint);
-  if (!refresh && cached !== null) paintRepository(repo, cached, false, true);
+  if (!refresh && cached !== null && repositoryPage.snapshot() === null) repositoryPage.show(cached);
   const snapshot = await readRouteJson<MapSnapshot>(`${endpoint}${refresh ? '?refresh=1' : cached === null ? '' : '?check=1'}`, true);
   const fetched = Date.parse(snapshot.fetchedAt);
   setSynced(Number.isNaN(fetched) ? '' : syncedLabel(Date.now() - fetched));
-  paintRepository(repo, snapshot, false);
-}
-
-function paintRepository(repo: string, snapshot: MapSnapshot, settledOpen: boolean, cached = false): void {
-  if (!cached) notificationInbox.reconcileSnapshot(snapshot);
-  navigation?.setSnapshot(snapshot, null);
-  paint(repositoryPageHtml(repo, snapshot), 'repository-sheet');
-  bindRepositoryMaps(repo, snapshot.maps, settledOpen);
-  bindPublicMaps(repo, snapshot, settledOpen);
-  const root = els.main.querySelector<HTMLElement>('[data-repository-page]');
-  if (root === null) {
-    repositoryPageCards = null;
-    return;
-  }
-  repositoryPageCards = { repo, root, maps: snapshot.maps };
-  paintRepositoryHandOffCounts(repo, root, snapshot.maps, handOffSurface.getRecords());
+  notificationInbox.reconcileSnapshot(snapshot);
+  repositoryPage.show(snapshot);
 }
 
 /** Follow and Unfollow in the Public maps list. The page is redrawn from the snapshot the server sends back. */
-function bindPublicMaps(repo: string, snapshot: MapSnapshot, settledOpen: boolean): void {
+function bindPublicMaps(repo: string): void {
   const section = els.main.querySelector<HTMLElement>('[data-repo-public]');
   section?.addEventListener('click', (event) => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-follow-map], [data-unfollow-map]');
@@ -652,11 +598,11 @@ function bindPublicMaps(repo: string, snapshot: MapSnapshot, settledOpen: boolea
     const followed = button.dataset['followMap'] !== undefined;
     const mapNumber = Number(followed ? button.dataset['followMap'] : button.dataset['unfollowMap']);
     if (!Number.isSafeInteger(mapNumber)) return;
-    const title = snapshot.publicMaps.find((map) => map.number === mapNumber)?.title ?? '';
+    const title = repositoryPage?.snapshot()?.publicMaps.find((map) => map.number === mapNumber)?.title ?? '';
     button.disabled = true;
     void postJson<MapSnapshot>(scopedApiPath(repo, 'follow'), { map: mapNumber, followed })
       .then((next) => {
-        paintRepository(repo, next, settledOpen);
+        repositoryPage?.show(next);
         // The list was redrawn, so put focus back on the same map's new button.
         els.main.querySelector<HTMLElement>(`[data-public-map="${String(mapNumber)}"] button`)?.focus();
         toast(followed ? `Following #${String(mapNumber)} ${title}. It is on your maps now.` : `Unfollowed #${String(mapNumber)} ${title}.`);
@@ -732,6 +678,21 @@ navigation = mountNavigation({
   repo: navigationRepo,
   mapNumber: null,
   view: 'map',
+  repositoryView: page.kind === 'repository' ? repositoryViewOf(window.location.search) : 'active',
+  // The sidebar's way into Archived maps, and back, switches this page's list without a reload.
+  onNavigate: (href) => {
+    if (page.kind !== 'repository' || repositoryPage === null) return false;
+    const url = new URL(href, window.location.origin);
+    if (url.origin !== window.location.origin || url.pathname !== repoPath(page.repo)) return false;
+    repositoryPage.go(repositoryViewOf(url.search));
+    return true;
+  },
+});
+window.addEventListener('popstate', () => {
+  if (page.kind !== 'repository' || repositoryPage === null) return;
+  const view = repositoryViewOf(window.location.search);
+  repositoryPage.setView(view);
+  navigation?.setRepositoryView(view);
 });
 
 async function run(work: () => Promise<unknown> | unknown): Promise<void> {
@@ -739,8 +700,10 @@ async function run(work: () => Promise<unknown> | unknown): Promise<void> {
     await work();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (page.kind === 'repository' && repositoryPageCards !== null) {
-      // A failed refresh leaves the last successful view usable.
+    if (page.kind === 'repository' && repositoryPage?.snapshot() != null) {
+      // A failed refresh leaves the last successful view usable, and says it is older.
+      repositoryPage.markStale();
+      return;
     } else if (page.kind === 'repository') {
       paint(repositoryLoadErrorHtml(message), 'repository-sheet');
     } else {
@@ -752,8 +715,9 @@ async function run(work: () => Promise<unknown> | unknown): Promise<void> {
 
 async function show(refresh = false): Promise<void> {
   if (refresh) setSyncBusy(true);
-  else if (page.kind === 'repository') paint(repositoryLoadingHtml(page.repo), 'repository-sheet');
-  else if (page.kind === 'home') paint(homeLoadingMarkup(readHomeShape(localStorage)));
+  else if (page.kind === 'repository') {
+    if (repositoryPage?.snapshot() == null) paint(repositoryLoadingHtml(page.repo, repositoryViewOf(window.location.search)), 'repository-sheet');
+  } else if (page.kind === 'home') paint(homeLoadingMarkup(readHomeShape(localStorage)));
   else paint('<p class="loading" role="status" aria-live="polite">Reading GitHub…</p>');
   await run(async () => {
     if (page.kind === 'new-map') await renderNewMap();

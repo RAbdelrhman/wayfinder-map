@@ -49,6 +49,11 @@ export function repoPath(repo: string): string {
   return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
 }
 
+/** The repository's Archived maps view: the repository page with its archived list showing. */
+export function archivedMapsPath(repo: string): string {
+  return `${repoPath(repo)}?view=archived`;
+}
+
 export function mapPath(repo: string, mapNumber: number): string {
   if (!Number.isSafeInteger(mapNumber) || mapNumber <= 0) throw new Error(`Invalid map number: ${String(mapNumber)}`);
   return `${repoPath(repo)}/maps/${String(mapNumber)}`;

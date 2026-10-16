@@ -34,7 +34,8 @@ import type { Lineage, TicketFilter } from './focus.js';
 import { escapeHtml, listItemCount, renderMarkdown } from './markdown.js';
 import * as icons from './icons.js';
 import { icon } from './icons.js';
-import { parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
+import { archivedMapsPath, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
+import { archivedMapCardHtml } from './archive.js';
 import { FOG_KEY_ROW, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
 import { NOTIFICATION_SETTINGS_EVENT } from './settings.js';
@@ -136,6 +137,7 @@ const els = {
   search: need<HTMLInputElement>('search'),
   warnings: need('warnings'),
   planningHandoff: need('planning-handoff'),
+  archiveCard: need('map-archive-card'),
   filters: need('filters'),
   canvasWrap: need('canvas-wrap'),
   canvas: need('canvas'),
@@ -718,6 +720,67 @@ function onCriticalPath(map: WayfinderMap, number: number): boolean {
   return map.criticalPath.remaining > 0 && map.criticalPath.tickets.includes(number);
 }
 
+/* ---------- archive ---------- */
+
+/** The opened map's Restore: in flight, failed with a message, or done from this page. */
+const archiveCard: { busy: boolean; error: string | null; restored: number | null } = { busy: false, error: null, restored: null };
+
+/** An opened archived map stays archived and says so, with Restore and the way back to Archived maps. */
+function renderArchiveCard(): void {
+  const map = currentMap();
+  const keep = document.activeElement instanceof HTMLElement && els.archiveCard.contains(document.activeElement)
+    ? (document.activeElement.matches('[data-restore-map]') ? '[data-restore-map]' : document.activeElement.matches('[data-archive-retry]') ? '[data-archive-retry]' : null)
+    : null;
+  const html = map === null || snapshot === null
+    ? ''
+    : archivedMapCardHtml(map, {
+        busy: archiveCard.busy,
+        error: archiveCard.error,
+        restored: archiveCard.restored === map.number,
+        autoMap: autoMaps.setting(snapshot.repo, map.number).enabled,
+        backHref: archivedMapsPath(snapshot.repo),
+        backLabel: 'Archived maps',
+        activeHref: repoPath(snapshot.repo),
+      });
+  els.archiveCard.hidden = html === '';
+  els.app.classList.toggle('has-archive-card', html !== '');
+  setTrustedHtml(els.archiveCard, html);
+  paintIcons(els.archiveCard);
+  if (keep !== null) els.archiveCard.querySelector<HTMLElement>(keep)?.focus();
+}
+
+async function restoreOpenedMap(): Promise<void> {
+  const map = currentMap();
+  if (snapshot === null || map === null || map.settled === null || archiveCard.busy) return;
+  archiveCard.busy = true;
+  archiveCard.error = null;
+  renderArchiveCard();
+  const repo = snapshot.repo;
+  try {
+    const response = await fetch(scopedApiPath(repo, 'settle'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ map: map.number, settled: false }) });
+    const value = (await response.json()) as MapSnapshot | { error?: string };
+    if (!response.ok) throw new Error(('error' in value ? value.error : undefined) ?? 'Request failed.');
+    archiveCard.busy = false;
+    archiveCard.restored = map.number;
+    routeData().remember(scopedApiPath(repo, 'snapshot'), value);
+    applySnapshot(value as MapSnapshot, false);
+    // Restored and open, it is watched again, so its events come to the inbox.
+    if (map.open) mapEventInbox.openMap(repo, map.number);
+    els.archiveCard.querySelector<HTMLElement>('a')?.focus();
+  } catch (error) {
+    archiveCard.busy = false;
+    archiveCard.error = error instanceof TypeError || !(error instanceof Error) || error.message === '' ? "Your archive choices couldn't be saved on this computer." : error.message;
+    renderArchiveCard();
+    els.archiveCard.querySelector<HTMLElement>('[data-archive-retry]')?.focus();
+  }
+}
+
+els.archiveCard.addEventListener('click', (event) => {
+  const target = event.target instanceof Element ? event.target.closest('[data-restore-map], [data-archive-retry]') : null;
+  if (target === null || target.getAttribute('aria-disabled') === 'true') return;
+  void restoreOpenedMap();
+});
+
 /* ---------- render ---------- */
 
 function render(): void {
@@ -734,6 +797,7 @@ function render(): void {
   els.app.classList.toggle('is-prototypes', view === 'prototypes');
   renderSynced();
   renderPlanningHandoff();
+  renderArchiveCard();
   renderFilters();
   renderKey();
   if (view === 'map') renderGraph();

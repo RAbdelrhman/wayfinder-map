@@ -80,4 +80,11 @@ export const CI_FAIL = '<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6
 export const CI_PENDING = '<circle cx="12" cy="12" r="9" stroke-dasharray="3.5 3"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/>';
 export const EYE = '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>';
 export const CHANGES = '<path d="M21 12a8.5 8.5 0 0 1-12.4 7.5L3 21l1.5-5.6A8.5 8.5 0 1 1 21 12z"/><path d="M9 11h6M9 14h4"/>';
+export const ARCHIVE = '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/>';
+export const RESTORE = '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h3M19 9v10a1 1 0 0 1-1 1h-3"/><path d="m9 15 3-3 3 3M12 12v9"/>';
+export const CLOSED = '<circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5.5"/>';
+export const FLAG = '<path d="M5 21V4"/><path d="M5 4h12l-2.5 4.5L17 13H5"/>';
+export const EYE_OFF = '<path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>';
+export const PAUSE = '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>';
+export const BACK = '<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>';
 export const CLOCK = '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>';
