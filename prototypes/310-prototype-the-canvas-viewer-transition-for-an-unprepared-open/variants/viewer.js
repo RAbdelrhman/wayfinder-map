@@ -1,18 +1,18 @@
 // #310: what the shipped ACF4 viewer shows while an unprepared canvas boots.
 // One page; the query picks the direction and the case:
-//   dir     A poster | B skeleton | C hold the open | D lift the tile | E prepare earlier only (today's screen)
+//   dir     AB poster over the app's skeleton (round 2) | A poster | B skeleton | C hold the open | D lift the tile | E prepare earlier only (today's screen)
 //   ready   prep (pointer rested 400 ms, so ready ~16 ms after the click) | milliseconds after the click
 //   surface desktop | localhost      entry board (Canvas button) | option (a variant tile)
-//   poster  ok | missing | failed    motion reduce      slow 1 | 4      auto 0 stops the replay loop
+//   poster  ok | missing | failed | late (AB: decodes 200 ms after the click)    motion reduce      slow 1 | 4      auto 0 stops the replay loop
 //   capture board | option: only the live canvas, used to make the poster images in ../assets
 (() => {
   const q = new URLSearchParams(location.search);
-  const DIR = ['A', 'B', 'C', 'D'].includes(q.get('dir')) ? q.get('dir') : 'E';
+  const DIR = ['AB', 'A', 'B', 'C', 'D'].includes(q.get('dir')) ? q.get('dir') : 'E';
   const PREP = q.get('ready') === 'prep';
   const READY = PREP ? 16 : Math.max(0, Number(q.get('ready') ?? 440) || 0);
   const SURFACE = q.get('surface') === 'localhost' ? 'localhost' : 'desktop';
   const ENTRY = q.get('entry') === 'option' ? 'option' : 'board';
-  const POSTER = ['ok', 'missing', 'failed'].includes(q.get('poster')) ? q.get('poster') : 'ok';
+  const POSTER = ['ok', 'missing', 'failed', 'late'].includes(q.get('poster')) ? q.get('poster') : 'ok';
   const REDUCE = q.get('motion') === 'reduce' || matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (REDUCE) document.body.classList.add('is-reduce');
   const CAPTURE = q.get('capture');
@@ -51,6 +51,13 @@
       ? `<div class="p310-cv is-present is-skel" aria-hidden="true"><div class="p310-engine"><span class="p310-bone" style="width:54px"></span><b>A · ${esc(OPTIONS[0].name)}</b><span class="p310-sp"></span><span class="p310-bone" style="width:40px"></span></div><div class="p310-present"><span class="p310-skel-page"></span></div></div>`
       : `<div class="p310-cv is-skel" aria-hidden="true"><div class="p310-engine"><span class="p310-bone" style="width:120px"></span><span class="p310-sp"></span><span class="p310-bone" style="width:60px"></span></div><div class="p310-plane"><div class="p310-grid">${OPTIONS.map((o) => `<figure class="p310-fr"><figcaption><b>${o.id}</b>${esc(o.name)}</figcaption><span class="p310-fr-body"></span></figure>`).join('')}</div></div></div>`;
 
+  // Round 2 (AB): the same placeholder in the app's own loading style, src/ui/skeleton.ts bone() and .wf-bone.
+  const bone = (w) => `<span class="wf-bone" style="--w: ${w}">&nbsp;</span>`;
+  const appSkeleton = (entry) =>
+    entry === 'option'
+      ? `<div class="p310-cv is-present is-bones" aria-hidden="true"><div class="p310-engine">${bone('54px')}<b>A · ${esc(OPTIONS[0].name)}</b><span class="p310-sp"></span>${bone('40px')}</div><div class="p310-present"><span class="wf-bone is-block p310-bone-page"></span></div></div>`
+      : `<div class="p310-cv is-bones" aria-hidden="true"><div class="p310-engine">${bone('120px')}<span class="p310-sp"></span>${bone('60px')}</div><div class="p310-plane"><div class="p310-grid">${OPTIONS.map((o) => `<figure class="p310-fr"><figcaption><b>${o.id}</b>${esc(o.name)}</figcaption><span class="wf-bone is-block p310-bone-frame"></span></figure>`).join('')}</div></div></div>`;
+
   if (CAPTURE) {
     document.body.classList.add('is-capture');
     document.getElementById('surface').innerHTML = liveCanvas(CAPTURE === 'option' ? 'option' : 'board');
@@ -85,7 +92,7 @@
   const originEl = () => (ENTRY === 'option' ? app.querySelector('[data-variant="A"]') : app.querySelector('[data-canvas]'));
   const posterSrc = POSTER === 'failed' ? '../assets/poster-damaged.jpg' : `../assets/poster-${ENTRY}-${THEME}.jpg`;
   // A real poster would be requested with the card, so it is decoded before the click.
-  if (DIR === 'A' && POSTER !== 'missing') new Image().src = posterSrc;
+  if ((DIR === 'A' || DIR === 'AB') && POSTER !== 'missing') new Image().src = posterSrc;
 
   // ---------- the open ----------
   let run = 0, t0 = 0, firstAt = null, liveAt = null, openAt = null, origin = null, timers = [];
@@ -118,7 +125,20 @@
   };
   /** What sits on the stage between the click and the canvas's first paint. */
   const placeholder = () => {
-    if (DIR === 'A' && POSTER !== 'missing') {
+    if (DIR === 'AB') {
+      // The skeleton is always laid first; a poster that decodes covers it, one that is missing or fails never does.
+      stage.insertAdjacentHTML('afterbegin', appSkeleton(ENTRY));
+      mark('first', 0);
+      if (POSTER === 'missing') return;
+      const img = new Image();
+      img.className = 'vw-poster-image p310-over';
+      img.alt = '';
+      img.onerror = () => img.remove();
+      const my = run;
+      const put = () => { if (my !== run) return; img.src = posterSrc; stage.append(img); };
+      if (POSTER === 'late') later(200, put);
+      else put();
+    } else if (DIR === 'A' && POSTER !== 'missing') {
       const img = new Image();
       img.className = 'vw-poster-image';
       img.alt = '';
@@ -246,11 +266,11 @@
   };
 
   // ---------- prototype controls and the timeline (not product UI) ----------
-  const DIRNAME = { E: "E · Prepare earlier only (today's screen)", A: 'A · Poster', B: 'B · Skeleton', C: 'C · Hold the open', D: 'D · Lift the tile' };
+  const DIRNAME = { AB: 'A+B · Poster over skeleton', E: "E · Prepare earlier only (today's screen)", A: 'A · Poster', B: 'B · Skeleton', C: 'C · Hold the open', D: 'D · Lift the tile' };
   const scaleMax = Math.max(1000, READY + 120);
   const at = (ms) => `${Math.min(100, (ms / scaleMax) * 100)}%`;
   const caseLine = () =>
-    [DIRNAME[DIR], SURFACE === 'desktop' ? 'Desktop app' : 'Localhost', ENTRY === 'board' ? 'Canvas button' : 'Variant tile', PREP ? 'Prepared (400 ms rest)' : `No lead-in · ready at ${READY} ms`, DIR === 'A' && POSTER !== 'ok' ? `Poster ${POSTER}` : '', REDUCE ? 'Reduced motion' : '']
+    [DIRNAME[DIR], SURFACE === 'desktop' ? 'Desktop app' : 'Localhost', ENTRY === 'board' ? 'Canvas button' : 'Variant tile', PREP ? 'Prepared (400 ms rest)' : `No lead-in · ready at ${READY} ms`, (DIR === 'A' || DIR === 'AB') && POSTER !== 'ok' ? `Poster ${POSTER}` : '', REDUCE ? 'Reduced motion' : '']
       .filter(Boolean)
       .join(' · ');
   let playhead = null;

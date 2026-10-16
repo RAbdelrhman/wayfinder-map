@@ -68,6 +68,13 @@ html, body { height: 100%; margin: 0; }
 }
 @keyframes p310-sheen { from { background-position: 100% 0; } to { background-position: -50% 0; } }
 
+/* A+B (round 2): the app's own bones (.wf-bone, src/ui/styles.css) under the poster. */
+.p310-cv.is-bones .wf-bone.is-block { display: block; width: 100%; height: auto; }
+.p310-bone-frame { aspect-ratio: 16 / 10; }
+.p310-cv.is-bones .wf-bone.p310-bone-page { width: auto; height: 100%; max-width: 100%; aspect-ratio: 16 / 9; }
+.vw-poster-image.p310-over { z-index: 1; }
+.p310.is-reduce .wf-bone::before { animation: none; }
+
 /* C: the held tile. Pressed at once; a ring only if the hold lasts. */
 .p310-held .wf-frame, a.primary.p310-held { transform: scale(0.97); transition: transform 0.08s; }
 .p310-held .wf-frame { border-color: var(--state-claimed); }

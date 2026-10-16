@@ -5,6 +5,8 @@ const v = (dir, query) => `variants/viewer.html?dir=${dir}&${query}`;
 
 const NOTES = {
   A: {
+    disposition: 'combine',
+    feedback: "User, in the #310 thread (2026-10-16), after a canvas note on B (\"I like B. We use skeletons everywhere else so it fits app style as well.\"): \"yes I think combining a with b would look good.\" Built as A+B on the A+B page (round 2).",
     idea: 'Each prototype branch carries a stored screenshot of its canvas board. The card requests it along with its tiles. On a click, the viewer puts it on the stage during the existing 220 ms opening, and the live canvas replaces it in place once it paints. A variant tile opens on that option\'s own screenshot instead (tiles that have one already do this today through posterFor). The toolbar keeps today\'s "Loading the canvas…" status and the tools stay off until the canvas is live. A missing or undecodable poster leaves today\'s plain stage: no broken image and no message.',
     pros: [
       'Content is on screen from the click in every unprepared case, including the localhost p90 of 738 ms measured in #214',
@@ -20,6 +22,8 @@ const NOTES = {
     ],
   },
   B: {
+    disposition: 'combine',
+    feedback: "User, in the #310 thread (2026-10-16), after a canvas note on B (\"I like B. We use skeletons everywhere else so it fits app style as well.\"): \"yes I think combining a with b would look good.\" Built as A+B on the A+B page (round 2).",
     idea: 'The stage shows the canvas\'s shape at once: a bar and one frame per option, labelled with the option ids and names the tile already hands the viewer, under a slow sheen. The live canvas replaces it when it paints. Opening a variant tile shows one page-shaped placeholder with that option\'s name. Status and tools behave as today.',
     pros: [
       'No new files and no GitHub calls; works for every canvas, old branches and snapshots included',
@@ -73,10 +77,27 @@ const NOTES = {
     ],
   },
 };
-const NAMES = { A: 'Poster', B: 'Skeleton', C: 'Hold the open', D: 'Lift the tile', E: 'Prepare earlier only' };
+const NOTE_AB = {
+  basedOn: ['A', 'B'],
+  idea: "The skeleton from B, drawn in the app's own loading style (src/ui/skeleton.ts bone() and .wf-bone, the same bars the Prototypes board shows while it loads), goes on the stage at the click. When the branch has a poster and it has decoded, it sits over the skeleton, so you see the board itself; the live canvas replaces both once it paints. A missing poster, one that fails to decode, or one still downloading at the click leaves the skeleton showing, never an empty stage. Toolbar status and tools behave as today: \"Loading the canvas…\" and tools off until live.",
+  pros: [
+    'No empty stage in any unprepared case, for every canvas: old branches and snapshots get the skeleton, branches with a poster get the board picture',
+    "Matches the app's existing loading pattern instead of a new one, as you noted on B",
+    'A poster that arrives late or breaks degrades to the skeleton, not to a blank or a broken image',
+    "Reduced motion: no opening animation, and the bones' pulse stops (the app's existing reduced-motion rule)",
+  ],
+  cons: [
+    'Two things to build: the skeleton, plus the poster capture step and its card-time request (one file read per card per new SHA, not measured, then #306 disk cache)',
+    'A board with a poster and one without open differently, which is visible if you compare them',
+    'Poster and skeleton are both still pictures: clicks and tool keys do nothing until the canvas paints (up to 738 ms localhost p90)',
+    'The skeleton grid and the poster are both laid out for one viewer size; the live board can still shift when it replaces them',
+  ],
+};
+const NAMES = { AB: 'Poster over skeleton', A: 'Poster', B: 'Skeleton', C: 'Hold the open', D: 'Lift the tile', E: 'Prepare earlier only' };
 
 // What a frame shows, in words, for the board note.
 const FIRST = {
+  AB: 'The poster, over the skeleton, is on the stage from the click and rides the opening animation',
   A: 'The poster is on the stage from the click and rides the opening animation',
   B: 'The skeleton is on the stage from the click and rides the opening animation',
   C: 'The tile presses in; the viewer stays closed',
@@ -146,8 +167,33 @@ window.CANVAS = {
               id: 'review',
               kind: 'note',
               name: 'Design review',
-              text: "Sources: the toolbar is rendered by src/ui/canvasViewer.ts canvasToolbarHtml with the D4 tool row from src/ui/canvasFeedback.ts (main ab62ec7; variants/toolbars.js), so Close, title, status, page menu, option strip, Feedback, GitHub and size controls are the shipped ones. Tokens, the card and tiles use src/ui/styles.css (.viz-root light and dark, .vw, .wf-proto, .wf-var). Behaviour copied from canvasViewer.ts: 220 ms animateFrom, posterFor, the 120 ms prepare dwell, focus to Close on open and back to the entry on close, and the tools' 'The canvas is still loading' state. Numbers from docs/design/in-app-canvas-viewer.md (#214), #306 and #206.\n\nChecked (Playwright Chromium 1280x800, no page errors): every direction opened by keyboard (focus the entry, Enter); focus moves to Close, Esc closes and focus returns to the entry; tools stay aria-disabled until live. C sets aria-busy on the held entry. prefers-reduced-motion: no viewer animation, no sheen or spin. Light and dark captured for A, B, C; posters exist in both themes. Missing and undecodable posters fall back to the plain stage with no console noise beyond the failed decode.\n\nFindings: C has no spoken cue while it holds (aria-busy only); production would need a status message. D's lift of a live tile frame is shown with the tile's picture; whether a live iframe can be lifted without clipping or reloading is not verified. The skeleton grid in B is a guess at the board's layout.\n\nNot checked: screen readers, side pane and floating sizes (all frames are full window), touch input on a real device, 200% zoom, the real desktop app or localhost page (both surfaces are drawn), timing on real hardware (timers only).",
+              text: "Sources: the toolbar is rendered by src/ui/canvasViewer.ts canvasToolbarHtml with the D4 tool row from src/ui/canvasFeedback.ts (main ab62ec7; variants/toolbars.js), so Close, title, status, page menu, option strip, Feedback, GitHub and size controls are the shipped ones. Tokens, the card and tiles use src/ui/styles.css (.viz-root light and dark, .vw, .wf-proto, .wf-var). Behaviour copied from canvasViewer.ts: 220 ms animateFrom, posterFor, the 120 ms prepare dwell, focus to Close on open and back to the entry on close, and the tools' 'The canvas is still loading' state. Numbers from docs/design/in-app-canvas-viewer.md (#214), #306 and #206.\n\nChecked (Playwright Chromium 1280x800, no page errors): every direction opened by keyboard (focus the entry, Enter); focus moves to Close, Esc closes and focus returns to the entry; tools stay aria-disabled until live. C sets aria-busy on the held entry. prefers-reduced-motion: no viewer animation, no sheen or spin. Light and dark captured for A, B, C; posters exist in both themes. Missing and undecodable posters fall back to the plain stage with no console noise beyond the failed decode.\n\nFindings: C has no spoken cue while it holds (aria-busy only); production would need a status message. D's lift of a live tile frame is shown with the tile's picture; whether a live iframe can be lifted without clipping or reloading is not verified. The skeleton grid in B is a guess at the board's layout.\n\nRound 2 (A+B): the skeleton uses the app's own .wf-bone and bone() markup from src/ui/styles.css and src/ui/skeleton.ts, whose existing reduced-motion rule stops the pulse. Checked in light and dark: poster present, poster missing, poster undecodable, poster arriving after the click, and the variant tile on localhost (fixed: the page bone overflowed the localhost stage; it now fits its height).\n\nNot checked: screen readers, side pane and floating sizes (all frames are full window), touch input on a real device, 200% zoom, the real desktop app or localhost page (both surfaces are drawn), timing on real hardware (timers only).",
             },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'ab-poster-over-skeleton',
+      title: 'A+B · Poster over skeleton',
+      round: 2,
+      question: 'Is A+B, the poster over the app-style skeleton, the direction #304 should build?',
+      sections: [
+        {
+          title: 'The combination',
+          note: 'Desktop app, no lead-in, ready at 440 ms. Based on A and B.',
+          items: [{ id: 'AB', name: NAMES.AB, src: v('AB', 'ready=440'), ...FRAME, boardWidth: 640, note: NOTE_AB }],
+        },
+        ...matrix('AB').map((section) => ({ ...section, items: section.items.map((item) => ({ ...item, note: { basedOn: ['A', 'B'], idea: item.note } })) })),
+        {
+          title: 'Reduced motion and poster cases',
+          note: 'Every case where the poster is not there shows the skeleton.',
+          items: [
+            edge('AB', 'rm', 'Reduced motion · 440 ms', 'ready=440&motion=reduce', { basedOn: ['A', 'B'], idea: 'The viewer appears in place with the poster over a still skeleton; the live canvas replaces both at 440 ms.' }),
+            edge('AB', 'opt', 'Variant tile · option screenshot · 440 ms', 'ready=440&entry=option', { basedOn: ['A', 'B'], idea: "Opens on option A's screenshot over a page-shaped skeleton, then the canvas presents A." }),
+            edge('AB', 'miss', 'Poster missing · 440 ms', 'ready=440&poster=missing', { basedOn: ['A', 'B'], idea: 'No poster on the branch (older canvases, snapshots): the skeleton until the canvas paints.' }),
+            edge('AB', 'fail', 'Poster fails to decode · 440 ms', 'ready=440&poster=failed', { basedOn: ['A', 'B'], idea: 'The poster is dropped silently and the skeleton stays: no broken image, no message.' }),
+            edge('AB', 'late', 'Poster still downloading at the click · 440 ms', 'ready=440&poster=late', { basedOn: ['A', 'B'], idea: 'The skeleton shows first and the poster covers it when it decodes (200 ms here, a chosen case, not a measurement).' }),
           ],
         },
       ],
