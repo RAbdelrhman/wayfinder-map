@@ -36,8 +36,14 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
-createServer(async (request, response) => {
-  const path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
+const server = createServer(async (request, response) => {
+  let path;
+  try {
+    path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
+  } catch {
+    response.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end('Bad request');
+    return;
+  }
   const file = resolve(join(ROOT, path));
   if (file !== ROOT && !file.startsWith(ROOT + sep)) {
     response.writeHead(403).end('Forbidden');
@@ -56,5 +62,5 @@ createServer(async (request, response) => {
   }
 }).listen(PORT, '127.0.0.1', () => {
   const path = relative(ROOT, join(CANVAS, 'index.html')).split(sep).map(encodeURIComponent).join('/');
-  console.log(`Canvas: http://127.0.0.1:${PORT}/${path}`);
+  console.log(`Canvas: http://127.0.0.1:${server.address().port}/${path}`);
 });
