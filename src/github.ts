@@ -115,6 +115,20 @@ export async function ghIncludingHeaders(args: string[]): Promise<string> {
   }
 }
 
+/** Post a comment on an issue. The body goes through stdin: a long comment overflows Windows' command line. */
+export async function postIssueComment(repo: string, number: number, body: string): Promise<{ url: string }> {
+  const args = ['api', '--method', 'POST', `repos/${repo}/issues/${String(number)}/comments`, '--input', '-'];
+  const stdout = await new Promise<string>((resolve, reject) => {
+    const child = execFile('gh', args, { maxBuffer: 16 * 1024 * 1024, windowsHide: true, env: ghEnv }, (error, out, err) => {
+      if (error) reject(new GhError(ghTextOutput(err).trim() || error.message, args));
+      else resolve(plainGhOutput(ghTextOutput(out)));
+    });
+    child.stdin?.end(JSON.stringify({ body }));
+  });
+  const posted = JSON.parse(stdout) as { html_url?: unknown };
+  return { url: typeof posted.html_url === 'string' ? posted.html_url : `https://github.com/${repo}/issues/${String(number)}` };
+}
+
 async function ghJson<T>(args: string[]): Promise<T> {
   return JSON.parse(await gh(args)) as T;
 }
@@ -903,16 +917,16 @@ export function branchesByMap(
 }
 
 /** Every prototype branch on `map`, with its files, last commit and, for closed tickets, the verdict. */
-export async function fetchPrototypes(repo: string, map: WayfinderMap): Promise<Prototype[]> {
-  return fetchMapPrototypes(repo, [map]);
+export async function fetchPrototypes(repo: string, map: WayfinderMap, readFile = fetchBranchFile): Promise<Prototype[]> {
+  return fetchMapPrototypes(repo, [map], readFile);
 }
 
 /** The same, across every map in the repository, so one read answers the whole repository page. */
-export async function fetchAllPrototypes(repo: string, maps: readonly WayfinderMap[]): Promise<Prototype[]> {
-  return fetchMapPrototypes(repo, maps);
+export async function fetchAllPrototypes(repo: string, maps: readonly WayfinderMap[], readFile = fetchBranchFile): Promise<Prototype[]> {
+  return fetchMapPrototypes(repo, maps, readFile);
 }
 
-async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): Promise<Prototype[]> {
+async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[], readFile: typeof fetchBranchFile): Promise<Prototype[]> {
   const refs = await ghJson<RawRef[]>(['api', `repos/${repo}/git/matching-refs/heads/${PROTOTYPE_BRANCH_PREFIX}`]);
   const work = branchesByMap(
     refs.map((ref) => ref.ref),
@@ -941,7 +955,7 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): 
         ? null
         : await ghJson<RawCommit>(['api', `repos/${repo}/commits/${encodeURIComponent(branch)}`]).catch(() => null);
     const { updatedAt, files } = branchFacts(compare, tip);
-    const preview = await previewOf(repo, revision, files);
+    const preview = await previewOf(repo, revision, files, readFile);
     return {
       branch,
       ...(sha ? { sha } : {}),
@@ -952,7 +966,7 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): 
       files,
       ...preview,
       verdict: verdictComment(comments.map((comment) => comment.body)),
-      variants: await variantsOf(repo, revision, ticketNumber, files, preview, shots),
+      variants: await variantsOf(repo, revision, ticketNumber, files, preview, shots, readFile),
     };
   });
 
@@ -977,10 +991,11 @@ async function variantsOf(
   files: readonly string[],
   preview: { openable: string[]; preview: string | null },
   shots: readonly string[],
+  readFile: typeof fetchBranchFile,
 ): Promise<PrototypeVariant[]> {
   const configFile = preview.preview !== null && /(?:^|\/)index\.html$/i.test(preview.preview)
     ? preview.preview.replace(/index\.html$/i, 'config.js') : null;
-  const configSource = configFile === null ? null : await fetchBranchFile(repo, branch, configFile).then((bytes) => bytes.toString('utf8'), () => null);
+  const configSource = configFile === null ? null : await readFile(repo, branch, configFile).then((bytes) => bytes.toString('utf8'), () => null);
   const canvasDir = configFile === null ? '' : configFile.replace(/config\.js$/, '');
   const pages = [...new Set([...preview.openable, ...files.filter(isHtml)])]
     .filter((file) => canvasDir === '' || file.startsWith(canvasDir));
@@ -994,18 +1009,18 @@ export async function fetchDefaultBranchFile(repo: string, file: string): Promis
 }
 
 /** What the branch can show running: its standalone HTML files, and the one to lead with. */
-async function previewOf(repo: string, branch: string, files: readonly string[]): Promise<{ openable: string[]; preview: string | null; canvases: string[] }> {
+async function previewOf(repo: string, branch: string, files: readonly string[], readFile: typeof fetchBranchFile): Promise<{ openable: string[]; preview: string | null; canvases: string[] }> {
   const boards = unlistedCanvasBoards(files);
   const [changed, boardsOnBranch, hasSnapshot] = await Promise.all([
-    openableFiles(repo, branch, files),
-    openableFiles(repo, branch, boards),
-    snapshotExists(repo, branch),
+    openableFiles(repo, branch, files, readFile),
+    openableFiles(repo, branch, boards, readFile),
+    snapshotExists(repo, branch, readFile),
   ]);
   const openable = [...boardsOnBranch, ...changed];
   const candidates = openable.filter((file) => /(?:^|\/)index\.html$/i.test(file));
   const configs = await pool(candidates, 4, async (board) => {
     const config = board.replace(/index\.html$/i, 'config.js');
-    return fetchBranchFile(repo, branch, config).then(() => config, () => null);
+    return readFile(repo, branch, config).then(() => config, () => null);
   });
   const canvasFiles = configs.filter((file): file is string => file !== null);
   const canvases = canvasEntries(openable, canvasFiles);
@@ -1014,20 +1029,20 @@ async function previewOf(repo: string, branch: string, files: readonly string[])
 }
 
 /** Whether the branch carries a runnable snapshot. Read directly, since the diff may not list it. */
-async function snapshotExists(repo: string, branch: string): Promise<boolean> {
+async function snapshotExists(repo: string, branch: string, readFile: typeof fetchBranchFile): Promise<boolean> {
   try {
-    return isSelfContained((await fetchBranchFile(repo, branch, PROTOTYPE_SNAPSHOT_FILE)).toString('utf8'));
+    return isSelfContained((await readFile(repo, branch, PROTOTYPE_SNAPSHOT_FILE)).toString('utf8'));
   } catch {
     return false;
   }
 }
 
 /** Of a branch's HTML files, the ones that stand alone well enough for the page to serve them. */
-async function openableFiles(repo: string, branch: string, files: readonly string[]): Promise<string[]> {
+async function openableFiles(repo: string, branch: string, files: readonly string[], readFile: typeof fetchBranchFile): Promise<string[]> {
   const html = files.filter(isHtml);
   const checked = await pool(html, 4, async (file) => {
     try {
-      return isSelfContained((await fetchBranchFile(repo, branch, file)).toString('utf8'));
+      return isSelfContained((await readFile(repo, branch, file)).toString('utf8'));
     } catch {
       return false;
     }

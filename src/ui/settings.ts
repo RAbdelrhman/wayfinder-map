@@ -15,6 +15,7 @@ import { handOffCap, HAND_OFF_CAPS, saveHandOffCap } from './startNext.js';
 import { DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_KINDS } from '../notificationTypes.js';
 import type { NotificationKind, NotificationSettings } from '../notificationTypes.js';
 import { canvasSize, isCanvasSize, saveCanvasSize } from './canvasPreference.js';
+import { TOUR_COPY } from './tourCopy.js';
 
 /* Settings (#40, #104): the GitHub account and the preferences that belong to no one page. */
 
@@ -43,17 +44,18 @@ export interface SettingsView {
 }
 
 const THEME_LABEL: Record<Theme, string> = { light: 'Light', dark: 'Dark' };
-export const SETTINGS_CATEGORIES = ['appearance', 'tasks', 'notifications', 'progress', 'account'] as const;
+export const SETTINGS_CATEGORIES = ['appearance', 'tasks', 'notifications', 'progress', 'account', 'help'] as const;
 export type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number];
-const CATEGORY_LABEL: Record<SettingsCategory, string> = { appearance: 'Appearance', tasks: 'Tasks & models', notifications: 'Notifications', progress: 'Progress', account: 'Account' };
+const CATEGORY_LABEL: Record<SettingsCategory, string> = { appearance: 'Appearance', tasks: 'Tasks & models', notifications: 'Notifications', progress: 'Progress', account: 'Account', help: TOUR_COPY.settings.category };
 const CATEGORY_HINT: Record<SettingsCategory, string> = {
   appearance: 'Choose how Wayfinder looks.',
   tasks: 'Set the defaults for new tickets and maps. You can override them on a ticket.',
   notifications: 'Choose which updates need your attention.',
   progress: 'Set your daily goal and decide when a ticket counts as stalled.',
   account: 'Manage the GitHub account Wayfinder uses.',
+  help: TOUR_COPY.settings.hint,
 };
-const CATEGORY_ICON: Record<SettingsCategory, string> = { appearance: 'moon', tasks: 'sliders', notifications: 'bell', progress: 'map', account: 'person' };
+const CATEGORY_ICON: Record<SettingsCategory, string> = { appearance: 'moon', tasks: 'sliders', notifications: 'bell', progress: 'map', account: 'person', help: 'help' };
 
 export function settingsCategory(value: string | null): SettingsCategory {
   return SETTINGS_CATEGORIES.find((category) => category === value) ?? 'appearance';
@@ -198,6 +200,10 @@ export function settingsBodyHtml(view: SettingsView, category?: SettingsCategory
       ${stallRow('deadHandOffDays', 'Dead hand-off', 'The hand-off failed or never started, with no retry or PR.', view.stalls)}
     </section>`,
     notifications: notificationSettingsHtml(view.notifications),
+    // The product tour's persistent entry (#238, S1). settingsPage.ts opens the tour.
+    help: `<section class="settings-section" aria-labelledby="settings-tour-title"><h3 id="settings-tour-title">${escapeHtml(TOUR_COPY.settings.title)}</h3>
+      <div class="settings-row"><span class="grow">${escapeHtml(TOUR_COPY.settings.label)}<span class="hint">${escapeHtml(TOUR_COPY.settings.rowHint)}</span></span><button type="button" class="ghost" data-settings-tour><span data-icon="play" aria-hidden="true"></span>${escapeHtml(TOUR_COPY.settings.label)}</button></div>
+    </section>`,
   };
   return (category === undefined ? SETTINGS_CATEGORIES : [category]).map((key) => contents[key]).join('');
 }
@@ -517,5 +523,6 @@ export function focusKeyOf(element: Element): string | null {
   if (element.hasAttribute('data-settings-rater-model')) return '[data-settings-rater-model]';
   if (element.hasAttribute('data-settings-calibration-model')) return '[data-settings-calibration-model]';
   if (element.id === 'settings-calibration' || element.matches('#settings-calibration > summary')) return '#settings-calibration > summary';
+  if (element.hasAttribute('data-settings-tour')) return '[data-settings-tour]';
   return element.hasAttribute('data-settings-logout') ? '[data-settings-logout]' : null;
 }

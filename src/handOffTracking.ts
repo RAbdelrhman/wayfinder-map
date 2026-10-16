@@ -414,33 +414,35 @@ function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+async function removeFailedStoreLock(lockPath: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await unlink(lockPath);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') return;
+      if ((code !== 'EPERM' && code !== 'EBUSY') || attempt >= 3) throw error;
+      await wait(STORE_LOCK_RETRY_MS * (attempt + 1));
+    }
+  }
+}
+
 async function acquireStoreLock(lockPath: string): Promise<() => Promise<void>> {
   const startedAt = Date.now();
   const token = randomUUID();
   while (true) {
+    let handle: Awaited<ReturnType<typeof open>>;
     try {
-      const handle = await open(lockPath, 'wx', 0o600);
-      try {
-        await handle.writeFile(token, 'utf8');
-      } catch (error) {
-        await unlink(lockPath).catch(() => undefined);
-        throw error;
-      } finally {
-        await handle.close();
-      }
-      return async () => {
-        let owner: string;
-        try {
-          owner = await readFile(lockPath, 'utf8');
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
-          throw error;
-        }
-        if (owner === token) await unlink(lockPath).catch((error: unknown) => {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        });
-      };
+      handle = await open(lockPath, 'wx', 0o600);
     } catch (error) {
+      // Windows can report EPERM while another writer's deleted lock is still closing.
+      // Retry within the same acquisition budget; a permanent permission error still fails.
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') {
+        if (Date.now() - startedAt >= STORE_LOCK_TIMEOUT_MS) throw error;
+        await wait(STORE_LOCK_RETRY_MS);
+        continue;
+      }
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       try {
         const details = await stat(lockPath);
@@ -458,7 +460,29 @@ async function acquireStoreLock(lockPath: string): Promise<() => Promise<void>> 
         throw new Error(`Timed out waiting for hand-off store lock: ${lockPath}`, { cause: error });
       }
       await wait(STORE_LOCK_RETRY_MS);
+      continue;
     }
+    // Once we own a lock, write/close failures must propagate rather than retry acquisition.
+    try {
+      await handle.writeFile(token, 'utf8');
+      await handle.close();
+    } catch (error) {
+      await handle.close().catch(() => undefined);
+      await removeFailedStoreLock(lockPath).catch(() => undefined);
+      throw error;
+    }
+    return async () => {
+      let owner: string;
+      try {
+        owner = await readFile(lockPath, 'utf8');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+        throw error;
+      }
+      if (owner === token) await unlink(lockPath).catch((error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      });
+    };
   }
 }
 

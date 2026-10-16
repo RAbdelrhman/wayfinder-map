@@ -45,6 +45,13 @@ export interface AutoMapServiceDeps {
   notificationOn: (kind: NotificationKind) => Promise<boolean>;
   /** The desktop app's OS notification. Absent in the CLI. */
   desktop?: (notification: DesktopNotification) => void;
+  /** Whether the map is archived as last read. A batch checks it again just before it submits or posts ready notices. */
+  archived?: (repo: string, mapNumber: number) => boolean;
+  /**
+   * At start-up, which of a repository's maps may be watched: archived ones may not. Without it every map
+   * that is on is watched at once.
+   */
+  watchable?: (repo: string) => Promise<(mapNumber: number) => boolean>;
   now?: () => Date;
   batchMs?: number;
   retryMs?: number;
@@ -115,19 +122,40 @@ export class AutoMapService {
     this.now = deps.now ?? (() => new Date());
   }
 
-  /** Load what was saved and start watching every map that is on, so a quit and restart keeps it going. */
+  /** Settles once start-up has watched the saved maps that may be watched. */
+  resumed: Promise<void> = Promise.resolve();
+
+  /**
+   * Load what was saved and start watching every map that is on, so a quit and restart keeps it going. With
+   * `watchable`, an archived map is left unwatched; that check runs in the background so start-up doesn't wait on it.
+   */
   async init(): Promise<void> {
     const state = await this.deps.store.load();
     this.settings = state.settings;
     this.notices = this.fresh(state.notices);
     for (const entry of state.maps) this.entries.set(autoMapKey(entry.repo, entry.mapNumber), entry);
     const repos = new Set<string>();
-    for (const entry of this.entries.values()) {
-      if (!entry.setting.enabled) continue;
-      this.watch(entry);
-      repos.add(entry.repo);
+    for (const entry of this.entries.values()) if (entry.setting.enabled) repos.add(entry.repo);
+    const watchable = this.deps.watchable;
+    if (watchable === undefined) {
+      for (const repo of repos) this.resume(repo, () => true);
+      return;
     }
-    for (const repo of repos) void this.deps.watcher.catchUp(repo).catch(() => undefined);
+    this.resumed = Promise.all(
+      [...repos].map(async (repo) => {
+        // A check that fails watches nothing; the next snapshot of the repository watches what is active.
+        const keep = await watchable(repo).catch(() => () => false);
+        this.resume(repo, keep);
+      }),
+    ).then(() => undefined);
+  }
+
+  private resume(repo: string, keep: (mapNumber: number) => boolean): void {
+    if (this.closed) return;
+    for (const entry of this.entries.values()) {
+      if (entry.repo === repo && entry.setting.enabled && keep(entry.mapNumber)) this.watch(entry);
+    }
+    void this.deps.watcher.catchUp(repo).catch(() => undefined);
   }
 
   view(): AutoMapView {
@@ -320,10 +348,13 @@ export class AutoMapService {
     // It may have been turned off while the tickets waited to be batched.
     const setting = this.setting(batch.repo, batch.mapNumber);
     const map = await this.deps.loadMap(batch.repo, batch.mapNumber).catch(() => null);
+    // An archived map gets nothing: no start and no ready notice, however long the batch waited.
+    const archived = (): boolean => this.deps.archived?.(batch.repo, batch.mapNumber) === true;
+    if ((map !== null && map.settled !== null) || archived()) return;
     if (setting.enabled && batch.setting === setting && !this.closed && this.setting(batch.repo, batch.mapNumber) === setting) {
       const tickets = await this.entriesFor(setting.tier, map, events.map((event) => event.ticket.number));
       // A change replaces the setting object even if a disable/re-enable has the same timestamp.
-      if (this.closed) return;
+      if (this.closed || archived()) return;
       if (this.setting(batch.repo, batch.mapNumber) === setting) {
         const result = await this.deps
           .submit(batch.repo, { map: batch.mapNumber, cap: normalizeCap(this.settings.cap), auto: true, tickets })
@@ -331,12 +362,14 @@ export class AutoMapService {
         if (result.ok) return;
       }
     }
-    if (this.closed) return;
+    if (this.closed || archived()) return;
     // The ticket goes back to the ordinary "ready" notification, so a start that failed is not silent.
     const errors: unknown[] = [];
     for (const event of events) {
+      if (archived()) break;
       try {
-        await this.publish({
+        await this.publish(
+          {
           id: `map:${event.repo.toLowerCase()}#${String(event.mapNumber)}:${String(event.id)}:${event.at}`,
           kind: 'unblocked',
           repo: event.repo,
@@ -345,7 +378,9 @@ export class AutoMapService {
           ticketNumber: event.ticket.number,
           ticketTitle: event.ticket.title,
           createdAt: event.at,
-        });
+          },
+          () => !archived(),
+        );
       } catch (error) {
         errors.push(error);
       }
@@ -412,12 +447,21 @@ export class AutoMapService {
     return { ratings, calibrations };
   }
 
-  /** Put a notice where the page's inbox will find it, and show it as an OS notification in the desktop app. */
-  private async publish(notice: AutoMapNotice): Promise<void> {
-    if (this.closed || !(await this.deps.notificationOn(notice.kind).catch(() => true)) || this.closed || this.notices.some((existing) => existing.id === notice.id)) return;
+  /**
+   * Put a notice where the page's inbox will find it, and show it as an OS notification in the desktop app.
+   * `wanted` is asked again after each wait, so a notice made stale meanwhile is dropped, from the inbox too.
+   */
+  private async publish(notice: AutoMapNotice, wanted: () => boolean = () => true): Promise<void> {
+    if (this.closed || !(await this.deps.notificationOn(notice.kind).catch(() => true)) || this.closed || !wanted() || this.notices.some((existing) => existing.id === notice.id)) return;
     this.notices = this.fresh([notice, ...this.notices]);
     await this.persistWithRetry();
-    if (!this.closed) this.deps.desktop?.(desktopNotificationOf(notice));
+    if (this.closed) return;
+    if (!wanted()) {
+      this.notices = this.notices.filter((existing) => existing.id !== notice.id);
+      await this.persistWithRetry();
+      return;
+    }
+    this.deps.desktop?.(desktopNotificationOf(notice));
   }
 
   private fresh(notices: readonly AutoMapNotice[]): AutoMapNotice[] {

@@ -1,0 +1,304 @@
+const tour = (query) => `variants/tour.html?${query}`;
+const frame = { width: 1280, height: 800, boardWidth: 420 };
+
+window.CANVAS = {
+  title: 'First-time walkthrough',
+  question: 'What interactive demo helps a new user understand Wayfinder and the core journey?',
+  ticket: 238,
+  sampleState:
+    'A demo project, demo/recipes, with one scripted map of six tickets. Every option runs the same seven steps and the same wording: purpose, goal, planning, map, ticket types, blockers and hand-off. Planning and the hand-off are simulated. Nothing calls GitHub or T3 Code.',
+  base: {
+    stylesheets: ['../../src/ui/styles.css'],
+    bodyClass: 'viz-root',
+    surfaces: {
+      plane: 'var(--plane)',
+      surface: 'var(--surface-1)',
+      line: 'var(--hairline)',
+      text: 'var(--text-primary)',
+      muted: 'var(--text-muted)',
+    },
+  },
+  pages: [
+    {
+      id: 'format',
+      title: 'Tour format',
+      round: 1,
+      question: 'How should the tour guide a new user through the demo journey?',
+      sections: [
+        {
+          title: 'Three ways to present the same tour',
+          note: 'Open each one full size and play it through: press Start map, select #6, then select #5 and press Open in T3 Code. Exit tour and Esc work at every step. The invitation and the always-available entry are compared on the next page.',
+          items: [
+            {
+              id: 'A', name: 'Spotlight', src: tour('format=spotlight&step=1'), ...frame,
+              note: {
+                idea: 'Coach marks over the demo app. The page dims except the control to use next, and a small card beside it explains the step. The user presses the real-looking control to move on. A Demo banner stays under the top bar the whole time.',
+                pros: ['The user does each step with the actual controls, so it carries over to real use', 'Easy to see exactly where to click', 'Feels like the app, not a separate lesson'],
+                cons: ['The dimmed page and card cover part of the map', 'Only the highlighted control works during the tour, which can feel restrictive', 'On a phone the card becomes a bottom sheet over the page'],
+                disposition: 'keep',
+                feedback: 'I like A.',
+              },
+            },
+            {
+              id: 'B', name: 'Guide panel', src: tour('format=panel&step=1'), ...frame,
+              note: {
+                idea: 'A guide docked on the right with a checklist of the seven steps and a progress bar. The demo app stays fully usable; the control for the current step gets a blue ring. Steps tick off as the user does them.',
+                pros: ['Nothing is covered: the user can explore the demo map freely', 'Readable progress and the whole journey visible at once', 'Easy to come back to the panel after looking around'],
+                cons: ['Takes 340 px of width, so the map and ticket panel get tighter', 'The ring is easier to miss than a spotlight', 'On a phone the panel becomes a sheet under the app'],
+              },
+            },
+            {
+              id: 'C', name: 'Story', src: tour('format=story&step=1'), ...frame,
+              note: {
+                idea: 'A dedicated tour page. A named stepper runs across the top, the story is on the left in large type, and a live, scaled-down demo window sits on the right with a ring on the next control.',
+                pros: ['Clearly separate from real work, so the demo status is obvious', 'Large text that is easy to read; the stepper names every step', 'The demo window cannot be mistaken for the user’s own maps'],
+                cons: ['The demo app is shown smaller, so text inside it is small', 'Less like the real app: users still need to find the controls later', 'One more full-screen mode to build and maintain'],
+              },
+            },
+          ],
+        },
+        {
+          title: 'The same three at the hand-off step',
+          note: 'Step 7: the demo agent has opened a pull request on #5.',
+          items: [
+            { id: 'A-handoff', name: 'Spotlight at hand-off', src: tour('format=spotlight&step=7&sel=5&handoff=3'), ...frame, note: { idea: 'The spotlight follows the hand-off status. Next appears once the demo pull request is ready.' } },
+            { id: 'B-handoff', name: 'Guide panel at hand-off', src: tour('format=panel&step=7&sel=5&handoff=3'), ...frame, note: { idea: 'Six steps ticked off; the hand-off status sits in the ticket panel.' } },
+            { id: 'C-handoff', name: 'Story at hand-off', src: tour('format=story&step=7&sel=5&handoff=3'), ...frame, note: { idea: 'The stepper shows six steps done; the demo window shows the pull request is ready.' } },
+          ],
+        },
+        {
+          title: 'The same three at completion',
+          note: 'After the last step. Start my first map leaves the demo; Back to Home closes the tour and points to where to replay it.',
+          items: [
+            { id: 'A-done', name: 'Spotlight complete', src: tour('format=spotlight&state=done'), ...frame, note: { idea: 'A centred completion card over the dimmed demo map.' } },
+            { id: 'B-done', name: 'Guide panel complete', src: tour('format=panel&state=done'), ...frame, note: { idea: 'All seven steps ticked, with the completion card at the bottom of the panel.' } },
+            { id: 'C-done', name: 'Story complete', src: tour('format=story&state=done'), ...frame, note: { idea: 'The completion message replaces the story text; the stepper is all done.' } },
+          ],
+        },
+        {
+          title: 'Design review',
+          items: [
+            {
+              id: 'review', kind: 'note', name: 'Design review',
+              text: [
+                'Sources inspected: src/ui/styles.css (tokens, .primary, .ghost, .iconbtn, .eyebrow, focus ring), src/ui/icons.ts (every icon is copied from it except a new ? icon for E1), src/ui/index.html and home.html. The real app was run and screenshotted on Home, New map and map #236 for reference. The demo uses only existing colour tokens.',
+                'Checked in Chromium: all three formats played through every step (Start map, planning, select #6, select #5, Open in T3 Code, Finish), plus Back, Exit tour, Esc and Back to Home. All three entry options checked through invite, Not now and Exit tour. Light and dark at 1280×800, and 390×844 for Spotlight, Panel and Story, with no horizontal page overflow. Text contrast measured against the composited background: lowest 4.76:1 in light and 5.15:1 in dark (fixed: Exit tour link was 3.78:1 in dark). Visible focus ring matches Settings; each step moves focus to its title and announces “Step N of 7” in a live region; Esc exits and returns focus to the tour entry.',
+                'Findings left open: in Spotlight, Tab can still reach dimmed controls (the build should make them inert); Spotlight’s card can cover the ticket it talks about at step 6; the Story demo window is small at 1280 wide and very small on a phone; on a phone, Panel shows only the current step.',
+                'Round 2 (Tour entry in Settings): S1 and S2 checked in Chromium at 1280×800 through first launch, Not now, the pulsing Settings gear, the Settings entry, and Take the tour starting the tour; focus moves to the Settings entry when Settings opens. The demo Settings page reuses the app’s own settings classes and copy from src/ui/settings.ts; the Help category and its icon are new. Dark theme spot-checked: hint text uses the app’s own muted colour.',
+                'Round 3 (Without the Demo banner): the independent verifier (gpt-6.1-sol) flagged the banner’s Exit tour and the card’s × as a duplicate control; the user chose to remove the banner. Checked in Chromium at 1280×800: F has no banner and one Exit control at steps 3, 4 and 7, and the card still shows Demo; S1 still shows both as reviewed. The demo Home’s two Start a new map buttons are stand-in chrome; the build uses the real Home.',
+                'Round 4 (One button per action): the second verifier run flagged Open the map vs the card’s Next after planning, and Home’s two Start a new map buttons; the third run flagged the completion card’s × and Back to Home. The user kept Open the map, the No maps yet button, and the ×. Checked in Chromium at 1280×800: G-plan shows Open the map and the hint “Press Open the map to continue.” with no Next; G-home shows one Start a new map (in No maps yet); G-done shows the × and Start my first map with no Back to Home; the tour map step still shows Next; F still shows both buttons at planning, as reviewed.',
+                'Not checked: S1, S2, F and G at 390×844, the installed Electron app, screen reader output, forced colours, 200% zoom, reduced motion beyond the CSS rule, and real persistence of the dismissed invitation.',
+              ].join('\n\n'),
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'entry',
+      title: 'Invitation and tour entry',
+      round: 1,
+      question: 'How should the first launch invite users, and where should Take the tour live afterwards?',
+      sections: [
+        {
+          title: 'First launch: the optional invitation',
+          note: 'Shown once, on Home, before any map exists. Take the tour starts the tour; Not now dismisses it for good. These frames use the Spotlight format once the tour starts; the format is chosen on page 1.',
+          items: [
+            {
+              id: 'E1', name: 'Welcome dialog + sidebar ? button', src: tour('format=spotlight&entry=dialog&state=invite'), ...frame,
+              note: {
+                idea: 'A centred welcome dialog on first launch. Afterwards the tour lives behind a ? button at the bottom of the sidebar, beside Settings.',
+                pros: ['Impossible to miss on first launch', 'The ? button is a familiar place for help', 'Takes no space on Home or the top bar'],
+                cons: ['A dialog interrupts before the user has seen anything', 'A small icon is easy to overlook later', 'Adds a new ? icon to the app’s icon set'],
+                disposition: 'change',
+                feedback: 'I like E1. I don’t like the placement of any of the tour buttons; the tour should live in Settings.',
+              },
+            },
+            {
+              id: 'E2', name: 'Home card + sidebar item', src: tour('format=spotlight&entry=card&state=invite'), ...frame,
+              note: {
+                idea: 'A card at the top of Home invites the user, with nothing blocking the page. Afterwards Take the tour is a labelled item under Home in the sidebar.',
+                pros: ['Inviting but not in the way', 'A labelled sidebar item is easy to find on every page', 'Sits where new users look first'],
+                cons: ['A labelled item takes permanent sidebar space even for experienced users', 'Users who go straight to a map may not notice the card'],
+              },
+            },
+            {
+              id: 'E3', name: 'Corner card + top-bar Tour button', src: tour('format=spotlight&entry=corner&state=invite'), ...frame,
+              note: {
+                idea: 'A small card in the bottom-right corner on first launch. Afterwards a Tour button sits in the top bar beside Inbox on every page.',
+                pros: ['Quiet: does not interrupt or push Home content down', 'The Tour button is visible on every page, including maps'],
+                cons: ['Corner cards can read as ads and get dismissed unread', 'Adds a button to a top bar that is already busy on map pages'],
+              },
+            },
+          ],
+        },
+        {
+          title: 'After Not now',
+          note: 'The invitation is gone. A message names where the tour lives, and that entry pulses briefly.',
+          items: [
+            { id: 'E1-skip', name: 'after Not now', src: tour('format=spotlight&entry=dialog&state=skipped'), ...frame, note: { idea: 'The ? button at the bottom of the sidebar pulses.' } },
+            { id: 'E2-skip', name: 'after Not now', src: tour('format=spotlight&entry=card&state=skipped'), ...frame, note: { idea: 'Take the tour in the sidebar pulses.' } },
+            { id: 'E3-skip', name: 'after Not now', src: tour('format=spotlight&entry=corner&state=skipped'), ...frame, note: { idea: 'The Tour button in the top bar pulses.' } },
+          ],
+        },
+        {
+          title: 'After Exit tour',
+          note: 'Leaving mid-tour returns to Home, confirms nothing was changed, and points to the same entry.',
+          items: [
+            { id: 'E1-exit', name: 'after Exit tour', src: tour('format=spotlight&entry=dialog&state=exited'), ...frame, note: { idea: 'Back on Home; the ? button pulses.' } },
+            { id: 'E2-exit', name: 'after Exit tour', src: tour('format=spotlight&entry=card&state=exited'), ...frame, note: { idea: 'Back on Home; Take the tour pulses.' } },
+            { id: 'E3-exit', name: 'after Exit tour', src: tour('format=spotlight&entry=corner&state=exited'), ...frame, note: { idea: 'Back on Home; the Tour button pulses.' } },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'entry-settings',
+      title: 'Tour entry in Settings',
+      round: 2,
+      question: 'Where in Settings should Take the tour live?',
+      sections: [
+        {
+          title: 'E1’s welcome dialog, with the tour moved into Settings',
+          note: 'From round 1: A (Spotlight) kept; E1 changed: “the tour should live in Settings.” First launch still shows E1’s welcome dialog. There is no tour button in the sidebar or top bar any more. After Not now or Exit tour, the message names Settings and the Settings gear pulses; press it to see the entry. Two places in Settings are shown.',
+          items: [
+            {
+              id: 'S1', name: 'Settings › Help', src: tour('format=spotlight&entry=settingsHelp&state=settings'), ...frame,
+              note: {
+                idea: 'A new Help category at the end of the Settings list, with a Product tour row and a Take the tour button.',
+                pros: ['A clear home that can hold more help later', 'Matches how every other setting is laid out'],
+                cons: ['Adds a sixth Settings category for one button', 'Two clicks from anywhere: the gear, then Help'],
+                basedOn: ['E1', 'A'],
+                disposition: 'keep',
+                feedback: 'S1.',
+              },
+            },
+            {
+              id: 'S2', name: 'Settings heading', src: tour('format=spotlight&entry=settingsHead&state=settings'), ...frame,
+              note: {
+                idea: 'A Take the tour button at the top of Settings, beside “Changes save automatically”, visible on every Settings category.',
+                pros: ['One click once Settings is open, whatever category is showing', 'No new category'],
+                cons: ['Sits apart from the settings themselves, so it reads as a page action', 'A button in the heading may compete with the page title'],
+                basedOn: ['E1', 'A'],
+              },
+            },
+          ],
+        },
+        {
+          title: 'After Not now',
+          note: 'The welcome dialog is gone. The message names Settings and the gear at the bottom of the sidebar pulses.',
+          items: [
+            { id: 'S1-skip', name: 'Settings › Help, after Not now', src: tour('format=spotlight&entry=settingsHelp&state=skipped'), ...frame, note: { idea: '“Take the tour any time from Settings, under Help.”', basedOn: ['E1-skip'] } },
+            { id: 'S2-skip', name: 'Settings heading, after Not now', src: tour('format=spotlight&entry=settingsHead&state=skipped'), ...frame, note: { idea: '“Take the tour any time from the top of Settings.”', basedOn: ['E1-skip'] } },
+          ],
+        },
+        {
+          title: 'First launch',
+          note: 'Unchanged from E1 apart from the last line, which now names Settings.',
+          items: [
+            { id: 'S1-invite', name: 'Settings › Help, welcome dialog', src: tour('format=spotlight&entry=settingsHelp&state=invite'), ...frame, note: { idea: 'E1’s dialog; “You can take it later from Settings, under Help.”', basedOn: ['E1'] } },
+            { id: 'S2-invite', name: 'Settings heading, welcome dialog', src: tour('format=spotlight&entry=settingsHead&state=invite'), ...frame, note: { idea: 'E1’s dialog; “You can take it later from the top of Settings.”', basedOn: ['E1'] } },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'no-banner',
+      title: 'Without the Demo banner',
+      round: 3,
+      question: 'One way out of the tour: which Exit control stays?',
+      sections: [
+        {
+          title: 'S1 with the Demo banner removed',
+          note: 'The verifier flagged a duplicate control: the banner’s Exit tour link and the step card’s × both end the tour. Decision: “just remove the banner.” The step card’s Demo label, the Demo tags on the repository and planning screens, and the demo notes on Start map and Open in T3 Code still mark the demo. Escape still exits.',
+          items: [
+            {
+              id: 'F', name: 'Map step, no banner', src: tour('format=spotlight&entry=final&step=4'), ...frame,
+              note: {
+                idea: 'S1 without the Demo banner. The step card’s × is the only Exit control on screen.',
+                pros: ['One way out, next to the text being read', 'One less strip of chrome over the demo'],
+                cons: ['The page itself no longer says “demo” outside the card and the demo tags'],
+                basedOn: ['S1', 'A'],
+                disposition: 'keep',
+                feedback: 'just remove the banner',
+              },
+            },
+            { id: 'F-plan', name: 'Planning step, no banner', src: tour('format=spotlight&entry=final&step=3'), ...frame, note: { idea: 'While the demo plans, the card and the planning header both say Demo.', basedOn: ['S1'] } },
+            { id: 'F-handoff', name: 'Hand-off step, no banner', src: tour('format=spotlight&entry=final&step=7&sel=5&handoff=3'), ...frame, note: { idea: 'At the hand-off the card still carries the Demo label and ×.', basedOn: ['A-handoff'] } },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'one-button',
+      title: 'One button per action',
+      round: 4,
+      question: 'Two buttons do the same thing: which one stays?',
+      sections: [
+        {
+          title: 'F with each duplicate cut to one',
+          note: 'The second verifier run flagged two duplicates: after planning, the screen’s Open the map and the step card’s Next both move to the map; on Home, the sidebar and the No maps yet card both show Start a new map. Decisions: keep Open the map (the card shows “Press Open the map to continue.” instead of Next, as step 2 does with Start map), and keep the No maps yet button (the sidebar drops its copy on Home only). The third run flagged the completion card’s × and Back to Home: decision “remove 2”, so the × stays.',
+          items: [
+            {
+              id: 'G-plan', name: 'Planning done, Open the map only', src: tour('format=spotlight&entry=oneButton&step=3&plan=4'), ...frame,
+              note: {
+                idea: 'F’s planning step with the card’s Next removed once planning is done. The card hints at the screen’s own Open the map.',
+                pros: ['One way forward', 'Same pattern as step 2: press the real control'],
+                cons: ['The card has no forward button on this step'],
+                basedOn: ['F-plan'],
+                disposition: 'keep',
+                feedback: 'Picked ① Open the map.',
+              },
+            },
+            {
+              id: 'G-home', name: 'Home after Not now, one Start a new map', src: tour('format=spotlight&entry=oneButton&state=skipped'), ...frame,
+              note: {
+                idea: 'Home keeps the No maps yet card’s Start a new map; the sidebar button is hidden on Home and still shows on other pages.',
+                pros: ['One Start a new map on Home', 'The button sits next to the text that explains it'],
+                cons: ['The sidebar button comes and goes between pages'],
+                basedOn: ['F', 'E1-skip'],
+                disposition: 'keep',
+                feedback: 'Picked ② the No maps yet button.',
+              },
+            },
+            {
+              id: 'G-done', name: 'Completion, × only', src: tour('format=spotlight&entry=oneButton&state=done'), ...frame,
+              note: {
+                idea: 'The completion card without Back to Home. The × closes the tour and returns to Home; Start my first map is the one button.',
+                pros: ['One way to close, the same × as every step card'],
+                cons: ['Closing at the end shows “Tour closed. Nothing was changed…” rather than the replay line'],
+                basedOn: ['A-done'],
+                disposition: 'keep',
+                feedback: 'remove 2 (Back to Home).',
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'wording',
+      title: 'Wording',
+      round: 1,
+      question: 'Is this the right wording for the tour?',
+      sections: [
+        {
+          title: 'Every line the tour shows',
+          items: [
+            {
+              id: 'W', name: 'Tour wording', src: 'variants/wording.html', width: 1100, height: 1900, boardWidth: 600,
+              note: {
+                idea: 'Every line of the picked flow (A · Spotlight, E1’s welcome dialog, tour entry in Settings › Help, no Demo banner, one button per action): the seven steps, ticket-type lines, welcome dialog, Settings › Help row, step card, hand-off status, completion, and the messages after Not now and Exit tour.',
+                basedOn: ['A', 'E1', 'S1', 'F', 'G-plan', 'G-home', 'G-done'],
+                disposition: 'keep',
+                feedback: 'yes looks good to me',
+                pros: ['One place to approve or change wording before implementation'],
+                cons: ['Read in context too: some lines read differently beside the demo'],
+              },
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};

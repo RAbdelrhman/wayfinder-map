@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { cp, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -69,7 +69,10 @@ describe('canvas:create', () => {
   }, 15000);
 
   it('refuses a prototypes directory redirected outside the checkout', async () => {
-    const outside = await fixture();
+    // Rejection happens before the shared canvas is read, so no full canvas copy is needed.
+    const outside = await mkdtemp(join(tmpdir(), 'wayfinder-canvas-outside-'));
+    temporary.push(outside);
+    await mkdir(join(outside, 'prototypes/canvas'), { recursive: true });
     const root = await mkdtemp(join(tmpdir(), 'wayfinder-canvas-link-'));
     temporary.push(root);
     await symlink(join(outside, 'prototypes'), join(root, 'prototypes'), 'junction');

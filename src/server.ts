@@ -2,7 +2,8 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { homedir } from 'node:os';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { buildAutoDecision, MODEL_CHANGE_REASONS } from './autoDecision.js';
 import { AutoMapService, parseAutoMapChange } from './autoMapService.js';
@@ -26,13 +27,15 @@ import { markPullRequests } from './mapWatch.js';
 import type { MapEvent } from './mapWatch.js';
 import { listRepositories, loadHomeState, readAccount } from './home.js';
 import type { HomeAccount, HomeState } from './home.js';
-import { fetchAllPrototypes, fetchBranchFile, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, fetchTicketWithParent, gh } from './github.js';
+import { fetchAllPrototypes, fetchBranchFile, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, fetchTicketWithParent, gh, ghProblem, postIssueComment } from './github.js';
+import { isCanvasNotesComment } from './canvasNotes.js';
 import { viewerPrototypeBytes } from './canvasBridge.js';
 import { PrototypeFileCache } from './prototypeFileCache.js';
 import { AuthFlow } from './authFlow.js';
 import { normalizeRepo, parseRepoPagePath } from './repoRoutes.js';
 import type { ScopedApiAction } from './repoRoutes.js';
 import { RepositoryStore } from './repositoryStore.js';
+import type { SnapshotPersistence } from './repositorySnapshotCache.js';
 import { RepositorySnapshotCache } from './repositorySnapshotCache.js';
 import type { RepositoryChangeChecker, RepositoryFetcher } from './repositoryStore.js';
 import { WorkspaceResolver, clonesFile, fileStore, verifyCheckout } from './workspaces.js';
@@ -52,7 +55,7 @@ import { normalizeCap } from './startNext.js';
 import type { Repick } from './autoRepick.js';
 import { StartNextRunner } from './startNextRunner.js';
 import type { BatchRequestItem } from './startNextRunner.js';
-import { SettleStore } from './settling.js';
+import { SettleStore, type SettleAccount } from './settling.js';
 import { FollowStore } from './follows.js';
 import type { Viewer } from './visibility.js';
 import { memoryNotificationSettings, NotificationSettingsStore, parseDesktopNotification } from './notifications.js';
@@ -78,6 +81,7 @@ const MIME: Record<string, string> = {
 
 /** How long a map's prototype list is reused before GitHub is asked again. */
 const PROTOTYPE_TTL_MS = 60_000;
+const REPO_ICON_RETRY_MS = 60_000;
 
 /**
  * Prototype files are repo code, so they run sandboxed: an opaque origin cannot read
@@ -139,6 +143,11 @@ export interface ServeOptions {
   mapWatcher?: MapWatcher;
   /** Persists opened-map snapshots and events in the local app's state directory. */
   mapWatchStore?: MapWatchStateStore;
+  /**
+   * Where each repository's last snapshot is saved, and whose it is. Defaults to `~/.wayfinder-map` and the signed-in
+   * account, except when tests inject a `fetcher`, where nothing is saved unless given.
+   */
+  snapshotCache?: { persistence: SnapshotPersistence; identity: () => Promise<string | null> };
   /** Where the auto map's settings and notices live. Defaults to `~/.wayfinder-map/auto-maps.json`, except when tests inject a `fetcher`, where they stay in memory unless given. */
   autoMapStore?: AutoMapStateStore;
   /** How long the auto map waits to gather a map's tickets that became next into one batch. Tests shorten it. */
@@ -161,7 +170,7 @@ export interface ServeOptions {
   /** Clears the desktop tray badge after the inbox is opened. */
   onNotificationsRead?: () => void;
   /**
-   * Whose settle choices apply and where they are kept. Defaults to the signed-in GitHub login and
+   * Whose settle choices apply and where they are kept. Defaults to the signed-in GitHub host and login and
    * `~/.wayfinder-map/settled.json`, except when tests inject a `fetcher`, where it is off unless given.
    */
   settling?: Settling;
@@ -173,7 +182,7 @@ export interface ServeOptions {
 }
 
 export interface Settling {
-  login: () => Promise<string | null>;
+  account: () => Promise<SettleAccount | null>;
   store: Pick<SettleStore, 'choices' | 'set'>;
 }
 
@@ -199,6 +208,7 @@ export interface UpdaterService {
 export interface RunningServer {
   server: Server;
   url: string;
+  flushPrototypeFiles?: () => Promise<void>;
 }
 
 function writeJson(response: ServerResponse, status: number, body: unknown): void {
@@ -286,33 +296,19 @@ export async function startServer({
   onDesktopNotification,
   onNotificationsRead,
   settling,
+  snapshotCache,
   following,
 }: ServeOptions): Promise<RunningServer> {
   const detect = t3.detect ?? detectT3;
-  const prototypeFiles = new PrototypeFileCache(fetchBranchFile);
-  const warmedPrototypes = new Set<string>();
-  const warmQueue: { repo: string; branch: string; sha: string; file: string }[] = [];
-  let warming = 0;
-  const warmFiles = (): void => {
-    while (warming < 3 && warmQueue.length) {
-      const entry = warmQueue.shift()!;
-      warming++;
-      void prototypeFiles.get(entry.repo, entry.branch, entry.file, entry.sha).catch(() => undefined).finally(() => { warming--; warmFiles(); });
-    }
-  };
-  const warmPrototypes = (forRepo: string, prototypes: readonly Prototype[]): void => {
-    for (const prototype of prototypes) {
-      if (!prototype.sha || !prototype.preview) continue;
-      const key = `${forRepo}@${prototype.sha}`;
-      if (warmedPrototypes.has(key)) continue;
-      warmedPrototypes.add(key);
-      if (warmedPrototypes.size > 256) warmedPrototypes.delete(warmedPrototypes.values().next().value!);
-      const dir = prototype.preview.replace(/[^/]+$/, '');
-      const files = [...new Set([prototype.preview, ...(/(?:^|\/)index\.html$/.test(prototype.preview) ? ['canvas.js', 'canvas.css', 'config.js', 'kit/kit.js', 'kit/kit.css'].map((file) => dir + file) : []), ...prototype.files.filter((file) => /\.(?:html?|css|js|svg|png|jpe?g|webp)$/i.test(file) && !/(?:^|\/)(?:tools|assets\/protos)\//.test(file))])].slice(0, 64);
-      for (const file of files) warmQueue.push({ repo: forRepo, branch: prototype.branch, sha: prototype.sha, file });
-    }
-    warmFiles();
-  };
+  // No speculative file downloads. Existing previews and viewer preparation request what they need.
+  const prototypeFiles = new PrototypeFileCache(fetchBranchFile, undefined, fetcher === undefined ? async () => {
+    const account = await signedInAccount();
+    if (account.status !== 'ready') return null;
+    const scope = createHash('sha256').update(JSON.stringify([account.host, account.login])).digest('hex');
+    return join(homedir(), '.wayfinder-map', 'prototype-files-v1', scope);
+  } : undefined);
+  const readPrototypeFile = (forRepo: string, ref: string, file: string): Promise<Buffer> =>
+    prototypeFiles.get(forRepo, ref, file, /^[a-f0-9]{40}$/i.test(ref) ? ref : undefined);
   const defaultUpdater: UpdaterService = {
     async check(): Promise<UpdaterStatus> {
       const currentVersion = WAYFINDER_VERSION;
@@ -350,6 +346,9 @@ export async function startServer({
   const loadHome = homeLoader ?? ((labels: readonly string[]) => loadHomeState(labels));
   let homeState: HomeState | null = null;
   let homeRead: Promise<HomeState> | null = null;
+  // The newest discovery started. Unlike `homeRead` it survives completion, so requests sharing a
+  // finished read are not mistaken for ones a forced refresh replaced.
+  let latestHomeRead: Promise<HomeState> | null = null;
   let cacheRevision = Date.now();
   let cacheScope = `${String(cacheRevision)}-${randomUUID()}`;
   const json = (response: ServerResponse, status: number, body: unknown): void => {
@@ -384,10 +383,9 @@ export async function startServer({
     accountRead = null;
     repoList = null;
     repositories.clear();
+    startupChecks.clear();
     prototypeCache.clear();
     prototypeFiles.clear();
-    warmedPrototypes.clear();
-    warmQueue.length = 0;
   };
   const observeAccount = (account: HomeAccount): void => {
     const previous = lastAccount ?? homeState?.account;
@@ -403,25 +401,29 @@ export async function startServer({
     const login = follow === null ? null : await follow.login();
     return follow === null || login === null ? null : { login, follows: await follow.store.follows(login, forRepo) };
   };
-  const settle: Settling | null = settling ?? (fetcher === undefined ? { login: signedInLogin, store: new SettleStore() } : null);
+  const signedInSettleAccount = async (): Promise<SettleAccount | null> => {
+    const account = await signedInAccount();
+    return account.status === 'ready' && account.login !== null ? { host: account.host, login: account.login } : null;
+  };
+  const settle: Settling | null = settling ?? (fetcher === undefined ? { account: signedInSettleAccount, store: new SettleStore() } : null);
   const repositories = new RepositoryStore({
     mapLabel: config.mapLabel,
     typePrefix: config.typePrefix,
     ...(fetcher === undefined ? {} : { fetcher }),
     ...(changeChecker === undefined ? {} : { changeChecker }),
-    ...(fetcher === undefined ? {
+    ...(snapshotCache ?? (fetcher === undefined ? {
       persistence: new RepositorySnapshotCache(),
       identity: async () => {
         const account = await signedInAccount();
         return account.status === 'ready' && account.login !== null ? `${account.host}/${account.login}` : null;
       },
-    } : {}),
+    } : {})),
     ...(settle === null
       ? {}
       : {
           choices: async (forRepo: string) => {
-            const login = await settle.login();
-            return login === null ? {} : settle.store.choices(login, forRepo);
+            const account = await settle.account();
+            return account === null ? {} : settle.store.choices(account, forRepo);
           },
         }),
     // Your own maps and the public maps you follow. Tests that inject a fetcher list every map.
@@ -453,6 +455,70 @@ export async function startServer({
       ...(mapWatchStore === undefined ? {} : { stateStore: mapWatchStore }),
     });
   await mapWatcher.restore();
+  /**
+   * At start-up, before anything is watched: the maps of a repository that may be
+   * watched, from its saved or fresh snapshot, or from the stored archive choices when it can't be read.
+   * Restored watches on the others stop.
+   */
+  /** The maps the signed-in account archived by hand in a repository, read from `settled.json` alone. */
+  const archivedByHand = async (forRepo: string): Promise<Set<number>> => {
+    const account = settle === null ? null : await settle.account().catch(() => null);
+    const choices = settle === null || account === null ? {} : await settle.store.choices(account, forRepo).catch(() => ({}));
+    return new Set(Object.entries(choices).filter(([, choice]) => choice.settled).map(([number]) => Number(number)));
+  };
+  /** Each repository's running check on which maps may be watched, made at start-up or by an event stream before any snapshot. */
+  const startupChecks = new Map<string, Promise<(mapNumber: number) => boolean>>();
+  const startupCheck = (forRepo: string): Promise<(mapNumber: number) => boolean> => {
+    const key = forRepo.toLowerCase();
+    let check = startupChecks.get(key);
+    if (check === undefined) {
+      const made = watchableMaps(forRepo);
+      // Kept only while it runs: once done, the snapshot it read answers, or a later stream checks again.
+      void made.catch(() => undefined).finally(() => {
+        if (startupChecks.get(key) === made) startupChecks.delete(key);
+      });
+      startupChecks.set(key, made);
+      check = made;
+    }
+    return check;
+  };
+  /**
+   * Which maps an event stream must not watch: closed, archived or gone in the snapshot read last. With nothing
+   * read yet, as just after a restart, the repository's start-up check answers instead, made now if there is none.
+   * Every map is decided after the last wait, so one archived while another repository was checked is still caught.
+   */
+  const unwatchable = async (targets: readonly MapWatchTarget[]): Promise<boolean[]> => {
+    const checks = await Promise.all(
+      targets.map((target) => (repositories.cached(target.repo) === null ? startupCheck(target.repo).catch(() => () => false) : undefined)),
+    );
+    return targets.map((target, index) => {
+      const cached = repositories.cached(target.repo);
+      if (cached === null) {
+        const keep = checks[index];
+        return keep !== undefined && !keep(target.mapNumber);
+      }
+      const map = cached.maps.find((candidate) => candidate.number === target.mapNumber);
+      return map === undefined || !map.open || map.settled !== null;
+    });
+  };
+  const watchableMaps = async (forRepo: string): Promise<(mapNumber: number) => boolean> => {
+    const fromSnapshot = (snapshot: MapSnapshot): ((mapNumber: number) => boolean) => {
+      const active = new Set(snapshot.maps.filter((map) => map.open && map.settled === null).map((map) => map.number));
+      mapWatcher.reconcile(forRepo, active);
+      return (mapNumber) => active.has(mapNumber);
+    };
+    try {
+      // A saved snapshot may be out of date, so this waits for the first live read before resuming anything.
+      return fromSnapshot(await repositories.currentForAction(forRepo));
+    } catch {
+      // The live read failed: the saved snapshot, if one loaded, still knows every kind of archive.
+      const cached = repositories.cached(forRepo);
+      if (cached !== null) return fromSnapshot(cached);
+      const archived = await archivedByHand(forRepo);
+      for (const mapNumber of archived) mapWatcher.stop(forRepo, mapNumber);
+      return (mapNumber) => !archived.has(mapNumber);
+    }
+  };
   const reconcileMapWatches = (snapshot: MapSnapshot): void => {
     const active = new Set(snapshot.maps.filter((map) => map.open && map.settled === null).map((map) => map.number));
     mapWatcher.reconcile(snapshot.repo, active);
@@ -519,10 +585,9 @@ export async function startServer({
     if (!force && cached !== undefined && Date.now() - cached.at < PROTOTYPE_TTL_MS) return cached.list;
     // Cache the ticket read as well: branches on settled maps need their ticket numbers.
     const list = map === null || map === undefined
-      ? repositories.snapshot(forRepo, false, snapshot.maps.map((candidate) => candidate.number)).then((loaded) => fetchAllPrototypes(forRepo, loaded.maps))
-      : fetchPrototypes(forRepo, map);
+      ? repositories.snapshot(forRepo, false, snapshot.maps.map((candidate) => candidate.number)).then((loaded) => fetchAllPrototypes(forRepo, loaded.maps, readPrototypeFile))
+      : fetchPrototypes(forRepo, map, readPrototypeFile);
     prototypeCache.set(key, { at: Date.now(), list });
-    void list.then((prototypes) => { if (prototypeCache.get(key)?.list === list) warmPrototypes(forRepo, prototypes); }, () => undefined);
     list.catch(() => { if (prototypeCache.get(key)?.list === list) prototypeCache.delete(key); });
     return list;
   };
@@ -627,9 +692,11 @@ export async function startServer({
     onUsageStop: (batch) => {
       if (batch.auto) void autoMaps.usageStopped(batch).catch(() => undefined);
     },
-    startTicket: async ({ repo: batchRepo, mapNumber, item }) => {
+    startTicket: async ({ repo: batchRepo, mapNumber, item, auto }) => {
       const found = find(await repositories.currentForAction(batchRepo, [mapNumber]), mapNumber, item.ticketNumber);
       if (found === null) return { kind: 'skipped', reason: `#${String(item.ticketNumber)} is not on the map any more.` };
+      // An Auto map ticket that waited in the queue starts nothing once its map is archived.
+      if (auto && found.map.settled !== null) return { kind: 'skipped', reason: 'This map is archived.' };
       if (found.ticket.state !== 'frontier') return { kind: 'skipped', reason: `#${String(item.ticketNumber)} is ${found.ticket.state}, not next.` };
       const reply = await startTicketHandOff(batchRepo, found.map, found.ticket, { model: item.model, tier: item.tier, auto: item.auto ?? null, threadOnly: true });
       const text = (value: unknown): string | null => (typeof value === 'string' && value !== '' ? value : null);
@@ -638,6 +705,12 @@ export async function startServer({
       return { kind: 'failed', reason: text(reply.body['notice']) ?? text(reply.body['error']) ?? 'T3 Code did not start the thread.' };
     },
   });
+
+  /** Whether a map is archived in the snapshot read last. */
+  const archivedNow = (forRepo: string, mapNumber: number): boolean => {
+    const map = repositories.cached(forRepo)?.maps.find((candidate) => candidate.number === mapNumber);
+    return map !== undefined && map.settled !== null;
+  };
 
   /** Validate a start request and hand its tickets to the Start next runner. The route and the auto map both come through here. */
   const startNextBatch = async (requestedRepo: string, requested: unknown): Promise<{ status: number; body: Record<string, unknown> }> => {
@@ -651,9 +724,13 @@ export async function startServer({
     const read = auto ? await repositories.refreshIfChanged(requestedRepo, [mapNumber]) : await repositories.currentForAction(requestedRepo, [mapNumber]);
     const map = read.maps.find((candidate) => candidate.number === mapNumber);
     if (map === undefined) return { status: 404, body: { error: 'No such map.' } };
+    // Auto map starts nothing on an archived map, even from a batch that was waiting when it was archived.
+    if (auto && map.settled !== null) return { status: 409, body: { error: 'This map is archived.' } };
     if ((await clones.resolve(requestedRepo)) === null) {
       return { status: 409, body: { error: `Choose a local clone of ${requestedRepo} before starting in T3 Code.` } };
     }
+    // It may have been archived while the clone was looked up.
+    if (auto && archivedNow(requestedRepo, mapNumber)) return { status: 409, body: { error: 'This map is archived.' } };
     const items = (body.tickets as Array<{ ticket?: unknown; tier?: unknown; model?: unknown; auto?: unknown }>).flatMap((entry): BatchRequestItem[] => {
       const ticket = map.tickets.find((candidate) => candidate.number === Number(entry.ticket));
       if (ticket === undefined) return [];
@@ -691,6 +768,8 @@ export async function startServer({
     notificationOn: async (kind) => (await notificationSettings.get())[kind],
     ...(onDesktopNotification === undefined ? {} : { desktop: onDesktopNotification }),
     ...(autoMapBatchMs === undefined ? {} : { batchMs: autoMapBatchMs }),
+    archived: archivedNow,
+    watchable: startupCheck,
   });
   await autoMaps.init();
 
@@ -832,10 +911,11 @@ export async function startServer({
           const labels = config.mapLabel === 'wayfinder:map' ? [config.mapLabel] : ['wayfinder:map', config.mapLabel];
           const scope = cacheScope;
           const read = force ? (homeRead = loadHome(labels)) : (homeRead ??= loadHome(labels));
+          latestHomeRead = read;
           try {
             const next = await read;
             if (scope !== cacheScope) throw new Error('GitHub account changed during discovery.');
-            if (homeRead !== read) throw new Error('Home discovery was replaced by a newer refresh.');
+            if (latestHomeRead !== read) throw new Error('Home discovery was replaced by a newer refresh.');
             observeAccount(next.account);
             homeState = next;
           } finally { if (homeRead === read) homeRead = null; }
@@ -1060,16 +1140,15 @@ export async function startServer({
         }
         const active: MapWatchTarget[] = [];
         const ended: MapWatchTarget[] = [];
-        for (const target of targets) {
-          const cached = repositories.cached(target.repo);
-          const map = cached?.maps.find((candidate) => candidate.number === target.mapNumber);
-          if (cached !== null && cached !== undefined && (map === undefined || !map.open || map.settled !== null)) {
+        const unwatched = await unwatchable(targets);
+        targets.forEach((target, index) => {
+          if (unwatched[index] === true) {
             mapWatcher.stop(target.repo, target.mapNumber);
             ended.push(target);
           } else {
             active.push(target);
           }
-        }
+        });
         streamMapEvents(request, response, mapWatcher, active, requestUrl.searchParams.get('after'), ended);
         return;
       }
@@ -1136,15 +1215,34 @@ export async function startServer({
           return;
         }
         // EventSource treats 204 as a completed stream and does not keep reconnecting.
-        const cached = repositories.cached(requestedRepo);
-        const map = cached?.maps.find((candidate) => candidate.number === mapNumber);
-        if (cached !== null && cached !== undefined && (map === undefined || !map.open || map.settled !== null)) {
+        if ((await unwatchable([{ repo: requestedRepo, mapNumber }]))[0] === true) {
           mapWatcher.stop(requestedRepo, mapNumber);
           response.writeHead(204);
           response.end();
           return;
         }
         streamMapEvents(request, response, mapWatcher, [{ repo: requestedRepo, mapNumber }], requestUrl.searchParams.get('after'));
+        return;
+      }
+
+      // Canvas notes (#213): one comment on a prototype ticket, and only a canvas-notes comment.
+      if (requestedRepo !== null && scoped?.action === 'canvas-notes' && request.method === 'POST') {
+        const body = (await readBody(request)) as { ticket?: unknown; body?: unknown };
+        const ticketNumber = Number(body.ticket);
+        if (!Number.isSafeInteger(ticketNumber) || ticketNumber <= 0 || !isCanvasNotesComment(body.body)) {
+          json(response, 400, { error: 'Name a prototype ticket and send the canvas notes comment.' });
+          return;
+        }
+        try {
+          const ticket = await fetchTicket(requestedRepo, ticketNumber, config.typePrefix);
+          if (ticket?.type !== 'prototype') {
+            json(response, 404, { error: `#${String(ticketNumber)} is not a prototype ticket.` });
+            return;
+          }
+          json(response, 200, await postIssueComment(requestedRepo, ticketNumber, body.body));
+        } catch (error) {
+          json(response, 502, { error: ghProblem(error) });
+        }
         return;
       }
 
@@ -1155,14 +1253,14 @@ export async function startServer({
           json(response, 400, { error: 'Name a map and whether it is settled.' });
           return;
         }
-        const login = settle === null ? null : await settle.login();
-        if (settle === null || login === null) {
+        const account = settle === null ? null : await settle.account();
+        if (settle === null || account === null) {
           json(response, 409, { error: 'Sign in with GitHub to settle maps.' });
           return;
         }
         try {
           const at = new Date().toISOString();
-          await settle.store.set(login, requestedRepo, mapNumber, { settled: body.settled, at });
+          await settle.store.set(account, requestedRepo, mapNumber, { settled: body.settled, at });
           const snapshot =
             (await repositories.settle(requestedRepo, mapNumber, body.settled ? { reason: 'manual', since: at } : null)) ??
             (await repositories.snapshot(requestedRepo, false));
@@ -1287,8 +1385,11 @@ export async function startServer({
         try {
           let pending = repoIcons.get(requestedRepo);
           if (pending === undefined) {
-            pending = resolveRepoIcon(requestedRepo);
-            repoIcons.set(requestedRepo, pending);
+            const repo = requestedRepo;
+            pending = resolveRepoIcon(repo);
+            repoIcons.set(repo, pending);
+            // A failed lookup (rate limit, offline) is retried a minute later instead of hiding the image all session.
+            pending.catch(() => setTimeout(() => repoIcons.delete(repo), REPO_ICON_RETRY_MS).unref());
           }
           const icon = await pending;
           if (icon === null) {
@@ -1545,11 +1646,11 @@ export async function startServer({
   url = `http://${config.host}:${String(port)}`;
   server.once('close', () => authFlow.cancel());
 
-  return { server, url };
+  return { server, url, flushPrototypeFiles: () => prototypeFiles.flush() };
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow|start-next|auto-rate)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow|start-next|auto-rate|canvas-notes)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;

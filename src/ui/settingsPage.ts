@@ -2,6 +2,7 @@ import { bindAccountMark, bindUpdater } from './chrome.js';
 import { mountNavigation } from './navigation.js';
 import { mountSettingsPage } from './settings.js';
 import { syncServerSettings } from './settingsSync.js';
+import { mountTour } from './tour.js';
 
 function need(id: string): HTMLElement {
   const element = document.getElementById(id);
@@ -22,4 +23,8 @@ mountNavigation({ shell: need('app'), sidebar: need('sidebar-shell'), topbar: ne
 bindAccountMark(document.getElementById('account-mark'));
 bindUpdater(need('updater'), toast);
 const refreshLocal = mountSettingsPage(need('main'), toast);
+const tour = mountTour({ toast, app: need('app') });
+need('main').addEventListener('click', (event) => {
+  if (event.target instanceof Element && event.target.closest('[data-settings-tour]') !== null) tour.start();
+});
 void syncServerSettings().then(refreshLocal);

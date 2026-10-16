@@ -65,6 +65,7 @@ const STATIC_ICONS: Record<string, string> = {
   arrow: icons.ARROW,
   bolt: icons.BOLT,
   hand: icons.HAND,
+  help: icons.HELP,
   flame: icons.FLAME,
 };
 

@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { Window } from 'happy-dom';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { MapSnapshot, OutsideTicket, Ticket, WayfinderMap } from '../types.js';
-import { createJumpDestinations, loadingMapRows, navFooterHtml, prototypeCountBadge, repoLabel, sidebarLoadsMaps, sidebarMaps, viewFromQuery } from './navigation.js';
+import { createJumpDestinations, findSidebarControl, loadingMapRows, navFooterHtml, opensJump, sidebarFocusKey, prototypeCountBadge, repoLabel, sidebarLoadsMaps, sidebarMaps, viewFromQuery } from './navigation.js';
+import { setTrustedHtml } from './trustedHtml.js';
 
 function ticket(number: number, title: string): Ticket {
   return {
@@ -172,5 +174,43 @@ describe('sidebar footer', () => {
       expect(html).not.toContain('id="models"');
       expect(html.includes('aria-current="page"')).toBe(page === 'settings');
     }
+  });
+});
+
+describe('opensJump', () => {
+  const shell = (inert: boolean): Pick<Element, 'hasAttribute'> => ({ hasAttribute: (name: string) => inert && name === 'inert' });
+
+  it('opens Jump to… on Ctrl+K or Cmd+K', () => {
+    expect(opensJump({ ctrlKey: true, metaKey: false, key: 'k' }, shell(false))).toBe(true);
+    expect(opensJump({ ctrlKey: false, metaKey: true, key: 'K' }, shell(false))).toBe(true);
+    expect(opensJump({ ctrlKey: false, metaKey: false, key: 'k' }, shell(false))).toBe(false);
+  });
+
+  it('leaves Ctrl+K alone while the tour or another overlay has made the app inert', () => {
+    expect(opensJump({ ctrlKey: true, metaKey: false, key: 'k' }, shell(true))).toBe(false);
+  });
+});
+
+describe('keeping sidebar focus across a redraw', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('finds the visible replacement for a control with an id, a data-nav value or only a link', () => {
+    const browser = new Window();
+    vi.stubGlobal('CSS', browser.CSS);
+    const sidebar = browser.document.createElement('div') as unknown as HTMLElement;
+    const draw = (): void => {
+      setTrustedHtml(sidebar, `<div hidden><a href="/">Home</a><button data-nav-action="jump">Jump</button></div>
+        <div><a href="/">Home</a><button data-nav-action="jump">Jump</button><a class="row-link" href="/octo/app">octo/app</a><a id="settings" href="/settings">Settings</a></div>`);
+    };
+    draw();
+    const visible = (selector: string): Element => [...sidebar.querySelectorAll(selector)].at(-1)!;
+    const keys = ['a[href="/"]', 'button', '.row-link', '#settings'].map((selector) => sidebarFocusKey(visible(selector)));
+    expect(keys).toEqual([String.raw`a[href="\/"]`, 'button[data-nav-action="jump"]', String.raw`a[href="\/octo\/app"]`, '#settings']);
+    draw();
+    for (const [index, key] of keys.entries()) {
+      const found = findSidebarControl(sidebar, key!);
+      expect(found).toBe(visible(['a[href="/"]', 'button', '.row-link', '#settings'][index]!));
+    }
+    expect(sidebarFocusKey(browser.document.createElement('span') as unknown as HTMLElement)).toBeNull();
   });
 });

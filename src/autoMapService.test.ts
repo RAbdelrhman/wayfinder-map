@@ -169,6 +169,57 @@ describe('AutoMapService', () => {
       expect([...h.watching.values()][0]).toBe(first);
     });
 
+    it('after a restart, watches and catches up only the maps start-up says may be watched', async () => {
+      const first = harness();
+      await first.service.change('octo/one', 5, { op: 'enable' });
+      await first.service.change('octo/one', 6, { op: 'enable' });
+      await first.service.change('octo/two', 9, { op: 'enable' });
+      first.service.close();
+
+      const asked: string[] = [];
+      let release: () => void = () => undefined;
+      const checked = new Promise<void>((resolve) => { release = resolve; });
+      const restarted = harness({
+        watchable: async (repo) => {
+          asked.push(repo);
+          await checked;
+          // Map 6 is archived; octo/two can't be checked at all.
+          if (repo === 'octo/two') throw new Error('offline');
+          return (mapNumber) => mapNumber !== 6;
+        },
+      });
+      await restarted.store.save(await first.store.load());
+      await restarted.service.init();
+      // Nothing is watched or read while start-up is still checking.
+      expect(restarted.watching.size).toBe(0);
+      expect(restarted.catchUps).toEqual([]);
+      release();
+      await restarted.service.resumed;
+      expect(asked.sort()).toEqual(['octo/one', 'octo/two']);
+      expect([...restarted.watching.keys()]).toEqual(['octo/one#5']);
+      expect(restarted.catchUps.sort()).toEqual(['octo/one', 'octo/two']);
+      // The setting is kept, so the map resumes when a snapshot lists it as active again.
+      expect(restarted.service.setting('octo/one', 6)).toMatchObject({ enabled: true });
+      restarted.service.reconcile('octo/one', new Set([5, 6]));
+      expect([...restarted.watching.keys()].sort()).toEqual(['octo/one#5', 'octo/one#6']);
+    });
+
+    it('watches nothing at start-up once closed', async () => {
+      const first = harness();
+      await first.service.change('octo/one', 5, { op: 'enable' });
+      let release: () => void = () => undefined;
+      const checked = new Promise<void>((resolve) => { release = resolve; });
+      const restarted = harness({ watchable: async () => { await checked; return () => true; } });
+      await restarted.store.save(await first.store.load());
+      await restarted.service.init();
+      // Closed while the start-up check is still running.
+      restarted.service.close();
+      release();
+      await restarted.service.resumed;
+      expect(restarted.watching.size).toBe(0);
+      expect(restarted.catchUps).toEqual([]);
+    });
+
     it('is quiet after close', async () => {
       const h = harness();
       await h.service.change('octo/one', 5, { op: 'enable' });
@@ -531,6 +582,97 @@ describe('AutoMapService', () => {
       expect(h.desktop).toEqual([
         { kind: 'unblocked', title: 'octo/one · Map #5 Roadmap v1', body: 'Ready to start: #12 Ticket 12', repo: 'octo/one', mapNumber: 5, ticketNumber: 12 },
       ]);
+    });
+
+    it('starts nothing and posts no notice for a map archived before the batch started', async () => {
+      const h = harness({ loadMap: async () => mapOf([ticket(11), ticket(12)], { settled: { reason: 'manual', since: NOW.toISOString() } }) });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      h.emit(next(12));
+      await h.service.flush();
+      expect(h.submits).toEqual([]);
+      expect(h.service.view().notices).toEqual([]);
+      expect(h.desktop).toEqual([]);
+    });
+
+    it('starts nothing for a map archived while its tickets were rated, and posts no notice', async () => {
+      let archived = false;
+      const h = harness({
+        archived: () => archived,
+        rate: async () => {
+          archived = true;
+          return { ok: false, error: 'no model', prediction: prediction(null, 'failed') };
+        },
+      });
+      await h.service.updateSettings({ rater: { kind: 'model', choice: LUNA } });
+      await h.service.change('octo/one', 5, { op: 'enable', tier: 'auto' });
+      h.emit(next(12));
+      await h.service.flush();
+      expect(h.submits).toEqual([]);
+      expect(h.service.view().notices).toEqual([]);
+      expect(h.desktop).toEqual([]);
+    });
+
+    it('posts no ready notice for a map archived while the notification settings were read', async () => {
+      let archived = false;
+      const h = harness({
+        archived: () => archived,
+        notificationOn: async () => {
+          archived = true;
+          return true;
+        },
+      });
+      h.reply.ok = false;
+      h.reply.error = 'offline';
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      h.emit(next(12));
+      await h.service.flush();
+      expect(h.submits).toHaveLength(1);
+      expect(archived).toBe(true);
+      expect(h.service.view().notices).toEqual([]);
+      expect(h.desktop).toEqual([]);
+    });
+
+    it('takes back a ready notice, and shows no OS notification, for a map archived while the notice was saved', async () => {
+      let archived = false;
+      const store = memoryAutoMapStore();
+      const save = store.save.bind(store);
+      const h = harness({
+        archived: () => archived,
+        store: {
+          load: () => store.load(),
+          save: async (state) => {
+            if (state.notices.length > 0) archived = true;
+            await save(state);
+          },
+        },
+      });
+      h.reply.ok = false;
+      h.reply.error = 'offline';
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      h.emit(next(12));
+      await h.service.flush();
+      expect(archived).toBe(true);
+      expect(h.service.view().notices).toEqual([]);
+      expect((await store.load()).notices).toEqual([]);
+      expect(h.desktop).toEqual([]);
+    });
+
+    it('posts no ready notice when the start was refused because the map was just archived', async () => {
+      let archived = false;
+      const h = harness({
+        archived: () => archived,
+        submit: async () => {
+          archived = true;
+          return { ok: false, error: 'This map is archived.' };
+        },
+      });
+      await h.service.change('octo/one', 5, { op: 'enable' });
+      h.emit(next(11));
+      h.emit(next(12));
+      await h.service.flush();
+      expect(archived).toBe(true);
+      expect(h.service.view().notices).toEqual([]);
+      expect(h.desktop).toEqual([]);
     });
 
     it('does the same when the request itself throws', async () => {

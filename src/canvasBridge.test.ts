@@ -54,7 +54,7 @@ describe('sandboxed canvas bridge', () => {
       URL,
       parent: { postMessage: vi.fn() },
       location: { href: 'http://localhost/proto/o/r/prototype%2F1/option.html', hash: '', replace },
-      document: { readyState: 'loading', addEventListener: (name: string, fn: (event: unknown) => void) => listeners.set(name, fn) },
+      document: { readyState: 'loading', querySelector: () => null, addEventListener: (name: string, fn: (event: unknown) => void) => listeners.set(name, fn) },
     });
     const preventDefault = vi.fn();
     const click = {
@@ -137,6 +137,85 @@ describe('sandboxed canvas bridge', () => {
     expect(served).toContain("frame.contentWindow.location.replace('data:text/html;charset=utf-8,'");
     expect(() => new Function(served)).not.toThrow();
   });
+  describe('smooth pan on a canvas board (#214)', () => {
+    const inject = (stage: unknown) => {
+      const append = vi.fn();
+      const style: { textContent?: string } = {};
+      runInNewContext(CANVAS_BRIDGE_SCRIPT, {
+        window: { CANVAS: { title: 'T', variants: [] }, addEventListener: vi.fn() },
+        parent: { postMessage: vi.fn() },
+        location: { hash: '', href: 'http://127.0.0.1/proto/o/r/prototype%2F1/index.html' },
+        document: {
+          readyState: 'interactive',
+          querySelector: (selector: string) => (selector === '#stage' ? stage : null),
+          createElement: () => style,
+          head: { append },
+          addEventListener: vi.fn(),
+        },
+        URL,
+      });
+      return { append, style };
+    };
+    it('gives each option frame a compositor layer, so scrolling does not repaint the pages inside', () => {
+      const { append, style } = inject({});
+      expect(append).toHaveBeenCalledWith(style);
+      expect(style.textContent).toBe('#stage .frame { will-change: transform; } #stage.wf-zoomed-in .frame { will-change: auto; }');
+    });
+    it('leaves snapshots and option pages, which have no board, alone', () => {
+      expect(inject(null).append).not.toHaveBeenCalled();
+    });
+  });
+  describe('zoom by transform (#214)', () => {
+    const served = (): string =>
+      viewerPrototypeBytes('prototypes/canvas/canvas.js', readFileSync(new URL('../prototypes/canvas/canvas.js', import.meta.url))).toString();
+    /** Runs the served engine's zoom helper against a stand-in stage. */
+    const zoomed = (levels: number[], size = { offsetWidth: 2000, offsetHeight: 3000 }) => {
+      const observed: Array<() => void> = [];
+      const classes = new Set<string>();
+      const stage = { ...size, style: {} as Record<string, string>, dataset: {} as Record<string, string>, classList: { toggle: (name: string, on: boolean) => (on ? classes.add(name) : classes.delete(name)) } };
+      const context = { stage, levels, ResizeObserver: class { constructor(callback: () => void) { observed.push(callback); } observe(): void {} }, String, Number, snapshots: [] as unknown[] };
+      runInNewContext(
+        `${served().slice(0, served().indexOf('/*'))}
+         for (const level of levels) { stageZoom(stage, level); snapshots.push({ ...stage.style }); }`,
+        context,
+      );
+      return { stage, classes, snapshots: context.snapshots as Array<Record<string, string>>, observed };
+    };
+    it('serves the engine with the helper and no CSS zoom assignment', () => {
+      const original = readFileSync(new URL('../prototypes/canvas/canvas.js', import.meta.url)).toString();
+      expect(original).toContain("$('stage').style.zoom = String(state.zoom);");
+      expect(served()).not.toContain("style.zoom = String(");
+      expect(served()).toContain("stageZoom($('stage'), state.zoom);");
+      expect(() => new Function(served())).not.toThrow();
+    });
+    it('leaves engines without the zoom line alone', () => {
+      const bytes = Buffer.from('(() => { const x = 1; })();');
+      expect(viewerPrototypeBytes('canvas.js', bytes).toString()).toBe(bytes.toString());
+    });
+    it('scales from the top left and pulls the scroll area in while zoomed out', () => {
+      const { snapshots } = zoomed([0.5, 1, 1.5]);
+      expect(snapshots[0]).toMatchObject({ transform: 'scale(0.5)', transformOrigin: '0 0', marginRight: '-1000px', marginBottom: '-1500px', zoom: '' });
+      expect(snapshots[1]).toMatchObject({ transform: '', marginRight: '', marginBottom: '' });
+      expect(snapshots[2]).toMatchObject({ transform: 'scale(1.5)', marginRight: '', marginBottom: '' });
+    });
+    it('follows the stage as options report their height', () => {
+      const { stage, observed } = zoomed([0.5]);
+      expect(observed).toHaveLength(1);
+      stage.offsetHeight = 4000;
+      observed[0]!();
+      expect(stage.style['marginBottom']).toBe('-2000px');
+    });
+    it('holds the pages in layers only at 100% or zoomed out, because a layer keeps the scale it was rastered at', () => {
+      const { classes } = zoomed([0.5]);
+      expect(classes.has('wf-zoomed-in')).toBe(false);
+      expect(zoomed([1]).classes.has('wf-zoomed-in')).toBe(false);
+      expect(zoomed([1.25]).classes.has('wf-zoomed-in')).toBe(true);
+      expect(zoomed([2, 1]).classes.has('wf-zoomed-in')).toBe(false);
+    });
+    it('watches the stage once however often it zooms', () => {
+      expect(zoomed([0.5, 0.8, 0.5, 1]).observed).toHaveLength(1);
+    });
+  });
   it('injects only scripts into HTML and does not change other assets', () => {
     const bytes = Buffer.from('<html><body>snapshot</body></html>');
     expect(viewerPrototypeBytes('prototype-snapshot.html', bytes).toString()).toContain(CANVAS_BRIDGE_SCRIPT);
@@ -144,6 +223,7 @@ describe('sandboxed canvas bridge', () => {
   });
   it('validates the parent and known options; exposes no API operation', () => {
     const listeners = new Map<string, (event?: unknown) => void>();
+    const documentListeners = new Map<string, (event?: unknown) => void>();
     const parent = { postMessage: vi.fn() },
       replace = vi.fn();
     const window = {
@@ -158,9 +238,10 @@ describe('sandboxed canvas bridge', () => {
         readyState: 'loading',
         querySelector: () => null,
         querySelectorAll: () => [],
-        addEventListener: (name: string, fn: (event?: unknown) => void) => listeners.set(name, fn),
+        addEventListener: (name: string, fn: (event?: unknown) => void) => documentListeners.set(name, fn),
       },
       URL,
+      Element: class {},
     });
     listeners.get('DOMContentLoaded')?.();
     expect(parent.postMessage.mock.calls.find(([message]) => message.type === 'ready')?.[0]).toMatchObject({
@@ -175,7 +256,14 @@ describe('sandboxed canvas bridge', () => {
     expect(replace).not.toHaveBeenCalled();
     listeners.get('message')?.({ source: parent, data: { wf: 1, type: 'go', page: 'p', option: 'B' } });
     expect(replace).toHaveBeenCalledWith('#p/B');
-    listeners.get('keydown')?.({ key: 'Escape' });
+    documentListeners.get('keydown')?.({ key: 'Escape' });
     expect(parent.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'key', key: 'Escape' }, '*');
+    // A tool key the canvas left alone goes to the viewer; one the canvas used (P, its page menu) does not.
+    listeners.get('keydown')?.({ key: 'e', defaultPrevented: false, target: null });
+    expect(parent.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'key', key: 'E' }, '*');
+    parent.postMessage.mockClear();
+    listeners.get('keydown')?.({ key: 'p', defaultPrevented: true, target: null });
+    listeners.get('keydown')?.({ key: 'f', ctrlKey: true, defaultPrevented: false, target: null });
+    expect(parent.postMessage).not.toHaveBeenCalled();
   });
 });

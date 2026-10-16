@@ -81,11 +81,13 @@ export class RepositoryStore {
   async settle(repo: string, mapNumber: number, settled: MapSettlement | null): Promise<MapSnapshot | null> {
     const normalized = normalizeRepo(repo);
     const entry = normalized === null ? undefined : this.entries.get(normalized);
-    if (normalized === null || entry?.snapshot === null || entry === undefined) return null;
+    if (normalized === null || entry === undefined) return null;
+    // Recorded even before the first snapshot, so a read already in flight with the old choices applies it.
     entry.choiceRevision = (entry.choiceRevision ?? 0) + 1;
     entry.settleOverrides ??= new Map();
     entry.settleOverrides.set(mapNumber, settled);
     entry.persistedScope = null;
+    if (entry.snapshot === null) return null;
     entry.snapshot = {
       ...entry.snapshot,
       maps: entry.snapshot.maps.map((map) => (map.number === mapNumber ? { ...map, settled } : map)),
