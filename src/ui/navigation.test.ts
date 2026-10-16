@@ -2,7 +2,7 @@ import { Window } from 'happy-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { MapSnapshot, OutsideTicket, Ticket, WayfinderMap } from '../types.js';
-import { createJumpDestinations, findSidebarControl, loadingMapRows, navFooterHtml, opensJump, sidebarFocusKey, prototypeCountBadge, repoLabel, sidebarLoadsMaps, sidebarMaps, viewFromQuery } from './navigation.js';
+import { createJumpDestinations, findSidebarControl, loadingMapRows, mapListMarkup, navFooterHtml, opensJump, sidebarFocusKey, prototypeCountBadge, repoLabel, sidebarLoadsMaps, sidebarMaps, viewFromQuery } from './navigation.js';
 import { setTrustedHtml } from './trustedHtml.js';
 
 function ticket(number: number, title: string): Ticket {
@@ -145,11 +145,31 @@ describe('repoLabel', () => {
 });
 
 describe('loadingMapRows', () => {
-  it('keeps settled maps out of the tree unless one is open', () => {
+  it('keeps archived maps out of the tree unless one is open', () => {
     const settled = { ...map(8, 'Old map'), settled: { reason: 'closed' as const, since: '2026-08-01T00:00:00.000Z' } };
     const active = map(12, 'Current map');
     expect(sidebarMaps([active, settled], null).map(({ number }) => number)).toEqual([12]);
     expect(sidebarMaps([active, settled], 8).map(({ number }) => number)).toEqual([12, 8]);
+  });
+
+  it('ends the tree with Archived maps and its count, and tags an opened archived map', () => {
+    const archived = { ...map(8, 'Old map'), settled: { reason: 'closed' as const, since: '2026-08-01T00:00:00.000Z' } };
+    const active = map(12, 'Current map');
+    const empty = mapListMarkup('octo/wayfinder', [], null, 'map', true);
+    expect(empty).toContain('No maps yet');
+    expect(empty).toContain('href="/repos/octo/wayfinder?view=archived" aria-current="page"');
+    const tree = mapListMarkup('octo/wayfinder', [active, archived], null, 'map');
+    expect(tree).not.toContain('#8 Old map');
+    expect(tree).toContain('<a class="row nav-archive-row" href="/repos/octo/wayfinder?view=archived">');
+    expect(tree).toContain('<span class="grow">Archived maps</span><span class="nav-tree-count">1</span>');
+    expect(tree.indexOf('#12 Current map')).toBeLessThan(tree.indexOf('Archived maps'));
+
+    const opened = mapListMarkup('octo/wayfinder', [active, archived], 8, 'map');
+    expect(opened).toContain('#8 Old map</span><span class="nav-tree-tag" title="Archived">Archived</span>');
+
+    const onArchivedMaps = mapListMarkup('octo/wayfinder', [archived], null, 'map', true);
+    expect(onArchivedMaps).toContain('Every map here is archived');
+    expect(onArchivedMaps).toContain('class="row nav-archive-row is-on" href="/repos/octo/wayfinder?view=archived" aria-current="page"');
   });
 
   it('reserves a row for each map the repository had last time, capped at twelve', () => {

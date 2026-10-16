@@ -1250,12 +1250,12 @@ export async function startServer({
         const body = (await readBody(request)) as { map?: unknown; settled?: unknown };
         const mapNumber = Number(body.map);
         if (!Number.isSafeInteger(mapNumber) || mapNumber <= 0 || typeof body.settled !== 'boolean') {
-          json(response, 400, { error: 'Name a map and whether it is settled.' });
+          json(response, 400, { error: 'Name a map and whether it is archived.' });
           return;
         }
         const account = settle === null ? null : await settle.account();
         if (settle === null || account === null) {
-          json(response, 409, { error: 'Sign in with GitHub to settle maps.' });
+          json(response, 409, { error: 'Sign in with GitHub to archive maps.' });
           return;
         }
         try {

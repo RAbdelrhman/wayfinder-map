@@ -6360,109 +6360,6 @@ textarea.input {
   opacity: 0.75;
 }
 
-/* Settled maps: one quiet line each, collapsed at the foot of the list. */
-.wf-settled {
-  margin-top: 20px;
-  border-top: 1px solid var(--hairline);
-  padding-top: 12px;
-}
-
-.wf-settled[hidden] {
-  display: none;
-}
-
-.wf-settled-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 4px 10px 4px 6px;
-  border: 0;
-  border-radius: 8px;
-  background: none;
-  color: var(--text-secondary);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.wf-settled-toggle:hover {
-  background: var(--wash);
-  color: var(--text-primary);
-}
-
-.wf-settled-toggle:focus-visible,
-.wf-settled-row a:focus-visible {
-  outline: 2px solid var(--text-primary);
-  outline-offset: 2px;
-}
-
-.wf-settled-toggle .i {
-  width: 14px;
-  height: 14px;
-  transition: transform 120ms ease;
-}
-
-.wf-settled-toggle.is-open .i {
-  transform: rotate(90deg);
-}
-
-.wf-settled-list {
-  margin: 8px 0 0;
-  padding: 0;
-  list-style: none;
-  border: 1px solid var(--hairline);
-  border-radius: 12px;
-  background: var(--surface-1);
-}
-
-.wf-settled-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 12px;
-  padding: 8px 12px 8px 16px;
-  font-size: 13px;
-}
-
-.wf-settled-row[hidden] {
-  display: none;
-}
-
-.wf-settled-row + .wf-settled-row {
-  border-top: 1px solid var(--hairline);
-}
-
-.wf-settled-row .grow {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--text-primary);
-  text-decoration: none;
-}
-
-.wf-settled-row .grow:hover {
-  text-decoration: underline;
-}
-
-.wf-settled-row .num,
-.wf-settled-row .when {
-  color: var(--text-muted);
-}
-
-.wf-settled-row .when {
-  flex: none;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.wf-settled-row .ghost {
-  flex: none;
-  height: 28px;
-  font-size: 12.5px;
-}
-
 /* Map visibility (#147): who opened the map, and whether others can see it in Wayfinder */
 .wf-visibility {
   display: flex;
@@ -6473,11 +6370,6 @@ textarea.input {
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.45;
-}
-
-.wf-settled-row .wf-visibility {
-  flex-basis: 100%;
-  margin: 0;
 }
 
 .wf-author {
@@ -6632,12 +6524,6 @@ textarea.input {
   font-size: 12.5px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .wf-settled-toggle .i {
-    transition: none;
-  }
-}
-
 .wf-counts {
   display: flex;
   flex-wrap: wrap;
@@ -6737,10 +6623,6 @@ textarea.input {
 
   .wf-repo .when {
     display: none;
-  }
-
-  .wf-settled-row {
-    flex-wrap: wrap;
   }
 
 }
@@ -8477,3 +8359,797 @@ button.cf-row-kind:hover { color: var(--accent-text); text-decoration: underline
 .cf-sm { padding: 3px 8px; }
 @media (max-width: 1180px) { .cf-toolrow .vw-lbl { display: none; } }
 @media (prefers-reduced-motion: reduce) { .cf-pin { transition: none; } }
+
+/* ---------- repository maps and Archived maps (#242, option G of #288) ----------
+   Active and archived maps share one layout: a list of selectable blocks beside a preview whose
+   graph, title and counts are one Open map link. A reason is an icon plus a word: only ticket
+   state carries colour. */
+
+.maps-split {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.maps-list {
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  box-shadow: var(--shadow-preview);
+  overflow: hidden;
+}
+
+.maps-group + .maps-group {
+  border-top: 1px solid var(--hairline);
+}
+
+.maps-opt {
+  position: relative;
+  display: block;
+  padding: 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.maps-opt + .maps-opt {
+  border-top: 1px solid var(--hairline);
+}
+
+.maps-opt:hover {
+  background: var(--wash);
+}
+
+.maps-opt[aria-selected='true'] {
+  background: color-mix(in srgb, var(--state-claimed) 12%, transparent);
+}
+
+.maps-opt[aria-selected='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--state-claimed);
+}
+
+.maps-opt:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -3px;
+}
+
+.maps-identity {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.maps-identity.has-time {
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+}
+
+.maps-identity .t {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.maps-opt.is-active-map .t,
+.maps-opt[aria-selected='true'] .t {
+  font-weight: 600;
+}
+
+.maps-identity .num {
+  margin-right: 3px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.maps-identity time {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* muted text fails 4.5:1 on the selected tint in light mode, so selected rows step up to secondary */
+.maps-opt[aria-selected='true'] :is(.num, time) {
+  color: var(--text-secondary);
+}
+
+.maps-destination {
+  display: block;
+  margin: 9px 0 12px 24px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.maps-progress {
+  display: block;
+  margin-left: 24px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.maps-reason {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-secondary);
+}
+
+.maps-reason .i,
+.archive-reason .i {
+  width: 14px;
+  height: 14px;
+  color: var(--text-secondary);
+}
+
+.maps-rule {
+  display: block;
+  margin: 5px 0 14px 24px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.maps-opt.is-skeleton {
+  cursor: default;
+}
+
+.maps-hint {
+  margin: 0;
+  padding: 8px 14px 10px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--hairline);
+}
+
+.maps-hint kbd {
+  font-size: 10.5px;
+}
+
+.maps-detail {
+  position: sticky;
+  top: 72px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  box-shadow: var(--shadow-preview);
+  overflow: hidden;
+}
+
+.maps-preview {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 11px 11px 0 0;
+}
+
+.maps-preview:hover {
+  background: var(--wash);
+}
+
+.maps-preview:hover h2 {
+  color: var(--accent-text);
+}
+
+.maps-preview:focus-visible {
+  outline: 3px solid var(--accent-text);
+  outline-offset: -3px;
+}
+
+.maps-detail-graph {
+  height: 196px;
+  background: var(--plane);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.maps-detail-graph .mini-graph {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+}
+
+.maps-detail-body {
+  padding: 18px 22px 20px;
+}
+
+.maps-detail-body .eyebrow {
+  margin: 0;
+}
+
+.maps-detail-body h2 {
+  margin: 6px 0 0;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+}
+
+.maps-detail-body .dest {
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.maps-open {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 14px;
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.maps-open .i {
+  width: 16px;
+  height: 16px;
+}
+
+.maps-preview:hover .maps-open {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.maps-facts-body {
+  padding-top: 0;
+}
+
+.maps-facts {
+  display: grid;
+  margin: 16px 0 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.maps-facts > div {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.maps-facts dt {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.maps-facts dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.maps-facts dd .archive-reason {
+  margin-right: 6px;
+}
+
+.maps-facts ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.maps-facts li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.maps-facts li .i {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+}
+
+.maps-fine {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.maps-detail .archive-alert {
+  margin: 14px 0 0;
+}
+
+.archive-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.archive-acts > * {
+  height: 34px;
+}
+
+.archive-acts .primary {
+  padding: 0 16px;
+}
+
+.archive-acts .i {
+  width: 14px;
+  height: 14px;
+}
+
+.archive-acts [aria-busy='true'] {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.archive-reason {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.archive-spin {
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.archive-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 11px 14px;
+  font-size: 13px;
+  background: color-mix(in srgb, var(--state-failed) 7%, var(--surface-1));
+  border: 1px solid color-mix(in srgb, var(--state-failed) 45%, var(--hairline));
+  border-radius: 10px;
+}
+
+.archive-alert > .i {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--state-failed);
+}
+
+.archive-alert .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.archive-alert b {
+  font-weight: 600;
+}
+
+.archive-alert.is-stale {
+  background: color-mix(in srgb, var(--state-blocked) 9%, var(--surface-1));
+  border-color: color-mix(in srgb, var(--state-blocked) 50%, var(--hairline));
+}
+
+.archive-alert.is-stale > .i {
+  color: var(--handoff-needs-you);
+}
+
+.archive-alert .ghost .i {
+  width: 14px;
+  height: 14px;
+}
+
+/* the way into Archived maps, at the foot of the active list */
+.archive-door {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  text-decoration: none;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  transition: background 120ms, border-color 120ms;
+}
+
+a.archive-door:hover {
+  background: color-mix(in srgb, var(--wash) 60%, var(--surface-1));
+  border-color: var(--baseline);
+}
+
+.archive-door:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.archive-door-ic {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  color: var(--text-secondary);
+  background: var(--plane);
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+}
+
+.archive-door-ic .i {
+  width: 17px;
+  height: 17px;
+}
+
+.archive-door .grow {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
+}
+
+.archive-door b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.archive-door .sub {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.archive-door-stack {
+  display: flex;
+}
+
+.archive-door-stack span {
+  width: 64px;
+  height: 40px;
+  margin-left: -18px;
+  background: var(--plane);
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.archive-door-stack span:first-child {
+  margin-left: 0;
+}
+
+.archive-door-stack .mini-graph {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  opacity: 0.75;
+  filter: saturate(0.5);
+}
+
+.archive-door > .i {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+}
+
+/* Archived maps */
+.archive-page-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.archive-page-head .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.archive-page-head h1 {
+  margin: 0;
+  font-size: var(--font-page-title);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.archive-page-head h1:focus,
+.wf-head h1[tabindex='-1']:focus {
+  outline: 0;
+}
+
+.archive-page-head p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.archive-page-head .search {
+  width: 240px;
+  height: 32px;
+  margin: 0;
+  background: var(--surface-1);
+}
+
+.archive-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-radius: 6px;
+}
+
+.archive-back:hover {
+  color: var(--text-primary);
+}
+
+.archive-back .i {
+  width: 14px;
+  height: 14px;
+}
+
+.archive-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 44px 24px 40px;
+  text-align: center;
+  background: var(--surface-1);
+  border: 1px dashed var(--baseline);
+  border-radius: 12px;
+}
+
+.archive-empty > .i {
+  width: 30px;
+  height: 30px;
+  color: var(--text-muted);
+  stroke-width: 1.5;
+}
+
+.archive-empty h2 {
+  margin: 6px 0 0;
+  font-size: 16px;
+}
+
+.archive-empty p {
+  max-width: 54ch;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.archive-empty .ghost {
+  margin-top: 12px;
+}
+
+.archive-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.archive-kinds li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.archive-kinds .i {
+  width: 13px;
+  height: 13px;
+  color: var(--text-muted);
+}
+
+/* the sidebar's Archived maps row, and an opened archived map's tag */
+.kids .row.nav-archive-row {
+  color: var(--text-muted);
+}
+
+.kids .row.nav-archive-row.is-on {
+  color: var(--text-primary);
+}
+
+.nav-archive-row .i {
+  width: 15px;
+  height: 15px;
+}
+
+.nav-tree-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-tree-tag {
+  flex: none;
+  padding: 0 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+}
+
+.row.is-on :is(.nav-tree-count, .nav-tree-tag) {
+  color: var(--text-secondary);
+}
+
+.nav-scope-static {
+  cursor: default;
+}
+
+.nav-scope-static .i {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+}
+
+.nav-scope-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--wash);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+}
+
+.nav-scope-badge .i {
+  width: 11px;
+  height: 11px;
+}
+
+/* an opened archived map: a floating status card on the board */
+.map-archive-card {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 4;
+  width: min(380px, calc(100% - 28px));
+  padding: 14px 16px;
+}
+
+.map-archive-card[hidden] {
+  display: none;
+}
+
+.map-archive-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.map-archive-head > .i {
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+}
+
+.map-archive-head b {
+  font-weight: 650;
+}
+
+.map-archive-head .sep {
+  color: var(--baseline);
+}
+
+.map-archive-card p {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.map-archive-card .archive-acts {
+  margin-top: 12px;
+}
+
+.map-archive-card .archive-acts > * {
+  height: 30px;
+}
+
+.map-archive-card .archive-alert {
+  margin: 12px 0 0;
+}
+
+/* a toast with one action */
+.toast.has-action {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(560px, 92vw);
+}
+
+.toast.has-action[hidden] {
+  display: none;
+}
+
+.toast button {
+  flex: none;
+  padding: 3px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: inherit;
+  background: color-mix(in srgb, var(--surface-1) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-1) 30%, transparent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.toast button:focus-visible {
+  outline: 2px solid var(--surface-1);
+  outline-offset: 2px;
+}
+
+@media (max-width: 820px) {
+  .archive-page-head {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .archive-page-head .search {
+    width: 100%;
+  }
+
+  .maps-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .maps-detail {
+    position: static;
+  }
+
+  .maps-detail-graph {
+    height: 150px;
+  }
+
+  .maps-facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .archive-acts > * {
+    flex: 1;
+    justify-content: center;
+    height: 40px;
+  }
+
+  .archive-door-stack {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .archive-spin {
+    animation: none;
+    border-right-color: currentColor;
+    opacity: 0.6;
+  }
+
+  .archive-door {
+    transition: none;
+  }
+}
