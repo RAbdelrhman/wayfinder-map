@@ -1,0 +1,9 @@
+.r2d-group > .r2f-opt,
+.r2d-group > .r2f-opt:last-child { display: block; margin: 0; padding: 16px; border-radius: 0; }
+.r2f-opt + .r2f-opt { border-top: 1px solid var(--hairline); }
+.r2f-opt[aria-selected='true']::before { left: 0; top: 0; bottom: 0; border-radius: 0; }
+.r2f-reason { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 650; color: var(--text-secondary); }
+.r2f-explanation { display: block; margin: 5px 0 14px 24px; font-size: 12px; font-weight: 400; color: var(--text-secondary); line-height: 1.5; }
+.r2f-identity { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.r2f-identity .t { white-space: normal; overflow: visible; }
+.r2f-opt:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -3px; }

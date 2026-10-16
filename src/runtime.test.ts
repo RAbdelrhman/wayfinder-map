@@ -62,6 +62,32 @@ function dependencies(
 }
 
 describe('startWayfinder', () => {
+  it('drains pending prototype persistence before graceful shutdown completes', async () => {
+    const server = await listen();
+    let release: () => void = () => undefined;
+    let started: () => void = () => undefined;
+    const writing = new Promise<void>((resolve) => { release = resolve; });
+    const flushing = new Promise<void>((resolve) => { started = resolve; });
+    const runtime = await startWayfinder(config(), dependencies({
+      createT3: () => fakeT3(),
+      startServer: async () => ({ server, url: 'http://127.0.0.1:49152', flushPrototypeFiles: () => {
+        started();
+        return writing;
+      } }),
+    }));
+    let closed = false;
+    const closing = runtime.close().then(() => { closed = true; });
+    try {
+      await flushing;
+      expect(server.address()).toBeNull();
+      expect(closed).toBe(false);
+    } finally {
+      release();
+      await closing;
+    }
+    expect(closed).toBe(true);
+  });
+
   it('starts once and closes the server and T3 session once', async () => {
     const server = await listen();
     const closeT3 = vi.fn();

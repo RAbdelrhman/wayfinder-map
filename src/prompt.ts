@@ -171,6 +171,21 @@ const MAP_RULES = `Rules for every ticket on a map:
 /** Extra instructions for ticket types that need the user, keyed by type. */
 const TYPE_STEPS: Partial<Record<TicketType, string>> = {
   grilling: `${HUMAN_IN_THE_LOOP_STEPS}
+Use T3 Code's structured question cards for this grilling session. Discover
+the question skill/tool actually available in this thread and read its
+instructions; do not invent a skill or tool name. T3 supports Claude's
+AskUserQuestion and Codex's request_user_input. Use the exposed equivalent
+only when its tool instructions and current mode permit it. If the harness
+exposes request_user_input_async, submit the card and yield until the user's
+response arrives. Never use t3_pending_request_respond to answer for the user.
+Submit exactly one question per card, with concrete options and your
+recommended answer clearly marked, explaining the tradeoff. Wait for an
+actual user response before asking the next question, recording a decision,
+answering or closing the ticket, or implementing the decision. A default or
+preselected option, silence, timeout, cancellation, empty tool result, or
+unsubmitted form is not agreement. If no permitted structured question
+mechanism is available, stop and report that limitation; leave the decision
+and ticket open. The user owns every product decision.
 A grilling ticket decides what the app does, not what it looks like. If the
 answer needs new or changed UI, record what that UI must do and file a
 prototype ticket that shows the options. Never record a layout, a placement or
@@ -258,7 +273,11 @@ export function renderTemplate(template: string, values: Readonly<Record<string,
 
 /** The prompt a click on a ticket hands to T3 Code. */
 export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInput): string {
-  const chosenTemplate = template ?? (map ? DEFAULT_TEMPLATE : DEFAULT_STANDALONE_TEMPLATE);
+  const defaultTemplate = map ? DEFAULT_TEMPLATE : DEFAULT_STANDALONE_TEMPLATE;
+  // A blank grilling template still needs the ticket question and worktree context.
+  const chosenTemplate = ticket.type === 'grilling' && !template?.trim()
+    ? defaultTemplate
+    : template ?? defaultTemplate;
   const blockedLine =
     ticket.openBlockers.length > 0
       ? `\nBlocked by: ${ticket.openBlockers.map((number) => `#${number}`).join(', ')}`
@@ -298,7 +317,7 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
         fog: '',
       };
 
-  return renderTemplate(chosenTemplate, {
+  const rendered = renderTemplate(chosenTemplate, {
     repo,
     ...mapValues,
     ticketTitle: ticket.title,
@@ -313,6 +332,13 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
     mapRules: MAP_RULES,
     blockedLine,
   }).trim();
+
+  // Saved templates may predate typeSteps or omit it entirely. Grilling's
+  // human-decision contract must survive those templates, including empty ones.
+  if (ticket.type === 'grilling' && typeSteps && !chosenTemplate.includes('{{typeSteps}}')) {
+    return `${renderTemplate(typeSteps, prototypeValues)}\n\n${rendered}`.trim();
+  }
+  return rendered;
 }
 
 /** The prompt `Start a new map` hands to T3 Code: plan the map with the user, then create it on GitHub. */

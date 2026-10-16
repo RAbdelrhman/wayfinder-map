@@ -7694,6 +7694,12 @@ textarea.input {
   pointer-events: none;
 }
 
+/* A canvas loading ahead of the click: laid out and running at its opening size, but unseen and out of reach. */
+.vw.is-warm {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .vw-grip {
   display: none;
 }
@@ -7809,8 +7815,8 @@ textarea.input {
   width: 100%;
   height: 100%;
   border: 0;
+  /* Shown the moment the canvas has loaded; the viewer's own opening animation covers the wait. */
   opacity: 0;
-  transition: opacity 0.15s ease-out;
 }
 
 .vw-frame.is-ready {

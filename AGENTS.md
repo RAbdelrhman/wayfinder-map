@@ -14,6 +14,25 @@ Tool output truncates at about 42 KB, and `src/ui/app.ts`, `src/server.ts`, `src
 - **Canvas prototypes**: `src/prototypes.ts` owns branch, route and variant rules; `src/server.ts` serves `/proto/` files via `parsePrototypeFilePath`; `src/canvasBridge.ts` runs inside the sandboxed frame; `src/ui/canvasViewer.ts` is the in-app viewer; `src/ui/prototypeBoard.ts` draws the board. Authoring a canvas: `prototypes/AGENTS.md`.
 - **Pages**: map page `src/ui/app.ts`, Home `src/ui/home.ts`, Settings `src/ui/settingsPage.ts`. Phone app: `mobile/AGENTS.md`.
 
+## Grilling tickets
+
+For every Wayfinder grilling ticket, use T3 Code's structured question cards.
+Discover the question skill/tool exposed in the current thread and read its
+instructions. T3 supports Claude's `AskUserQuestion` and Codex's
+`request_user_input`; use an exposed equivalent only when its instructions and
+current mode permit it. With `request_user_input_async`, submit the card and
+yield until the user's response arrives. Do not invent a skill/tool or use
+`t3_pending_request_respond` to answer for the user. If no permitted card
+mechanism is available, report the limitation and leave the decision and ticket open.
+
+Ask exactly one question per card, with concrete options, a clearly marked
+recommendation, and its tradeoff. Wait for an actual user response before the
+next question, recording a decision, answering or closing the ticket, or
+implementing the decision. Defaults, preselected options, silence, timeouts,
+cancellations, empty results, and unsubmitted forms are not agreement.
+The user owns every product decision. Grilling decides behavior; any new or
+changed UI needs a prototype ticket and a prototype the user picks before implementation.
+
 ## Pull requests
 
 - Check the diff against `CODING_STANDARDS.md`; `.github/workflows/claude-review.yml` applies it on every push once the `CLAUDE_CODE_OAUTH_TOKEN` secret is set.

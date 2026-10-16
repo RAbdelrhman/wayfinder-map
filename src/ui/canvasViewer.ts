@@ -328,6 +328,8 @@ export function revealScroll(scrollLeft: number, clientWidth: number, left: numb
   return scrollLeft;
 }
 const STRIP_FADE = 36;
+/** Long enough that sweeping the pointer across tiles prepares nothing, short enough to lead the click by most of a second. */
+const PREPARE_DWELL_MS = 120;
 
 /** Mounted outside the app, which remains mounted underneath all three sizes. */
 export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => void): { isOpen: () => boolean } {
@@ -354,7 +356,8 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
   let origin: HTMLElement | null = null,
     restoreState: (() => void) | undefined;
   let scrolls: { element: HTMLElement; selector: string | null; left: number; top: number }[] = [];
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined,
+    settleTimer: ReturnType<typeof setTimeout> | undefined;
   let pendingFile: string | null = null;
   let documentIds: string[] = [], documentIndex = -1;
   let stripScroll = 0,
@@ -428,13 +431,17 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
         ?.focus({ preventScroll: true });
     feedback.paint();
   };
-  const applySize = (): void => {
+  /** `live` is false while the viewer is only laid out for a canvas prepared ahead of the click. */
+  const applySize = (live = true): void => {
     viewer.className = `vw is-${size === 'full' ? 'a' : size === 'pane' ? 'c' : 'f'} has-corner-grips`;
     viewer.setAttribute('role', size === 'full' ? 'dialog' : 'region');
     if (size === 'full') viewer.setAttribute('aria-modal', 'true');
     else viewer.removeAttribute('aria-modal');
-    app.inert = size === 'full';
-    app.classList.toggle('has-canvas-pane', size === 'pane');
+    viewer.inert = !live;
+    if (live) {
+      app.inert = size === 'full';
+      app.classList.toggle('has-canvas-pane', size === 'pane');
+    }
     viewer.removeAttribute('style');
     if (size === 'float') {
       const width = Math.min(560, innerWidth - 32),
@@ -456,35 +463,73 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
     const large = { transform: 'none', opacity: 1 };
     viewer.animate(reverse ? [large, small] : [small, large], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
   };
+  /** The tile's own picture, kept under the canvas until it paints. Tiles that preview a live page have none. */
+  const posterFor = (from: Element | null): HTMLImageElement | null => {
+    const image = from?.closest('.wf-var, .proto-tile, .wf-proto')?.querySelector<HTMLImageElement>('img');
+    if (!image) return null;
+    const copy = image.cloneNode() as HTMLImageElement;
+    copy.className = 'vw-poster-image';
+    return copy;
+  };
+  /** A prepared canvas is laid out but invisible; once it has loaded the viewer goes back to hidden, frame kept. */
+  const settle = (): void => {
+    if (routing.current || !viewer.classList.contains('is-warm')) return;
+    viewer.classList.remove('is-warm');
+    viewer.hidden = true;
+  };
+  const mountFrame = (route: CanvasRoute, from: Element | null): void => {
+    documentIds = [];
+    documentIndex = -1;
+    mountedUrl = route.url;
+    pages = [];
+    pageId = null;
+    optionId = null;
+    source = 'loading';
+    for (const old of stage.querySelectorAll('.vw-poster-image, .vw-frame')) old.remove();
+    const poster = posterFor(from);
+    if (poster) stage.prepend(poster);
+    insertTrustedHtml(poster ?? stage, poster ? 'afterend' : 'afterbegin', canvasFrameHtml(route));
+    const mounted = stage.querySelector<HTMLIFrameElement>('.vw-frame')!;
+    frame = mounted;
+    mounted.addEventListener('load', () => {
+      mounted.classList.add('is-ready');
+      if (frame === mounted) settle();
+    });
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (source === 'loading') {
+        source = 'none';
+        frame?.classList.add('is-ready');
+        paint();
+      }
+    }, 3000);
+    // Kept apart from the timer above, which the canvas's `ready` clears: a resource that never finishes must not leave the viewer laid out.
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(settle, 3000);
+  };
   const openFrame = (route: CanvasRoute): void => {
     pendingFile = route.file;
     if (mountedUrl !== route.url) {
-      documentIds = [];
-      documentIndex = -1;
-      mountedUrl = route.url;
-      pages = [];
-      pageId = null;
-      optionId = null;
-      source = 'loading';
-      for (const old of stage.querySelectorAll('.vw-poster-image, .vw-frame')) old.remove();
-      const poster = origin?.closest('.wf-var, .proto-tile, .wf-proto')?.querySelector<HTMLImageElement>('img');
-      if (poster) {
-        const copy = poster.cloneNode() as HTMLImageElement;
-        copy.className = 'vw-poster-image';
-        stage.prepend(copy);
-      }
-      insertTrustedHtml(stage.querySelector('.vw-poster-image') ?? stage, stage.querySelector('.vw-poster-image') ? 'afterend' : 'afterbegin', canvasFrameHtml(route));
-      frame = stage.querySelector<HTMLIFrameElement>('.vw-frame')!;
-      frame.addEventListener('load', () => frame?.classList.add('is-ready'));
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (source === 'loading') {
-          source = 'none';
-          frame?.classList.add('is-ready');
-          paint();
-        }
-      }, 3000);
-    } else chooseFile();
+      mountFrame(route, origin);
+      return;
+    }
+    // Prepared ahead of the click but still loading: show the tile's picture meanwhile.
+    if (frame && !frame.classList.contains('is-ready') && !stage.querySelector('.vw-poster-image')) {
+      const poster = posterFor(origin);
+      if (poster) stage.prepend(poster);
+    }
+    chooseFile();
+  };
+  /** Loads a canvas ahead of the click, at the size it will open at, so opening it finds it ready. */
+  const prepare = (target: HTMLElement): void => {
+    if (routing.current || document.hidden) return;
+    const route = readCanvasRoute(canvasEntryRoute(target.dataset, target.dataset['canvasUrl']), location.origin);
+    if (!route || route.url === mountedUrl) return;
+    size = canvasSize();
+    viewer.hidden = false;
+    applySize(false);
+    viewer.classList.add('is-warm');
+    mountFrame(route, target);
   };
   const chooseFile = (): void => {
     if (!pages.length) return;
@@ -601,6 +646,44 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
     },
     true,
   );
+  // Load the canvas while the pointer settles on a tile or focus lands on it, so the click finds it ready.
+  let prepareTimer: ReturnType<typeof setTimeout> | undefined;
+  const entryAt = (event: Event): HTMLElement | null =>
+    event.target instanceof Element ? event.target.closest<HTMLElement>('[data-canvas-url]') : null;
+  const prepareSoon = (event: Event): void => {
+    const target = entryAt(event);
+    if (!target) return;
+    clearTimeout(prepareTimer);
+    prepareTimer = setTimeout(() => prepare(target), PREPARE_DWELL_MS);
+  };
+  document.addEventListener('pointerover', prepareSoon, true);
+  document.addEventListener('focusin', prepareSoon, true);
+  document.addEventListener(
+    'pointerout',
+    (event) => {
+      if (entryAt(event)) clearTimeout(prepareTimer);
+    },
+    true,
+  );
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      const target = entryAt(event);
+      if (!target) return;
+      clearTimeout(prepareTimer);
+      prepare(target);
+    },
+    true,
+  );
+  // A live tile preview can focus itself while the viewer is open, and Esc would then go to that hidden frame.
+  window.addEventListener('blur', () => {
+    if (!routing.current) return;
+    setTimeout(() => {
+      const active = document.activeElement;
+      if (routing.current && active instanceof HTMLIFrameElement && !viewer.contains(active) && active.getAttribute('aria-hidden') === 'true')
+        toolbar.querySelector<HTMLElement>('[data-close]')?.focus({ preventScroll: true });
+    });
+  });
   toolbar.addEventListener('click', (event) => {
     const button = event.target instanceof Element ? event.target.closest<HTMLElement>('button') : null;
     if (!button) return;
