@@ -11,19 +11,21 @@ The general scaffold and other board copies remain tracked in #327.
 
 ## Prototype variant thumbnails
 
-The decision-board fixture uses source screenshots for every prototype variant it
-shows. When a prototype variant changes, fetch the prototype refs and refresh the
-board images from the repo root with:
+This prototype uses screenshot fixtures from the shared decision board at
+`prototypes/canvas/assets/protos/`. To refresh those shared source screenshots,
+fetch the prototype refs and run this board's capture entry point from the repo
+root. It delegates to the canonical capture tool, so the images are written to
+the same shared directory the viewer reads:
 
 ```sh
 git fetch origin
-bun run capture:prototype-thumbnails
+node prototypes/314-prototype-an-in-viewer-confirmation-after-posting-canvas-feedbac/tools/capture-thumbnails.mjs
 ```
 
 The capture tool archives each source prototype branch, then uses Playwright's
 Chromium browser at 1280 × 720 to refresh the matching image in
 `assets/protos/`. Install the browser once with `npx playwright install chromium`
-if Playwright reports that Chromium is missing. Run `bun run test:canvas` to check
+if Playwright reports that Chromium is missing. Run `node --test prototypes/314-prototype-an-in-viewer-confirmation-after-posting-canvas-feedbac/tools/check.test.mjs` to check
 that every board variant has an image and that a missing image falls back to its
 variant sketch.
 
