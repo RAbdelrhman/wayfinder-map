@@ -155,6 +155,9 @@ describe('loadingMapRows', () => {
   it('ends the tree with Archived maps and its count, and tags an opened archived map', () => {
     const archived = { ...map(8, 'Old map'), settled: { reason: 'closed' as const, since: '2026-08-01T00:00:00.000Z' } };
     const active = map(12, 'Current map');
+    const empty = mapListMarkup('octo/wayfinder', [], null, 'map', true);
+    expect(empty).toContain('No maps yet');
+    expect(empty).toContain('href="/repos/octo/wayfinder?view=archived" aria-current="page"');
     const tree = mapListMarkup('octo/wayfinder', [active, archived], null, 'map');
     expect(tree).not.toContain('#8 Old map');
     expect(tree).toContain('<a class="row nav-archive-row" href="/repos/octo/wayfinder?view=archived">');

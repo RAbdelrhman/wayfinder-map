@@ -319,6 +319,7 @@ describe('repositoryPageHtml', () => {
     expect(html).toContain('href="/new-map?repo=octo%2Frecipe-box"');
     expect(html.match(/Start a new map/g)).toHaveLength(1);
     expect(html).not.toContain('repo-map-search');
+    expect(html).toContain('class="archive-door" href="/repos/octo/recipe-box?view=archived"');
   });
 
   it('keeps private-map guidance in the active preview', () => {

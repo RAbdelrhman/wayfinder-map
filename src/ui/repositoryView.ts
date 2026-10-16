@@ -338,7 +338,7 @@ export function repositoryPageHtml(repo: string, snapshot: MapSnapshot, state: R
   const counts = snapshot.maps.length === 0 ? 'no maps yet' : `${String(active)} active · ${String(archived)} archived`;
   const hidden = hiddenMapsMessage(snapshot.hiddenMaps);
   const hiddenNote = hidden === '' ? '' : `<p class="wf-hidden-maps" data-repo-hidden-maps><span data-icon="lock" aria-hidden="true"></span>${escapeHtml(hidden)}</p>`;
-  const mapContent = snapshot.maps.length === 0 ? repositoryEmpty(repo, snapshot.hiddenMaps) : activeSection(repo, snapshot, state, context);
+  const mapContent = snapshot.maps.length === 0 ? repositoryEmpty(repo, snapshot.hiddenMaps) + archiveDoor(repo, []) : activeSection(repo, snapshot, state, context);
   return `<div class="repository-page wf-repo-page" data-repository-page data-repository-view="active">
     <header class="wf-head">${repoIconHtml(repo, 'lg')}<div class="grow"><h1 tabindex="-1">${escapeHtml(name)}</h1><p>${escapeHtml(repo)} · ${counts}</p></div></header>
     ${warnings}

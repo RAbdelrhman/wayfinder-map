@@ -692,6 +692,7 @@ window.addEventListener('popstate', () => {
   if (page.kind !== 'repository' || repositoryPage === null) return;
   const view = repositoryViewOf(window.location.search);
   repositoryPage.setView(view);
+  document.title = `${view === 'archived' ? 'Archived maps · ' : ''}${page.repo} · Wayfinder`;
   navigation?.setRepositoryView(view);
 });
 

@@ -224,7 +224,7 @@ export function archivedMapsRow(repo: string, maps: readonly WayfinderMap[], cur
 }
 
 export function mapListMarkup(repo: string, maps: readonly WayfinderMap[], currentMapNumber: number | null, view: NavigationView, archivedCurrent = false): string {
-  if (maps.length === 0) return '<li class="nav-tree-status">No maps yet</li>';
+  if (maps.length === 0) return '<li class="nav-tree-status">No maps yet</li>' + archivedMapsRow(repo, maps, archivedCurrent);
   const shown = sidebarMaps(maps, currentMapNumber);
   const rows = shown.length === 0
     ? '<li class="nav-tree-status">Every map here is archived</li>'

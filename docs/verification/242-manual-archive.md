@@ -12,6 +12,7 @@ On 2026-10-16, the T3 collaborative Chromium preview exercised the built product
 - An unreadable fixture preference file caused Archive to show the save error and Try again, retaining the map in active lists. Repairing the file and pressing Try again completed Archive.
 - Restore from the archived list removed its last entry and displayed the approved No archived maps state.
 - Visual inspection covered the desktop active and archived layouts, the desktop dark theme, and the stacked archived view at 390 by 844 CSS pixels. The preview and action remain separate at narrow widths.
+- The Sourcery follow-up exercised a repository with zero maps: both existing Archived maps entries remained reachable, the empty archive opened, and browser Back/Forward kept the selected active/archive list and document title aligned.
 
 The fictional repository's icon endpoint returned 502 and used the existing initials fallback. Archive, snapshot and restore requests returned successfully except the deliberately failed save.
 
