@@ -198,7 +198,9 @@ want to Keep, Change, or Combine it. The user reviews the canvas in the
 Wayfinder app and posts notes from its viewer as a
 "Canvas notes from Wayfinder" comment on this ticket; when they say feedback
 is posted, read that comment. An option they leave without notes
-was not picked: give it no disposition. Summarize the notes per option,
+was not picked: give it no disposition. Whole-page notes count too: they
+often name or compare options, so put them in the summary and, when their
+scope is unclear, ask how they apply. Summarize the notes per option,
 confirm the summary in the thread, then record their agreed choice and
 detail in that option's note metadata fields disposition and feedback. Never
 infer a decision from a blank or unsubmitted form.
@@ -227,6 +229,8 @@ Follow {{canvasDirectory}}/README.md, and make node
 Inspect the running canvas yourself, then push {{prototypeBranch}} and
 tell the user it is ready in Wayfinder BEFORE asking the user to choose.
 Do not send localhost links: the user opens the canvas in Wayfinder.
+If this ticket is on no map, Wayfinder cannot list its prototype: say so,
+name the branch, and ask the user how they want to review it.
 Ask one product decision at a time.
 wayfinder-map opens a canvas (an index.html with its config.js beside it)
 before any other file. For any other prototype, commit

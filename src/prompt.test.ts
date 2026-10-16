@@ -185,6 +185,13 @@ describe('buildPrompt', () => {
     expect(prompt).not.toContain('select and copy');
   });
 
+  it('keeps whole-page notes in the summary and covers prototypes on no map', () => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
+    expect(prompt).toContain('Whole-page notes count too');
+    expect(prompt).toContain('ask how they apply');
+    expect(prompt).toContain('If this ticket is on no map');
+  });
+
   it('only names a prototype branch on prototype tickets', () => {
     for (const type of ['grilling', 'research', 'task', null] as const) {
       expect(buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type } })).not.toContain('prototype/');
