@@ -120,6 +120,7 @@ window.CANVAS = {
       sections: [
         remix('D', 'Copy and open (B + A)', 'variants/viewer.html?dir=B2', {
           basedOn: ['B', 'A'],
+          feedback: 'Not chosen. The user picked E in the #314 thread (2026-10-16) and left no notes on D. Kept unchanged for comparison.',
           idea: 'B’s green bar, unchanged in style and in the side pane. The single button is "Copy message and open T3 Code": it copies "Canvas notes are posted on #292: <exact comment link>" (A’s Copy message) and opens that ticket’s T3 Code thread with the existing Open in T3 Code path. The bar shows the message it copies. After the click it reads "Message copied and your T3 Code thread for #292 is open. Paste it there to continue." If Wayfinder doesn’t know the thread, the button is A’s plain Copy message for T3 Code.',
           pros: [
             'You stay in control: nothing appears in the thread until you paste and send it',
@@ -134,6 +135,8 @@ window.CANVAS = {
         }),
         remix('E', 'Send to thread (B + A)', 'variants/viewer.html?dir=B3', {
           basedOn: ['B', 'A'],
+          disposition: 'keep',
+          feedback: 'User, in the #314 T3 Code thread (2026-10-16): "I like E". Chosen direction for the implementation follow-up: B’s bar with one Send to T3 Code button that posts the comment link into the ticket’s thread, with Copy message as the fallback.',
           idea: 'B’s green bar with one button, "Send to T3 Code". It posts "Canvas notes are posted on #292: <exact comment link>" into that ticket’s T3 Code thread as your message (the same T3 server call hand-offs use to start a thread), then offers Open T3 Code thread. The bar shows what it will send before you click. Sending shows "Sending…"; success reads "Posted to GitHub · #292 · sent to T3 Code". If T3 Code isn’t running the bar turns amber with Copy message and Try sending again; the notes stay on GitHub either way. If Wayfinder doesn’t know the thread, the button is Copy message for T3 Code.',
           pros: [
             'One click: the agent gets the link and starts reading the notes right away',
