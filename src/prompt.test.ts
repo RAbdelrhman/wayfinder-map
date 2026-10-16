@@ -175,6 +175,23 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('Not checked');
   });
 
+  it('has the user review the canvas in Wayfinder and reads the notes they post', () => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
+    expect(prompt).toContain('tell the user it is ready in Wayfinder');
+    expect(prompt).toContain('Do not send localhost links');
+    expect(prompt).toContain('"Canvas notes from Wayfinder" comment on this ticket');
+    expect(prompt).toContain('was not picked');
+    expect(prompt).not.toContain('exact link and visible preview');
+    expect(prompt).not.toContain('select and copy');
+  });
+
+  it('keeps whole-page notes in the summary and covers prototypes on no map', () => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
+    expect(prompt).toContain('Whole-page notes count too');
+    expect(prompt).toContain('ask how they apply');
+    expect(prompt).toContain('If this ticket is on no map');
+  });
+
   it('only names a prototype branch on prototype tickets', () => {
     for (const type of ['grilling', 'research', 'task', null] as const) {
       expect(buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type } })).not.toContain('prototype/');
