@@ -3,11 +3,31 @@ import { Window } from 'happy-dom';
 import { describe, expect, it } from 'vitest';
 import { setTrustedHtml } from './trustedHtml.js';
 
+/** Parse static fixtures inertly; each preview explicitly evaluates its chosen scripts below. */
+function loadFixtureMarkup(window: Window, html: string): void {
+  const template = window.document.createElement('template');
+  setTrustedHtml(template, html);
+  for (const script of template.content.querySelectorAll('script')) script.remove();
+  window.document.body.replaceChildren(template.content);
+}
+
+it('loads fixture markup without running inline or external bootstrap scripts', () => {
+  const window = new Window({ settings: { enableJavaScriptEvaluation: true } });
+  try {
+    loadFixtureMarkup(window, '<main id="fixture-proof">Fixture</main><SCRIPT>window.fixtureRan = true;</SCRIPT><script src="data:text/javascript,window.fixtureRan=true"></script>');
+    expect(window.document.querySelector('#fixture-proof')?.textContent).toBe('Fixture');
+    expect(window.document.querySelectorAll('script')).toHaveLength(0);
+    expect(window.eval('window.fixtureRan')).toBeUndefined();
+  } finally {
+    void window.happyDOM.abort();
+  }
+});
+
 function preview(option: 'a' | 'b'): Window {
   const window = new Window({ settings: { enableJavaScriptEvaluation: true } });
   const variants = '../../prototypes/288-prototype-the-archive-controls-and-the-archived-maps-view/variants/';
   const html = readFileSync(new URL(`${variants}${option}.html`, import.meta.url), 'utf8');
-  setTrustedHtml(window.document.body, html.replace(/<script[^>]*>[\s\S]*?<\/script>/g, ''));
+  loadFixtureMarkup(window, html);
   window.document.body.dataset.option = option.toUpperCase();
   window.eval('window.Kit = { esc: (text) => String(text), toast: () => {} };');
   window.eval(readFileSync(new URL(`${variants}archive.js`, import.meta.url), 'utf8'));
@@ -58,7 +78,7 @@ function roundTwo(option: 'c' | 'd' | 'e' | 'f' | 'g', extraClosedMap = false): 
   const window = new Window({ settings: { enableJavaScriptEvaluation: true } });
   const variants = '../../prototypes/288-prototype-the-archive-controls-and-the-archived-maps-view/variants/';
   const html = readFileSync(new URL(`${variants}${option}.html`, import.meta.url), 'utf8');
-  setTrustedHtml(window.document.body, html.replace(/<script[^>]*>[\s\S]*?<\/script>/g, ''));
+  loadFixtureMarkup(window, html);
   window.eval('window.R2_SAVE_DELAY = 0;');
   window.eval(readFileSync(new URL('../../prototypes/canvas/kit/kit.js', import.meta.url), 'utf8'));
   window.eval(readFileSync(new URL(`${variants}r2-shared.js`, import.meta.url), 'utf8'));
