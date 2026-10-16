@@ -38,6 +38,7 @@ const NOTES = {
     ],
   },
   C: {
+    feedback: 'Not chosen. User, in the #310 thread (2026-10-16): "yes if i don\'t answer anything on it it is not chosen." A+B (round 2) was kept instead.',
     idea: 'The click is answered on the map: the tile or Canvas button presses in at once, and if the canvas is not ready after 150 ms a small ring appears (on the Canvas button it takes the play icon\'s place). The viewer opens with its 220 ms animation only when the canvas can paint, so it never shows an empty stage. If it is still not ready after 1 s, the viewer opens anyway in today\'s loading state. Prepared opens look exactly like today.',
     pros: [
       'No empty stage up to the cap, and the opening animation always lands on real content',
@@ -51,6 +52,7 @@ const NOTES = {
     ],
   },
   D: {
+    feedback: 'Not chosen. User, in the #310 thread (2026-10-16): "yes if i don\'t answer anything on it it is not chosen." A+B (round 2) was kept instead.',
     idea: 'Opening an option from a tile that already previews it: the tile\'s own picture grows into the stage with the opening animation and stays until the canvas presents that option. In production it would be the tile\'s live preview frame, moved with a transform rather than reparented (moving an iframe reloads it). The Canvas button has no tile for the whole board, so a board open shows today\'s plain stage.',
     pros: [
       'No new files or calls; content from the click for option opens',
@@ -64,6 +66,7 @@ const NOTES = {
     ],
   },
   E: {
+    feedback: 'Not chosen. User, in the #310 thread (2026-10-16): "yes if i don\'t answer anything on it it is not chosen." A+B (round 2) was kept instead.',
     idea: 'Nothing new on screen. The viewer starts preparing sooner than today\'s 120 ms dwell, for example for the card nearest the pointer or the first one in view, within a budget. An immediate click (touch, Enter, a fast click) on a board that was not prepared still shows today\'s empty stage, as in these frames.',
     pros: [
       'No visual change, nothing to design or capture',
@@ -79,6 +82,8 @@ const NOTES = {
 };
 const NOTE_AB = {
   basedOn: ['A', 'B'],
+  disposition: 'keep',
+  feedback: 'User, in the #310 thread (2026-10-16), asked whether to keep A+B as shown as the direction for #304: "looks good". Recorded as Keep.',
   idea: "The skeleton from B, drawn in the app's own loading style (src/ui/skeleton.ts bone() and .wf-bone, the same bars the Prototypes board shows while it loads), goes on the stage at the click. When the branch has a poster and it has decoded, it sits over the skeleton, so you see the board itself; the live canvas replaces both once it paints. A missing poster, one that fails to decode, or one still downloading at the click leaves the skeleton showing, never an empty stage. Toolbar status and tools behave as today: \"Loading the canvas…\" and tools off until live.",
   pros: [
     'No empty stage in any unprepared case, for every canvas: old branches and snapshots get the skeleton, branches with a poster get the board picture',
