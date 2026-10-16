@@ -80,3 +80,18 @@ F is based on E. Every map now owns its reason and explanation inside its select
 - Light/dark at desktop and 390px inspected, without horizontal overflow. Selected explanation contrast measured 6.63:1 light and 8.53:1 dark.
 - Empty, loading, read-error and save-error states checked. Failed Restore leaves its map archived.
 - Not checked: screen reader, exhaustive keyboard traversal, non-text contrast, installed app, live persistence. The full suite was not rerun for this scoped prototype iteration; prior full-suite updater failure remains as recorded above.
+
+## Round 5: Active and archived maps together
+
+The user asked to apply F's selection treatment to the active maps list on the repository page, explicitly choosing that surface rather than the top-bar dropdown. G is a new option based on F; all earlier files and pages remain available. This is a prototype awaiting review, not a production implementation or final approval.
+
+The active list now has full selectable map blocks on the left and one graph/detail preview on the right. A block's name, destination, progress and padding all select its map without opening it. The preview opens it; Archive remains a separate labelled control. Existing running-hand-off and needs-you counts are shown in the supporting details. Active and archived selections are independent. Filtering falls back to a matching map, and no matches clears the preview. Archive selects the next available active map; Restore returns the map to the active list.
+
+Opus 5.5 was attempted, but its run remained in an authentication-failed provider retry without writing G. The T3 thread-wait call also failed to respect its requested 45-second wait. The parent cancelled that run, confirmed it interrupted, then completed the scoped adaptation of F.
+
+- Canvas validation, typecheck and lint passed. All 28 focused Vitest tests passed, covering selecting each part of a block without opening, active Open, filtering fallback/no matches, Archive and next selection, archived Open without restore, Restore, empty active list, and failed save/retry.
+- Browser inspected light/dark desktop and 390px, with no horizontal overflow. Clicked the active destination to select a map; verified one Open and one Archive control, with no nested Archive inside Open.
+- Real Tab/Shift+Tab exposed a 2px focus ring; ArrowDown selected the next active map without opening it.
+- The complete Archive → Archived maps → Open → Restore journey passed with the actual saving/exit animation. Loading, read-error and save-error fixtures passed browser assertions.
+- Selected destination contrast: 6.63:1 light, 8.53:1 dark.
+- Not checked: screen reader, exhaustive keyboard traversal, non-text contrast, installed app, live persistence. Full suite was not rerun for this scoped iteration; the prior full-suite updater failure remains recorded above.

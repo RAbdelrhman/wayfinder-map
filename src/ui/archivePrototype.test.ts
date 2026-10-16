@@ -54,7 +54,7 @@ describe.each(['a', 'b'] as const)('Archive option %s', (option) => {
 });
 
 /** Round 2 options load the real canvas kit and the shared fixtures; saves complete at once. */
-function roundTwo(option: 'c' | 'd' | 'e' | 'f', extraClosedMap = false): { window: Window; click: (selector: string) => void; text: (selector: string) => string; fixture: (value: string) => void } {
+function roundTwo(option: 'c' | 'd' | 'e' | 'f' | 'g', extraClosedMap = false): { window: Window; click: (selector: string) => void; text: (selector: string) => string; fixture: (value: string) => void } {
   const window = new Window({ settings: { enableJavaScriptEvaluation: true } });
   const variants = '../../prototypes/288-prototype-the-archive-controls-and-the-archived-maps-view/variants/';
   const html = readFileSync(new URL(`${variants}${option}.html`, import.meta.url), 'utf8');
@@ -92,6 +92,94 @@ function roundTwo(option: 'c' | 'd' | 'e' | 'f', extraClosedMap = false): { wind
 }
 
 const REASONS = ['Archived by you', 'Closed', 'Finished', 'Idle 30 days'];
+
+describe('Archive option G: active maps use the same layout', () => {
+  it.each(['.r2f-identity', '.r2g-destination', '.r2g-progress', ''])('selects an active map from %s without opening', (part) => {
+    const { window, click, text } = roundTwo('g');
+    click(`#r2g-opt-236${part ? ` ${part}` : ''}`);
+    expect(window.document.querySelector('#r2g-opt-236')?.getAttribute('aria-selected')).toBe('true');
+    expect(text('#r2d-detail-title')).toBe('Help new users understand Wayfinder');
+    expect(window.document.querySelector('.r2d-mapwrap')).toBeNull();
+    expect(window.document.querySelectorAll('.r2d-detail [data-open]')).toHaveLength(1);
+    expect(window.document.querySelector('.r2e-preview [data-archive]')).toBeNull();
+    expect(window.document.querySelector('.r2d-detail [data-archive="236"]')).not.toBeNull();
+    void window.happyDOM.abort();
+  });
+
+  it('filters to a valid selection and removes the preview when no maps match', () => {
+    const { window, click, text } = roundTwo('g');
+    click('#r2g-opt-236');
+    const filter = (value: string): void => {
+      const input = window.document.getElementById('r2-search') as unknown as { value: string; dispatchEvent(event: Event): void };
+      input.value = value;
+      input.dispatchEvent(new window.Event('input', { bubbles: true }) as unknown as Event);
+    };
+    filter('Review canvas');
+    expect(window.document.querySelector('#r2g-opt-210')?.getAttribute('aria-selected')).toBe('true');
+    expect(text('#r2d-detail-title')).toBe('Review canvas options together');
+    filter('no-such-map');
+    expect(window.document.querySelector('.r2d-detail')).toBeNull();
+    expect(text('[role="status"]')).toContain('No active maps match');
+    filter('');
+    expect(window.document.querySelector('[role="option"][aria-selected="true"]')).not.toBeNull();
+    void window.happyDOM.abort();
+  });
+
+  it('opens the selected active map without changing its archive state', () => {
+    const { window, click, text } = roundTwo('g');
+    click('#r2g-opt-236');
+    click('.r2e-preview');
+    expect(text('h1')).toContain('Map #236: Help new users understand Wayfinder');
+    expect(window.document.querySelector('.r2d-float')).toBeNull();
+    click('[data-view="active"]');
+    expect(window.document.querySelector('#r2g-opt-236')).not.toBeNull();
+    void window.happyDOM.abort();
+  });
+
+  it('archives the selected active map, opens it without restoring, and restores it to the active list', () => {
+    const { window, click, text } = roundTwo('g');
+    click('#r2g-opt-236');
+    click('.r2d-detail [data-archive="236"]');
+    expect(window.document.querySelector('#r2g-opt-236')).toBeNull();
+    expect(window.document.querySelector('#r2g-opt-210')?.getAttribute('aria-selected')).toBe('true');
+    expect(window.document.querySelector('.r2d-mapwrap')).toBeNull();
+    click('.r2d-door');
+    click('#r2d-opt-236 .r2f-explanation');
+    for (const reason of REASONS) expect(text('.r2d-listbox')).toContain(reason);
+    click('.r2e-preview');
+    expect(text('.r2d-float')).toContain('Opening it keeps it archived');
+    click('.r2d-float [data-view="archived"]');
+    click('.r2d-detail [data-restore="236"]');
+    expect(window.document.querySelector('#r2d-opt-236')).toBeNull();
+    click('[data-view="active"]');
+    expect(window.document.querySelector('#r2g-opt-236')).not.toBeNull();
+    void window.happyDOM.abort();
+  });
+
+  it('clears the preview when every active map has been archived', () => {
+    const { window, click, text } = roundTwo('g');
+    for (const number of [251, 236, 210]) {
+      click(`#r2g-opt-${number}`);
+      click(`.r2d-detail [data-archive="${number}"]`);
+    }
+    expect(window.document.querySelector('.r2d-detail')).toBeNull();
+    expect(text('[role="status"]')).toContain('Every map here is archived');
+    expect(window.document.querySelector('.r2d-door')).not.toBeNull();
+    void window.happyDOM.abort();
+  });
+
+  it('keeps the selected active map in place after a failed archive and retries it', () => {
+    const { window, click, text, fixture } = roundTwo('g');
+    fixture('save-error');
+    click('#r2g-opt-236');
+    click('.r2d-detail [data-archive="236"]');
+    expect(text('[role="alert"]')).toContain("It's still in your active maps");
+    expect(window.document.querySelector('#r2g-opt-236')?.getAttribute('aria-selected')).toBe('true');
+    click('[data-retry]');
+    expect(window.document.querySelector('#r2g-opt-236')).toBeNull();
+    void window.happyDOM.abort();
+  });
+});
 
 describe('Archive option F: select the whole map block', () => {
   it.each(['.r2f-reason', '.r2f-explanation', '.r2f-identity', ''])('selects from %s without opening or restoring', (part) => {
