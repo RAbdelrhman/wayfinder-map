@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.21](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.20...v0.2.21) (2026-10-16)
+
+
+### Features
+
+* add approved Archive, Open, and Restore controls ([#328](https://github.com/RAbdelrhman/wayfinder-map/issues/328)) ([38f05fb](https://github.com/RAbdelrhman/wayfinder-map/commit/38f05fb7acd03008ab325d8b115d24e5a04bfbdc))
+* prototype archive controls and map selection layout ([#324](https://github.com/RAbdelrhman/wayfinder-map/issues/324)) ([6d04773](https://github.com/RAbdelrhman/wayfinder-map/commit/6d04773202c98d93b9b1c3a5521c19866432a12c))
+* prototype canvas keyboard shortcut settings, chosen direction D ([#320](https://github.com/RAbdelrhman/wayfinder-map/issues/320)) ([ab62ec7](https://github.com/RAbdelrhman/wayfinder-map/commit/ab62ec7668c344ef26741eddc2efde6a4aff70a8))
+* prototype the in-viewer confirmation after posting canvas feedback, chosen direction E ([#323](https://github.com/RAbdelrhman/wayfinder-map/issues/323)) ([856ec7f](https://github.com/RAbdelrhman/wayfinder-map/commit/856ec7f0f1ebf69051b8bd8f3af912b0ce0a125f))
+
+
+### Bug Fixes
+
+* bound prototype prefetch and persist SHA file cache ([#313](https://github.com/RAbdelrhman/wayfinder-map/issues/313)) ([74cef56](https://github.com/RAbdelrhman/wayfinder-map/commit/74cef56455e7ad7612b903ce1fae3156baf82231))
+* have prototype agents send users to Wayfinder, not localhost links ([#326](https://github.com/RAbdelrhman/wayfinder-map/issues/326)) ([84b9e6f](https://github.com/RAbdelrhman/wayfinder-map/commit/84b9e6fb879faec36e2dd6b8314b68aa13696ff6))
+* make server hand-off tests reliable under load ([#311](https://github.com/RAbdelrhman/wayfinder-map/issues/311)) ([dd2e05c](https://github.com/RAbdelrhman/wayfinder-map/commit/dd2e05cb9954a4ed6b91418364dc597fb98a5d41))
+* require T3 question cards for grilling hand-offs ([#315](https://github.com/RAbdelrhman/wayfinder-map/issues/315)) ([ad59399](https://github.com/RAbdelrhman/wayfinder-map/commit/ad59399322c76f48c6aed1f71c245238540a0d02))
+
 ## [0.2.20](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.19...v0.2.20) (2026-10-14)
 
 
