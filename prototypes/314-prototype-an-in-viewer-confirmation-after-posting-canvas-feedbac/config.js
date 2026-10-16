@@ -24,6 +24,8 @@ const REMIX_STATES = [
   ['nothread', 'No tracked thread', '&thread=0', 'Wayfinder doesn’t know this ticket’s T3 Code thread: the button is A’s Copy message for T3 Code.'],
   ['pane', 'Side pane', '&size=pane', 'Posted, in the side pane beside the map.'],
   ['repost', 'Post the same notes again', '', 'Unchanged from B: a dialog asks before posting a second copy.'],
+  ['failed', 'GitHub post failed', '', 'Unchanged from B: an amber bar explains it and links Check #292; Try again is in the panel. Nothing is sent to T3 Code.'],
+  ['failed-pane', 'GitHub post failed, side pane', '&size=pane', 'In the side pane the Feedback tab shows the same explanation above Try again.'],
 ];
 const remix = (id, name, base, note) => ({
   title: `${id} · ${name}`,
@@ -31,7 +33,7 @@ const remix = (id, name, base, note) => ({
   items: [
     { id, name: `${name} · Posted`, src: `${base}&state=posted`, ...FRAME, note },
     { id: `${id}-try`, name: 'Try it: Review → Post → T3 Code button', src: `${base}&state=review${id === 'E' ? '&t3fail=1' : ''}`, ...FRAME, note: id === 'E' ? 'Interactive. Post, then Send to T3 Code: the first send fails as if T3 Code were closed; Try sending again works.' : 'Interactive. Post, then Copy message and open T3 Code.' },
-    ...REMIX_STATES.map(([key, label, extra, text]) => ({ id: `${id}-${key}`, name: label, src: `${base}&state=${key === 'repost' ? 'repost' : 'posted'}${extra}`, ...FRAME, note: text })),
+    ...REMIX_STATES.map(([key, label, extra, text]) => ({ id: `${id}-${key}`, name: label, src: `${base}&state=${key === 'repost' ? 'repost' : key.startsWith('failed') ? 'failed' : 'posted'}${extra}`, ...FRAME, note: text })),
     ...(id === 'E' ? [{ id: 'E-fail', name: 'T3 Code not running', src: `${base}&state=posted&t3=fail`, ...FRAME, note: 'The send failed: the notes are on GitHub; Copy message and Try sending again.' }] : []),
   ],
 });
@@ -106,6 +108,7 @@ window.CANVAS = {
                 'Flows run: Review → Post (fails once) → Try again → posted, in A, B and C. Posting says "Posting to GitHub…" with aria-busy and announces it in a polite live region; failure is a role=alert banner (A), bar (B) or popover (C) with focus on Try again (A, B) or the popover (C); success announces "Posted to GitHub, #292. Return to your T3 Code thread to continue." and moves focus to the receipt heading (A), the bar heading (B) or the popover (C). C: Esc closes the popover and focus returns to the chip; a click outside closes it. B: the post-again check is a native modal dialog with Cancel focused; Esc closes it and focus returns to Post. A: Tab order through the receipt runs close, ticket link, View comment on GitHub, Copy message for T3 Code, What was posted, Start new feedback.\n\n' +
                 'Findings fixed during review: C swallowed the first Post click (the outside-click handler repainted under it); C’s repost footer overflowed the 340 px panel; Start new feedback wrapped. Open findings: C’s popover covers part of the panel in the side pane; B’s bar takes about 60 px of canvas until dismissed (wraps to 2 lines at 900 px); Copy link and Copy message are simulated (toast), as the canvas sandbox has no clipboard.\n\n' +
                 'Round 2 (D, E): 18 frames (posted, after the click, no tracked thread, side pane, side pane after the click, repost, send failed, sending, side pane send failed) in light and dark, plus 900×700: no page errors, no overflow, contrast at or above 4.5:1. Flows run: D Post → Copy message and open T3 Code announces it and focuses the bar heading; E Post → Send to T3 Code shows Sending… (aria-busy), the first send fails as a role=alert amber bar with Copy message and Try sending again, and the retry reads "sent to T3 Code". Opening the thread and sending into it are simulated (toast); the real send would use the T3 server call that hand-offs use (src/t3Api.ts dispatch, thread.turn.start), which was not exercised here.\n\n' +
+                'Fixed after the independent verifier (Codex): D and E did not open the post-again dialog (the check named B only); in the side pane the Feedback tab hid B, D and E’s GitHub failure message (the panel now shows it above Try again); the full window showed Try again in both the bar and the panel footer for B, D and E, and in both C’s popover and the footer (the bar and popover now explain and link Check #292, and Try again is only in the panel). Rechecked in light and dark for A, B, C, D and E, full window and side pane: one Try again, the failure explained with Check #292, and D and E’s dialog open with Cancel focused, Esc returning focus to Post, and Post a second copy posting. D and E gained GitHub-post-failure frames.\n\n' +
                 'Not checked: screen reader output (NVDA/VoiceOver), the floating window size, 200% zoom, touch, Windows high contrast, the installed desktop app.',
             },
           ],

@@ -144,7 +144,8 @@
         <h2 id="p314-pop-h">${icon('info')}Not posted to ${where}</h2>
         <p>GitHub did not answer in time. Your ${MARKS.length} notes are still here.</p>
         <p class="cf-muted">If the connection dropped while posting, check ${ticket} before you try again so it isn’t posted twice.</p>
-        <div class="p314-row"><button type="button" class="primary cf-sm" data-act="post">${icon('retry')}Try again</button>${viewLink(`Check ${ticket}`)}</div>
+        <div class="p314-row">${viewLink(`Check ${ticket}`)}</div>
+        <p class="cf-muted">Try again from the panel.</p>
       </div>`;
     return `<div class="p314-pop" id="p314-pop" role="dialog" aria-labelledby="p314-pop-h" tabindex="-1">
       <h2 id="p314-pop-h">${icon('check')}Posted to ${where}</h2>
@@ -171,7 +172,7 @@
   function bar() {
     if (!IS_B) return '';
     if (S.state === 'failed')
-      return `<div class="p314-bar is-warn" role="alert"><span class="p314-bar-ic">${icon('info')}</span><div class="p314-bar-t"><b>Not posted to ${where}</b><span>GitHub did not answer in time. Your ${MARKS.length} notes are still here. If the connection dropped while posting, check ${ticket} before you try again.</span></div><div class="p314-row">${viewLink(`Check ${ticket}`)}<button type="button" class="primary cf-sm" data-act="post">${icon('retry')}Try again</button></div></div>`;
+      return `<div class="p314-bar is-warn" role="alert"><span class="p314-bar-ic">${icon('info')}</span><div class="p314-bar-t"><b>Not posted to ${where}</b><span>GitHub did not answer in time. Your ${MARKS.length} notes are still here. If the connection dropped while posting, check ${ticket} before you try again from the panel.</span></div><div class="p314-row">${viewLink(`Check ${ticket}`)}</div></div>`;
     if (!posted() || !S.bar) return '';
     if (DIR !== 'B') return remixBar();
     return `<div class="p314-bar" role="status" aria-labelledby="p314-bar-h"><span class="cf-ok">${icon('check')}</span><div class="p314-bar-t"><b id="p314-bar-h" tabindex="-1">Posted to ${where}</b><span>${t3} The agent doesn’t see these notes until you tell it.</span></div><div class="p314-row">${viewLink()}${openT3()}</div><button type="button" class="iconbtn" data-act="bar-close" aria-label="Dismiss the posted message">${icon('close')}</button></div>`;
@@ -231,7 +232,8 @@
     const busy = S.state === 'posting';
     const failed = S.state === 'failed';
     let error = '';
-    if (failed && DIR === 'A')
+    // B's bar lives on the canvas, which the side pane hides on the Feedback tab: the panel says it there.
+    if (failed && (DIR === 'A' || (IS_B && S.size === 'pane')))
       error = `<div class="cf-banner" role="alert">${icon('info')}<div class="p314-banner-t"><b>Not posted to ${where}</b><span>GitHub did not answer in time. Your ${MARKS.length} notes are still here. If the connection dropped while posting, check ${ticket} before you try again so it isn’t posted twice.</span>${viewLink(`Check ${ticket}`)}</div></div>`;
     let post = `<button type="button" class="primary" data-act="post"${busy ? ' disabled aria-busy="true"' : ''}>${busy ? '<span class="p314-spin" aria-hidden="true"></span>Posting to GitHub…' : `${icon(failed ? 'retry' : 'send')}${failed ? 'Try again' : `Post to ${where}`}`}</button>`;
     let lead = `<p class="cf-muted">Exactly what goes to GitHub, as a comment on ${ticket}. It does not go to your T3 Code thread. Your marks stay on the canvas while you read.</p>`;
@@ -272,7 +274,7 @@
 
   // ---------- B: the post-again check ----------
   function dialog() {
-    if (DIR !== 'B' || !S.dialog) return '';
+    if (!IS_B || !S.dialog) return '';
     return `<dialog class="p314-dialog" id="p314-dialog" aria-labelledby="p314-dlg-h" aria-describedby="p314-dlg-d">
       <h2 id="p314-dlg-h">Post these notes again?</h2>
       <p id="p314-dlg-d">These exact notes are already a comment on ${where}, posted ${S.when}. Posting again adds a second copy. Nothing goes to your T3 Code thread either way.</p>
