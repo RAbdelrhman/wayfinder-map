@@ -67,3 +67,16 @@ Opus 5.5 was attempted for this iteration but immediately hit its API rate limit
 - Empty/read-error and loading skeleton/status inspected. Loading has no Open target.
 - Full suite `bun run test --maxWorkers=4`: 1404 passed, one failed in updaterEnabled.test.ts at its stoppedPolls assertion. No updater code changed. This is not a green full-suite claim.
 - Not checked: screen reader, exhaustive keyboard traversal, non-text contrast, E save-error specifically, installed app, live persistence.
+
+## Round 4: Select the whole map block
+
+The user pinned the Closed-group explanation on E and wrote, "This is what i want to press to choose a map." See https://github.com/RAbdelrhman/wayfinder-map/issues/288#issuecomment-6202620477. They then answered yes to making each map's whole left-hand block clickable, including its name, reason and explanation. This authorizes F as a remix; final approval of F is still pending.
+
+F is based on E. Every map now owns its reason and explanation inside its selection target. The shared visual category headers are replaced by these per-map blocks so two maps with the same reason are distinguishable. Clicking anywhere in a block selects that map in the right preview without opening or restoring it. The right preview still opens the archived map and Restore remains separate. Originals A through E are preserved.
+
+- Canvas validator, typecheck and lint passed. Focused tests: 19 passed, including reason, explanation, name and block clicks plus a two-closed-map fixture verifying that each explanation selects its own map.
+- Browser: clicking the Closed explanation selected #121 without opening it. Selection target measured 358 by 106px at desktop.
+- Hover and visible 2px focus inspected. Real Tab/Shift+Tab reaches the selected block, ArrowDown selects the next map and Enter opens it while it remains archived.
+- Light/dark at desktop and 390px inspected, without horizontal overflow. Selected explanation contrast measured 6.63:1 light and 8.53:1 dark.
+- Empty, loading, read-error and save-error states checked. Failed Restore leaves its map archived.
+- Not checked: screen reader, exhaustive keyboard traversal, non-text contrast, installed app, live persistence. The full suite was not rerun for this scoped prototype iteration; prior full-suite updater failure remains as recorded above.

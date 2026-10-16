@@ -54,7 +54,7 @@ describe.each(['a', 'b'] as const)('Archive option %s', (option) => {
 });
 
 /** Round 2 options load the real canvas kit and the shared fixtures; saves complete at once. */
-function roundTwo(option: 'c' | 'd' | 'e'): { window: Window; click: (selector: string) => void; text: (selector: string) => string; fixture: (value: string) => void } {
+function roundTwo(option: 'c' | 'd' | 'e' | 'f', extraClosedMap = false): { window: Window; click: (selector: string) => void; text: (selector: string) => string; fixture: (value: string) => void } {
   const window = new Window({ settings: { enableJavaScriptEvaluation: true } });
   const variants = '../../prototypes/288-prototype-the-archive-controls-and-the-archived-maps-view/variants/';
   const html = readFileSync(new URL(`${variants}${option}.html`, import.meta.url), 'utf8');
@@ -62,6 +62,17 @@ function roundTwo(option: 'c' | 'd' | 'e'): { window: Window; click: (selector: 
   window.eval('window.R2_SAVE_DELAY = 0;');
   window.eval(readFileSync(new URL('../../prototypes/canvas/kit/kit.js', import.meta.url), 'utf8'));
   window.eval(readFileSync(new URL(`${variants}r2-shared.js`, import.meta.url), 'utf8'));
+  if (extraClosedMap) {
+    window.eval(`(() => {
+      const original = R2.fresh;
+      R2.fresh = () => {
+        const maps = original();
+        const closed = maps.find((map) => map.number === 121);
+        maps.push({ ...closed, number: 122, title: 'Another closed map', archive: { ...closed.archive } });
+        return maps;
+      };
+    })();`);
+  }
   window.eval(readFileSync(new URL(`${variants}${option}.js`, import.meta.url), 'utf8'));
   const document = window.document;
   return {
@@ -81,6 +92,40 @@ function roundTwo(option: 'c' | 'd' | 'e'): { window: Window; click: (selector: 
 }
 
 const REASONS = ['Archived by you', 'Closed', 'Finished', 'Idle 30 days'];
+
+describe('Archive option F: select the whole map block', () => {
+  it.each(['.r2f-reason', '.r2f-explanation', '.r2f-identity', ''])('selects from %s without opening or restoring', (part) => {
+    const { window, click, text } = roundTwo('f');
+    click('.r2d-door');
+    click(`#r2d-opt-121${part ? ` ${part}` : ''}`);
+    expect(window.document.querySelector('#r2d-opt-121')?.getAttribute('aria-selected')).toBe('true');
+    expect(text('#r2d-detail-title')).toBe('Watch maps and stay up to date');
+    expect(text('.r2d-detail')).toContain('Closed');
+    expect(window.document.querySelector('.r2d-float')).toBeNull();
+    expect(window.document.querySelector('.r2d-detail [data-restore="121"]')).not.toBeNull();
+    void window.happyDOM.abort();
+  });
+
+  it('selects the specific map when several maps have the same reason', () => {
+    const { window, click, text } = roundTwo('f', true);
+    click('.r2d-door');
+    click('#r2d-opt-122 .r2f-explanation');
+    expect(text('#r2d-detail-title')).toBe('Another closed map');
+    expect(window.document.querySelector('#r2d-opt-122')?.getAttribute('aria-selected')).toBe('true');
+    expect(window.document.querySelector('#r2d-opt-121')?.getAttribute('aria-selected')).toBe('false');
+    click('#r2d-opt-121 .r2f-explanation');
+    expect(text('#r2d-detail-title')).toBe('Watch maps and stay up to date');
+    expect(window.document.querySelector('#r2d-opt-122')?.getAttribute('aria-selected')).toBe('false');
+    expect(window.document.querySelector('.r2d-float')).toBeNull();
+    click('.r2e-preview');
+    expect(text('.r2d-float')).toContain('Opening it keeps it archived');
+    click('.r2d-float [data-view="archived"]');
+    click('.r2d-detail [data-restore="121"]');
+    expect(window.document.querySelector('#r2d-opt-121')).toBeNull();
+    expect(window.document.querySelector('#r2d-opt-122')).not.toBeNull();
+    void window.happyDOM.abort();
+  });
+});
 
 describe('Archive option E: open from the preview', () => {
   it.each(['.r2d-detail-graph', '#r2d-detail-title', '.r2e-preview .dest'])(
