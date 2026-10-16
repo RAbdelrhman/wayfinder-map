@@ -1,6 +1,6 @@
 # Archive controls review
 
-Ticket #288 on map #236. No layout or wording is approved yet. Round 1 (A, B) and round 2 (C, D) remain on the canvas. The implementation ticket #242 already has a native blocked-by relationship to #288.
+Ticket #288 on map #236. Ramon approved option G: “This looks amazing lets do it”. The approved layout and wording are recorded in docs/design/map-archive-controls.md. Earlier rounds remain on the canvas as review history; their pending-approval statements describe those earlier stages. Implementation belongs to #242, which has a native blocked-by relationship to #288.
 
 ## Round 1
 
@@ -83,7 +83,7 @@ F is based on E. Every map now owns its reason and explanation inside its select
 
 ## Round 5: Active and archived maps together
 
-The user asked to apply F's selection treatment to the active maps list on the repository page, explicitly choosing that surface rather than the top-bar dropdown. G is a new option based on F; all earlier files and pages remain available. This is a prototype awaiting review, not a production implementation or final approval.
+The user asked to apply F's selection treatment to the active maps list on the repository page, explicitly choosing that surface rather than the top-bar dropdown. G is a new option based on F; all earlier files and pages remain available. Ramon subsequently approved G: “This looks amazing lets do it”. This remains a prototype; #242 implements the approved layout and wording.
 
 The active list now has full selectable map blocks on the left and one graph/detail preview on the right. A block's name, destination, progress and padding all select its map without opening it. The preview opens it; Archive remains a separate labelled control. Existing running-hand-off and needs-you counts are shown in the supporting details. Active and archived selections are independent. Filtering falls back to a matching map, and no matches clears the preview. Archive selects the next available active map; Restore returns the map to the active list.
 
