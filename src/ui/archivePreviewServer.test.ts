@@ -26,7 +26,7 @@ it('rejects malformed URL paths and keeps serving the canvas', async () => {
     }
     const canvas = await fetch(canvasUrl);
     expect(canvas.status).toBe(200);
-    expect(canvas.headers.get('content-security-policy')).toContain('sandbox allow-scripts');
+    expect(canvas.headers.get('content-security-policy')).toBe('sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads');
     expect(await canvas.text()).toContain('config.js');
   } finally {
     if (server.exitCode === null && server.signalCode === null) {
