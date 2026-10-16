@@ -1,5 +1,14 @@
 # Design canvas
 
+## #314 local verification
+
+This board's preview server accepts only the expected loopback host and port and
+serves the board's explicit assets. It checks resolved file targets, including
+symlinks, and returns 400 for malformed URL encoding. Its checker suite reads
+engine fixtures from the shared canvas directory and includes preview-server
+regressions. Run `node --test <dir>/tools/check.test.mjs` for all local checks.
+The general scaffold and other board copies remain tracked in #327.
+
 ## Prototype variant thumbnails
 
 The decision-board fixture uses source screenshots for every prototype variant it
@@ -173,6 +182,6 @@ Do not report a check as passed just because the code or config passed a source-
 
 | Command | Does |
 |---|---|
-| `node <dir>/tools/serve.mjs [port]` | Serves the repo root with a sandbox CSP (default port 4390) and prints the canvas URL |
+| `node <dir>/tools/serve.mjs [port]` | Serves this board's allowed assets with a sandbox CSP (default port 4390) and prints the canvas URL |
 | `node <dir>/tools/check.mjs` | Validates config.js: pages and round labels, kinds, ids, feedback metadata, styles, files, and sandbox safety |
 | `node --test <dir>/tools/check.test.mjs` | Tests for the checker |

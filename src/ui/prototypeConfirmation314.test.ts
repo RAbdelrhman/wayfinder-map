@@ -33,6 +33,16 @@ afterEach(async () => {
 });
 
 describe('#314 confirmation prototype regressions', () => {
+  it('rejects raw query markup before building the trusted prototype HTML', () => {
+    const payload = '<img src=x onerror="alert(1)"><script>alert(1)</script>';
+    const query = new URLSearchParams(Object.fromEntries(['dir', 'state', 'size', 'thread', 't3', 'fail', 't3fail'].map(key => [key, payload])));
+    const document = mount(query.toString());
+    expect(document.querySelector('script, [onerror]')).toBeNull();
+    expect(document.body.textContent).not.toContain(payload);
+    expect(document.getElementById('viewer')?.className).toContain('p314-dir-A');
+    expect(document.querySelector('[data-act="post"]')?.textContent).toContain('Post to GitHub');
+  });
+
   for (const direction of ['A', 'B', 'C', 'B2', 'B3']) {
     for (const size of ['full', 'pane']) {
       it(`${direction} ${size} explains failure and offers one retry with recoverable notes`, () => {

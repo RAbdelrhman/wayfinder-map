@@ -9,8 +9,10 @@ import { runInNewContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { checkCanvas, checkPageHtml, checkSharedCanvasCopies, loadConfig } from './check.mjs';
 import { THUMBNAIL_SOURCES, VIEWPORT } from './capture-thumbnails.mjs';
+import './serve.test.mjs';
 
-const CANVAS_DIR = resolve(fileURLToPath(new URL('..', import.meta.url)));
+// Engine and decision-board fixtures live in the shared canvas, never in this ticket board.
+const CANVAS_DIR = resolve(fileURLToPath(new URL('../../canvas/', import.meta.url)));
 
 const files = { 'variants/a.html': '<html><script src="../kit/kit.js"></script></html>', 'assets/x.png': '' };
 const disk = { exists: (p) => p in files, read: (p) => files[p] };

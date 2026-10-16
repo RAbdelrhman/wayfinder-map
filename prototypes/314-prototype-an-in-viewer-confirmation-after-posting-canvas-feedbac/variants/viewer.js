@@ -288,6 +288,9 @@
     viewer.className = `vw ${S.size === 'pane' ? 'is-c' : 'is-a'} p314-dir-${DIR}`;
     const showPanel = S.size === 'full' ? S.panelOpen : S.tab === 'feedback';
     const showCanvas = S.size === 'full' || S.tab === 'canvas';
+    // Trusted prototype markup: query values are allowlisted above, fixtures are fixed, and note text uses Kit.esc.
+    // No DOM edits, external responses or raw URL values are interpolated. See prototypeConfirmation314.test.ts.
+    // nosemgrep: javascript.browser.security.insecure-document-method, javascript.browser.security.insecure-innerhtml
     viewer.innerHTML = `<div id="vw-toolbar">${toolbar()}</div><div class="vw-stage p314-stage${showPanel && showCanvas ? ' has-feedback' : ''}">${showCanvas ? canvas() : ''}${showPanel ? `<aside class="cf-panel" id="vw-feedback" aria-label="Feedback">${panel()}</aside>` : ''}</div>${dialog()}`;
     const dlg = document.getElementById('p314-dialog');
     if (dlg && !dlg.open) {
