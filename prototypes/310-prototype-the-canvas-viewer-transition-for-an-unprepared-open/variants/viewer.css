@@ -1,0 +1,127 @@
+/* #310 on the shipped viewer. Tokens, the toolbar and the board tiles come from src/ui/styles.css. */
+html, body { height: 100%; margin: 0; }
+.p310 { display: grid; grid-template-rows: minmax(0, 1fr) auto; height: 100vh; overflow: hidden; background: var(--plane); }
+.p310-sp { flex: 1; }
+
+/* ---------- the surface: the desktop window or a browser tab ---------- */
+.p310-surface { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.p310-win { display: flex; align-items: center; gap: 8px; height: 32px; padding-left: 12px; background: var(--surface-1); border-bottom: 1px solid var(--hairline); font-size: 12px; color: var(--text-secondary); }
+.p310-win-logo { width: 14px; height: 14px; border-radius: 4px; background: var(--accent-fill); }
+.p310-win-ctl { display: grid; place-items: center; width: 46px; height: 32px; }
+.p310-browser { background: color-mix(in srgb, var(--plane) 60%, var(--text-primary) 8%); color: var(--text-secondary); font-size: 12px; }
+.p310-tabs { display: flex; align-items: end; gap: 4px; height: 34px; padding: 0 10px; }
+.p310-tab { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 14px; border-radius: 8px 8px 0 0; background: var(--surface-1); color: var(--text-primary); }
+.p310-tab.is-off { background: none; }
+.p310-url { display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 12px; background: var(--surface-1); border-bottom: 1px solid var(--hairline); }
+.p310-url-box { flex: 1; padding: 6px 12px; border-radius: 999px; background: var(--plane); color: var(--text-primary); }
+
+/* The app's own viewport: a transform makes it the containing block for the viewer's position: fixed. */
+.p310-app { position: relative; display: grid; grid-template-rows: 56px minmax(0, 1fr); min-height: 0; overflow: hidden; transform: translateZ(0); background: var(--plane); }
+.p310-main { overflow: hidden; }
+.p310-main .wf-board-page { padding-top: 22px; }
+
+/* The scripted pointer. */
+.p310-cursor { position: absolute; left: 0; top: 0; z-index: 200; width: 18px; height: 18px; pointer-events: none; opacity: 0; transition: transform 0.45s cubic-bezier(.3,.7,.2,1); }
+.p310-cursor.is-shown { opacity: 1; }
+.p310-cursor::before { content: ''; position: absolute; inset: 0; background: #111; clip-path: polygon(0 0, 0 100%, 28% 74%, 48% 100%, 62% 92%, 44% 66%, 80% 66%); filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff); }
+.p310-cursor::after { content: ''; position: absolute; left: -14px; top: -14px; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--accent-fill); opacity: 0; transform: scale(0.4); }
+.p310-cursor.is-down::after { animation: p310-press 0.4s ease-out; }
+.p310-cursor.is-rest::after { opacity: 0.35; transform: scale(1); border-style: dashed; transition: opacity 0.2s; }
+@keyframes p310-press { from { opacity: 0.9; transform: scale(0.4); } to { opacity: 0; transform: scale(1.4); } }
+
+/* ---------- the stage ---------- */
+.p310 .vw-stage { display: grid; }
+.p310-live, .p310-lift { position: absolute; inset: 0; }
+.p310-lift { overflow: hidden; background: var(--surface-1); }
+.p310-lift img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+
+/* The live canvas, drawn after the canvas engine's own look (prototypes/canvas/canvas.css). */
+.p310-cv { position: absolute; inset: 0; display: grid; grid-template-rows: 36px minmax(0, 1fr); background: #ecebe6; color: #0b0b0b; font-size: 12px; }
+:root[data-theme='dark'] .p310-cv { background: #161615; color: #f2f1ec; }
+.p310-engine { display: flex; align-items: center; gap: 14px; padding: 0 14px; background: #fcfcfb; border-bottom: 1px solid rgba(11, 11, 11, 0.1); color: #52514e; }
+.p310-engine b { color: #0b0b0b; font-weight: 650; }
+:root[data-theme='dark'] .p310-engine { background: #1f1f1d; border-color: rgba(255, 255, 255, 0.1); color: #b6b4ad; }
+:root[data-theme='dark'] .p310-engine b { color: #f2f1ec; }
+.p310-plane { overflow: hidden; padding: 22px 26px; }
+.p310-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 18px 16px; }
+.p310-fr { margin: 0; display: grid; gap: 5px; min-width: 0; }
+.p310-fr figcaption { display: flex; gap: 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #52514e; font-size: 11px; }
+.p310-fr figcaption b { color: #0b0b0b; }
+:root[data-theme='dark'] .p310-fr figcaption { color: #b6b4ad; }
+:root[data-theme='dark'] .p310-fr figcaption b { color: #f2f1ec; }
+.p310-fr-body { display: block; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 6px; background: #fff; box-shadow: 0 0 0 1px rgba(11, 11, 11, 0.12), 0 6px 16px -10px rgba(0, 0, 0, 0.35); }
+.p310-fr-body img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+.p310-live .p310-fr:hover .p310-fr-body { box-shadow: 0 0 0 2px #2a78d6; }
+.p310-live .p310-plane { cursor: grab; }
+.p310-cv.is-present { grid-template-rows: 36px minmax(0, 1fr); }
+.p310-present { display: grid; place-items: center; overflow: hidden; padding: 18px; }
+.p310-present img { max-width: 100%; max-height: 100%; border-radius: 6px; box-shadow: 0 0 0 1px rgba(11, 11, 11, 0.12), 0 14px 32px -18px rgba(0, 0, 0, 0.45); }
+
+/* B: the skeleton. Labels are real; every surface is a calm bone. */
+.p310-bone, .p310-cv.is-skel .p310-fr-body, .p310-skel-page { background: color-mix(in srgb, currentColor 9%, transparent); box-shadow: none; }
+.p310-bone { display: inline-block; height: 10px; border-radius: 5px; }
+.p310-skel-page { display: block; width: min(100%, 140vh); aspect-ratio: 16 / 9; border-radius: 6px; }
+.p310-cv.is-skel .p310-fr-body, .p310-cv.is-skel .p310-skel-page, .p310-cv.is-skel .p310-bone {
+  background-image: linear-gradient(100deg, transparent 30%, color-mix(in srgb, currentColor 7%, transparent) 50%, transparent 70%);
+  background-size: 300% 100%;
+  animation: p310-sheen 1.4s linear infinite;
+}
+@keyframes p310-sheen { from { background-position: 100% 0; } to { background-position: -50% 0; } }
+
+/* A+B (round 2): the app's own bones (.wf-bone, src/ui/styles.css) under the poster. */
+.p310-cv.is-bones .wf-bone.is-block { display: block; width: 100%; height: auto; }
+.p310-bone-frame { aspect-ratio: 16 / 10; }
+.p310-cv.is-bones .wf-bone.p310-bone-page { width: auto; height: 100%; max-width: 100%; aspect-ratio: 16 / 9; }
+.vw-poster-image.p310-over { z-index: 1; }
+.p310.is-reduce .wf-bone::before { animation: none; }
+
+/* C: the held tile. Pressed at once; a ring only if the hold lasts. */
+.p310-held .wf-frame, a.primary.p310-held { transform: scale(0.97); transition: transform 0.08s; }
+.p310-held .wf-frame { border-color: var(--state-claimed); }
+.p310-held.has-ring .wf-frame::after, a.primary.p310-held.has-ring::after {
+  content: ''; position: absolute; width: 22px; height: 22px; border-radius: 50%;
+  border: 2.5px solid color-mix(in srgb, var(--accent-fill) 25%, transparent); border-top-color: var(--accent-fill);
+  animation: p310-spin 0.8s linear infinite;
+}
+.p310-held.has-ring .wf-frame::after { left: calc(50% - 11px); top: calc(50% - 11px); background: color-mix(in srgb, var(--surface-1) 80%, transparent); }
+a.primary.p310-held { position: relative; }
+/* On the Canvas button the ring takes the play icon's place. */
+a.primary.p310-held.has-ring .i { visibility: hidden; }
+a.primary.p310-held.has-ring::after { left: 12px; top: calc(50% - 7px); width: 14px; height: 14px; border-width: 2px; border-color: rgb(255 255 255 / 35%); border-top-color: #fff; }
+.is-holding .p310-main { cursor: progress; }
+@keyframes p310-spin { to { transform: rotate(1turn); } }
+
+/* Reduced motion: no sheen, no spin (a still ring), no pointer glide. */
+@media (prefers-reduced-motion: reduce) {
+  .p310-cv.is-skel *, .p310-held.has-ring .wf-frame::after, a.primary.p310-held.has-ring::after { animation: none !important; }
+  .p310-cursor, .p310-cursor::after { transition: none; animation: none !important; }
+}
+.p310.is-reduce .p310-cv.is-skel *, .p310.is-reduce .p310-held.has-ring .wf-frame::after, .p310.is-reduce a.primary.p310-held.has-ring::after { animation: none !important; }
+.p310.is-reduce .p310-held .wf-frame, .p310.is-reduce a.primary.p310-held { transform: none; }
+
+/* ---------- prototype controls: dashed so they never read as app UI ---------- */
+.p310-proto { display: flex; align-items: center; gap: 12px; height: 60px; padding: 0 16px; border-top: 2px dashed #8a5cf6; background: #f5f1ff; color: #2b1d5c; font: 12px/1.3 system-ui, sans-serif; }
+:root[data-theme='dark'] .p310-proto { background: #1d1730; color: #e6defc; border-color: #a78bfa; }
+.p310-proto-tag { padding: 3px 7px; border-radius: 4px; background: #6d28d9; color: #fff; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; font-size: 10px; }
+.p310-case { flex: 0 1 330px; font-weight: 600; }
+.p310-proto button { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.p310-proto button .i { width: 13px; height: 13px; }
+.p310-proto button[aria-pressed='true'] { background: #6d28d9; border-color: #6d28d9; color: #fff; }
+.p310-proto button:focus-visible { outline: 2px solid #6d28d9; outline-offset: 2px; }
+.p310-tl { position: relative; flex: 1; height: 40px; border-left: 1px solid currentColor; border-right: 1px solid currentColor; background: linear-gradient(currentColor, currentColor) 0 50% / 100% 1px no-repeat; }
+.p310-tl-band { position: absolute; top: 15px; height: 10px; background: color-mix(in srgb, #8a5cf6 30%, transparent); border-radius: 3px; }
+.p310-tl-mk { position: absolute; top: 0; height: 100%; white-space: nowrap; font-size: 11px; }
+.p310-tl-mk i { position: absolute; left: -1px; top: 8px; width: 2px; height: 24px; background: currentColor; }
+.p310-tl-mk.is-open { color: #6d28d9; padding: 0 0 0 4px; }
+.p310-tl-mk.is-first { color: #b45309; top: auto; bottom: -2px; height: auto; padding-left: 4px; }
+.p310-tl-mk.is-first i { top: -22px; height: 24px; }
+.p310-tl-mk.is-live { color: #047857; padding-left: 4px; font-weight: 700; }
+:root[data-theme='dark'] .p310-tl-mk.is-open { color: #c4b5fd; }
+:root[data-theme='dark'] .p310-tl-mk.is-first { color: #fbbf24; }
+:root[data-theme='dark'] .p310-tl-mk.is-live { color: #34d399; }
+.p310-tl-ph { position: absolute; top: 2px; bottom: 2px; width: 2px; left: 0; background: #e11d48; }
+
+/* Capture mode: only the live canvas, at the full-window desktop stage size. */
+.p310.is-capture { display: block; }
+.p310.is-capture .p310-surface { position: relative; height: 100vh; }
+.p310.is-reduce .p310-cursor, .p310.is-reduce .p310-cursor::after { transition: none; animation: none !important; }
