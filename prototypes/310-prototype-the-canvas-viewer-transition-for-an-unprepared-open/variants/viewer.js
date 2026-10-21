@@ -91,8 +91,8 @@
   const app = $('app'), main = $('main'), viewer = $('viewer'), toolbar = $('vw-toolbar'), stage = $('stage'), cursor = $('cursor');
   const originEl = () => (ENTRY === 'option' ? app.querySelector('[data-variant="A"]') : app.querySelector('[data-canvas]'));
   const posterSrc = POSTER === 'failed' ? '../assets/poster-damaged.jpg' : `../assets/poster-${ENTRY}-${THEME}.jpg`;
-  // A real poster would be requested with the card, so it is decoded before the click.
-  if ((DIR === 'A' || DIR === 'AB') && POSTER !== 'missing') new Image().src = posterSrc;
+  // A real poster would be requested with the card, so it is decoded before the click. The late case starts its request after the click.
+  if ((DIR === 'A' || DIR === 'AB') && POSTER !== 'missing' && POSTER !== 'late') new Image().src = posterSrc;
 
   // ---------- the open ----------
   let run = 0, t0 = 0, firstAt = null, liveAt = null, openAt = null, origin = null, timers = [];
@@ -111,6 +111,12 @@
   };
   const animateFrom = (reverse = false) => {
     if (REDUCE || !origin) return Promise.resolve();
+    // Closing mid-open turns the opening around from where it is, rather than jumping to full size first.
+    const running = viewer.getAnimations()[0];
+    if (reverse && running && running.playState === 'running') {
+      running.reverse();
+      return running.finished.catch(() => {});
+    }
     const from = origin.getBoundingClientRect(), to = viewer.getBoundingClientRect();
     const small = { transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${from.width / to.width}, ${from.height / to.height})`, opacity: 0.2 };
     const large = { transform: 'none', opacity: 1 };
@@ -135,7 +141,8 @@
       img.alt = '';
       img.onerror = () => img.remove();
       const my = run;
-      const put = () => { if (my !== run) return; img.src = posterSrc; stage.append(img); };
+      // A poster that arrives after the canvas went live is dropped, never laid over it.
+      const put = () => { if (my !== run || liveAt !== null) return; img.src = posterSrc; stage.append(img); };
       if (POSTER === 'late') later(200, put);
       else put();
     } else if (DIR === 'A' && POSTER !== 'missing') {
@@ -174,7 +181,14 @@
     stage.innerHTML = '';
     paintToolbar('loading');
     const ready = READY;
-    if (DIR === 'C' && ready > 20) {
+    if (PREP) {
+      // Prepared ahead of the click: the retained live canvas rides the opening animation in every direction (#214: 12–21 ms).
+      stage.innerHTML = `<div class="p310-live">${liveCanvas(ENTRY)}</div>`;
+      paintToolbar(ENTRY === 'option' ? 'option' : 'board');
+      showViewer();
+      mark('first', ready);
+      mark('live', ready);
+    } else if (DIR === 'C') {
       // Hold: the tile answers at once, the viewer opens when the canvas can paint.
       app.classList.add('is-holding');
       from.classList.add('p310-held');
@@ -200,11 +214,28 @@
     drawTimeline();
     tick(my);
   };
-  const close = () => {
-    if (viewer.hidden) return;
+  /** Esc during C's hold cancels the pending open: no viewer, the entry released. */
+  const cancelHold = () => {
+    if (!app.classList.contains('is-holding')) return false;
     run++;
     clearTimers();
+    app.classList.remove('is-holding');
+    for (const el of app.querySelectorAll('.p310-held')) {
+      el.classList.remove('p310-held', 'has-ring');
+      el.removeAttribute('aria-busy');
+    }
+    return true;
+  };
+  const close = () => {
+    if (cancelHold()) {
+      if (auto) loop();
+      return;
+    }
+    if (viewer.hidden) return;
+    const my = ++run;
+    clearTimers();
     void animateFrom(true).then(() => {
+      if (my !== run) return; // a replay opened meanwhile
       viewer.hidden = true;
       main.inert = false;
       stage.innerHTML = '';
@@ -222,17 +253,14 @@
     const entry = event.target.closest('[data-canvas], [data-variant]');
     if (entry) {
       event.preventDefault();
+      if (app.classList.contains('is-holding') || !viewer.hidden) return; // a second click during an open is ignored
       clearTimers();
       auto = false;
       paintProto();
       return open(entry);
     }
-    if (event.target.closest('[data-close]')) return close();
-    const go = event.target.closest('[data-go]');
-    if (go && liveAt !== null) {
-      const option = OPTIONS.find((o) => o.id === go.dataset.go);
-      stage.innerHTML = `<div class="p310-live">${liveCanvas(option ? 'option' : 'board', option)}</div>`;
-    }
+    // Only Close is wired: the question is the open itself, so the other shipped controls are shown but inert here.
+    if (event.target.closest('[data-close]')) close();
   });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') close();
@@ -288,7 +316,7 @@
     if (!el) return;
     const first = firstAt, liveT = liveAt;
     const shown = DIR === 'C' && openAt === null ? null : openAt;
-    el.innerHTML = `<span class="p310-tl-band" style="left:${at(shown ?? 0)};width:calc(${at(OPEN_MS)} )" title="Opening animation"></span>${REDUCE ? '' : ''}
+    el.innerHTML = `${REDUCE ? '' : `<span class="p310-tl-band" style="left:${at(shown ?? 0)};width:${at(OPEN_MS)}" title="Opening animation"></span>`}
       ${shown !== null ? `<span class="p310-tl-mk is-open" style="left:${at(shown)}"><i></i>Viewer ${shown} ms</span>` : ''}
       ${first !== null ? `<span class="p310-tl-mk is-first" style="left:${at(first)}"><i></i>First content ${first} ms</span>` : ''}
       ${liveT !== null ? `<span class="p310-tl-mk is-live" style="left:${at(liveT)}"><i></i>Live ${liveT} ms</span>` : ''}
@@ -310,10 +338,14 @@
     if (b.dataset.p === 'auto') auto = !auto;
     run++;
     clearTimers();
+    for (const animation of viewer.getAnimations()) animation.cancel();
     viewer.hidden = true;
     main.inert = false;
     app.classList.remove('is-holding');
-    for (const el of app.querySelectorAll('.p310-held')) el.classList.remove('p310-held', 'has-ring');
+    for (const el of app.querySelectorAll('.p310-held')) {
+      el.classList.remove('p310-held', 'has-ring');
+      el.removeAttribute('aria-busy');
+    }
     paintProto();
     if (b.dataset.p === 'replay' || auto) {
       if (b.dataset.p === 'replay' && !auto) {
