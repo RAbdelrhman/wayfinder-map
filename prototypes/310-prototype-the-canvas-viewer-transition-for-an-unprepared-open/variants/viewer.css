@@ -94,7 +94,7 @@ a.primary.p310-held.has-ring::after { left: 12px; top: calc(50% - 7px); width: 1
 /* Reduced motion: no sheen, no spin (a still ring), no pointer glide. */
 @media (prefers-reduced-motion: reduce) {
   .p310-cv.is-skel *, .p310-held.has-ring .wf-frame::after, a.primary.p310-held.has-ring::after { animation: none !important; }
-  .p310-cursor { transition: none; }
+  .p310-cursor, .p310-cursor::after { transition: none; animation: none !important; }
 }
 .p310.is-reduce .p310-cv.is-skel *, .p310.is-reduce .p310-held.has-ring .wf-frame::after, .p310.is-reduce a.primary.p310-held.has-ring::after { animation: none !important; }
 .p310.is-reduce .p310-held .wf-frame, .p310.is-reduce a.primary.p310-held { transform: none; }
@@ -124,3 +124,4 @@ a.primary.p310-held.has-ring::after { left: 12px; top: calc(50% - 7px); width: 1
 /* Capture mode: only the live canvas, at the full-window desktop stage size. */
 .p310.is-capture { display: block; }
 .p310.is-capture .p310-surface { position: relative; height: 100vh; }
+.p310.is-reduce .p310-cursor, .p310.is-reduce .p310-cursor::after { transition: none; animation: none !important; }
