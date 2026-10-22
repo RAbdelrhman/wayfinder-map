@@ -74,6 +74,24 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+describe('scrolling without changed feedback', () => {
+  it('keeps the board hint mounted across layout messages and updates it when the context changes', () => {
+    const view = mount({ option: null });
+    const hint = view.$('.cf-hint');
+    expect(hint).not.toBeNull();
+    const observer = new MutationObserver(() => undefined);
+    observer.observe(view.$('.cf-layer')!, { childList: true, subtree: true });
+    for (let i = 0; i < 60; i++)
+      view.feedback.onLayout([], { left: 0, top: 0, width: 800, height: 600 });
+    expect(view.$('.cf-hint')).toBe(hint);
+    expect(observer.takeRecords()).toHaveLength(0);
+    view.context.option = 'B';
+    view.repaint();
+    expect(view.$('.cf-hint')).toBeNull();
+    observer.disconnect();
+  });
+});
+
 describe('D4 without the bridge: notes only, with the option chooser', () => {
   it('turns off pins, elements and colours, and posts notes on the chosen option without errors', async () => {
     const view = mount({ source: 'none', pages: [], page: null, option: null });
@@ -286,8 +304,10 @@ describe('verifier findings on #213', () => {
     view.click('[data-fb-act="done"]');
     const layout = (top: number): void => view.feedback.onLayout([{ id: 1, rect: { left: 10, top, width: 0, height: 0 } }], { left: 0, top: 0, width: 800, height: 600 });
     layout(50);
+    expect(view.$<HTMLElement>('.cf-pin')!.style.top).toBe('50px');
     view.$<HTMLElement>('.cf-pin')!.focus();
     layout(60);
+    expect(view.$<HTMLElement>('.cf-pin')!.style.top).toBe('60px');
     expect(document.activeElement?.getAttribute('data-fb-mark')).toBe('1');
   });
 
