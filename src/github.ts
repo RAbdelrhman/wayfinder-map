@@ -604,9 +604,33 @@ async function recentlyUpdated(repo: string, since: Date): Promise<Set<number> |
   return numbers;
 }
 
+/** GitHub's summary of the map's sub-issues says there is at least one and every one is closed, whether completed or not planned. */
+function summaryFinished(issue: MapIssue): boolean {
+  const { total, completed } = issue.progress ?? { total: 0, completed: 0 };
+  return total > 0 && completed === total;
+}
+
+/**
+ * Whether a map the summary calls finished is: the summary counts only attached sub-issues, so a ticket
+ * its body lists without attaching it, which the app still shows, keeps it active. The sub-issue read
+ * also checks every ticket is closed and leaves the ETags the next change check compares against, so a
+ * reopened ticket on an archived map is noticed without reading the whole map. A failed read confirms nothing.
+ */
+async function isFinished(repo: string, issue: MapIssue): Promise<boolean> {
+  try {
+    const subIssues = await subIssueWatcher.fetch(repo, issue.number);
+    const attached = new Set(subIssues.map((subIssue) => subIssue.number));
+    const listed = parseChildNumbers(issue.body ?? '', repo).filter((number) => number !== issue.number);
+    return subIssues.length > 0 && subIssues.every((subIssue) => !isOpenState(subIssue.state)) && listed.every((number) => attached.has(number));
+  } catch {
+    subIssueWatcher.clear(repo, issue.number);
+    return false;
+  }
+}
+
 /**
  * Read every wayfinder map in `repo`. Active maps come with their tickets, states and blocker edges;
- * settled ones (see `settlementOf`) come as their issue alone, until someone opens them.
+ * archived ones (see `settlementOf`) come as their issue alone, until someone opens them.
  */
 export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
   const { repo, mapLabel } = options;
@@ -645,13 +669,23 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
       : labeled.filter((issue) => isMapShown({ number: issue.number, author: issue.author ?? null, visibility: mapVisibility(issue.body ?? '') }, viewer));
   subIssueWatcher.retainMaps(repo, mapIssues.map((map) => map.number));
 
+  // A hand-made choice settles the question, so only maps without one are checked.
+  const finished = new Set<number>();
+  await pool(
+    mapIssues.filter((issue) => isOpenState(issue.state) && choices[issue.number] === undefined && summaryFinished(issue)),
+    options.concurrency ?? 6,
+    async (issue) => {
+      if (await isFinished(repo, issue)) finished.add(issue.number);
+    },
+  );
   const facts = (issue: MapIssue): MapIssueFacts => ({
     open: isOpenState(issue.state),
     closedAt: issue.closedAt ?? null,
     updatedAt: issue.updatedAt ?? null,
+    finished: finished.has(issue.number),
   });
-  // Only ask what changed lately when some open map has itself gone quiet.
-  const quiet = mapIssues.some((issue) => choices[issue.number] === undefined && isIdleCandidate(facts(issue), now));
+  // Only ask what changed lately when some open map has itself gone quiet. A finished map is archived anyway.
+  const quiet = mapIssues.some((issue) => choices[issue.number] === undefined && !finished.has(issue.number) && isIdleCandidate(facts(issue), now));
   let recent: Set<number> | null = new Set();
   if (quiet) {
     try {

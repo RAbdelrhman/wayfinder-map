@@ -94,7 +94,7 @@ export interface PublicMap {
 
 /**
  * Why a map is archived: someone archived it by hand, its issue closed, every ticket is done, or
- * nothing on it changed for 30 days. Nothing produces `finished` until #243 adds the rule.
+ * nothing on it changed for 30 days. `finished` is worked out on each read, never stored (`isFinished` in `github.ts`).
  */
 export type SettleReason = 'manual' | 'closed' | 'finished' | 'idle';
 

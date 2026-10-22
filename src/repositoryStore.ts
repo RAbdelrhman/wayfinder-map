@@ -155,8 +155,9 @@ export class RepositoryStore {
   }
 
   /**
-   * Re-reads the repository only if a map's tickets changed. Only active maps, and the settled
-   * ones in `open`, are asked: a settled map costs nothing until it is opened.
+   * Re-reads the repository only if a map's tickets changed. Only active maps, the archived ones in
+   * `open`, and the finished ones are asked: another archived map costs nothing until it is opened. A
+   * finished map is asked so a reopened ticket returns it to the active list without waiting for a full read.
    */
   async refreshIfChanged(repo: string, open: readonly number[] = []): Promise<MapSnapshot> {
     const normalized = normalizeRepo(repo);
@@ -168,7 +169,9 @@ export class RepositoryStore {
     if (entry.snapshot === null) return this.snapshot(normalized, false, open);
 
     const snapshot = entry.snapshot;
-    const watched = snapshot.maps.filter((map) => map.ticketsLoaded && (map.settled === null || open.includes(map.number)));
+    const watched = snapshot.maps.filter(
+      (map) => (map.ticketsLoaded && (map.settled === null || open.includes(map.number))) || (map.settled?.reason === 'finished' && map.open),
+    );
     entry.refreshInFlight = (async () => {
       const changed = await this.changeChecker(normalized, watched.map((map) => map.number));
       this.requireCurrent(normalized, entry);

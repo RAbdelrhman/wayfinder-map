@@ -467,6 +467,177 @@ describe('fetchMaps settling', () => {
   });
 });
 
+describe('fetchMaps finished maps', () => {
+  const NOW = new Date('2026-09-26T12:00:00.000Z');
+  const RECENT = '2026-09-25T12:00:00.000Z';
+  const OLD = '2026-07-01T12:00:00.000Z';
+  const options = { repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', now: NOW };
+  interface Ticket {
+    number: number;
+    state: 'open' | 'closed';
+    state_reason?: 'completed' | 'not_planned';
+  }
+
+  /** What GitHub holds: each map's issue fields and its attached sub-issues. */
+  let maps: Array<{ number: number; body?: string; state?: string; updated_at?: string }>;
+  let attached: Record<number, Ticket[]>;
+  /** A summary that disagrees with the sub-issues, as when GitHub's count lags. */
+  let summaries: Record<number, { total: number; completed: number }>;
+  let failSubIssues: number[];
+
+  const summary = (number: number): { total: number; completed: number } => {
+    const tickets = attached[number] ?? [];
+    return summaries[number] ?? { total: tickets.length, completed: tickets.filter((ticket) => ticket.state === 'closed').length };
+  };
+
+  beforeEach(() => {
+    ghCalls.length = 0;
+    failSubIssues = [];
+    summaries = {};
+    maps = [{ number: 1 }];
+    attached = {};
+    execFileMock.mockImplementation(async (_file, args) => {
+      ghCalls.push(args);
+      const respond = (value: unknown): { stdout: Buffer; stderr: Buffer } => {
+        const text = typeof value === 'string' ? value : JSON.stringify(value);
+        return { stdout: Buffer.from(args.includes('--include') ? ['HTTP/2.0 200 OK', 'ETag: "mock"', '', text].join('\r\n') : text), stderr: Buffer.alloc(0) };
+      };
+      if (args.includes('--slurp')) {
+        return respond([maps.map((map) => ({ title: `Map ${String(map.number)}`, body: '', state: 'open', updated_at: RECENT, closed_at: null, ...map, sub_issues_summary: summary(map.number) }))]);
+      }
+      if (args[1] === 'graphql') return respond('count 0\n');
+      const path = args.find((arg) => arg.startsWith('repos/')) ?? '';
+      const subIssues = /issues\/(\d+)\/sub_issues/.exec(path);
+      if (subIssues !== null) {
+        const number = Number(subIssues[1]);
+        if (failSubIssues.includes(number)) throw new Error('boom');
+        return respond((attached[number] ?? []).map((ticket) => ({ title: `Ticket ${String(ticket.number)}`, body: '', labels: [], ...ticket })));
+      }
+      if (path.includes('/dependencies/')) return respond([]);
+      throw new Error(`Unexpected gh call: ${args.join(' ')}`);
+    });
+  });
+
+  const done = (...numbers: number[]): Ticket[] => numbers.map((number) => ({ number, state: 'closed', state_reason: 'completed' }));
+  const open = (...numbers: number[]): Ticket[] => numbers.map((number) => ({ number, state: 'open' }));
+  const settledOf = async (choices: Record<number, { settled: boolean; at: string }> = {}, map = 1) =>
+    (await fetchMaps({ ...options, choices })).maps.find((candidate) => candidate.number === map)?.settled;
+  const ticketCalls = (): string[] => ghCalls.map((args) => args.find((arg) => arg.startsWith('repos/')) ?? '').filter((path) => /sub_issues|dependencies/.test(path));
+
+  it('archives a map with at least one ticket when every ticket is done, without reading its tickets', async () => {
+    attached[1] = done(10, 11);
+
+    const { maps: listed } = await fetchMaps(options);
+
+    expect(listed[0]).toMatchObject({ settled: { reason: 'finished', since: RECENT }, tickets: [], ticketsLoaded: false });
+    // The one sub-issue read that confirms it; no blocker or dependency reads.
+    expect(ticketCalls()).toEqual(['repos/o/r/issues/1/sub_issues']);
+  });
+
+  it('counts a ticket closed as not planned as done', async () => {
+    attached[1] = [...done(10), { number: 11, state: 'closed', state_reason: 'not_planned' }];
+    expect((await settledOf())?.reason).toBe('finished');
+  });
+
+  it('keeps empty maps and maps with an open ticket active', async () => {
+    maps = [{ number: 1 }, { number: 2 }];
+    attached[1] = [];
+    attached[2] = [...done(20), ...open(21)];
+
+    const result = (await fetchMaps(options)).maps;
+
+    expect(result.map((map) => [map.number, map.settled])).toEqual([[1, null], [2, null]]);
+    expect(result.every((map) => map.ticketsLoaded)).toBe(true);
+  });
+
+  it('applies the rule on every fresh read, so a restart archives existing finished maps', async () => {
+    attached[1] = done(10);
+
+    const first = await fetchMaps(options);
+    const afterRestart = await fetchMaps(options);
+
+    expect(first.maps[0]?.settled).toEqual(afterRestart.maps[0]?.settled);
+    expect(afterRestart.maps[0]?.settled).toMatchObject({ reason: 'finished' });
+  });
+
+  it('archives a map that finishes during use and returns it when a ticket reopens or an open one is added', async () => {
+    attached[1] = [...done(10), ...open(11)];
+    expect(await settledOf()).toBeNull();
+
+    attached[1] = done(10, 11);
+    expect(await settledOf()).toMatchObject({ reason: 'finished' });
+
+    attached[1] = [...done(10), ...open(11)];
+    expect(await settledOf()).toBeNull();
+
+    attached[1] = done(10, 11);
+    expect(await settledOf()).toMatchObject({ reason: 'finished' });
+    attached[1] = [...done(10, 11), ...open(12)];
+    expect(await settledOf()).toBeNull();
+  });
+
+  it('keeps a finished map the user restored active, through reopening and finishing again', async () => {
+    const restored = { 1: { settled: false, at: RECENT } };
+    attached[1] = done(10, 11);
+    expect(await settledOf(restored)).toBeNull();
+
+    attached[1] = [...done(10), ...open(11)];
+    expect(await settledOf(restored)).toBeNull();
+    attached[1] = done(10, 11);
+    expect(await settledOf(restored)).toBeNull();
+
+    // It is read like any active map, and the finished check adds no read of its own.
+    ghCalls.length = 0;
+    await settledOf(restored);
+    expect(ticketCalls()).toEqual(['repos/o/r/issues/1/sub_issues', 'repos/o/r/issues/10/dependencies/blocked_by', 'repos/o/r/issues/11/dependencies/blocked_by']);
+  });
+
+  it('keeps a map the user archived by hand manual, even when it is finished', async () => {
+    attached[1] = done(10);
+    expect(await settledOf({ 1: { settled: true, at: RECENT } })).toEqual({ reason: 'manual', since: RECENT });
+  });
+
+  it('keeps a map active while its body lists a ticket that is not attached to it', async () => {
+    maps = [{ number: 1, body: '- [x] #10\n- [x] #12' }];
+    attached[1] = done(10);
+    expect(await settledOf()).toBeNull();
+
+    attached[1] = done(10, 12);
+    expect(await settledOf()).toMatchObject({ reason: 'finished' });
+  });
+
+  it('keeps a map active when its sub-issues cannot be read or show a ticket the summary missed', async () => {
+    attached[1] = done(10);
+    failSubIssues = [1];
+    expect(await settledOf()).toBeNull();
+
+    failSubIssues = [];
+    attached[1] = open(10);
+    summaries[1] = { total: 1, completed: 1 };
+    expect(await settledOf()).toBeNull();
+  });
+
+  it('reads a map listed finished in full once it is opened, and keeps it archived', async () => {
+    attached[1] = done(10, 11);
+    const listed = (await fetchMaps(options)).maps;
+
+    const { maps: [opened] } = await fetchMapDetails(options, listed);
+
+    expect(opened).toMatchObject({ ticketsLoaded: true, settled: { reason: 'finished' }, tickets: [{ number: 10 }, { number: 11 }] });
+  });
+
+  it('reports a closed map as closed, and a finished one without the idle search', async () => {
+    maps = [{ number: 1, updated_at: OLD }, { number: 2, state: 'closed', updated_at: OLD }];
+    attached[1] = done(10);
+    attached[2] = done(20);
+
+    const result = (await fetchMaps(options)).maps;
+
+    expect(result.map((map) => [map.number, map.settled?.reason])).toEqual([[1, 'finished'], [2, 'closed']]);
+    expect(ghCalls.some((args) => args[1] === 'graphql')).toBe(false);
+  });
+});
+
 describe('fetchMaps visibility', () => {
   const mapIssue = (number: number, author: string, body = '') => ({
     number,
