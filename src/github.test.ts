@@ -655,6 +655,20 @@ describe('fetchMaps finished maps', () => {
     expect(await settledOf()).toMatchObject({ reason: 'finished' });
   });
 
+  it('archives an old map whose only tickets are listed in the body as finished, not idle, and sees one reopen', async () => {
+    maps = [{ number: 1, body: '- [x] #10', updated_at: OLD }];
+    loose[10] = { number: 10, state: 'closed' };
+
+    const { maps: listed, finishedWatch } = await read();
+
+    expect(listed[0]?.settled).toMatchObject({ reason: 'finished' });
+    expect(await changed(finishedWatch)).toBe(false);
+    loose[10] = { number: 10, state: 'open' };
+    expect(await changed(finishedWatch)).toBe(true);
+    // Not finished any more; the mock has no recent activity, so only the idle rule is left.
+    expect((await settledOf())?.reason).not.toBe('finished');
+  });
+
   it('sees a body edit finish a map whose only tickets are listed in the body, or that has none yet', async () => {
     maps = [{ number: 1, body: '- [ ] #10\n- [x] #11' }, { number: 2 }];
     loose[10] = { number: 10, state: 'open' };

@@ -226,6 +226,23 @@ describe('RepositoryStore settling', () => {
     expect(finishedChecker).toHaveBeenLastCalledWith(expect.anything(), {}, expect.any(Date));
   });
 
+  it('stops watching a finished map once the user archives or restores it', async () => {
+    const finished: MapSettlement = { reason: 'finished', since: '2026-09-25T00:00:00.000Z' };
+    const watch = { 1: { basis: 'a', unattached: {}, retryAt: null }, 2: { basis: 'b', unattached: {}, retryAt: null } };
+    const fetcher = vi.fn<RepositoryFetcher>(async () => ({ maps: [map(1, finished, false), map(2, finished, false)], finishedWatch: watch, warnings: [] }));
+    const finishedChecker = vi.fn(async () => false);
+    const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher, changeChecker: async () => false, finishedChecker });
+    await cache.snapshot('owner/repo');
+
+    await cache.settle('owner/repo', 1, { reason: 'manual', since: '2026-10-01T00:00:00.000Z' });
+    await cache.refreshIfChanged('owner/repo');
+    expect(finishedChecker).toHaveBeenLastCalledWith(expect.anything(), { 2: watch[2] }, expect.any(Date));
+
+    await cache.settle('owner/repo', 2, null);
+    await cache.refreshIfChanged('owner/repo');
+    expect(finishedChecker).toHaveBeenLastCalledWith(expect.anything(), {}, expect.any(Date));
+  });
+
   it('applies a settle saved while the first read is in flight with the old choices', async () => {
     const listed = deferred<FetchResult>();
     const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher: () => listed.promise, choices: async () => ({}) });

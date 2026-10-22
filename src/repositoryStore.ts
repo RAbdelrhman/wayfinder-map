@@ -93,6 +93,8 @@ export class RepositoryStore {
     entry.choiceRevision = (entry.choiceRevision ?? 0) + 1;
     entry.settleOverrides ??= new Map();
     entry.settleOverrides.set(mapNumber, settled);
+    // The choice now decides, so nothing is left to watch for this map.
+    if (entry.finishedWatch !== undefined) delete entry.finishedWatch[mapNumber];
     entry.persistedScope = null;
     if (entry.snapshot === null) return null;
     entry.snapshot = {
@@ -233,7 +235,7 @@ export class RepositoryStore {
         if (choicesChanged) maps = maps.map((map) => entry.settleOverrides?.has(map.number) ? { ...map, settled: entry.settleOverrides.get(map.number) ?? null } : map);
         const snapshot = { repo, fetchedAt: startedAt, maps, hiddenMaps: hiddenMaps ?? 0, publicMaps: publicMaps ?? [], warnings };
         entry.snapshot = snapshot;
-        entry.finishedWatch = finishedWatch ?? {};
+        entry.finishedWatch = Object.fromEntries(Object.entries(finishedWatch ?? {}).filter(([number]) => !(choicesChanged && entry.settleOverrides?.has(Number(number)))));
         entry.restored = false;
         entry.persistedScope = choicesChanged ? null : persistedScope;
         if (this.options.persistence !== undefined && persistedScope !== null && !choicesChanged) {

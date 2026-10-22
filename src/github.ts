@@ -757,10 +757,11 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
   const mayFinish = (issue: MapIssue): boolean => isOpenState(issue.state) && choices[issue.number] === undefined;
   // A map with no attached ticket is read in full below, which reads what its body lists; watch it from the list meanwhile.
   for (const issue of mapIssues) {
-    if (mayFinish(issue) && onlyBodyCanOpen(issue) && !summaryFinished(issue)) watch[issue.number] = { basis: listBasis(issue), unattached: {}, retryAt: null };
+    if (mayFinish(issue) && onlyBodyCanOpen(issue) && !summaryFinished(issue) && listedTickets(repo, issue).length === 0) watch[issue.number] = { basis: listBasis(issue), unattached: {}, retryAt: null };
   }
+  // A map with no attached ticket is checked too when its body lists some: those tickets can all be done.
   await pool(
-    mapIssues.filter((issue) => mayFinish(issue) && summaryFinished(issue)),
+    mapIssues.filter((issue) => mayFinish(issue) && (summaryFinished(issue) || (onlyBodyCanOpen(issue) && listedTickets(repo, issue).length > 0))),
     options.concurrency ?? 6,
     async (issue) => {
       try {
@@ -768,7 +769,6 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
         if (state === 'finished') finished.add(issue.number);
         watch[issue.number] = { basis: listBasis(issue), unattached, retryAt: state === 'unknown' ? retryAt : null };
       } catch {
-        subIssueWatcher.clear(repo, issue.number);
         watch[issue.number] = { basis: listBasis(issue), unattached: {}, retryAt };
       }
     },
