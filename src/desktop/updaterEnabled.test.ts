@@ -44,6 +44,7 @@ vi.mock('electron', () => ({
 import { startAutoUpdates } from './updater.js';
 import { DEFAULTS } from '../config.js';
 import { DEFAULT_TEMPLATE, startServer } from '../server.js';
+import { HandOffStore } from '../handOffTracking.js';
 import { bindUpdater } from '../ui/chrome.js';
 
 describe('enabled desktop updates', () => {
@@ -473,6 +474,8 @@ describe('enabled desktop updates', () => {
           }),
         },
         updater: handle,
+        fetcher: async () => ({ maps: [], warnings: [] }),
+        handOffStore: new HandOffStore({ filePath: null }),
       });
       const nativeFetch = globalThis.fetch;
       let statusReads = 0;
@@ -550,7 +553,10 @@ describe('enabled desktop updates', () => {
       } finally {
         releasePreparation?.();
         handle.stop();
-        await new Promise<void>((resolve) => running.server.close(() => resolve()));
+        await new Promise<void>((resolve) => {
+          running.server.close(() => resolve());
+          running.server.closeAllConnections();
+        });
         if (failure !== 'not-ready') {
           // Complete this case's readback before a later test can replace global fetch.
           // The reloaded page's first observer already ended when preparation failed.

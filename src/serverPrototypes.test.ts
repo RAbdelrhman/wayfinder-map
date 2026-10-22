@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Config } from './config.js';
 import { branchesByMap } from './github.js';
 import { HandOffStore } from './handOffTracking.js';
-import { prototypeTicketNumber } from './prototypes.js';
+import { prototypeFileUrl, prototypeTicketNumber } from './prototypes.js';
 import { startServer } from './server.js';
 import type { ServerT3 } from './server.js';
 import type { Prototype, WayfinderMap } from './types.js';
@@ -12,6 +12,7 @@ const fetchPrototypes = vi.fn(
   async (repo: string, map: WayfinderMap): Promise<Prototype[]> => [
     {
       branch: `prototype/${String(map.number)}-x`,
+      sha: 'a'.repeat(40),
       ticketNumber: map.number,
       mapNumber: map.number,
       url: `https://github.com/${repo}/tree/prototype/${String(map.number)}-x`,
@@ -112,6 +113,22 @@ async function serve(maps?: WayfinderMap[]): Promise<Awaited<ReturnType<typeof s
 }
 
 describe('prototypes on a repository-scoped server', () => {
+  it('spends zero speculative file reads on a list and forced refresh, but serves a requested canvas', async () => {
+    fetchBranchFile.mockClear();
+    const running = await serve();
+    try {
+      const route = `${running.url}/api/repos/octo/one/prototypes?map=7`;
+      await fetch(route);
+      await fetch(`${route}&refresh=1`);
+      expect(fetchBranchFile).not.toHaveBeenCalled();
+      const url = running.url + prototypeFileUrl('octo/one', 'prototype/7-x', 'index.html', 'a'.repeat(40));
+      const response = await fetch(url);
+      await fetch(url);
+      expect(response.status).toBe(200);
+      expect(fetchBranchFile).toHaveBeenCalledTimes(1);
+    } finally { await new Promise<void>((resolve) => running.server.close(() => resolve())); }
+  });
+
   it('lists a map\u2019s prototypes per repository and caches them', async () => {
     fetchPrototypes.mockClear();
     const running = await serve();

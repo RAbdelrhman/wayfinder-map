@@ -70,9 +70,9 @@ export interface WayfinderMap {
   stalled: Stall[];
   /** Each open ticket's pull request, in map order. The server fills it like `stalled`; see `markPullRequests`. */
   pullRequests: TicketPullRequest[];
-  /** Why and since when the map sits in the Settled section, or null while it is active. */
+  /** Why and since when the map is archived, or null while it is active. */
   settled: MapSettlement | null;
-  /** False for a settled map whose tickets were not read, to save GitHub calls until it is opened. */
+  /** False for an archived map whose tickets were not read, to save GitHub calls until it is opened. */
   ticketsLoaded: boolean;
 }
 
@@ -92,8 +92,11 @@ export interface PublicMap {
   progress: { completed: number; total: number };
 }
 
-/** Why a map settled: its issue closed, nothing on it changed for 30 days, or someone settled it by hand. */
-export type SettleReason = 'closed' | 'idle' | 'manual';
+/**
+ * Why a map is archived: someone archived it by hand, its issue closed, every ticket is done, or
+ * nothing on it changed for 30 days. `finished` is worked out on each read, never stored (`isFinished` in `github.ts`).
+ */
+export type SettleReason = 'manual' | 'closed' | 'finished' | 'idle';
 
 export interface MapSettlement {
   reason: SettleReason;

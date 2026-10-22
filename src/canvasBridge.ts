@@ -386,12 +386,47 @@ function canvasBridge(): void {
     if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]')) return;
     post({ type: 'key', key });
   });
+  // On a canvas board, each option page repaints on every scroll step unless the compositor holds it in a layer of its own.
+  const onBoard = (): void => {
+    if (!document.querySelector('#stage')) return;
+    const layers = document.createElement('style');
+    layers.textContent = '#stage .frame { will-change: transform; } #stage.wf-zoomed-in .frame { will-change: auto; }';
+    document.head.append(layers);
+  };
   // Waiting for load also waits for every option iframe and its network requests.
   if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', ready);
   else ready();
+  onBoard();
 }
 
 export const CANVAS_BRIDGE_SCRIPT = `;(${canvasBridge.toString()})();`;
+
+/**
+ * Runs in the engine's own document, in place of its `stage.style.zoom = …`. CSS zoom lays out every embedded
+ * option again on each step; a scale transform only repaints them. The transform leaves the layout box at full
+ * size, so while zoomed out the margins pull the scrollable area in to the scaled size, as CSS zoom did.
+ */
+function stageZoom(stage: HTMLElement, zoom: number): void {
+  const hold = (level: number): void => {
+    stage.style.marginRight = level < 1 ? `${String((level - 1) * stage.offsetWidth)}px` : '';
+    stage.style.marginBottom = level < 1 ? `${String((level - 1) * stage.offsetHeight)}px` : '';
+  };
+  stage.dataset['wfZoom'] = String(zoom);
+  stage.style.zoom = '';
+  stage.style.transformOrigin = '0 0';
+  stage.style.transform = zoom === 1 ? '' : `scale(${String(zoom)})`;
+  hold(zoom);
+  // A layer keeps the scale it was rastered at, so zoomed in the pages would go soft. They are held in layers (for smooth panning)
+  // only while zoomed out or at 100%, where a stale raster is at worst scaled down.
+  stage.classList.toggle('wf-zoomed-in', zoom > 1);
+  // Options report their height as they load, which changes the size the margins are taken from.
+  if (stage.dataset['wfZoomWatch'] === undefined) {
+    stage.dataset['wfZoomWatch'] = '';
+    new ResizeObserver(() => hold(Number(stage.dataset['wfZoom']))).observe(stage);
+  }
+}
+/** The engine line that sets the zoom is the same in every copied engine. */
+const ENGINE_ZOOM = /\$\('stage'\)\.style\.zoom\s*=\s*String\(state\.zoom\);/;
 
 /** Old copied engines assign location.hash. Replace that assignment without changing repo files. */
 export function viewerPrototypeBytes(file: string, bytes: Buffer): Buffer {
@@ -410,8 +445,9 @@ export function viewerPrototypeBytes(file: string, bytes: Buffer): Buffer {
       .toString('utf8')
       .replace(/\blocation\.hash\s*=\s*([^;\n]+);/g, "location.replace('#' + ($1));")
       // The nested presentation document shares the browser's joint history too.
-      .replace(/function loadFrame\(frame, item, present\)\s*\{/, () => replacementNavigation);
-    return Buffer.from(source);
+      .replace(/function loadFrame\(frame, item, present\)\s*\{/, () => replacementNavigation)
+      .replace(ENGINE_ZOOM, () => `stageZoom($('stage'), state.zoom);`);
+    return Buffer.from(ENGINE_ZOOM.test(bytes.toString('utf8')) ? `const stageZoom = ${stageZoom.toString()};\n${source}` : source);
   }
   if (!/\.html?$/i.test(file)) return bytes;
   const script = `<script>${CANVAS_BRIDGE_SCRIPT}</script>`;

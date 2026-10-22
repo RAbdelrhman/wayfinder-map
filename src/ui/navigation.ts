@@ -1,6 +1,6 @@
 import { setTrustedHtml } from './trustedHtml.js';
 import type { MapSnapshot, WayfinderMap } from '../types.js';
-import { mapPath, repoPath, scopedApiPath } from '../repoRoutes.js';
+import { archivedMapsPath, mapPath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { escapeHtml } from './markdown.js';
 import { clickedOutside } from './outsideClick.js';
 import { loadWayfinderRepositories } from './wayfinderRepositories.js';
@@ -29,6 +29,8 @@ export interface NavigationOptions {
   repo: string | null;
   mapNumber: number | null;
   view: NavigationView;
+  /** On a repository page, which of its lists shows. */
+  repositoryView?: 'active' | 'archived';
   onOpenTicket?: (ticketNumber: number) => void;
   onViewChange?: (view: NavigationView) => void;
   /** Return true when the current page can open this destination without reloading. */
@@ -50,6 +52,8 @@ export interface NavigationController {
   setCurrentRepo(repo: string | null): void;
   setActiveView(view: NavigationView): void;
   setPrototypeCount(count: number | null): void;
+  /** The repository page switched between its active maps and Archived maps. */
+  setRepositoryView(view: 'active' | 'archived'): void;
 }
 
 const SIDEBAR_STATE = 'wayfinder-map:navigation-expanded';
@@ -208,23 +212,31 @@ export function repoLabel(repo: string, repositories: readonly string[]): string
   return clashes ? repo : name;
 }
 
-/** The maps the tree and the map-name menu list: settled ones stay out, unless one is the page you are on. */
+/** The maps the tree and the map-name menu list: archived ones stay out, unless one is the page you are on. */
 export function sidebarMaps(maps: readonly WayfinderMap[], currentMapNumber: number | null): WayfinderMap[] {
   return maps.filter((map) => map.settled === null || map.number === currentMapNumber);
 }
 
-function mapListMarkup(repo: string, maps: readonly WayfinderMap[], currentMapNumber: number | null, view: NavigationView): string {
-  if (maps.length === 0) return '<li class="nav-tree-status">No maps yet</li>';
+/** The tree's way into a repository's Archived maps, with how many there are. */
+export function archivedMapsRow(repo: string, maps: readonly WayfinderMap[], current: boolean): string {
+  const count = maps.filter((map) => map.settled !== null).length;
+  return `<li><a class="row nav-archive-row${current ? ' is-on' : ''}" href="${escapeHtml(archivedMapsPath(repo))}"${current ? ' aria-current="page"' : ''}>${iconName('archive')}<span class="grow">Archived maps</span><span class="nav-tree-count">${String(count)}</span></a></li>`;
+}
+
+export function mapListMarkup(repo: string, maps: readonly WayfinderMap[], currentMapNumber: number | null, view: NavigationView, archivedCurrent = false): string {
+  if (maps.length === 0) return '<li class="nav-tree-status">No maps yet</li>' + archivedMapsRow(repo, maps, archivedCurrent);
   const shown = sidebarMaps(maps, currentMapNumber);
-  if (shown.length === 0) return '<li class="nav-tree-status">Every map here has settled</li>';
-  return shown
-    .map((map) => {
-      const selected = currentMapNumber === map.number;
-      return `<li><a class="row${selected ? ' is-on' : ''}" href="${mapHref(repo, map, view)}"${selected ? ' aria-current="page"' : ''} title="#${String(map.number)} ${escapeHtml(map.title)}">
-        ${miniRing(map)}<span class="grow">#${String(map.number)} ${escapeHtml(map.title)}</span>
+  const rows = shown.length === 0
+    ? '<li class="nav-tree-status">Every map here is archived</li>'
+    : shown
+        .map((map) => {
+          const selected = currentMapNumber === map.number;
+          return `<li><a class="row${selected ? ' is-on' : ''}" href="${mapHref(repo, map, view)}"${selected ? ' aria-current="page"' : ''} title="#${String(map.number)} ${escapeHtml(map.title)}">
+        ${miniRing(map)}<span class="grow">#${String(map.number)} ${escapeHtml(map.title)}</span>${map.settled === null ? '' : '<span class="nav-tree-tag" title="Archived">Archived</span>'}
       </a></li>`;
-    })
-    .join('');
+        })
+        .join('');
+  return rows + archivedMapsRow(repo, maps, archivedCurrent);
 }
 
 function scopeMenuMarkup(id: string, label: string, repositories: readonly string[], currentRepo: string | null, open: boolean): string {
@@ -249,6 +261,7 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
   let currentRepo = options.repo;
   let currentMapNumber = options.mapNumber;
   let activeView = options.view;
+  let repositoryView = options.repositoryView ?? 'active';
   let prototypeCount: number | null = null;
   let startNextLabel: string | null = null;
   let autoMap: AutoMapMenuState | null = null;
@@ -424,14 +437,14 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     return repositories
       .map((repo, index) => {
         const isContext = repo === currentRepo && page !== 'home';
-        const currentPage = isContext && page === 'repository';
+        const currentPage = isContext && page === 'repository' && repositoryView === 'active';
         const expandedRepo = expandedRepos.has(repo);
         const snapshot = mapSnapshots.get(repo);
         const treeId = `nav-repo-maps-${String(index)}`;
         const mapRows = !expandedRepo
           ? `<ul class="kids" id="${treeId}" hidden></ul>`
           : snapshot !== undefined
-            ? `<ul class="kids" id="${treeId}">${mapListMarkup(repo, snapshot.maps, page === 'map' && repo === currentRepo ? currentMapNumber : null, activeView)}</ul>`
+            ? `<ul class="kids" id="${treeId}">${mapListMarkup(repo, snapshot.maps, page === 'map' && repo === currentRepo ? currentMapNumber : null, activeView, isContext && page === 'repository' && repositoryView === 'archived')}</ul>`
             : snapshotErrors.has(repo)
               ? `<ul class="kids" id="${treeId}"><li class="nav-tree-status">Could not load maps.</li><li><button type="button" class="nav-retry" data-nav-retry="${String(index)}">Retry</button></li></ul>`
               : `<ul class="kids" id="${treeId}">${loadingMapRows(mapCounts[repo.toLocaleLowerCase()])}</ul>`;
@@ -542,9 +555,11 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
     const separator = '<span class="crumb-sep" aria-hidden="true">/</span>';
     if (page === 'map' && currentRepo !== null) {
       const repo = currentRepo;
-      setTrustedHtml(topbar, `<div class="nav-map-strip"><nav class="nav-map-scopes" aria-label="Map location">${repoScope('repo-scope', repo, true)}${separator}${mapScope('map-scope', repo, map)}</nav><nav class="segmented nav-map-tabs" aria-label="Map views">${VIEWS.map((view) => `<a class="seg${activeView === view ? ' is-on' : ''}" href="${map ? mapHref(repo, map, view) : '#'}" data-nav-view="${view}" title="${VIEW_LABEL[view]}"${activeView === view ? ' aria-current="page"' : ''}>${iconName(VIEW_ICON[view])}<span class="seg-label">${VIEW_LABEL[view]}</span>${view === 'prototypes' ? prototypeCountBadge(prototypeCount) : ''}</a>`).join('')}</nav></div>`);
+      const archivedBadge = map?.settled == null ? '' : `<span class="nav-scope-badge">${iconName('archive')}Archived</span>`;
+      setTrustedHtml(topbar, `<div class="nav-map-strip"><nav class="nav-map-scopes" aria-label="Map location">${repoScope('repo-scope', repo, true)}${separator}${mapScope('map-scope', repo, map)}${archivedBadge}</nav><nav class="segmented nav-map-tabs" aria-label="Map views">${VIEWS.map((view) => `<a class="seg${activeView === view ? ' is-on' : ''}" href="${map ? mapHref(repo, map, view) : '#'}" data-nav-view="${view}" title="${VIEW_LABEL[view]}"${activeView === view ? ' aria-current="page"' : ''}>${iconName(VIEW_ICON[view])}<span class="seg-label">${VIEW_LABEL[view]}</span>${view === 'prototypes' ? prototypeCountBadge(prototypeCount) : ''}</a>`).join('')}</nav></div>`);
     } else if (page === 'repository' && currentRepo !== null) {
-      setTrustedHtml(topbar, `<nav class="nav-scopes" aria-label="Repository">${repoScope('repo-scope', currentRepo, false)}</nav>`);
+      const archivedCrumb = repositoryView === 'archived' ? `${separator}<span class="scope nav-scope-static" aria-current="page">${iconName('archive')}<span class="t">Archived maps</span></span>` : '';
+      setTrustedHtml(topbar, `<nav class="nav-scopes" aria-label="Repository">${repoScope('repo-scope', currentRepo, false)}${archivedCrumb}</nav>`);
     } else if (page === 'new-map') {
       setTrustedHtml(topbar, '<span class="page-title" aria-current="page">Start a new map</span>');
     } else if (page === 'settings') {
@@ -851,6 +866,11 @@ export function mountNavigation(options: NavigationOptions): NavigationControlle
       currentRepo = repo;
       if (repo !== null && (page === 'repository' || page === 'map' || page === 'new-map')) expandedRepos.add(repo);
       if (repo !== null && sidebarLoadsMaps(page)) void getMapSnapshot(repo);
+      render();
+    },
+    setRepositoryView(view) {
+      if (view === repositoryView) return;
+      repositoryView = view;
       render();
     },
     setActiveView(view) {

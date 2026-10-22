@@ -17,7 +17,7 @@ export const PROTOTYPE_SNAPSHOT_FILE = 'prototype-snapshot.html';
 /** Where the page serves a file off a prototype branch. */
 export const PROTOTYPE_ROUTE = '/proto/';
 /** Bump when the injected bridge or served engine adaptation changes. */
-export const PROTOTYPE_HOST_VERSION = 'viewer-9';
+export const PROTOTYPE_HOST_VERSION = 'viewer-10';
 
 /** The ticket a prototype branch belongs to, or null when the name does not follow the convention. */
 export function prototypeTicketNumber(branch: string): number | null {
@@ -66,6 +66,16 @@ export function unlistedCanvasBoards(files: readonly string[]): string[] {
     const content = /^(.*?)\/(?:variants|assets)\/.+/.exec(file);
     return content === null ? [] : [`${content[1] ?? ''}/index.html`];
   }))].filter((board) => !all.has(board));
+}
+
+/** A canvas board's stored poster: a screenshot of the board, kept beside the board's other images. */
+const BOARD_POSTER = /^assets\/poster\.(?:jpe?g|png|webp)$/i;
+
+/** The poster a branch stores for one canvas board (`assets/poster.<ext>` beside its `index.html`), or null. */
+export function canvasPosterFile(files: readonly string[], board: string): string | null {
+  const slash = board.lastIndexOf('/');
+  const dir = slash < 0 ? '' : board.slice(0, slash + 1);
+  return files.find((file) => file.startsWith(dir) && BOARD_POSTER.test(file.slice(dir.length))) ?? null;
 }
 
 /**

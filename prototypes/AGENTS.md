@@ -24,6 +24,24 @@ Keep sandbox rules and relative paths. Inspect the preview and provide the exact
 canvas URL and visible preview before asking the user to choose. Ask one product
 decision at a time. Do not infer an answer from an unsubmitted form.
 
+Before sharing or pushing a prototype branch, capture its board poster after the
+final content change, from this checkout's root:
+
+```sh
+bun run canvas:poster prototypes/<task-id>
+bun run canvas:poster --check prototypes/<task-id>
+```
+
+This uses installed Chrome to render the actual board at 1280 × 800 and writes
+`assets/poster.webp` beside its `index.html`. Commit the poster with that canvas
+on its `prototype/` branch. Recapture whenever the board changes. Wayfinder
+requests this one SHA-addressed picture with the card and holds it over the
+loading skeleton while the live canvas boots. A missing or failed poster keeps
+the skeleton. The command does not push or edit another branch. Existing
+canvases without a poster remain valid; do not invent a poster or reuse one from
+another board. If Chrome or a board resource is unavailable, report the capture
+as Not Verified and keep the skeleton fallback.
+
 Keep existing `prototype/<ticket>-<slug>` branches, ticket metadata, map
 associations, and worktree boundaries. Non-ticket canvases need no new issues or
 maps. Canvas creation never launches a T3 job or pushes a branch.

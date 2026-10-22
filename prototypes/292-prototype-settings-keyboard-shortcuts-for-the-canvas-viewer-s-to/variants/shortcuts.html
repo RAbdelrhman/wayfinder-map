@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settings › Keyboard shortcuts · Wayfinder concept</title>
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="shortcuts.css" />
+  </head>
+  <body class="viz-root k292">
+    <!-- Settings: the real page's classes from src/ui/settings.ts, inside a demo sidebar. -->
+    <div class="k292-shell" id="settings-view" hidden>
+      <aside class="k292-sidebar" aria-label="Wayfinder navigation">
+        <a class="k292-brand" href="#" data-to="Home"><span data-icon="compass"></span>Wayfinder</a>
+        <button class="primary" type="button" data-to="Start a new map"><span data-icon="plus"></span>New map</button>
+        <a href="#" data-to="Home"><span data-icon="home"></span>Home</a>
+        <span class="eyebrow">Repositories</span>
+        <a href="#" data-to="wayfinder-map"><span data-icon="repo"></span>wayfinder-map</a>
+        <div class="k292-footer"><span class="k292-avatar" aria-hidden="true">D</span><span>demo-user</span><a href="#" aria-current="page"><span data-icon="gear"></span>Settings</a></div>
+      </aside>
+      <div class="main">
+        <header class="topbar" id="settings-topbar"></header>
+        <main class="settings-page" id="main"></main>
+      </div>
+    </div>
+
+    <!-- The canvas viewer (D4, src/ui/canvasViewer.ts + canvasFeedback.ts), full window. -->
+    <section class="vw is-a" id="viewer" role="dialog" aria-modal="true" aria-labelledby="vw-title" hidden>
+      <div id="vw-toolbar"></div>
+      <div class="vw-stage" id="vw-stage"></div>
+    </section>
+
+    <dialog class="dialog k292-dialog" id="reset-dialog" aria-labelledby="reset-title" aria-describedby="reset-desc"></dialog>
+    <div class="cf-live" id="live" role="status" aria-live="polite"></div>
+
+    <script src="../../canvas/kit/kit.js"></script>
+    <script src="fixtures.js"></script>
+    <script src="shortcuts.js"></script>
+  </body>
+</html>

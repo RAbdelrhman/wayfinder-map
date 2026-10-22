@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 
 import { criticalPath } from './criticalPath.js';
@@ -537,6 +538,8 @@ export interface FetchResult {
   hiddenMaps?: number;
   /** Other people's public maps, for the Public maps list. */
   publicMaps?: PublicMap[];
+  /** What each finished check was based on, for `haveFinishedMapsChanged`. */
+  finishedWatch?: Record<number, FinishedWatch>;
   warnings: string[];
 }
 
@@ -604,25 +607,15 @@ async function recentlyUpdated(repo: string, since: Date): Promise<Set<number> |
   return numbers;
 }
 
-/**
- * Read every wayfinder map in `repo`. Active maps come with their tickets, states and blocker edges;
- * settled ones (see `settlementOf`) come as their issue alone, until someone opens them.
- */
-export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
-  const { repo, mapLabel } = options;
-  const now = options.now ?? new Date();
-  const choices = options.choices ?? {};
-  const expand = new Set(options.expand ?? []);
-  const warnings: string[] = [];
-  const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [] };
-
+/** Every issue in `repo` carrying the map label, with the summary and body the finished rule reads. */
+async function listMapIssues(repo: string, mapLabel: string): Promise<MapIssue[]> {
   const mapIssuePages = await ghJson<RawIssue[][]>([
     'api',
     '--paginate',
     '--slurp',
     `repos/${repo}/issues?state=all&labels=${encodeURIComponent(mapLabel)}&per_page=100`,
   ]);
-  const labeled = flattenIssuePages(mapIssuePages).map((issue): MapIssue => ({
+  return flattenIssuePages(mapIssuePages).map((issue): MapIssue => ({
     number: issue.number,
     title: issue.title,
     url: issueUrl(issue, repo),
@@ -633,6 +626,118 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     author: issue.user?.login ?? null,
     progress: { completed: issue.sub_issues_summary?.completed ?? 0, total: issue.sub_issues_summary?.total ?? 0 },
   }));
+}
+
+/**
+ * What a map's finished check was based on, so a later poll can tell whether it still holds. Kept for
+ * every map whose summary says finished and every map found finished, and taken from the map list before
+ * the tickets are read: anything that changes after that shows on the next poll.
+ */
+export interface FinishedWatch {
+  /** The map's state, ticket counts and body as the list showed them. */
+  basis: string;
+  /** Tickets the body lists without attaching them, and whether each was open (null when it couldn't be read). Neither the sub-issues nor the summary show them. */
+  unattached: Record<number, boolean | null>;
+  /** When a read failed or a listed ticket couldn't be read: look again from this time (ms), whatever the list says. */
+  retryAt: number | null;
+}
+
+/** How long a failed finished check waits before it is tried again. */
+const FINISHED_RETRY_MS = 2 * 60_000;
+
+function listBasis(issue: MapIssue): string {
+  const { total, completed } = issue.progress ?? { total: 0, completed: 0 };
+  return createHash('sha1').update(JSON.stringify([issue.state, total, completed, issue.body ?? ''])).digest('hex');
+}
+
+/** The tickets a map's body lists, apart from itself. */
+function listedTickets(repo: string, issue: MapIssue): number[] {
+  return parseChildNumbers(issue.body ?? '', repo).filter((number) => number !== issue.number);
+}
+
+/** GitHub's summary of the map's sub-issues says there is at least one and every one is closed, whether completed or not planned. */
+function summaryFinished(issue: MapIssue): boolean {
+  const { total, completed } = issue.progress ?? { total: 0, completed: 0 };
+  return total > 0 && completed === total;
+}
+
+/** No sub-issue is open, so an edit to the body alone can finish the map: only the tickets it lists decide. */
+function onlyBodyCanOpen(issue: MapIssue): boolean {
+  const { total, completed } = issue.progress ?? { total: 0, completed: 0 };
+  return completed === total;
+}
+
+type FinishedState = 'finished' | 'active' | 'unknown';
+
+/**
+ * Finished means the map shows a ticket and every ticket it shows is done. `unknown` when a ticket the
+ * body lists couldn't be read, since it may be open; an open ticket that was read settles it as active.
+ */
+function finishedState(tickets: readonly { number: number; open: boolean }[], listed: readonly number[]): FinishedState {
+  if (tickets.some((ticket) => ticket.open)) return 'active';
+  const read = new Set(tickets.map((ticket) => ticket.number));
+  if (!listed.every((number) => read.has(number))) return 'unknown';
+  return tickets.length === 0 ? 'active' : 'finished';
+}
+
+/**
+ * Whether a map whose summary says finished is, from its sub-issues and any tickets its body lists
+ * without attaching them, which the app shows and the summary doesn't count. Reads no blockers. Throws
+ * when the sub-issues can't be read.
+ */
+async function checkFinished(repo: string, issue: MapIssue): Promise<{ state: FinishedState; unattached: Record<number, boolean | null> }> {
+  const listed = listedTickets(repo, issue);
+  const subIssues = await subIssueWatcher.fetch(repo, issue.number);
+  const attached = new Set(subIssues.map((subIssue) => subIssue.number));
+  const loose = listed.filter((number) => !attached.has(number));
+  const fetched = await pool(loose, 8, (number) => fetchIssue(repo, number));
+  const extra = fetched.filter((raw): raw is RawIssue => raw !== null);
+  const read = [...subIssues, ...extra].map((raw) => ({ number: raw.number, open: isOpenState(raw.state) }));
+  const unattached = Object.fromEntries(loose.map((number, index) => [number, fetched[index] === null || fetched[index] === undefined ? null : isOpenState(fetched[index].state)]));
+  return { state: finishedState(read, listed), unattached };
+}
+
+/**
+ * Whether anything a finished check was based on has changed: one read of the map list, plus the
+ * tickets the sub-issues don't show. Reads nothing when nothing is watched.
+ */
+export async function haveFinishedMapsChanged(
+  options: { repo: string; mapLabel: string },
+  watch: Readonly<Record<number, FinishedWatch>>,
+  now: Date,
+): Promise<boolean> {
+  const numbers = Object.keys(watch).map(Number);
+  if (numbers.length === 0) return false;
+  if (numbers.some((number) => (watch[number]?.retryAt ?? Infinity) <= now.getTime())) return true;
+  const listed = new Map((await listMapIssues(options.repo, options.mapLabel)).map((issue) => [issue.number, issue]));
+  for (const number of numbers) {
+    const issue = listed.get(number);
+    if (issue === undefined || listBasis(issue) !== watch[number]?.basis) return true;
+  }
+  // A ticket that couldn't be read isn't asked about again here: its retry time covers it.
+  const unattached = numbers
+    .flatMap((number) => Object.entries(watch[number]?.unattached ?? {}).map(([ticket, open]) => ({ ticket: Number(ticket), open })))
+    .filter((entry) => entry.open !== null);
+  const current = await pool(unattached, 6, ({ ticket }) => fetchIssue(options.repo, ticket));
+  return unattached.some(({ open }, index) => {
+    const raw = current[index];
+    return raw === null || raw === undefined || isOpenState(raw.state) !== open;
+  });
+}
+
+/**
+ * Read every wayfinder map in `repo`. Active maps come with their tickets, states and blocker edges;
+ * archived ones (see `settlementOf`) come as their issue alone, until someone opens them.
+ */
+export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
+  const { repo, mapLabel } = options;
+  const now = options.now ?? new Date();
+  const choices = options.choices ?? {};
+  const expand = new Set(options.expand ?? []);
+  const warnings: string[] = [];
+  const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [] };
+
+  const labeled = await listMapIssues(repo, mapLabel);
 
   if (labeled.length === 0) {
     warnings.push(`No maps in ${repo} yet. Wayfinder looks for issues labeled ${mapLabel}.`);
@@ -645,13 +750,37 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
       : labeled.filter((issue) => isMapShown({ number: issue.number, author: issue.author ?? null, visibility: mapVisibility(issue.body ?? '') }, viewer));
   subIssueWatcher.retainMaps(repo, mapIssues.map((map) => map.number));
 
+  // A hand-made choice settles the question, so only maps without one are checked.
+  const finished = new Set<number>();
+  const watch: Record<number, FinishedWatch> = {};
+  const retryAt = now.getTime() + FINISHED_RETRY_MS;
+  const mayFinish = (issue: MapIssue): boolean => isOpenState(issue.state) && choices[issue.number] === undefined;
+  // A map with no attached ticket is read in full below, which reads what its body lists; watch it from the list meanwhile.
+  for (const issue of mapIssues) {
+    if (mayFinish(issue) && onlyBodyCanOpen(issue) && !summaryFinished(issue) && listedTickets(repo, issue).length === 0) watch[issue.number] = { basis: listBasis(issue), unattached: {}, retryAt: null };
+  }
+  // A map with no attached ticket is checked too when its body lists some: those tickets can all be done.
+  await pool(
+    mapIssues.filter((issue) => mayFinish(issue) && (summaryFinished(issue) || (onlyBodyCanOpen(issue) && listedTickets(repo, issue).length > 0))),
+    options.concurrency ?? 6,
+    async (issue) => {
+      try {
+        const { state, unattached } = await checkFinished(repo, issue);
+        if (state === 'finished') finished.add(issue.number);
+        watch[issue.number] = { basis: listBasis(issue), unattached, retryAt: state === 'unknown' ? retryAt : null };
+      } catch {
+        watch[issue.number] = { basis: listBasis(issue), unattached: {}, retryAt };
+      }
+    },
+  );
   const facts = (issue: MapIssue): MapIssueFacts => ({
     open: isOpenState(issue.state),
     closedAt: issue.closedAt ?? null,
     updatedAt: issue.updatedAt ?? null,
+    finished: finished.has(issue.number),
   });
-  // Only ask what changed lately when some open map has itself gone quiet.
-  const quiet = mapIssues.some((issue) => choices[issue.number] === undefined && isIdleCandidate(facts(issue), now));
+  // Only ask what changed lately when some open map has itself gone quiet. A finished map is archived anyway.
+  const quiet = mapIssues.some((issue) => choices[issue.number] === undefined && !finished.has(issue.number) && isIdleCandidate(facts(issue), now));
   let recent: Set<number> | null = new Set();
   if (quiet) {
     try {
@@ -671,7 +800,22 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     const issueFacts = facts(mapIssue);
     const settled = settlementOf(issueFacts, choices[mapIssue.number], ticketsChanged(mapIssue), now);
     if (settled !== null && !expand.has(mapIssue.number)) return settledMap(repo, mapIssue, settled);
-    return { ...(await loadMap(options, mapIssue, fallbacks)), settled };
+    const loaded = await loadMap(options, mapIssue, fallbacks);
+    // The list can be older than the tickets just read, so a map read in full is judged on those tickets too.
+    const canFinish = (settled === null || settled.reason === 'idle') && mayFinish(mapIssue);
+    // When the sub-issues couldn't be read the tickets are the body's alone, so all of them done proves nothing.
+    const incomplete = fallbacks.maps.includes(mapIssue.number);
+    const judged = canFinish ? finishedState(loaded.tickets, listedTickets(repo, mapIssue)) : 'active';
+    const state = judged === 'finished' && incomplete ? 'unknown' : judged;
+    const unattached = fallbacks.unattachedTickets.find((entry) => entry.mapNumber === mapIssue.number)?.ticketNumbers ?? [];
+    // Still watched while active when only body-only tickets could hold it there: an edit to the body can finish it.
+    if (state === 'active' && !(canFinish && onlyBodyCanOpen(mapIssue) && unattached.length > 0)) return { ...loaded, settled };
+    watch[mapIssue.number] = {
+      basis: listBasis(mapIssue),
+      unattached: Object.fromEntries(unattached.map((number) => [number, loaded.tickets.find((ticket) => ticket.number === number)?.open ?? null])),
+      retryAt: state === 'unknown' ? retryAt : null,
+    };
+    return state === 'finished' ? { ...loaded, settled: { reason: 'finished', since: issueFacts.updatedAt ?? now.toISOString() } } : { ...loaded, settled };
   });
 
   maps.sort((a, b) => Number(b.open) - Number(a.open) || a.number - b.number);
@@ -679,6 +823,7 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     maps,
     hiddenMaps: labeled.length - mapIssues.length,
     publicMaps: viewer === null ? [] : publicMapsOf(repo, labeled, viewer),
+    finishedWatch: watch,
     warnings: [...warnings, ...fallbackWarnings(fallbacks)],
   };
 }
@@ -917,16 +1062,16 @@ export function branchesByMap(
 }
 
 /** Every prototype branch on `map`, with its files, last commit and, for closed tickets, the verdict. */
-export async function fetchPrototypes(repo: string, map: WayfinderMap): Promise<Prototype[]> {
-  return fetchMapPrototypes(repo, [map]);
+export async function fetchPrototypes(repo: string, map: WayfinderMap, readFile = fetchBranchFile): Promise<Prototype[]> {
+  return fetchMapPrototypes(repo, [map], readFile);
 }
 
 /** The same, across every map in the repository, so one read answers the whole repository page. */
-export async function fetchAllPrototypes(repo: string, maps: readonly WayfinderMap[]): Promise<Prototype[]> {
-  return fetchMapPrototypes(repo, maps);
+export async function fetchAllPrototypes(repo: string, maps: readonly WayfinderMap[], readFile = fetchBranchFile): Promise<Prototype[]> {
+  return fetchMapPrototypes(repo, maps, readFile);
 }
 
-async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): Promise<Prototype[]> {
+async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[], readFile: typeof fetchBranchFile): Promise<Prototype[]> {
   const refs = await ghJson<RawRef[]>(['api', `repos/${repo}/git/matching-refs/heads/${PROTOTYPE_BRANCH_PREFIX}`]);
   const work = branchesByMap(
     refs.map((ref) => ref.ref),
@@ -955,7 +1100,7 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): 
         ? null
         : await ghJson<RawCommit>(['api', `repos/${repo}/commits/${encodeURIComponent(branch)}`]).catch(() => null);
     const { updatedAt, files } = branchFacts(compare, tip);
-    const preview = await previewOf(repo, revision, files);
+    const preview = await previewOf(repo, revision, files, readFile);
     return {
       branch,
       ...(sha ? { sha } : {}),
@@ -966,7 +1111,7 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[]): 
       files,
       ...preview,
       verdict: verdictComment(comments.map((comment) => comment.body)),
-      variants: await variantsOf(repo, revision, ticketNumber, files, preview, shots),
+      variants: await variantsOf(repo, revision, ticketNumber, files, preview, shots, readFile),
     };
   });
 
@@ -991,10 +1136,11 @@ async function variantsOf(
   files: readonly string[],
   preview: { openable: string[]; preview: string | null },
   shots: readonly string[],
+  readFile: typeof fetchBranchFile,
 ): Promise<PrototypeVariant[]> {
   const configFile = preview.preview !== null && /(?:^|\/)index\.html$/i.test(preview.preview)
     ? preview.preview.replace(/index\.html$/i, 'config.js') : null;
-  const configSource = configFile === null ? null : await fetchBranchFile(repo, branch, configFile).then((bytes) => bytes.toString('utf8'), () => null);
+  const configSource = configFile === null ? null : await readFile(repo, branch, configFile).then((bytes) => bytes.toString('utf8'), () => null);
   const canvasDir = configFile === null ? '' : configFile.replace(/config\.js$/, '');
   const pages = [...new Set([...preview.openable, ...files.filter(isHtml)])]
     .filter((file) => canvasDir === '' || file.startsWith(canvasDir));
@@ -1008,18 +1154,18 @@ export async function fetchDefaultBranchFile(repo: string, file: string): Promis
 }
 
 /** What the branch can show running: its standalone HTML files, and the one to lead with. */
-async function previewOf(repo: string, branch: string, files: readonly string[]): Promise<{ openable: string[]; preview: string | null; canvases: string[] }> {
+async function previewOf(repo: string, branch: string, files: readonly string[], readFile: typeof fetchBranchFile): Promise<{ openable: string[]; preview: string | null; canvases: string[] }> {
   const boards = unlistedCanvasBoards(files);
   const [changed, boardsOnBranch, hasSnapshot] = await Promise.all([
-    openableFiles(repo, branch, files),
-    openableFiles(repo, branch, boards),
-    snapshotExists(repo, branch),
+    openableFiles(repo, branch, files, readFile),
+    openableFiles(repo, branch, boards, readFile),
+    snapshotExists(repo, branch, readFile),
   ]);
   const openable = [...boardsOnBranch, ...changed];
   const candidates = openable.filter((file) => /(?:^|\/)index\.html$/i.test(file));
   const configs = await pool(candidates, 4, async (board) => {
     const config = board.replace(/index\.html$/i, 'config.js');
-    return fetchBranchFile(repo, branch, config).then(() => config, () => null);
+    return readFile(repo, branch, config).then(() => config, () => null);
   });
   const canvasFiles = configs.filter((file): file is string => file !== null);
   const canvases = canvasEntries(openable, canvasFiles);
@@ -1028,20 +1174,20 @@ async function previewOf(repo: string, branch: string, files: readonly string[])
 }
 
 /** Whether the branch carries a runnable snapshot. Read directly, since the diff may not list it. */
-async function snapshotExists(repo: string, branch: string): Promise<boolean> {
+async function snapshotExists(repo: string, branch: string, readFile: typeof fetchBranchFile): Promise<boolean> {
   try {
-    return isSelfContained((await fetchBranchFile(repo, branch, PROTOTYPE_SNAPSHOT_FILE)).toString('utf8'));
+    return isSelfContained((await readFile(repo, branch, PROTOTYPE_SNAPSHOT_FILE)).toString('utf8'));
   } catch {
     return false;
   }
 }
 
 /** Of a branch's HTML files, the ones that stand alone well enough for the page to serve them. */
-async function openableFiles(repo: string, branch: string, files: readonly string[]): Promise<string[]> {
+async function openableFiles(repo: string, branch: string, files: readonly string[], readFile: typeof fetchBranchFile): Promise<string[]> {
   const html = files.filter(isHtml);
   const checked = await pool(html, 4, async (file) => {
     try {
-      return isSelfContained((await fetchBranchFile(repo, branch, file)).toString('utf8'));
+      return isSelfContained((await readFile(repo, branch, file)).toString('utf8'));
     } catch {
       return false;
     }

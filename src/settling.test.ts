@@ -12,40 +12,56 @@ const OLD = '2026-08-01T12:00:00.000Z';
 
 describe('settlementOf', () => {
   it('settles a closed map from when it closed', () => {
-    expect(settlementOf({ open: false, closedAt: RECENT, updatedAt: RECENT }, undefined, true, NOW)).toEqual({
+    expect(settlementOf({ open: false, closedAt: RECENT, updatedAt: RECENT, finished: false }, undefined, true, NOW)).toEqual({
       reason: 'closed',
       since: RECENT,
     });
   });
 
   it('settles an open map 30 days after it and its tickets last changed', () => {
-    expect(settlementOf({ open: true, closedAt: null, updatedAt: OLD }, undefined, false, NOW)).toEqual({
+    expect(settlementOf({ open: true, closedAt: null, updatedAt: OLD, finished: false }, undefined, false, NOW)).toEqual({
       reason: 'idle',
       since: '2026-08-31T12:00:00.000Z',
     });
   });
 
   it('keeps a quiet map active while one of its tickets changed recently', () => {
-    expect(settlementOf({ open: true, closedAt: null, updatedAt: OLD }, undefined, true, NOW)).toBeNull();
+    expect(settlementOf({ open: true, closedAt: null, updatedAt: OLD, finished: false }, undefined, true, NOW)).toBeNull();
   });
 
   it('keeps a recently changed map active', () => {
-    expect(settlementOf({ open: true, closedAt: null, updatedAt: RECENT }, undefined, false, NOW)).toBeNull();
+    expect(settlementOf({ open: true, closedAt: null, updatedAt: RECENT, finished: false }, undefined, false, NOW)).toBeNull();
+  });
+
+  it('archives a finished map from when its map issue last changed, ahead of the idle rule', () => {
+    expect(settlementOf({ open: true, closedAt: null, updatedAt: RECENT, finished: true }, undefined, false, NOW)).toEqual({ reason: 'finished', since: RECENT });
+    expect(settlementOf({ open: true, closedAt: null, updatedAt: OLD, finished: true }, undefined, false, NOW)).toMatchObject({ reason: 'finished' });
+    expect(settlementOf({ open: true, closedAt: null, updatedAt: null, finished: true }, undefined, false, NOW)).toEqual({ reason: 'finished', since: NOW.toISOString() });
+  });
+
+  it('reports a closed finished map as closed', () => {
+    expect(settlementOf({ open: false, closedAt: RECENT, updatedAt: RECENT, finished: true }, undefined, false, NOW)).toMatchObject({ reason: 'closed' });
+  });
+
+  it('keeps a restored finished map active and a hand-made archive of it manual', () => {
+    const at = '2026-09-25T08:00:00.000Z';
+    expect(settlementOf({ open: true, closedAt: null, updatedAt: RECENT, finished: true }, { settled: false, at }, false, NOW)).toBeNull();
+    expect(settlementOf({ open: true, closedAt: null, updatedAt: RECENT, finished: true }, { settled: true, at }, false, NOW)).toEqual({ reason: 'manual', since: at });
   });
 
   it('lets a hand-made choice win both ways', () => {
     const at = '2026-09-25T08:00:00.000Z';
-    expect(settlementOf({ open: true, closedAt: null, updatedAt: RECENT }, { settled: true, at }, true, NOW)).toEqual({ reason: 'manual', since: at });
-    expect(settlementOf({ open: false, closedAt: OLD, updatedAt: OLD }, { settled: false, at }, false, NOW)).toBeNull();
+    expect(settlementOf({ open: true, closedAt: null, updatedAt: RECENT, finished: false }, { settled: true, at }, true, NOW)).toEqual({ reason: 'manual', since: at });
+    expect(settlementOf({ open: false, closedAt: OLD, updatedAt: OLD, finished: false }, { settled: false, at }, false, NOW)).toBeNull();
   });
 });
 
 describe('isIdleCandidate', () => {
   it('asks only about open maps whose issue changed over 30 days ago', () => {
-    expect(isIdleCandidate({ open: true, closedAt: null, updatedAt: OLD }, NOW)).toBe(true);
-    expect(isIdleCandidate({ open: true, closedAt: null, updatedAt: RECENT }, NOW)).toBe(false);
-    expect(isIdleCandidate({ open: false, closedAt: OLD, updatedAt: OLD }, NOW)).toBe(false);
-    expect(isIdleCandidate({ open: true, closedAt: null, updatedAt: null }, NOW)).toBe(false);
+    expect(isIdleCandidate({ open: true, closedAt: null, updatedAt: OLD, finished: false }, NOW)).toBe(true);
+    expect(isIdleCandidate({ open: true, closedAt: null, updatedAt: RECENT, finished: false }, NOW)).toBe(false);
+    expect(isIdleCandidate({ open: false, closedAt: OLD, updatedAt: OLD, finished: false }, NOW)).toBe(false);
+    expect(isIdleCandidate({ open: true, closedAt: null, updatedAt: null, finished: false }, NOW)).toBe(false);
   });
 });
 

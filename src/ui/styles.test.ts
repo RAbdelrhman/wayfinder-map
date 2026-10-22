@@ -48,6 +48,15 @@ function contrast(a: string, b: string): number {
 }
 
 describe('styles.css', () => {
+  it('pairs every chosen-dark skeleton override with the same system-dark declarations', async () => {
+    const css = await readFile(new URL('./styles.css', import.meta.url), 'utf8');
+    const chosen = [...css.matchAll(/:root\[data-theme='dark'\] (\.vw-skel[^{]+)\{([^}]+)\}/g)];
+    expect(chosen.length).toBeGreaterThan(0);
+    const system = topLevelBlocks(css).filter(block => block.startsWith('@media (prefers-color-scheme: dark)')).join(' ');
+    for (const [, selector, declarations] of chosen) {
+      expect(system).toContain(`:root:where(:not([data-theme='light'])) ${selector!.trim()} { ${declarations!.trim()} }`);
+    }
+  });
   it('reserves icon space and compacts the tabs in the narrow topbar', async () => {
     const blocks = topLevelBlocks(structure(await readFile(new URL('./styles.css', import.meta.url), 'utf8')));
     const narrow = blocks.find((block) => block.startsWith('@container map-topbar (max-width: 480px)'));

@@ -1,0 +1,502 @@
+{
+    "provenance":  {
+                       "sourceCommit":  "dda472918a928b5e4084ad69d3d658f6820c8fca",
+                       "bundleSha256":  "7ee35c5146cc45a6fcd4312ed8fe493e254e904b3ed34e63f6b8a5e1d7c28943",
+                       "surfaces":  {
+                                        "localhost":  {
+                                                          "origin":  "http://127.0.0.1:4494",
+                                                          "servedBundleSha256":  "7ee35c5146cc45a6fcd4312ed8fe493e254e904b3ed34e63f6b8a5e1d7c28943"
+                                                      },
+                                        "desktop":  {
+                                                        "origin":  "http://127.0.0.1:63210",
+                                                        "servedBundleSha256":  "7ee35c5146cc45a6fcd4312ed8fe493e254e904b3ed34e63f6b8a5e1d7c28943"
+                                                    }
+                                    }
+                   },
+    "desktop":  {
+                    "value":  [
+                                  {
+                                      "board":  196,
+                                      "dwell":  0,
+                                      "run":  1,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+                                                    513.3999999761581
+                                                ],
+                                      "visibleMs":  109.68200001192236,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  2,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  163,
+                                      "dwell":  0,
+                                      "run":  1,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+                                                    201.5
+                                                ],
+                                      "visibleMs":  19.087999999999738,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  11,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  196,
+                                      "dwell":  0,
+                                      "run":  2,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+                                                    236.79999995231628
+                                                ],
+                                      "visibleMs":  7.421999999998661,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  11,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  163,
+                                      "dwell":  0,
+                                      "run":  2,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+                                                    75
+                                                ],
+                                      "visibleMs":  1.688000023841596,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  4,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  196,
+                                      "dwell":  0,
+                                      "run":  3,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+                                                    196
+                                                ],
+                                      "visibleMs":  5.422000023841974,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  11,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  163,
+                                      "dwell":  0,
+                                      "run":  3,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+                                                    71.40000003576279
+                                                ],
+                                      "visibleMs":  16.288000047683454,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  4,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  196,
+                                      "dwell":  0,
+                                      "run":  4,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+                                                    243
+                                                ],
+                                      "visibleMs":  15.500000047686626,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  13,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  163,
+                                      "dwell":  0,
+                                      "run":  4,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+                                                    118.69999998807907
+                                                ],
+                                      "visibleMs":  4.288000023843779,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  6,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  196,
+                                      "dwell":  0,
+                                      "run":  5,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+                                                    228.5
+                                                ],
+                                      "visibleMs":  18.487999999997555,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  13,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  163,
+                                      "dwell":  0,
+                                      "run":  5,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+                                                    213.79999995231628
+                                                ],
+                                      "visibleMs":  14.599999999998545,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  10,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  196,
+                                      "dwell":  400,
+                                      "run":  1,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+
+                                                ],
+                                      "visibleMs":  1.1300000238406938,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  0,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  163,
+                                      "dwell":  400,
+                                      "run":  1,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+
+                                                ],
+                                      "visibleMs":  5.592000035765523,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  0,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  196,
+                                      "dwell":  400,
+                                      "run":  2,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+
+                                                ],
+                                      "visibleMs":  5.728000035764126,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  0,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  163,
+                                      "dwell":  400,
+                                      "run":  2,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+
+                                                ],
+                                      "visibleMs":  1.6620000119219185,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  0,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  196,
+                                      "dwell":  400,
+                                      "run":  3,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+
+                                                ],
+                                      "visibleMs":  3.2960000000020955,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  0,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  163,
+                                      "dwell":  400,
+                                      "run":  3,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+
+                                                ],
+                                      "visibleMs":  4.862000035762321,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  0,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  196,
+                                      "dwell":  400,
+                                      "run":  4,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+
+                                                ],
+                                      "visibleMs":  9.72800004768942,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  0,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  163,
+                                      "dwell":  400,
+                                      "run":  4,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+
+                                                ],
+                                      "visibleMs":  0.7620000119204633,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  0,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  196,
+                                      "dwell":  400,
+                                      "run":  5,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+
+                                                ],
+                                      "visibleMs":  16.500000023836037,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  0,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  },
+                                  {
+                                      "board":  163,
+                                      "dwell":  400,
+                                      "run":  5,
+                                      "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                      "ready":  [
+
+                                                ],
+                                      "visibleMs":  20.232000011921627,
+                                      "blankFrames":  0,
+                                      "blankMs":  0,
+                                      "skeletonFrames":  0,
+                                      "posterFrames":  0,
+                                      "animated":  true
+                                  }
+                              ],
+                    "Count":  20
+                },
+    "localhost":  {
+                      "value":  [
+                                    {
+                                        "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                        "ready":  [
+                                                      204.69999998807907
+                                                  ],
+                                        "visibleMs":  10.230000011920765,
+                                        "blankFrames":  0,
+                                        "blankMs":  0,
+                                        "skeletonFrames":  3,
+                                        "posterFrames":  0,
+                                        "animated":  true
+                                    },
+                                    {
+                                        "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                        "ready":  [
+                                                      106.5
+                                                  ],
+                                        "visibleMs":  18.428000023842287,
+                                        "blankFrames":  0,
+                                        "blankMs":  0,
+                                        "skeletonFrames":  4,
+                                        "posterFrames":  0,
+                                        "animated":  true
+                                    },
+                                    {
+                                        "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                        "ready":  [
+                                                      206
+                                                  ],
+                                        "visibleMs":  10.76199998807897,
+                                        "blankFrames":  0,
+                                        "blankMs":  0,
+                                        "skeletonFrames":  4,
+                                        "posterFrames":  0,
+                                        "animated":  true
+                                    },
+                                    {
+                                        "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                        "ready":  [
+                                                      141.4000000357628
+                                                  ],
+                                        "visibleMs":  17.19600001192157,
+                                        "blankFrames":  0,
+                                        "blankMs":  0,
+                                        "skeletonFrames":  4,
+                                        "posterFrames":  0,
+                                        "animated":  true
+                                    },
+                                    {
+                                        "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                        "ready":  [
+                                                      236
+                                                  ],
+                                        "visibleMs":  21.927999988078227,
+                                        "blankFrames":  0,
+                                        "blankMs":  0,
+                                        "skeletonFrames":  3,
+                                        "posterFrames":  0,
+                                        "animated":  true
+                                    },
+                                    {
+                                        "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                        "ready":  [
+                                                      76
+                                                  ],
+                                        "visibleMs":  18.46200001192119,
+                                        "blankFrames":  0,
+                                        "blankMs":  0,
+                                        "skeletonFrames":  2,
+                                        "posterFrames":  0,
+                                        "animated":  true
+                                    },
+                                    {
+                                        "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                        "ready":  [
+                                                      225.80000001192093
+                                                  ],
+                                        "visibleMs":  18.2279999880775,
+                                        "blankFrames":  0,
+                                        "blankMs":  0,
+                                        "skeletonFrames":  4,
+                                        "posterFrames":  0,
+                                        "animated":  true
+                                    },
+                                    {
+                                        "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                        "ready":  [
+                                                      103.39999997615814
+                                                  ],
+                                        "visibleMs":  15.595999976158055,
+                                        "blankFrames":  0,
+                                        "blankMs":  0,
+                                        "skeletonFrames":  3,
+                                        "posterFrames":  0,
+                                        "animated":  true
+                                    },
+                                    {
+                                        "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                        "ready":  [
+                                                      178.69999998807907
+                                                  ],
+                                        "visibleMs":  1.796000011920114,
+                                        "blankFrames":  0,
+                                        "blankMs":  0,
+                                        "skeletonFrames":  3,
+                                        "posterFrames":  0,
+                                        "animated":  true
+                                    },
+                                    {
+                                        "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F163-where-do-start-next-auto-and-the-auto-map-toggle-go-on-the-map/8161d952a9294fc95729a75ac17df991951037d3/viewer-10/prototypes/canvas/index.html",
+                                        "ready":  [
+                                                      162
+                                                  ],
+                                        "visibleMs":  33.19399998807785,
+                                        "blankFrames":  0,
+                                        "blankMs":  0,
+                                        "skeletonFrames":  5,
+                                        "posterFrames":  0,
+                                        "animated":  true
+                                    }
+                                ],
+                      "Count":  10
+                  },
+    "posterIntegration":  {
+                              "source":  "captured #196 at ee804286; network fixture supplies that real image at its SHA-addressed poster URL",
+                              "card":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/assets/poster.webp",
+                              "requestsBeforeClick":  1,
+                              "totalRequests":  1,
+                              "immediate":  {
+                                                "poster":  true,
+                                                "skeleton":  true,
+                                                "names":  "Â Â AInbox takes the bell inBBell takes the Inbox inCTwo tabsDOne timelineDBD + BENeeds you firstFBy mapSTriggers side by sideTToday: bell + Inbox"
+                                            },
+                              "frames":  [
+                                             {
+                                                 "url":  "/proto/RAbdelrhman/wayfinder-map/prototype%2F196-how-should-one-topbar-inbox-hold-map-activity-and-needs-you-aler/ee804286cc4227ba817e03c0de0cb2e5a1e57c2a/viewer-10/prototypes/canvas/index.html",
+                                                 "ready":  [
+                                                               305.30000001192093
+                                                           ],
+                                                 "visibleMs":  25.799999999999955,
+                                                 "blankFrames":  0,
+                                                 "blankMs":  0,
+                                                 "skeletonFrames":  3,
+                                                 "posterFrames":  69,
+                                                 "animated":  true
+                                             }
+                                         ],
+                              "live":  true
+                          },
+    "systemThemes":  {
+                         "dark":  {
+                                      "dataTheme":  null,
+                                      "bodyScheme":  "dark",
+                                      "skeleton":  true,
+                                      "bg":  "rgb(22, 22, 21)",
+                                      "barBg":  "rgb(31, 31, 29)",
+                                      "names":  [
+                                                    "AInbox takes the bell in",
+                                                    "BBell takes the Inbox in",
+                                                    "CTwo tabs",
+                                                    "DOne timeline"
+                                                ],
+                                      "toolbarStatus":  "CloseEsc#196 How should one topbar inbox hold map activity and needs-you alerts?Loading the canvas…FeedbackF"
+                                  },
+                         "light":  {
+                                       "dataTheme":  null,
+                                       "bodyScheme":  "light",
+                                       "skeleton":  true,
+                                       "bg":  "rgb(236, 235, 230)",
+                                       "barBg":  "rgb(252, 252, 251)",
+                                       "names":  [
+                                                     "AInbox takes the bell in",
+                                                     "BBell takes the Inbox in",
+                                                     "CTwo tabs",
+                                                     "DOne timeline"
+                                                 ],
+                                       "toolbarStatus":  "CloseEsc#196 How should one topbar inbox hold map activity and needs-you alerts?Loading the canvas…FeedbackF"
+                                   }
+                     }
+}

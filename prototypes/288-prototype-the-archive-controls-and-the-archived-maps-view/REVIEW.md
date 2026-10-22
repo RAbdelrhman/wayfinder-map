@@ -1,0 +1,97 @@
+# Archive controls review
+
+Ticket #288 on map #236. Ramon approved option G: “This looks amazing lets do it”. The approved layout and wording are recorded in docs/design/map-archive-controls.md. Earlier rounds remain on the canvas as review history; their pending-approval statements describe those earlier stages. Implementation belongs to #242, which has a native blocked-by relationship to #288.
+
+## Round 1
+
+- A: Active and Archived maps tabs in the repository view; compact archived rows.
+- B: Archived maps opens a dedicated repository page; archived map cards.
+- Both: Archive replaces Settle, Restore replaces Unsettle, and the Archived maps view replaces the collapsed Settled section. Opening an archived map retains its archive status. Restore is a separate action in the list and on the opened map.
+- Reasons shown: Closed, Finished, Idle 30 days, Archived by you. Closed describes the GitHub issue; Finished describes all tickets being done. These fixtures do not implement automatic archive rules.
+- All state is in memory. Reset demo restores the original fixture. No GitHub or app preference calls occur.
+- The map detail uses schematic ticket cards solely to demonstrate archive status and Restore placement. It is not a replacement map design.
+
+### Round 1 evidence
+
+- `node prototypes/288-prototype-the-archive-controls-and-the-archived-maps-view/tools/check.mjs`: Canvas config OK.
+- `bun run test src/ui/archivePrototype.test.ts`: four tests passed, covering the archive/open/restore journey and failed saves for both options.
+- T3 collaborative browser: both variants inspected in light and dark at desktop and 390px widths. Both archive journeys passed evaluated assertions. Empty, loading, read failure and save failure fixtures rendered for both. No horizontal overflow at 390px.
+- Keyboard: Tab and Enter exercised on A; focus-visible rendered a 3px blue outline. Restore hover exercised. Semantic headings, list, buttons, named searches and live alert/status roles inspected in the browser.
+- Sampled contrast from runtime tokens: muted on plane 4.91:1 light, 6.73:1 dark; secondary on surface 7.73:1 light, 9.72:1 dark; primary button 5.25:1 both; focus on plane 4.76:1 light, 5.34:1 dark.
+- `bun run typecheck` and `bun run lint`: passed after routing the test fixture HTML through `setTrustedHtml`.
+- Initial full `bun run test`: 15 failed, 1343 passed, 33 skipped across 112 files. Failures in updaterEnabled, server, canvasScaffold, and eslintConfig under concurrent load. Rerun `bun run test --maxWorkers=4`: 113 files and 1395 tests passed, including the four archive prototype tests. The latest trustedHtml-only test edit passed typecheck/lint and a final focused rerun: four tests passed.
+- Not checked: screen reader, exhaustive keyboard traversal, every color pair/control boundary, disabled/saving state, installed app, live persistence. No independent final verifier yet; approval is pending.
+
+## Feedback process
+
+Review A first, then B. For each, choose Keep, Change, or Combine in Notes, add detail, select the generated feedback line and paste it into the thread. Only submitted and agreed feedback is recorded in `note.disposition` and `note.feedback`. Remixes go on a new named round page with source IDs in `note.basedOn`.
+
+Recorded on A and B (`disposition: 'change'`), word for word: "I'll be honest neither one looks great could you redo with an opus 5.5 subagent i forgot how bad 6.1 was at ui compared to opus". No layout was chosen.
+
+## Round 2: Opus archive directions
+
+Page `round-2`, options C and D, each with `basedOn: ['A', 'B']`, plus 390px frames of each. Built by Claude Opus 5.5 on the real repository page: real `src/ui/styles.css`, the app's sidebar, top bar, `wf-map` cards with their ticket graphs, and `node` tickets on the opened map. `variants/r2.css` adds only shell glue and the archive pieces; `variants/r2-shared.js` holds fixtures and drawing helpers.
+
+- C, one list, two views: labelled Archive where Settle is; an Active maps | Archived maps switch replaces the Settled section; archived rows show graph thumbnail, reason, date and how the map comes back; reason filter chips; status strip with Restore on an opened archived map.
+- D, archive is a place: icon Archive on cards; an Archived maps row at the foot of the list and in the sidebar; a page grouping maps by reason (manual, closed, finished, idle, the contract's precedence order) with a detail pane showing why, how it returns, and what is paused or still running; floating status card with Restore on an opened archived map.
+
+### Evidence
+
+- `node prototypes/288-prototype-the-archive-controls-and-the-archived-maps-view/tools/check.mjs`: Canvas config OK.
+- `bun run test src/ui/archivePrototype.test.ts`: 10 passed (4 round 1, 6 for C and D: archive, archived list with all four reasons, open without restoring, restore and its "stays active" wording, reason filter, paused and running facts, a failed save keeps the map in place).
+- `bun run typecheck` and `bun run lint`: exit 0.
+- T3 browser against `tools/serve.mjs` (sandbox CSP, port 4398): C and D at 1280px in light and dark, and at 390px. No horizontal overflow on active, archived and opened-map views. Journeys run: Archive with its saving state, toast and undo; Archived maps; Open without restoring; Restore from the list, the detail pane and the opened map. D: empty, loading, read error and save error with Try again, no script errors. C: save error and retry.
+- Keyboard with real key presses: C tabs switch with ArrowRight; D listbox ArrowDown moves the selection with a visible 2px focus ring; Tab order runs h1, filter, selected map, Open map.
+- Computed text contrast over sidebar, top bar and main: lowest 4.75:1 in light, 5.13:1 in dark. Done ticket nodes use the real app's 0.66 opacity and were excluded.
+- Fixed in this pass: Restore copy says a restored map stays active until it is archived again, as the contract requires for finished, idle and closed maps. Phone reason filters went from 28px to 32px.
+- Not checked: screen reader, full Tab traversal of every view, non-text contrast of borders and focus rings, reduced-motion rendering, touch devices, installed desktop app, live persistence.
+- Known unrelated failure: `node --test tools/check.test.mjs` in this canvas reads a scaffold `variants/shell.js` that round 1 removed; it fails the same way at HEAD.
+
+### Parent verification
+
+- Re-ran canvas validation, `git diff --check`, typecheck, lint and the focused Vitest file after the Opus handoff. All passed; focused tests: 10 of 10.
+- Inspected the running C archive view and the saved Opus screenshots of C and D.
+- Full suite `bun run test --maxWorkers=4`: 1400 passed, one failed in `src/desktop/updaterEnabled.test.ts`, the not-ready UI retry readiness assertion. This run is not green. No updater code was changed, and no baseline attribution is claimed from this run.
+
+## Round 3: D with a clickable preview
+
+Posted feedback: https://github.com/RAbdelrhman/wayfinder-map/issues/288#issuecomment-6195105901. C was too small; the user preferred D's appearance and wanted a larger click target. The user explicitly answered yes to opening from the large right preview, including its graph and title, while the left list selects and Restore stays separate.
+
+E is a new option based on D. Original D files and behavior remain intact. The graph, title, destination and counts form one semantic Open link with a visible Open map affordance. It replaces the redundant Open map button. Archive facts and Restore remain outside the link, with no nested controls. Opening leaves the map archived.
+
+Opus 5.5 was attempted for this iteration but immediately hit its API rate limit. The parent applied this scoped interaction change to the existing Opus layout. The resulting E is still awaiting review; no final layout or wording approval is recorded.
+
+- Canvas validator, typecheck and lint passed. Focused tests: 14 passed, including four E cases covering graph/title/destination opening, retained archive state, independent list selection, and Restore without accidental Open.
+- Browser: light and dark at desktop and 390px. No horizontal overflow. Preview target measured 588 by 370px at 1280px.
+- Real Tab/Shift+Tab shows a 2px focus ring on the semantic anchor; Enter opens it while retaining archived state. Hover inspected. Open-label contrast measured 5.11:1 in light and 4.78:1 in dark.
+- Empty/read-error and loading skeleton/status inspected. Loading has no Open target.
+- Full suite `bun run test --maxWorkers=4`: 1404 passed, one failed in updaterEnabled.test.ts at its stoppedPolls assertion. No updater code changed. This is not a green full-suite claim.
+- Not checked: screen reader, exhaustive keyboard traversal, non-text contrast, E save-error specifically, installed app, live persistence.
+
+## Round 4: Select the whole map block
+
+The user pinned the Closed-group explanation on E and wrote, "This is what i want to press to choose a map." See https://github.com/RAbdelrhman/wayfinder-map/issues/288#issuecomment-6202620477. They then answered yes to making each map's whole left-hand block clickable, including its name, reason and explanation. This authorizes F as a remix; final approval of F is still pending.
+
+F is based on E. Every map now owns its reason and explanation inside its selection target. The shared visual category headers are replaced by these per-map blocks so two maps with the same reason are distinguishable. Clicking anywhere in a block selects that map in the right preview without opening or restoring it. The right preview still opens the archived map and Restore remains separate. Originals A through E are preserved.
+
+- Canvas validator, typecheck and lint passed. Focused tests: 19 passed, including reason, explanation, name and block clicks plus a two-closed-map fixture verifying that each explanation selects its own map.
+- Browser: clicking the Closed explanation selected #121 without opening it. Selection target measured 358 by 106px at desktop.
+- Hover and visible 2px focus inspected. Real Tab/Shift+Tab reaches the selected block, ArrowDown selects the next map and Enter opens it while it remains archived.
+- Light/dark at desktop and 390px inspected, without horizontal overflow. Selected explanation contrast measured 6.63:1 light and 8.53:1 dark.
+- Empty, loading, read-error and save-error states checked. Failed Restore leaves its map archived.
+- Not checked: screen reader, exhaustive keyboard traversal, non-text contrast, installed app, live persistence. The full suite was not rerun for this scoped prototype iteration; prior full-suite updater failure remains as recorded above.
+
+## Round 5: Active and archived maps together
+
+The user asked to apply F's selection treatment to the active maps list on the repository page, explicitly choosing that surface rather than the top-bar dropdown. G is a new option based on F; all earlier files and pages remain available. Ramon subsequently approved G: “This looks amazing lets do it”. This remains a prototype; #242 implements the approved layout and wording.
+
+The active list now has full selectable map blocks on the left and one graph/detail preview on the right. A block's name, destination, progress and padding all select its map without opening it. The preview opens it; Archive remains a separate labelled control. Existing running-hand-off and needs-you counts are shown in the supporting details. Active and archived selections are independent. Filtering falls back to a matching map, and no matches clears the preview. Archive selects the next available active map; Restore returns the map to the active list.
+
+Opus 5.5 was attempted, but its run remained in an authentication-failed provider retry without writing G. The T3 thread-wait call also failed to respect its requested 45-second wait. The parent cancelled that run, confirmed it interrupted, then completed the scoped adaptation of F.
+
+- Canvas validation, typecheck and lint passed. All 28 focused Vitest tests passed, covering selecting each part of a block without opening, active Open, filtering fallback/no matches, Archive and next selection, archived Open without restore, Restore, empty active list, and failed save/retry.
+- Browser inspected light/dark desktop and 390px, with no horizontal overflow. Clicked the active destination to select a map; verified one Open and one Archive control, with no nested Archive inside Open.
+- Real Tab/Shift+Tab exposed a 2px focus ring; ArrowDown selected the next active map without opening it.
+- The complete Archive → Archived maps → Open → Restore journey passed with the actual saving/exit animation. Loading, read-error and save-error fixtures passed browser assertions.
+- Selected destination contrast: 6.63:1 light, 8.53:1 dark.
+- Not checked: screen reader, exhaustive keyboard traversal, non-text contrast, installed app, live persistence. Full suite was not rerun for this scoped iteration; the prior full-suite updater failure remains recorded above.

@@ -34,7 +34,7 @@ describe('shared icon alignment', () => {
       <span class="wf-vis-label"><span data-icon="lock"></span>Private</span>
       <label class="search"><span data-icon="lens"></span><input /></label>
       <button class="primary">Open<span data-icon="arrow"></span></button>
-      <button class="wf-settled-toggle"><span data-icon="right"></span>Show settled</button>
+      <a class="archive-back"><span data-icon="back"></span>wayfinder-map</a>
       <button class="map-inbox-trigger"><span data-icon="bell"></span>Inbox</button>
       <a class="inline-icon">${icon(ARROW)}Ticket</a>
     </div>`);
