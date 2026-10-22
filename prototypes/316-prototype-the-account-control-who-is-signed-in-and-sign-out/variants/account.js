@@ -9,10 +9,12 @@
   Round 2 (from the user's Wayfinder notes on A, B-confirm, C and D):
     E  The avatar opens a Settings page in C's style, account only; sign out is confirmed with B's alert.
     F  E, plus Notifications and Desktop rows in the same style, pointing at #225 and #224.
+  Round 3 (from the user's notes on F): G is F with a centred title, Back lined up with the content,
+  and ?names=a|b|c for the section names.
 */
 (() => {
   const params = new URLSearchParams(location.search);
-  const OPT = ['A', 'B', 'C', 'D', 'E', 'F'].includes(params.get('acct')) ? params.get('acct') : null;
+  const OPT = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].includes(params.get('acct')) ? params.get('acct') : null;
   if (!OPT) return;
   const D = window.MOBILE;
   const u = D.user;
@@ -28,7 +30,8 @@
   };
   const REVOKE = 'github.com/settings/applications';
   const page = OPT === 'C' ? 'account' : OPT === 'A' || OPT === 'B' ? null : 'settings';
-  const ROUND2 = OPT === 'E' || OPT === 'F';
+  const ROUND2 = OPT === 'E' || OPT === 'F' || OPT === 'G';
+  const NAMES = ['a', 'b', 'c'].includes(params.get('names')) ? params.get('names') : 'a';
 
   const face = (size) => `<span class="avatar ac-face" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px" aria-hidden="true">${esc(u.initial)}</span>`;
   const who = () => `<span class="ac-who"><span class="ac-name">${esc(u.name)}</span><span class="ac-login">@${esc(u.login)}</span></span>`;
@@ -134,6 +137,26 @@
     </div>`;
   }
 
+  /* ---------- G (round 3): F with a centred bar and new section names ---------- */
+  function settings3({ status, backBtn }) {
+    const title = (t) => (t ? `<div class="m-section-title">${t}</div>` : '<div class="ac-gap"></div>');
+    const signedIn = `<div class="m-row">${ic('check')}<span class="m-row-main"><span class="m-row-title">Signed in</span><span class="m-row-sub">With a device code · since ${esc(u.since)}</span></span></div>`;
+    const profile = `<button class="m-row" data-toast="Would open github.com/${esc(u.login)}">${ic('github')}<span class="m-row-main"><span class="m-row-title">Open profile on GitHub</span></span>${ic('external')}</button>`;
+    const rows = `<button class="m-row" data-toast="Notifications settings are designed in #225">${ic('bell')}<span class="m-row-main"><span class="m-row-title">Notifications</span><span class="m-row-sub">Designed in #225</span></span>${ic('chevron')}</button>
+        <button class="m-row" data-toast="Desktop pairing is designed in #224">${ic('desktop')}<span class="m-row-main"><span class="m-row-title">Desktop</span><span class="m-row-sub">Pairing is designed in #224</span></span>${ic('chevron')}</button>`;
+    const signOut = `<button class="m-row ac-danger" data-act="acct-confirm">${ic('signout')}<span class="m-row-main"><span class="m-row-title">Sign out</span><span class="m-row-sub">Forgets your GitHub sign-in on this phone</span></span></button>`;
+    const group = (inner) => `<div class="m-group">${inner}</div>`;
+    const body =
+      NAMES === 'a'
+        ? title('Account') + group(signedIn + profile) + title('Preferences') + group(rows) + title('') + group(signOut)
+        : NAMES === 'b'
+          ? title('') + group(signedIn + profile) + title('') + group(rows) + title('') + group(signOut)
+          : title('Account') + group(signedIn + profile + signOut) + title('Notifications and desktop') + group(rows);
+    return `${status()}<header class="m-bar ac-bar3">${backBtn('Maps')}<h1>Settings</h1><span></span></header><div class="m-scroll">
+      <div class="ac-profile is-page">${face(72)}<h2 class="ac-name-lg">${esc(u.name)}</h2><span class="ac-login">@${esc(u.login)}</span></div>${body}
+    </div>`;
+  }
+
   function overlay() {
     if (ROUND2) return st.open === 'confirm' ? alertB() : '';
     if (OPT === 'A') return st.open ? sheetA() : '';
@@ -201,6 +224,6 @@
     signedOutNotice,
     handle,
     key,
-    screens: page === 'account' ? { account: accountScreen } : page === 'settings' ? { settings: ROUND2 ? settings2 : settingsScreen } : {},
+    screens: page === 'account' ? { account: accountScreen } : page === 'settings' ? { settings: OPT === 'G' ? settings3 : ROUND2 ? settings2 : settingsScreen } : {},
   };
 })();
