@@ -6,6 +6,8 @@ import { escapeHtml } from './markdown.js';
 import { icon, BEAKER, CLOSE, EXTERNAL, CHEVRON, CHEVRON_RIGHT, CHECK } from './icons.js';
 import { CanvasFeedback } from './canvasFeedback.js';
 import type { CanvasHit } from './canvasFeedback.js';
+import { PosterCache, canvasSkeletonHtml, posterSource } from './canvasPoster.js';
+import type { PosterLoader } from './canvasPoster.js';
 
 export interface CanvasRoute {
   url: string;
@@ -332,7 +334,11 @@ const STRIP_FADE = 36;
 const PREPARE_DWELL_MS = 120;
 
 /** Mounted outside the app, which remains mounted underneath all three sizes. */
-export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => void): { isOpen: () => boolean } {
+export function mountCanvasViewer(
+  app: HTMLElement,
+  captureState?: () => () => void,
+  options: { loadPoster?: PosterLoader } = {},
+): { isOpen: () => boolean } {
   const viewer = document.createElement('section');
   viewer.id = 'canvas-viewer';
   viewer.hidden = true;
@@ -463,13 +469,56 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
     const large = { transform: 'none', opacity: 1 };
     viewer.animate(reverse ? [large, small] : [small, large], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
   };
-  /** The tile's own picture, kept under the canvas until it paints. Tiles that preview a live page have none. */
-  const posterFor = (from: Element | null): HTMLImageElement | null => {
-    const image = from?.closest('.wf-var, .proto-tile, .wf-proto')?.querySelector<HTMLImageElement>('img');
-    if (!image) return null;
-    const copy = image.cloneNode() as HTMLImageElement;
-    copy.className = 'vw-poster-image';
-    return copy;
+  const posters = new PosterCache(options.loadPoster);
+  /** A card-selected read, allowed by #306; no server-wide branch warm-up is added. */
+  const requestPoster = (from: Element | null): void => {
+    const source = posterSource(from, location.origin);
+    if (!source) return;
+    if (source.tile?.complete && source.tile.naturalWidth > 0) posters.adopt(source.url, source.tile);
+    else posters.request(source.url);
+  };
+  const requestedCards = new Set<string>();
+  const requestCardPosters = (): void => {
+    for (const entry of app.querySelectorAll<HTMLElement>('[data-canvas-poster]')) {
+      const source = posterSource(entry, location.origin);
+      if (!source || requestedCards.has(source.url)) continue;
+      requestedCards.add(source.url);
+      requestPoster(entry);
+    }
+  };
+  let posterScan: ReturnType<typeof setTimeout> | undefined;
+  new MutationObserver(() => {
+    clearTimeout(posterScan);
+    posterScan = setTimeout(requestCardPosters, 0);
+  }).observe(app, { childList: true, subtree: true });
+  requestCardPosters();
+  /** What sits on the stage until the canvas paints: the skeleton, and over it a poster that has decoded. */
+  let placeholder = 0;
+  const paintPlaceholder = (route: CanvasRoute, from: Element | null): void => {
+    const mounted = frame;
+    // A canvas that has painted keeps its poster for the close animation, and needs no skeleton.
+    if (!mounted || mounted.classList.contains('is-ready')) return;
+    const mine = ++placeholder;
+    for (const old of stage.querySelectorAll('.vw-skeleton, .vw-poster-image')) old.remove();
+    insertTrustedHtml(mounted, 'beforebegin', canvasSkeletonHtml(route));
+    const source = posterSource(from, location.origin);
+    if (!source) return;
+    const place = (image: HTMLImageElement | null): void => {
+      // A poster that arrives after the canvas is live, or for a canvas or entry since replaced, is dropped.
+      if (!image || mine !== placeholder || frame !== mounted || mounted.classList.contains('is-ready')) return;
+      const copy = image.cloneNode() as HTMLImageElement;
+      copy.className = 'vw-poster-image';
+      mounted.before(copy);
+    };
+    requestPoster(from);
+    const ready = posters.ready(source.url);
+    if (ready) place(ready);
+    else void posters.whenReady(source.url).then(place);
+  };
+  /** The canvas has painted: it covers the skeleton, which stops pulsing. The poster stays under it for the close animation. */
+  const markReady = (mounted: HTMLIFrameElement): void => {
+    mounted.classList.add('is-ready');
+    if (frame === mounted) for (const old of stage.querySelectorAll('.vw-skeleton')) old.remove();
   };
   /** A prepared canvas is laid out but invisible; once it has loaded the viewer goes back to hidden, frame kept. */
   const settle = (): void => {
@@ -485,21 +534,20 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
     pageId = null;
     optionId = null;
     source = 'loading';
-    for (const old of stage.querySelectorAll('.vw-poster-image, .vw-frame')) old.remove();
-    const poster = posterFor(from);
-    if (poster) stage.prepend(poster);
-    insertTrustedHtml(poster ?? stage, poster ? 'afterend' : 'afterbegin', canvasFrameHtml(route));
+    for (const old of stage.querySelectorAll('.vw-skeleton, .vw-poster-image, .vw-frame')) old.remove();
+    insertTrustedHtml(stage, 'afterbegin', canvasFrameHtml(route));
     const mounted = stage.querySelector<HTMLIFrameElement>('.vw-frame')!;
     frame = mounted;
+    paintPlaceholder(route, from);
     mounted.addEventListener('load', () => {
-      mounted.classList.add('is-ready');
+      markReady(mounted);
       if (frame === mounted) settle();
     });
     clearTimeout(timer);
     timer = setTimeout(() => {
       if (source === 'loading') {
         source = 'none';
-        frame?.classList.add('is-ready');
+        stage.querySelector('.vw-skeleton')?.classList.add('is-stalled');
         paint();
       }
     }, 3000);
@@ -513,11 +561,8 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       mountFrame(route, origin);
       return;
     }
-    // Prepared ahead of the click but still loading: show the tile's picture meanwhile.
-    if (frame && !frame.classList.contains('is-ready') && !stage.querySelector('.vw-poster-image')) {
-      const poster = posterFor(origin);
-      if (poster) stage.prepend(poster);
-    }
+    // Prepared ahead of the click but still loading: lay the placeholder for the entry that was clicked.
+    paintPlaceholder(route, origin);
     chooseFile();
   };
   /** Loads a canvas ahead of the click, at the size it will open at, so opening it finds it ready. */
@@ -654,7 +699,10 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
     const target = entryAt(event);
     if (!target) return;
     clearTimeout(prepareTimer);
-    prepareTimer = setTimeout(() => prepare(target), PREPARE_DWELL_MS);
+    prepareTimer = setTimeout(() => {
+      requestPoster(target);
+      prepare(target);
+    }, PREPARE_DWELL_MS);
   };
   document.addEventListener('pointerover', prepareSoon, true);
   document.addEventListener('focusin', prepareSoon, true);
@@ -671,6 +719,7 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       const target = entryAt(event);
       if (!target) return;
       clearTimeout(prepareTimer);
+      requestPoster(target);
       prepare(target);
     },
     true,
@@ -756,7 +805,7 @@ export function mountCanvasViewer(app: HTMLElement, captureState?: () => () => v
       pages = message.pages;
       source = message.source;
       clearTimeout(timer);
-      frame.classList.add('is-ready');
+      markReady(frame);
       if (routing.current) chooseFile();
     }
     if (message.type === 'hit') return feedback.onHit(message);

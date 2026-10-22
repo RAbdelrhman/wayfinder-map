@@ -1,5 +1,8 @@
 # Hosting a sandboxed canvas inside Wayfinder
 
+The #304 loading treatment and current stored-poster capture/loading contract
+are documented in [canvas-loading-304.md](canvas-loading-304.md).
+
 Research for [#206](https://github.com/RAbdelrhman/wayfinder-map/issues/206) on map [#205](https://github.com/RAbdelrhman/wayfinder-map/issues/205). Measurements were taken on 2026-10-03 with Electron 44.4.3 (the version in `package.json`) and `gh` against `RAbdelrhman/wayfinder-map`.
 
 ## Recommendation
