@@ -1,0 +1,312 @@
+/*
+  #316 account control, on #223's phone parts (mobile.css) and the desktop tokens
+  (src/ui/styles.css). Destructive actions use --state-failed, as the desktop's .failure does.
+*/
+.ac-face {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  font-weight: 600;
+}
+
+.ac-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ac-name {
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+.ac-login {
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+
+.ac-fine {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.ac-danger,
+.m-btn.is-quiet.ac-danger,
+.ac-danger .m-row-title,
+.m-row.ac-danger > .i:first-child {
+  color: var(--state-failed);
+}
+
+.m-row > .i:first-child {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.m-btn.ac-danger-fill {
+  background: var(--state-failed);
+  color: var(--plane);
+}
+
+.ac-inline {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  min-height: 0;
+}
+
+/* A: sheet */
+.ac-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 16px 34px;
+}
+
+.ac-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 4px 0 8px;
+}
+
+.ac-profile.is-page {
+  padding: 12px 0 4px;
+}
+
+.ac-name-lg {
+  margin: 10px 0 2px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.ac-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.ac-confirm .m-sheet-title {
+  margin-bottom: 0;
+}
+
+.ac-copy {
+  margin: 0 4px 6px;
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+/* B: menu and alert */
+.ac-clear {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+}
+
+.ac-menu {
+  position: absolute;
+  z-index: 11;
+  top: 86px;
+  right: 12px;
+  width: 260px;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow), 0 0 0 1px var(--hairline);
+}
+
+.ac-menu-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 12px;
+  border-bottom: 1px solid var(--gridline);
+  margin-bottom: 4px;
+}
+
+.ac-menu [role='menuitem'] {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--text-primary);
+  font-size: 15px;
+  text-align: left;
+}
+
+.ac-menu [role='menuitem'].ac-danger {
+  color: var(--state-failed);
+}
+
+.ac-menu [role='menuitem']:active,
+.ac-menu [role='menuitem']:hover {
+  background: var(--wash);
+}
+
+.ac-menu .i {
+  width: 18px;
+  height: 18px;
+}
+
+.ac-alert {
+  position: absolute;
+  z-index: 11;
+  left: 50%;
+  top: 50%;
+  width: 280px;
+  transform: translate(-50%, -50%);
+  border-radius: 16px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  text-align: center;
+  overflow: hidden;
+}
+
+.ac-alert h2 {
+  margin: 20px 16px 4px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.ac-alert p {
+  margin: 0 16px 18px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.ac-alert-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--gridline);
+}
+
+.ac-alert-actions button {
+  min-height: 48px;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font-size: 16px;
+}
+
+.ac-alert-actions button + button {
+  border-left: 1px solid var(--gridline);
+  font-weight: 600;
+}
+
+.ac-alert-actions button.ac-danger {
+  color: var(--state-failed);
+}
+
+/* C and D: pages */
+.ac-row-who {
+  gap: 12px;
+}
+
+.ac-left {
+  text-align: left;
+  margin: 8px 4px 0;
+}
+
+.ac-slot {
+  padding: 14px;
+  border: 1.5px dashed var(--baseline);
+  border-radius: 14px;
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+
+/* D: action sheet */
+.ac-action {
+  position: absolute;
+  z-index: 11;
+  left: 8px;
+  right: 8px;
+  bottom: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ac-action-group {
+  border-radius: 14px;
+  background: var(--surface-1);
+  overflow: hidden;
+  text-align: center;
+}
+
+.ac-action-cap {
+  margin: 0;
+  padding: 14px 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--gridline);
+}
+
+.ac-action button {
+  width: 100%;
+  min-height: 56px;
+  border: 0;
+  background: none;
+  font-size: 18px;
+}
+
+.ac-action-cancel {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+/* Signed out, on the welcome screen */
+.ac-notice {
+  display: flex;
+  gap: 10px;
+  margin: 4px 16px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  font-size: 14px;
+}
+
+.ac-notice > .i {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 1px;
+  color: var(--state-frontier);
+}
+
+.ac-notice-more {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-secondary);
+}
+
+/* G (round 3): the title sits in the true centre; Back lines up with the content's 16px edge. */
+.m-bar.ac-bar3 {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  padding: 0 16px;
+}
+
+.ac-bar3 .m-back {
+  justify-self: start;
+}
+
+.ac-gap {
+  height: 24px;
+}
