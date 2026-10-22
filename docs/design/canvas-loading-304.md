@@ -51,3 +51,20 @@ Round 1 correctly rejected a light skeleton under the system dark theme and the 
 The capture command was exercised on #310 and on an archive of the real #196 branch at `ee804286cc4227ba817e03c0de0cb2e5a1e57c2a`. Both produced valid WebPs. The #196 capture was visually inspected. An Electron network fixture supplies that captured image and adds its filename to the prototype discovery response, exercising the actual card metadata, preloader, decode, stage and live handoff. It records one request before the click, one total, both poster and skeleton present synchronously at the click, poster frames before the live frame, and zero empty frames. This is an integration fixture; it does not claim the old remote #196 branch was backfilled. No other prototype branch was modified.
 
 The same-session before-change Electron baseline in `.audit/desktop-baseline.jsonl` measured #196 at 319.8 ms median live ready and 272 ms median empty stage, with a cold first-open outlier of 1,457 ms empty. #163 had 102 ms median empty stage. These complement the earlier #214 baseline above.
+
+## Final measurements after review corrections
+
+Implementation `dda472918a928b5e4084ad69d3d658f6820c8fca`, built before these runs. The served app bundle on both localhost and Electron matched SHA-256 `7ee35c5146cc45a6fcd4312ed8fe493e254e904b3ed34e63f6b8a5e1d7c28943`. The raw records and provenance are retained in [the runtime evidence](../evidence/canvas-loading-304.json).
+
+The same five-opens-per-board method was repeated. Ready messages are restricted to the viewer's current iframe, excluding background tile previews. Electron used a fresh development profile on port 63210 with native window-occlusion/backgrounding optimization disabled for measurement; batches with no visible render frames were rejected. These settings keep render sampling active while automation operates. They do not prove installed-app performance under occlusion. Localhost used the ordinary T3 Code browser tab on port 4494. Neither run overlapped the test suite.
+
+| Surface / board | Lead-in | First covered stage median / max | Live ready median / max after click | Empty frames |
+| --- | --- | --- | --- | --- |
+| Desktop #196 | None | 15.5 / 109.7 ms | 236.8 / 513.4 ms | 0 |
+| Desktop #163 | None | 14.6 / 19.1 ms | 118.7 / 213.8 ms | 0 |
+| Desktop #196 | 400 ms focus | 5.7 / 16.5 ms | Ready before click in all five | 0 |
+| Desktop #163 | 400 ms focus | 4.9 / 20.2 ms | Ready before click in all five | 0 |
+| Localhost #196 | None | 10.8 / 21.9 ms | 206.0 / 236.0 ms | 0 |
+| Localhost #163 | None | 18.4 / 33.2 ms | 106.5 / 162.0 ms | 0 |
+
+Every sampled opening ran the expansion animation. The first loading content met the 300 ms bar in all samples; one heavy-board live-ready sample was 513.4 ms. Differences in live-ready times between these batches reflect workload/cache variation, not a document-boot optimization in this change. The poster integration fixture repeated against the same final build recorded one card-selected request before activation, a decoded poster and skeleton synchronously at activation, and zero empty frames through the live handoff.
