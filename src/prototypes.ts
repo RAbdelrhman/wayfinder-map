@@ -68,6 +68,16 @@ export function unlistedCanvasBoards(files: readonly string[]): string[] {
   }))].filter((board) => !all.has(board));
 }
 
+/** A canvas board's stored poster: a screenshot of the board, kept beside the board's other images. */
+const BOARD_POSTER = /^assets\/poster\.(?:jpe?g|png|webp)$/i;
+
+/** The poster a branch stores for one canvas board (`assets/poster.<ext>` beside its `index.html`), or null. */
+export function canvasPosterFile(files: readonly string[], board: string): string | null {
+  const slash = board.lastIndexOf('/');
+  const dir = slash < 0 ? '' : board.slice(0, slash + 1);
+  return files.find((file) => file.startsWith(dir) && BOARD_POSTER.test(file.slice(dir.length))) ?? null;
+}
+
 /**
  * The page a prototype shows running: its design canvas when it has one, then its saved
  * snapshot, which is built to run anywhere, otherwise the first HTML file that stands alone.

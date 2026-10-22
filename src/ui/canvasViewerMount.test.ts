@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountCanvasViewer } from './canvasViewer.js';
 import { PROTOTYPE_HOST_VERSION } from '../prototypes.js';
 import { setTrustedHtml } from './trustedHtml.js';
+import type { PosterLoader } from './canvasPoster.js';
 
 const SHA = 'a'.repeat(40);
 const board = (n: number): string => `/proto/octo/repo/prototype%2F${String(n)}-home/${SHA}/${PROTOTYPE_HOST_VERSION}/prototypes/canvas/index.html`;
@@ -18,7 +19,7 @@ const GLOBALS = [
 
 let browser: Window;
 /** Each test gets its own window: the viewer registers document and window listeners that cannot be removed. */
-function setup(): { app: HTMLElement; viewer: HTMLElement } {
+function setup(loadPoster?: PosterLoader): { app: HTMLElement; viewer: HTMLElement } {
   browser = new Window({ url: 'http://127.0.0.1:4479/repos/octo/repo/maps/205', settings: { disableIframePageLoading: true } });
   for (const name of GLOBALS) vi.stubGlobal(name, browser[name]);
   vi.stubGlobal('window', browser);
@@ -26,7 +27,7 @@ function setup(): { app: HTMLElement; viewer: HTMLElement } {
   app.id = 'app';
   setTrustedHtml(app, `${entry(42)}${entry(43)}<iframe class="decision-variant-page" tabindex="-1" aria-hidden="true" title=""></iframe>`);
   document.body.append(app);
-  mountCanvasViewer(app);
+  mountCanvasViewer(app, undefined, loadPoster ? { loadPoster } : {});
   return { app, viewer: document.querySelector<HTMLElement>('#canvas-viewer')! };
 }
 const on = (target: Element, type: string): void => {
@@ -39,6 +40,61 @@ const focusInto = (element: Element): void => {
   Object.defineProperty(document, 'activeElement', { configurable: true, get: () => element });
   browser.dispatchEvent(new browser.Event('blur'));
 };
+
+describe('unprepared loading stage (#304)', () => {
+  it('shows named bones synchronously, keeps them on timeout, and replaces them on readiness', () => {
+    const { app, viewer } = setup();
+    const target = entryFor(app, 42);
+    target.dataset['canvasVariants'] = JSON.stringify([{ id: 'A', name: 'Actual <name>' }]);
+    target.click();
+    expect(viewer.querySelector('.vw-skeleton')?.textContent).toContain('Actual <name>');
+    expect(viewer.querySelector('.vw-skeleton .wf-bone')).not.toBeNull();
+    vi.advanceTimersByTime(3100);
+    expect(viewer.querySelector('.vw-skeleton')).not.toBeNull();
+    expect(frames()[0]!.classList.contains('is-ready')).toBe(false);
+    on(frames()[0]!, 'load');
+    expect(viewer.querySelector('.vw-skeleton')).toBeNull();
+    expect(frames()[0]!.classList.contains('is-ready')).toBe(true);
+  });
+
+  it('does not request posters on list render, and keeps the skeleton when decoding fails', async () => {
+    const load = vi.fn<PosterLoader>().mockRejectedValue(new Error('invalid image'));
+    const { app, viewer } = setup(load);
+    entryFor(app, 42).dataset['canvasPoster'] = board(42).replace('index.html', 'assets/poster.png');
+    vi.advanceTimersByTime(1000);
+    expect(load).not.toHaveBeenCalled();
+    entryFor(app, 42).click();
+    await Promise.resolve(); await Promise.resolve();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(viewer.querySelector('.vw-poster-image')).toBeNull();
+    expect(viewer.querySelector('.vw-skeleton')).not.toBeNull();
+  });
+
+  it('puts a decoded poster above the bones and rejects a late poster after live readiness', async () => {
+    let decode!: (image: HTMLImageElement) => void;
+    const load: PosterLoader = () => new Promise(resolve => { decode = resolve; });
+    const { app, viewer } = setup(load);
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    entryFor(app, 42).dataset['canvasPoster'] = board(42).replace('index.html', 'assets/poster.png');
+    entryFor(app, 42).click();
+    const image = document.createElement('img');
+    image.src = board(42).replace('index.html', 'assets/poster.png');
+    decode(image);
+    await Promise.resolve(); await Promise.resolve();
+    expect(viewer.querySelector('.vw-poster-image')).not.toBeNull();
+    expect(viewer.querySelector('.vw-skeleton')).not.toBeNull();
+    on(frames()[0]!, 'load');
+    document.querySelector<HTMLButtonElement>('[data-close]')!.click();
+    vi.advanceTimersByTime(300);
+    entryFor(app, 43).dataset['canvasPoster'] = board(43).replace('index.html', 'assets/poster.png');
+    entryFor(app, 43).click();
+    on(frames()[0]!, 'load');
+    decode(image);
+    await Promise.resolve(); await Promise.resolve();
+    expect(viewer.querySelector('.vw-poster-image')).toBeNull();
+    expect(viewer.querySelector('.vw-skeleton')).toBeNull();
+  });
+});
 
 beforeEach(() => {
   vi.useFakeTimers();

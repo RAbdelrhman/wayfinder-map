@@ -7936,6 +7936,33 @@ textarea.input {
 .app.has-canvas-pane .inspector { display: none; }
 .app.has-canvas-pane .body { grid-template-columns: minmax(0, 1fr); }
 .vw-poster-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+
+/* #310 A+B: named app skeleton, decoded poster, then the live canvas. */
+.vw-skeleton {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: 36px minmax(0, 1fr);
+  background: #ecebe6;
+  color: #0b0b0b;
+  font-size: 12px;
+  pointer-events: none;
+}
+:root[data-theme='dark'] .vw-skeleton { background: #161615; color: #f2f1ec; }
+.vw-skel-bar { display: flex; align-items: center; gap: 14px; padding: 0 14px; background: #fcfcfb; border-bottom: 1px solid rgb(11 11 11 / 10%); }
+:root[data-theme='dark'] .vw-skel-bar { background: #1f1f1d; border-color: rgb(255 255 255 / 10%); }
+.vw-skel-gap { flex: 1; }
+.vw-skel-plane { overflow: hidden; padding: 22px 26px; }
+.vw-skel-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 18px 16px; }
+.vw-skel-frame { margin: 0; display: grid; gap: 5px; min-width: 0; }
+.vw-skel-frame figcaption { display: flex; gap: 6px; overflow: hidden; white-space: nowrap; color: #52514e; font-size: 11px; }
+.vw-skel-frame figcaption b { color: #0b0b0b; }
+:root[data-theme='dark'] .vw-skel-frame figcaption { color: #b6b4ad; }
+:root[data-theme='dark'] .vw-skel-frame figcaption b { color: #f2f1ec; }
+.vw-skeleton .wf-bone.is-block { display: block; width: 100%; height: auto; }
+.vw-skel-shot { aspect-ratio: 16 / 10; }
+.vw-skel-present { display: grid; place-items: center; overflow: hidden; padding: 18px; }
+.vw-skeleton .wf-bone.vw-skel-page { width: auto; height: 100%; max-width: 100%; aspect-ratio: 16 / 9; }
 .vw-close-ghost { position: fixed; z-index: 101; background: var(--plane); border: 1px solid var(--hairline); pointer-events: none; transform-origin: top left; }
 .vw-close-ghost img { width: 100%; height: 100%; object-fit: contain; }
 .vw-flip { display: inline-flex; transform: scaleX(-1); }
