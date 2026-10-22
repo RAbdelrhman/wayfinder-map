@@ -487,8 +487,11 @@ describe('fetchMaps finished maps', () => {
   /** A summary that disagrees with the sub-issues, as when GitHub's count lags. */
   let summaries: Record<number, { total: number; completed: number }>;
   let failSubIssues: number[];
+  let failMapIssue: number[];
+  /** A body the map list still shows after the map issue itself changed. */
+  let staleListBodies: Record<number, string>;
 
-  const summary = (number: number): { total: number; completed: number } => {
+  const summary =(number: number): { total: number; completed: number } => {
     const tickets = attached[number] ?? [];
     return summaries[number] ?? { total: tickets.length, completed: tickets.filter((ticket) => ticket.state === 'closed').length };
   };
@@ -496,6 +499,8 @@ describe('fetchMaps finished maps', () => {
   beforeEach(() => {
     ghCalls.length = 0;
     failSubIssues = [];
+    failMapIssue = [];
+    staleListBodies = {};
     summaries = {};
     maps = [{ number: 1 }];
     attached = {};
@@ -509,7 +514,7 @@ describe('fetchMaps finished maps', () => {
         return { stdout: Buffer.from(args.includes('--include') ? ['HTTP/2.0 200 OK', `ETag: ${etag}`, '', text].join('\r\n') : text), stderr: Buffer.alloc(0) };
       };
       const mapIssue = (map: (typeof maps)[number]): unknown => ({ title: `Map ${String(map.number)}`, body: '', state: 'open', updated_at: RECENT, closed_at: null, ...map, sub_issues_summary: summary(map.number) });
-      if (args.includes('--slurp')) return respond([maps.map(mapIssue)]);
+      if (args.includes('--slurp')) return respond([maps.map((map) => ({ ...(mapIssue(map) as object), ...(staleListBodies[map.number] === undefined ? {} : { body: staleListBodies[map.number] }) }))]);
       if (args[1] === 'graphql') return respond('count 0\n');
       const path = args.find((arg) => arg.startsWith('repos/')) ?? '';
       const subIssues = /issues\/(\d+)\/sub_issues/.exec(path);
@@ -521,6 +526,7 @@ describe('fetchMaps finished maps', () => {
       if (path.includes('/dependencies/')) return respond([]);
       const issue = /issues\/(\d+)$/.exec(path);
       const found = issue === null ? undefined : maps.find((map) => map.number === Number(issue[1]));
+      if (found !== undefined && failMapIssue.includes(found.number)) throw new Error('boom');
       if (found !== undefined) return respond(mapIssue(found));
       throw new Error(`Unexpected gh call: ${args.join(' ')}`);
     });
@@ -628,6 +634,54 @@ describe('fetchMaps finished maps', () => {
     expect(result[0]).toMatchObject({ number: 1, settled: { reason: 'finished', since: RECENT }, ticketsLoaded: true, tickets: [{ number: 10 }, { number: 11 }] });
     // #22 is listed but can't be read, so the loaded tickets are not all the map shows.
     expect(result[1]?.settled).toBeNull();
+  });
+
+  it('keeps watching the map issue after the archived map is opened, and for a map archived because its summary lagged', async () => {
+    attached[1] = done(10, 11);
+    const listed = (await fetchMaps(options)).maps;
+    await fetchMapDetails(options, listed);
+    maps = [{ number: 1, body: '- [ ] #12' }];
+    expect(await haveMapTicketsChanged('o/r', [1])).toBe(true);
+
+    maps = [{ number: 1 }];
+    summaries[1] = { total: 2, completed: 1 };
+    expect((await settledOf())?.reason).toBe('finished');
+    expect(await haveMapTicketsChanged('o/r', [1])).toBe(false);
+    maps = [{ number: 1, body: '- [ ] #12' }];
+    expect(await haveMapTicketsChanged('o/r', [1])).toBe(true);
+  });
+
+  it('stops watching the map issue once the map is no longer finished', async () => {
+    attached[1] = done(10, 11);
+    await fetchMaps(options);
+    attached[1] = [...done(10), ...open(11)];
+    await fetchMaps(options);
+
+    // A comment on an active map changes its issue, but only its tickets matter.
+    maps = [{ number: 1, body: 'edited' }];
+    expect(await haveMapTicketsChanged('o/r', [1])).toBe(false);
+  });
+
+  it('uses the map issue as it is now, not the list body, so a ticket added since keeps the map active', async () => {
+    maps = [{ number: 1, body: '- [x] #10\n- [ ] #12' }];
+    staleListBodies[1] = '- [x] #10';
+    attached[1] = done(10);
+    expect(await settledOf()).toBeNull();
+
+    // The same when the summary lags and the map is confirmed after it is read in full.
+    summaries[1] = { total: 2, completed: 1 };
+    attached[1] = done(10, 11);
+    staleListBodies[1] = '- [x] #10\n- [x] #11';
+    expect(await settledOf()).toBeNull();
+  });
+
+  it('keeps a map active when the map issue cannot be read, whether the summary or the tickets said it was finished', async () => {
+    attached[1] = done(10, 11);
+    failMapIssue = [1];
+    expect(await settledOf()).toBeNull();
+
+    summaries[1] = { total: 2, completed: 1 };
+    expect(await settledOf()).toBeNull();
   });
 
   it('lets the change check see a reopened ticket, or a ticket added to the body, on a finished map', async () => {

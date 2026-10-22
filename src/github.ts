@@ -308,6 +308,8 @@ function subIssuesArgs(repo: string, mapNumber: number, page: number, etag?: str
 export class SubIssueWatcher {
   private readonly etags = new Map<string, Map<number, Map<number, string | null>>>();
   private readonly bodyIssueEtags = new Map<string, Map<number, Map<number, string | null>>>();
+  /** The map issue's own ETag, kept only for finished maps, whose body can gain a ticket the sub-issues never show. */
+  private readonly mapIssueEtags = new Map<string, Map<number, string>>();
 
   constructor(private readonly runGh: GhApiRunner = ghIncludingHeaders) {}
 
@@ -359,14 +361,32 @@ export class SubIssueWatcher {
     }
   }
 
+  /** The map issue as GitHub holds it now, remembering its ETag so `hasChanged` notices an edit to its body. */
+  async fetchMapIssue(repo: string, mapNumber: number): Promise<RawIssue> {
+    const args = ['api', '--include', `repos/${repo}/issues/${String(mapNumber)}`];
+    const response = parseGhApiResponse(await this.runGh(args));
+    if (response.status !== 200) throw new GhError(response.body.trim() || `GitHub returned HTTP ${String(response.status)} for map #${String(mapNumber)}.`, args);
+    const maps = this.mapIssueEtags.get(repo) ?? new Map<number, string>();
+    if (response.headers.etag === undefined) maps.delete(mapNumber);
+    else maps.set(mapNumber, response.headers.etag);
+    this.mapIssueEtags.set(repo, maps);
+    return JSON.parse(response.body) as RawIssue;
+  }
+
+  /** Stops watching the map issue itself, for a map that is no longer finished. */
+  forgetMapIssue(repo: string, mapNumber: number): void {
+    this.mapIssueEtags.get(repo)?.delete(mapNumber);
+  }
+
   clear(repo: string, mapNumber: number): void {
     this.etags.get(repo)?.delete(mapNumber);
     this.bodyIssueEtags.get(repo)?.delete(mapNumber);
+    this.forgetMapIssue(repo, mapNumber);
   }
 
   retainMaps(repo: string, mapNumbers: readonly number[]): void {
     const included = new Set(mapNumbers);
-    for (const maps of [this.etags.get(repo), this.bodyIssueEtags.get(repo)]) {
+    for (const maps of [this.etags.get(repo), this.bodyIssueEtags.get(repo), this.mapIssueEtags.get(repo)]) {
       if (maps === undefined) continue;
       for (const mapNumber of maps.keys()) {
         if (!included.has(mapNumber)) maps.delete(mapNumber);
@@ -396,6 +416,12 @@ export class SubIssueWatcher {
         ]));
         if (response.status !== 304) return true;
         if (response.headers.etag !== undefined) this.recordBodyIssueEtag(repo, mapNumber, issueNumber, response.headers.etag);
+      }
+      const mapEtag = this.mapIssueEtags.get(repo)?.get(mapNumber);
+      if (mapEtag !== undefined) {
+        const response = parseGhApiResponse(await this.runGh(['api', '--include', '-H', `If-None-Match: ${mapEtag}`, `repos/${repo}/issues/${String(mapNumber)}`]));
+        if (response.status !== 304) return true;
+        if (response.headers.etag !== undefined) this.mapIssueEtags.get(repo)?.set(mapNumber, response.headers.etag);
       }
       return false;
     });
@@ -611,32 +637,24 @@ function summaryFinished(issue: MapIssue): boolean {
 }
 
 /**
- * Whether a map the summary calls finished is: the summary counts only attached sub-issues, so a ticket
- * its body lists without attaching it, which the app still shows, keeps it active. Two reads confirm it:
- * the sub-issues, which must all be closed, and the map issue itself, for its current body. Both leave
- * the ETags the next change check compares against, so a reopened ticket or a ticket added to the body
- * of an archived map is noticed without reading the whole map. A failed read confirms nothing.
+ * Whether a map is finished, confirmed against GitHub as it is now. Its sub-issues must all be closed,
+ * and every ticket its body lists must be attached to it, because a ticket only the body lists is
+ * shown by the app but missing from the sub-issues and from GitHub's summary. The map issue is read
+ * for its current body rather than the list's, which may be older. Both reads leave the ETags the
+ * next change check compares against, so a reopened ticket, or a ticket added to the body of an
+ * archived map, is noticed without reading the whole map. A failed read confirms nothing.
  */
 async function isFinished(repo: string, issue: MapIssue): Promise<boolean> {
   try {
     const subIssues = await subIssueWatcher.fetch(repo, issue.number);
-    const current = await subIssueWatcher.fetchBodyIssue(repo, issue.number, issue.number);
+    const current = await subIssueWatcher.fetchMapIssue(repo, issue.number);
     const attached = new Set(subIssues.map((subIssue) => subIssue.number));
-    const listed = parseChildNumbers(current?.body ?? issue.body ?? '', repo).filter((number) => number !== issue.number);
+    const listed = parseChildNumbers(current.body ?? '', repo).filter((number) => number !== issue.number);
     return subIssues.length > 0 && subIssues.every((subIssue) => !isOpenState(subIssue.state)) && listed.every((number) => attached.has(number));
   } catch {
     subIssueWatcher.clear(repo, issue.number);
     return false;
   }
-}
-
-/**
- * A map just read in full is finished when it shows a ticket and every ticket is done, even though
- * the summary hadn't yet said so. Not when a ticket its body lists couldn't be attached or read.
- */
-function finishedByTickets(map: WayfinderMap, fallbacks: Fallbacks): boolean {
-  const unread = fallbacks.maps.includes(map.number) || fallbacks.unattachedTickets.some((entry) => entry.mapNumber === map.number);
-  return !unread && map.tickets.length > 0 && map.tickets.every((ticket) => !ticket.open);
 }
 
 /**
@@ -717,14 +735,17 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     const settled = settlementOf(issueFacts, choices[mapIssue.number], ticketsChanged(mapIssue), now);
     if (settled !== null && !expand.has(mapIssue.number)) return settledMap(repo, mapIssue, settled);
     const loaded = await loadMap(options, mapIssue, fallbacks);
-    // The summary can lag the tickets; a map just read in full is checked against them too.
+    // The summary can lag the tickets, so a map read in full whose tickets are all done is confirmed too.
     const mayFinish = (settled === null || settled.reason === 'idle') && issueFacts.open && choices[mapIssue.number] === undefined;
-    if (mayFinish && finishedByTickets(loaded, fallbacks)) {
+    const done = mayFinish && !finished.has(mapIssue.number) && loaded.tickets.length > 0 && loaded.tickets.every((ticket) => !ticket.open);
+    if (done && (await isFinished(repo, mapIssue))) {
       return { ...loaded, settled: { reason: 'finished', since: issueFacts.updatedAt ?? now.toISOString() } };
     }
     return { ...loaded, settled };
   });
 
+  // Only a finished map's own issue is watched; a map that stopped being finished goes back to its sub-issues alone.
+  for (const map of maps) if (map.settled?.reason !== 'finished') subIssueWatcher.forgetMapIssue(repo, map.number);
   maps.sort((a, b) => Number(b.open) - Number(a.open) || a.number - b.number);
   return {
     maps,
