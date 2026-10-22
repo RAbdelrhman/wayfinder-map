@@ -25,6 +25,8 @@ export interface MapIssueFacts {
   open: boolean;
   closedAt: string | null;
   updatedAt: string | null;
+  /** Every ticket on the map is done and the map has at least one; see `isFinished` in `github.ts`. */
+  finished: boolean;
 }
 
 /** Anything updated before this is idle. */
@@ -40,8 +42,10 @@ export function isIdleCandidate(issue: MapIssueFacts, now: Date): boolean {
 }
 
 /**
- * Whether a map sits in the Settled section, and since when. A hand-made choice wins; otherwise a
- * closed map settles when it closed, and an open one settles 30 days after anything on it last changed.
+ * Whether a map is archived, and since when. A hand-made choice wins; otherwise a closed map archives
+ * when it closed, a finished one when the map issue last changed (its last ticket closing), and an
+ * open one 30 days after anything on it last changed. A finished map returns to active as soon as it
+ * stops being finished.
  */
 export function settlementOf(
   issue: MapIssueFacts,
@@ -51,6 +55,7 @@ export function settlementOf(
 ): MapSettlement | null {
   if (choice !== undefined) return choice.settled ? { reason: 'manual', since: choice.at } : null;
   if (!issue.open) return { reason: 'closed', since: issue.closedAt ?? issue.updatedAt ?? now.toISOString() };
+  if (issue.finished) return { reason: 'finished', since: issue.updatedAt ?? now.toISOString() };
   if (ticketsChangedRecently || !isIdleCandidate(issue, now)) return null;
   return { reason: 'idle', since: new Date(Date.parse(issue.updatedAt ?? '') + IDLE_DAYS * DAY_MS).toISOString() };
 }

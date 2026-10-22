@@ -199,6 +199,50 @@ describe('RepositoryStore settling', () => {
     expect(opened.maps.find((candidate) => candidate.number === 2)?.ticketsLoaded).toBe(false);
   });
 
+  it('asks whether a finished check still holds on each background check, so a reopened ticket returns the map to the list', async () => {
+    const finished: MapSettlement = { reason: 'finished', since: '2026-09-25T00:00:00.000Z' };
+    const watch = { 2: { basis: 'list-1', unattached: {}, retryAt: null } };
+    let reopened = false;
+    const fetcher = vi.fn<RepositoryFetcher>(async () => ({
+      maps: [map(1, null, true), map(2, reopened ? null : finished, reopened)],
+      finishedWatch: reopened ? {} : watch,
+      warnings: [],
+    }));
+    const finishedChecker = vi.fn(async () => reopened);
+    const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher, changeChecker: async () => false, finishedChecker });
+    await cache.snapshot('owner/repo');
+
+    const quiet = await cache.refreshIfChanged('owner/repo');
+    expect(finishedChecker).toHaveBeenLastCalledWith({ repo: 'owner/repo', mapLabel: 'wayfinder:map' }, watch, expect.any(Date));
+    expect(quiet.maps[1]?.settled).toEqual(finished);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    reopened = true;
+    const returned = await cache.refreshIfChanged('owner/repo');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(returned.maps[1]).toMatchObject({ settled: null, ticketsLoaded: true });
+    // Nothing is left to watch, so the next check asks about nothing more than the list says.
+    await cache.refreshIfChanged('owner/repo');
+    expect(finishedChecker).toHaveBeenLastCalledWith(expect.anything(), {}, expect.any(Date));
+  });
+
+  it('stops watching a finished map once the user archives or restores it', async () => {
+    const finished: MapSettlement = { reason: 'finished', since: '2026-09-25T00:00:00.000Z' };
+    const watch = { 1: { basis: 'a', unattached: {}, retryAt: null }, 2: { basis: 'b', unattached: {}, retryAt: null } };
+    const fetcher = vi.fn<RepositoryFetcher>(async () => ({ maps: [map(1, finished, false), map(2, finished, false)], finishedWatch: watch, warnings: [] }));
+    const finishedChecker = vi.fn(async () => false);
+    const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher, changeChecker: async () => false, finishedChecker });
+    await cache.snapshot('owner/repo');
+
+    await cache.settle('owner/repo', 1, { reason: 'manual', since: '2026-10-01T00:00:00.000Z' });
+    await cache.refreshIfChanged('owner/repo');
+    expect(finishedChecker).toHaveBeenLastCalledWith(expect.anything(), { 2: watch[2] }, expect.any(Date));
+
+    await cache.settle('owner/repo', 2, null);
+    await cache.refreshIfChanged('owner/repo');
+    expect(finishedChecker).toHaveBeenLastCalledWith(expect.anything(), {}, expect.any(Date));
+  });
+
   it('applies a settle saved while the first read is in flight with the old choices', async () => {
     const listed = deferred<FetchResult>();
     const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher: () => listed.promise, choices: async () => ({}) });
@@ -254,6 +298,19 @@ describe('RepositoryStore settling', () => {
     await cache.currentForAction('owner/repo');
     expect(cache.cached('owner/repo')?.maps[0]?.settled).toEqual(settled);
     expect(persistence.save).not.toHaveBeenCalled();
+  });
+
+  it('shows a finished map from the saved snapshot after a restart, then returns it if a ticket reopened while the app was closed', async () => {
+    const finished: MapSettlement = { reason: 'finished', since: '2026-09-25T00:00:00.000Z' };
+    const saved = { repo: 'owner/repo', fetchedAt: new Date().toISOString(), maps: [map(2, finished, false)], hiddenMaps: 0, publicMaps: [], warnings: [] };
+    const persistence = { load: async () => saved, save: vi.fn(async () => undefined) };
+    const fetcher = vi.fn<RepositoryFetcher>(async () => ({ maps: [map(2, null, true)], warnings: [] }));
+    const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', identity: async () => 'a', persistence, fetcher });
+
+    expect((await cache.snapshot('owner/repo')).maps[0]?.settled).toEqual(finished);
+
+    await vi.waitFor(() => expect(cache.cached('owner/repo')?.maps[0]).toMatchObject({ settled: null, ticketsLoaded: true }));
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it('persists ticket details loaded after the repository listing', async () => {

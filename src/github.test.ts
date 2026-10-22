@@ -25,6 +25,7 @@ import {
   fetchMaps,
   fetchTicketWithParent,
   gh304Output,
+  haveFinishedMapsChanged,
   ghProblem,
   isOpenState,
   mapPrototypeBranches,
@@ -464,6 +465,335 @@ describe('fetchMaps settling', () => {
     } finally {
       mapIssues.splice(2, 0, ...saved);
     }
+  });
+});
+
+describe('fetchMaps finished maps', () => {
+  const NOW = new Date('2026-09-26T12:00:00.000Z');
+  const RECENT = '2026-09-25T12:00:00.000Z';
+  const OLD = '2026-07-01T12:00:00.000Z';
+  const options = { repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', now: NOW };
+  interface Ticket {
+    number: number;
+    state: 'open' | 'closed';
+    state_reason?: 'completed' | 'not_planned';
+  }
+
+  /** What GitHub holds: each map's issue fields, its attached sub-issues, and tickets only a map body lists. */
+  let maps: Array<{ number: number; body?: string; state?: string; updated_at?: string }>;
+  let attached: Record<number, Ticket[]>;
+  let loose: Record<number, Ticket>;
+  /** A summary that disagrees with the sub-issues, as when the list was read a moment before a ticket changed. */
+  let summaries: Record<number, { total: number; completed: number }>;
+  let failSubIssues: number[];
+
+  const summary = (number: number): { total: number; completed: number } => {
+    const tickets = attached[number] ?? [];
+    return summaries[number] ?? { total: tickets.length, completed: tickets.filter((ticket) => ticket.state === 'closed').length };
+  };
+
+  beforeEach(() => {
+    ghCalls.length = 0;
+    failSubIssues = [];
+    summaries = {};
+    loose = {};
+    maps = [{ number: 1 }];
+    attached = {};
+    execFileMock.mockImplementation(async (_file, args) => {
+      ghCalls.push(args);
+      const respond = (value: unknown): { stdout: Buffer; stderr: Buffer } => {
+        const text = typeof value === 'string' ? value : JSON.stringify(value);
+        return { stdout: Buffer.from(args.includes('--include') ? ['HTTP/2.0 200 OK', 'ETag: "mock"', '', text].join('\r\n') : text), stderr: Buffer.alloc(0) };
+      };
+      const ticket = (found: Ticket): unknown => ({ title: `Ticket ${String(found.number)}`, body: '', labels: [], ...found });
+      if (args.includes('--slurp')) {
+        return respond([maps.map((map) => ({ title: `Map ${String(map.number)}`, body: '', state: 'open', updated_at: RECENT, closed_at: null, ...map, sub_issues_summary: summary(map.number) }))]);
+      }
+      if (args[1] === 'graphql') return respond('count 0\n');
+      const path = args.find((arg) => arg.startsWith('repos/')) ?? '';
+      const subIssues = /issues\/(\d+)\/sub_issues/.exec(path);
+      if (subIssues !== null) {
+        const number = Number(subIssues[1]);
+        if (failSubIssues.includes(number)) throw new Error('boom');
+        return respond((attached[number] ?? []).map(ticket));
+      }
+      if (path.includes('/dependencies/')) return respond([]);
+      const issue = /issues\/(\d+)$/.exec(path);
+      const found = issue === null ? undefined : loose[Number(issue[1])];
+      if (found !== undefined) return respond(ticket(found));
+      throw new Error(`Unexpected gh call: ${args.join(' ')}`);
+    });
+  });
+
+  const done = (...numbers: number[]): Ticket[] => numbers.map((number) => ({ number, state: 'closed', state_reason: 'completed' }));
+  const open = (...numbers: number[]): Ticket[] => numbers.map((number) => ({ number, state: 'open' }));
+  const read = async (choices: Record<number, { settled: boolean; at: string }> = {}) => fetchMaps({ ...options, choices });
+  const settledOf = async (choices: Record<number, { settled: boolean; at: string }> = {}, map = 1) =>
+    (await read(choices)).maps.find((candidate) => candidate.number === map)?.settled;
+  const ticketCalls = (): string[] => ghCalls.map((args) => args.find((arg) => arg.startsWith('repos/')) ?? '').filter((path) => /sub_issues|dependencies/.test(path));
+  /** What the background check says now about what the last read watched. */
+  const changed = async (watch: Awaited<ReturnType<typeof fetchMaps>>['finishedWatch'], now = NOW) => haveFinishedMapsChanged(options, watch ?? {}, now);
+
+  it('archives a map with at least one ticket when every ticket is done, without reading its tickets', async () => {
+    attached[1] = done(10, 11);
+
+    const { maps: listed } = await read();
+
+    expect(listed[0]).toMatchObject({ settled: { reason: 'finished', since: RECENT }, tickets: [], ticketsLoaded: false });
+    // One sub-issue read confirms it; no blocker or dependency reads.
+    expect(ticketCalls()).toEqual(['repos/o/r/issues/1/sub_issues']);
+  });
+
+  it('counts a ticket closed as not planned as done', async () => {
+    attached[1] = [...done(10), { number: 11, state: 'closed', state_reason: 'not_planned' }];
+    expect((await settledOf())?.reason).toBe('finished');
+  });
+
+  it('keeps empty maps and maps with an open ticket active', async () => {
+    maps = [{ number: 1 }, { number: 2 }];
+    attached[1] = [];
+    attached[2] = [...done(20), ...open(21)];
+
+    const result = (await read()).maps;
+
+    expect(result.map((map) => [map.number, map.settled])).toEqual([[1, null], [2, null]]);
+    expect(result.every((map) => map.ticketsLoaded)).toBe(true);
+  });
+
+  it('applies the rule on every fresh read, so a restart archives existing finished maps', async () => {
+    attached[1] = done(10);
+
+    const first = await read();
+    const afterRestart = await read();
+
+    expect(first.maps[0]?.settled).toEqual(afterRestart.maps[0]?.settled);
+    expect(afterRestart.maps[0]?.settled).toMatchObject({ reason: 'finished' });
+  });
+
+  it('archives a map that finishes during use and returns it when a ticket reopens or an open one is added', async () => {
+    attached[1] = [...done(10), ...open(11)];
+    expect(await settledOf()).toBeNull();
+
+    attached[1] = done(10, 11);
+    expect(await settledOf()).toMatchObject({ reason: 'finished' });
+
+    attached[1] = [...done(10), ...open(11)];
+    expect(await settledOf()).toBeNull();
+
+    attached[1] = done(10, 11);
+    expect(await settledOf()).toMatchObject({ reason: 'finished' });
+    attached[1] = [...done(10, 11), ...open(12)];
+    expect(await settledOf()).toBeNull();
+  });
+
+  it('keeps a finished map the user restored active, through reopening and finishing again, and reads no more for it', async () => {
+    const restored = { 1: { settled: false, at: RECENT } };
+    attached[1] = done(10, 11);
+    expect(await settledOf(restored)).toBeNull();
+
+    attached[1] = [...done(10), ...open(11)];
+    expect(await settledOf(restored)).toBeNull();
+    attached[1] = done(10, 11);
+    expect(await settledOf(restored)).toBeNull();
+
+    ghCalls.length = 0;
+    expect((await read(restored)).finishedWatch).toEqual({});
+    expect(ticketCalls()).toEqual(['repos/o/r/issues/1/sub_issues', 'repos/o/r/issues/10/dependencies/blocked_by', 'repos/o/r/issues/11/dependencies/blocked_by']);
+  });
+
+  it('keeps a map the user archived by hand manual, even when it is finished', async () => {
+    attached[1] = done(10);
+    expect(await settledOf({ 1: { settled: true, at: RECENT } })).toEqual({ reason: 'manual', since: RECENT });
+  });
+
+  it('counts a ticket only the body lists: done when closed, active when open or unreadable', async () => {
+    maps = [{ number: 1, body: '- [x] #10\n- [x] #12' }];
+    attached[1] = done(10);
+    loose[12] = { number: 12, state: 'closed' };
+    expect(await settledOf()).toMatchObject({ reason: 'finished' });
+
+    loose[12] = { number: 12, state: 'open' };
+    expect(await settledOf()).toBeNull();
+
+    delete loose[12];
+    const { maps: listed, finishedWatch } = await read();
+    expect(listed[0]?.settled).toBeNull();
+    // Unreadable means unknown, not open: it is tried again later instead of waiting for the list to change.
+    expect(finishedWatch?.[1]?.retryAt).toBe(NOW.getTime() + 2 * 60_000);
+  });
+
+  it('does not archive a map from the tickets its body lists when the sub-issues could not be read, and looks again later', async () => {
+    // #11 is open and attached, but only #10 is listed in the body, so a failed sub-issue read shows #10 alone.
+    maps = [{ number: 1, body: '- [x] #10' }];
+    attached[1] = [...done(10), ...open(11)];
+    loose[10] = { number: 10, state: 'closed' };
+    failSubIssues = [1];
+
+    const { maps: listed, finishedWatch } = await read();
+
+    expect(listed[0]?.settled).toBeNull();
+    expect(finishedWatch?.[1]?.retryAt).toBe(NOW.getTime() + 2 * 60_000);
+    failSubIssues = [];
+    expect(await changed(finishedWatch, new Date(NOW.getTime() + 2 * 60_000))).toBe(true);
+    expect(await settledOf()).toBeNull();
+  });
+
+  it('looks again later at a map whose only ticket is listed in the body and could not be read', async () => {
+    maps = [{ number: 1, body: '- [x] #10' }];
+    const { maps: listed, finishedWatch } = await read();
+
+    expect(listed[0]?.settled).toBeNull();
+    expect(finishedWatch?.[1]?.retryAt).toBe(NOW.getTime() + 2 * 60_000);
+
+    // Still unreadable: it isn't asked about again until the retry is due, however often the check runs.
+    ghCalls.length = 0;
+    expect(await changed(finishedWatch)).toBe(false);
+    expect(await changed(finishedWatch)).toBe(false);
+    expect(ghCalls.filter((args) => args.includes('repos/o/r/issues/10'))).toHaveLength(0);
+    expect(await changed(finishedWatch, new Date(NOW.getTime() + 2 * 60_000))).toBe(true);
+    loose[10] = { number: 10, state: 'closed' };
+    expect(await settledOf()).toMatchObject({ reason: 'finished' });
+  });
+
+  it('archives an old map whose only tickets are listed in the body as finished, not idle, and sees one reopen', async () => {
+    maps = [{ number: 1, body: '- [x] #10', updated_at: OLD }];
+    loose[10] = { number: 10, state: 'closed' };
+
+    const { maps: listed, finishedWatch } = await read();
+
+    expect(listed[0]?.settled).toMatchObject({ reason: 'finished' });
+    expect(await changed(finishedWatch)).toBe(false);
+    loose[10] = { number: 10, state: 'open' };
+    expect(await changed(finishedWatch)).toBe(true);
+    // Not finished any more; the mock has no recent activity, so only the idle rule is left.
+    expect((await settledOf())?.reason).not.toBe('finished');
+  });
+
+  it('sees a body edit finish a map whose only tickets are listed in the body, or that has none yet', async () => {
+    maps = [{ number: 1, body: '- [ ] #10\n- [x] #11' }, { number: 2 }];
+    loose[10] = { number: 10, state: 'open' };
+    loose[11] = { number: 11, state: 'closed' };
+    const { maps: listed, finishedWatch } = await read();
+    expect(listed.map((map) => map.settled)).toEqual([null, null]);
+    expect(Object.keys(finishedWatch ?? {})).toEqual(['1', '2']);
+    expect(await changed(finishedWatch)).toBe(false);
+
+    // Closing the last open body-only ticket finishes the first map too.
+    loose[10] = { number: 10, state: 'closed' };
+    expect(await changed(finishedWatch)).toBe(true);
+    loose[10] = { number: 10, state: 'open' };
+
+    // Removing the open ticket from the body finishes the first map; the second gains a closed one.
+    maps = [{ number: 1, body: '- [x] #11' }, { number: 2, body: '- [x] #11' }];
+    expect(await changed({ 1: finishedWatch?.[1] as never })).toBe(true);
+    expect(await changed({ 2: finishedWatch?.[2] as never })).toBe(true);
+    expect((await read()).maps.map((map) => map.settled?.reason)).toEqual(['finished', 'finished']);
+  });
+
+  it('keeps a map active, and looks again later, when its sub-issues cannot be read', async () => {
+    attached[1] = done(10);
+    failSubIssues = [1];
+    const { maps: listed, finishedWatch } = await read();
+    expect(listed[0]?.settled).toBeNull();
+
+    failSubIssues = [];
+    expect(await changed(finishedWatch, NOW)).toBe(false);
+    expect(await changed(finishedWatch, new Date(NOW.getTime() + 2 * 60_000))).toBe(true);
+    expect(await settledOf()).toMatchObject({ reason: 'finished' });
+  });
+
+  it('judges a map on the tickets it just read when the list was older, and watches the list for the rest', async () => {
+    // The list was read before the last ticket closed: it says 1 of 2, the tickets say both are done.
+    attached[1] = done(10, 11);
+    summaries[1] = { total: 2, completed: 1 };
+
+    const { maps: listed, finishedWatch } = await read();
+
+    expect(listed[0]).toMatchObject({ settled: { reason: 'finished' }, ticketsLoaded: true, tickets: [{ number: 10 }, { number: 11 }] });
+    // The next list says 2 of 2, which is a change, so the map is read again.
+    delete summaries[1];
+    expect(await changed(finishedWatch)).toBe(true);
+    expect(await changed((await read()).finishedWatch)).toBe(false);
+  });
+
+  it('does not archive a map the tickets show reopened since the list was read, and sees the list catch up', async () => {
+    attached[1] = [...done(10), ...open(11)];
+    summaries[1] = { total: 2, completed: 2 };
+
+    const { maps: listed, finishedWatch } = await read();
+
+    expect(listed[0]?.settled).toBeNull();
+    delete summaries[1];
+    expect(await changed(finishedWatch)).toBe(true);
+  });
+
+  it('sees a reopened ticket, or a ticket added to the body, on a finished map', async () => {
+    attached[1] = done(10, 11);
+    let watch = (await read()).finishedWatch;
+    expect(await changed(watch)).toBe(false);
+
+    attached[1] = [...done(10), ...open(11)];
+    expect(await changed(watch)).toBe(true);
+
+    attached[1] = done(10, 11);
+    watch = (await read()).finishedWatch;
+    maps = [{ number: 1, body: '- [ ] #12' }];
+    expect(await changed(watch)).toBe(true);
+  });
+
+  it('keeps watching a map that body-only work holds active, so removing the work archives it', async () => {
+    attached[1] = done(10, 11);
+    maps = [{ number: 1, body: '- [ ] #12' }];
+    loose[12] = { number: 12, state: 'open' };
+    const { maps: listed, finishedWatch } = await read();
+    expect(listed[0]?.settled).toBeNull();
+
+    expect(await changed(finishedWatch)).toBe(false);
+    maps = [{ number: 1 }];
+    expect(await changed(finishedWatch)).toBe(true);
+    expect((await settledOf())?.reason).toBe('finished');
+  });
+
+  it('sees a ticket only the body lists reopen on a finished map', async () => {
+    maps = [{ number: 1, body: '- [x] #12' }];
+    attached[1] = done(10);
+    loose[12] = { number: 12, state: 'closed' };
+    const { maps: listed, finishedWatch } = await read();
+    expect(listed[0]?.settled).toMatchObject({ reason: 'finished' });
+    expect(await changed(finishedWatch)).toBe(false);
+
+    loose[12] = { number: 12, state: 'open' };
+    expect(await changed(finishedWatch)).toBe(true);
+  });
+
+  it('watches nothing, and reads nothing, when no map is finished', async () => {
+    attached[1] = [...done(10), ...open(11)];
+    const { finishedWatch } = await read();
+    ghCalls.length = 0;
+
+    expect(finishedWatch).toEqual({});
+    expect(await changed(finishedWatch)).toBe(false);
+    expect(ghCalls).toHaveLength(0);
+  });
+
+  it('reads a map listed finished in full once it is opened, and keeps it archived', async () => {
+    attached[1] = done(10, 11);
+    const listed = (await read()).maps;
+
+    const { maps: [opened] } = await fetchMapDetails(options, listed);
+
+    expect(opened).toMatchObject({ ticketsLoaded: true, settled: { reason: 'finished' }, tickets: [{ number: 10 }, { number: 11 }] });
+  });
+
+  it('reports a closed map as closed, and a finished one without the idle search', async () => {
+    maps = [{ number: 1, updated_at: OLD }, { number: 2, state: 'closed', updated_at: OLD }];
+    attached[1] = done(10);
+    attached[2] = done(20);
+
+    const result = (await read()).maps;
+
+    expect(result.map((map) => [map.number, map.settled?.reason])).toEqual([[1, 'finished'], [2, 'closed']]);
+    expect(ghCalls.some((args) => args[1] === 'graphql')).toBe(false);
   });
 });
 
