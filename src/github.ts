@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 
 import { criticalPath } from './criticalPath.js';
@@ -308,8 +309,6 @@ function subIssuesArgs(repo: string, mapNumber: number, page: number, etag?: str
 export class SubIssueWatcher {
   private readonly etags = new Map<string, Map<number, Map<number, string | null>>>();
   private readonly bodyIssueEtags = new Map<string, Map<number, Map<number, string | null>>>();
-  /** The map issue's own ETag, kept for maps that are or could be finished, whose body can add or drop a ticket the sub-issues never show. */
-  private readonly mapIssueEtags = new Map<string, Map<number, string>>();
 
   constructor(private readonly runGh: GhApiRunner = ghIncludingHeaders) {}
 
@@ -361,32 +360,14 @@ export class SubIssueWatcher {
     }
   }
 
-  /** The map issue as GitHub holds it now, remembering its ETag so `hasChanged` notices an edit to its body. */
-  async fetchMapIssue(repo: string, mapNumber: number): Promise<RawIssue> {
-    const args = ['api', '--include', `repos/${repo}/issues/${String(mapNumber)}`];
-    const response = parseGhApiResponse(await this.runGh(args));
-    if (response.status !== 200) throw new GhError(response.body.trim() || `GitHub returned HTTP ${String(response.status)} for map #${String(mapNumber)}.`, args);
-    const maps = this.mapIssueEtags.get(repo) ?? new Map<number, string>();
-    if (response.headers.etag === undefined) maps.delete(mapNumber);
-    else maps.set(mapNumber, response.headers.etag);
-    this.mapIssueEtags.set(repo, maps);
-    return JSON.parse(response.body) as RawIssue;
-  }
-
-  /** Stops watching the map issue itself, for a map that is no longer finished. */
-  forgetMapIssue(repo: string, mapNumber: number): void {
-    this.mapIssueEtags.get(repo)?.delete(mapNumber);
-  }
-
   clear(repo: string, mapNumber: number): void {
     this.etags.get(repo)?.delete(mapNumber);
     this.bodyIssueEtags.get(repo)?.delete(mapNumber);
-    this.forgetMapIssue(repo, mapNumber);
   }
 
   retainMaps(repo: string, mapNumbers: readonly number[]): void {
     const included = new Set(mapNumbers);
-    for (const maps of [this.etags.get(repo), this.bodyIssueEtags.get(repo), this.mapIssueEtags.get(repo)]) {
+    for (const maps of [this.etags.get(repo), this.bodyIssueEtags.get(repo)]) {
       if (maps === undefined) continue;
       for (const mapNumber of maps.keys()) {
         if (!included.has(mapNumber)) maps.delete(mapNumber);
@@ -416,12 +397,6 @@ export class SubIssueWatcher {
         ]));
         if (response.status !== 304) return true;
         if (response.headers.etag !== undefined) this.recordBodyIssueEtag(repo, mapNumber, issueNumber, response.headers.etag);
-      }
-      const mapEtag = this.mapIssueEtags.get(repo)?.get(mapNumber);
-      if (mapEtag !== undefined) {
-        const response = parseGhApiResponse(await this.runGh(['api', '--include', '-H', `If-None-Match: ${mapEtag}`, `repos/${repo}/issues/${String(mapNumber)}`]));
-        if (response.status !== 304) return true;
-        if (response.headers.etag !== undefined) this.mapIssueEtags.get(repo)?.set(mapNumber, response.headers.etag);
       }
       return false;
     });
@@ -563,6 +538,8 @@ export interface FetchResult {
   hiddenMaps?: number;
   /** Other people's public maps, for the Public maps list. */
   publicMaps?: PublicMap[];
+  /** What each finished check was based on, for `haveFinishedMapsChanged`. */
+  finishedWatch?: Record<number, FinishedWatch>;
   warnings: string[];
 }
 
@@ -630,31 +607,111 @@ async function recentlyUpdated(repo: string, since: Date): Promise<Set<number> |
   return numbers;
 }
 
+/** Every issue in `repo` carrying the map label, with the summary and body the finished rule reads. */
+async function listMapIssues(repo: string, mapLabel: string): Promise<MapIssue[]> {
+  const mapIssuePages = await ghJson<RawIssue[][]>([
+    'api',
+    '--paginate',
+    '--slurp',
+    `repos/${repo}/issues?state=all&labels=${encodeURIComponent(mapLabel)}&per_page=100`,
+  ]);
+  return flattenIssuePages(mapIssuePages).map((issue): MapIssue => ({
+    number: issue.number,
+    title: issue.title,
+    url: issueUrl(issue, repo),
+    body: issue.body ?? '',
+    state: issue.state,
+    updatedAt: issue.updated_at ?? null,
+    closedAt: issue.closed_at ?? null,
+    author: issue.user?.login ?? null,
+    progress: { completed: issue.sub_issues_summary?.completed ?? 0, total: issue.sub_issues_summary?.total ?? 0 },
+  }));
+}
+
+/**
+ * What a map's finished check was based on, so a later poll can tell whether it still holds. Kept for
+ * every map whose summary says finished and every map found finished, and taken from the map list before
+ * the tickets are read: anything that changes after that shows on the next poll.
+ */
+export interface FinishedWatch {
+  /** The map's state, ticket counts and body as the list showed them. */
+  basis: string;
+  /** Tickets the body lists without attaching them, and whether each was open. Neither the sub-issues nor the summary show them. */
+  unattached: Record<number, boolean>;
+  /** When a read failed or a listed ticket couldn't be read: look again from this time (ms), whatever the list says. */
+  retryAt: number | null;
+}
+
+/** How long a failed finished check waits before it is tried again. */
+const FINISHED_RETRY_MS = 2 * 60_000;
+
+function listBasis(issue: MapIssue): string {
+  const { total, completed } = issue.progress ?? { total: 0, completed: 0 };
+  return createHash('sha1').update(JSON.stringify([issue.state, total, completed, issue.body ?? ''])).digest('hex');
+}
+
+/** The tickets a map's body lists, apart from itself. */
+function listedTickets(repo: string, issue: MapIssue): number[] {
+  return parseChildNumbers(issue.body ?? '', repo).filter((number) => number !== issue.number);
+}
+
 /** GitHub's summary of the map's sub-issues says there is at least one and every one is closed, whether completed or not planned. */
 function summaryFinished(issue: MapIssue): boolean {
   const { total, completed } = issue.progress ?? { total: 0, completed: 0 };
   return total > 0 && completed === total;
 }
 
+type FinishedState = 'finished' | 'active' | 'unknown';
+
 /**
- * Whether a map is finished, confirmed against GitHub as it is now. Its sub-issues must all be closed,
- * and every ticket its body lists must be attached to it, because a ticket only the body lists is
- * shown by the app but missing from the sub-issues and from GitHub's summary. The map issue is read
- * for its current body rather than the list's, which may be older. Both reads leave the ETags the
- * next change check compares against, so a reopened ticket, or a ticket added to the body of an
- * archived map, is noticed without reading the whole map. A failed read confirms nothing.
+ * Finished means the map shows a ticket and every ticket it shows is done. `unknown` when a ticket the
+ * body lists couldn't be read, since it may be open.
  */
-async function isFinished(repo: string, issue: MapIssue): Promise<boolean> {
-  try {
-    const subIssues = await subIssueWatcher.fetch(repo, issue.number);
-    const current = await subIssueWatcher.fetchMapIssue(repo, issue.number);
-    const attached = new Set(subIssues.map((subIssue) => subIssue.number));
-    const listed = parseChildNumbers(current.body ?? '', repo).filter((number) => number !== issue.number);
-    return subIssues.length > 0 && subIssues.every((subIssue) => !isOpenState(subIssue.state)) && listed.every((number) => attached.has(number));
-  } catch {
-    subIssueWatcher.clear(repo, issue.number);
-    return false;
+function finishedState(tickets: readonly { number: number; open: boolean }[], listed: readonly number[]): FinishedState {
+  if (tickets.length === 0 || tickets.some((ticket) => ticket.open)) return 'active';
+  const read = new Set(tickets.map((ticket) => ticket.number));
+  return listed.every((number) => read.has(number)) ? 'finished' : 'unknown';
+}
+
+/**
+ * Whether a map whose summary says finished is, from its sub-issues and any tickets its body lists
+ * without attaching them, which the app shows and the summary doesn't count. Reads no blockers. Throws
+ * when the sub-issues can't be read.
+ */
+async function checkFinished(repo: string, issue: MapIssue): Promise<{ state: FinishedState; unattached: Record<number, boolean> }> {
+  const listed = listedTickets(repo, issue);
+  const subIssues = await subIssueWatcher.fetch(repo, issue.number);
+  const attached = new Set(subIssues.map((subIssue) => subIssue.number));
+  const extra = (await pool(listed.filter((number) => !attached.has(number)), 8, (number) => fetchIssue(repo, number))).filter(
+    (raw): raw is RawIssue => raw !== null,
+  );
+  const read = [...subIssues, ...extra].map((raw) => ({ number: raw.number, open: isOpenState(raw.state) }));
+  return { state: finishedState(read, listed), unattached: Object.fromEntries(extra.map((raw) => [raw.number, isOpenState(raw.state)])) };
+}
+
+/**
+ * Whether anything a finished check was based on has changed: one read of the map list, plus the
+ * tickets the sub-issues don't show. Reads nothing when nothing is watched.
+ */
+export async function haveFinishedMapsChanged(
+  options: { repo: string; mapLabel: string },
+  watch: Readonly<Record<number, FinishedWatch>>,
+  now: Date,
+): Promise<boolean> {
+  const numbers = Object.keys(watch).map(Number);
+  if (numbers.length === 0) return false;
+  if (numbers.some((number) => (watch[number]?.retryAt ?? Infinity) <= now.getTime())) return true;
+  const listed = new Map((await listMapIssues(options.repo, options.mapLabel)).map((issue) => [issue.number, issue]));
+  for (const number of numbers) {
+    const issue = listed.get(number);
+    if (issue === undefined || listBasis(issue) !== watch[number]?.basis) return true;
   }
+  const unattached = numbers.flatMap((number) => Object.entries(watch[number]?.unattached ?? {}).map(([ticket, open]) => ({ ticket: Number(ticket), open })));
+  const current = await pool(unattached, 6, ({ ticket }) => fetchIssue(options.repo, ticket));
+  return unattached.some(({ open }, index) => {
+    const raw = current[index];
+    return raw === null || raw === undefined || isOpenState(raw.state) !== open;
+  });
 }
 
 /**
@@ -669,23 +726,7 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
   const warnings: string[] = [];
   const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [] };
 
-  const mapIssuePages = await ghJson<RawIssue[][]>([
-    'api',
-    '--paginate',
-    '--slurp',
-    `repos/${repo}/issues?state=all&labels=${encodeURIComponent(mapLabel)}&per_page=100`,
-  ]);
-  const labeled = flattenIssuePages(mapIssuePages).map((issue): MapIssue => ({
-    number: issue.number,
-    title: issue.title,
-    url: issueUrl(issue, repo),
-    body: issue.body ?? '',
-    state: issue.state,
-    updatedAt: issue.updated_at ?? null,
-    closedAt: issue.closed_at ?? null,
-    author: issue.user?.login ?? null,
-    progress: { completed: issue.sub_issues_summary?.completed ?? 0, total: issue.sub_issues_summary?.total ?? 0 },
-  }));
+  const labeled = await listMapIssues(repo, mapLabel);
 
   if (labeled.length === 0) {
     warnings.push(`No maps in ${repo} yet. Wayfinder looks for issues labeled ${mapLabel}.`);
@@ -700,12 +741,22 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
 
   // A hand-made choice settles the question, so only maps without one are checked.
   const finished = new Set<number>();
-  const candidates = mapIssues.filter((issue) => isOpenState(issue.state) && choices[issue.number] === undefined && summaryFinished(issue));
-  await pool(candidates, options.concurrency ?? 6, async (issue) => {
-    if (await isFinished(repo, issue)) finished.add(issue.number);
-  });
-  // Maps whose own issue stays watched: they may finish, or stop being finished, by an edit to their body alone.
-  const bodyWatched = new Set(candidates.map((issue) => issue.number));
+  const watch: Record<number, FinishedWatch> = {};
+  const retryAt = now.getTime() + FINISHED_RETRY_MS;
+  await pool(
+    mapIssues.filter((issue) => isOpenState(issue.state) && choices[issue.number] === undefined && summaryFinished(issue)),
+    options.concurrency ?? 6,
+    async (issue) => {
+      try {
+        const { state, unattached } = await checkFinished(repo, issue);
+        if (state === 'finished') finished.add(issue.number);
+        watch[issue.number] = { basis: listBasis(issue), unattached, retryAt: state === 'unknown' ? retryAt : null };
+      } catch {
+        subIssueWatcher.clear(repo, issue.number);
+        watch[issue.number] = { basis: listBasis(issue), unattached: {}, retryAt };
+      }
+    },
+  );
   const facts = (issue: MapIssue): MapIssueFacts => ({
     open: isOpenState(issue.state),
     closedAt: issue.closedAt ?? null,
@@ -734,23 +785,25 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     const settled = settlementOf(issueFacts, choices[mapIssue.number], ticketsChanged(mapIssue), now);
     if (settled !== null && !expand.has(mapIssue.number)) return settledMap(repo, mapIssue, settled);
     const loaded = await loadMap(options, mapIssue, fallbacks);
-    // The summary can lag the tickets, so a map read in full whose tickets are all done is confirmed too.
+    // The list can be older than the tickets just read, so a map read in full is judged on those tickets too.
     const mayFinish = (settled === null || settled.reason === 'idle') && issueFacts.open && choices[mapIssue.number] === undefined;
-    const done = mayFinish && !bodyWatched.has(mapIssue.number) && loaded.tickets.length > 0 && loaded.tickets.every((ticket) => !ticket.open);
-    if (done) bodyWatched.add(mapIssue.number);
-    if (done && (await isFinished(repo, mapIssue))) {
-      return { ...loaded, settled: { reason: 'finished', since: issueFacts.updatedAt ?? now.toISOString() } };
-    }
-    return { ...loaded, settled };
+    const state = mayFinish ? finishedState(loaded.tickets, listedTickets(repo, mapIssue)) : 'active';
+    if (state === 'active') return { ...loaded, settled };
+    const unattached = fallbacks.unattachedTickets.find((entry) => entry.mapNumber === mapIssue.number)?.ticketNumbers ?? [];
+    watch[mapIssue.number] = {
+      basis: listBasis(mapIssue),
+      unattached: Object.fromEntries(unattached.map((number) => [number, loaded.tickets.find((ticket) => ticket.number === number)?.open ?? true])),
+      retryAt: state === 'unknown' ? retryAt : null,
+    };
+    return state === 'finished' ? { ...loaded, settled: { reason: 'finished', since: issueFacts.updatedAt ?? now.toISOString() } } : { ...loaded, settled };
   });
 
-  // Every other map is watched through its sub-issues alone.
-  for (const map of maps) if (!bodyWatched.has(map.number)) subIssueWatcher.forgetMapIssue(repo, map.number);
   maps.sort((a, b) => Number(b.open) - Number(a.open) || a.number - b.number);
   return {
     maps,
     hiddenMaps: labeled.length - mapIssues.length,
     publicMaps: viewer === null ? [] : publicMapsOf(repo, labeled, viewer),
+    finishedWatch: watch,
     warnings: [...warnings, ...fallbackWarnings(fallbacks)],
   };
 }

@@ -1,5 +1,5 @@
-import { fetchMapDetails, fetchMaps, haveMapTicketsChanged } from './github.js';
-import type { FetchOptions, FetchResult, MapListOptions } from './github.js';
+import { fetchMapDetails, fetchMaps, haveFinishedMapsChanged, haveMapTicketsChanged } from './github.js';
+import type { FetchOptions, FetchResult, FinishedWatch, MapListOptions } from './github.js';
 import { normalizeRepo } from './repoRoutes.js';
 import type { SettleChoices } from './settling.js';
 import type { Viewer } from './visibility.js';
@@ -18,9 +18,12 @@ interface RepositoryEntry {
   choiceRevision?: number;
   settleOverrides?: Map<number, MapSettlement | null>;
   persistedScope?: string | null;
+  /** What the last read's finished checks were based on. Not saved: unknown after a restart. */
+  finishedWatch?: Record<number, FinishedWatch>;
 }
 
 export type RepositoryChangeChecker = (repo: string, mapNumbers: readonly number[]) => Promise<boolean>;
+export type FinishedChangeChecker = (options: { repo: string; mapLabel: string }, watch: Readonly<Record<number, FinishedWatch>>, now: Date) => Promise<boolean>;
 
 export interface RepositoryStoreOptions {
   mapLabel: string;
@@ -28,6 +31,8 @@ export interface RepositoryStoreOptions {
   limit?: number;
   fetcher?: RepositoryFetcher;
   changeChecker?: RepositoryChangeChecker;
+  /** Whether a finished map's list entry or unattached tickets changed since it was checked. */
+  finishedChecker?: FinishedChangeChecker;
   /** Reads the tickets of settled maps once someone opens one. */
   detailer?: MapDetailFetcher;
   /** The signed-in user's hand-made settle choices for a repository. */
@@ -45,6 +50,7 @@ export class RepositoryStore {
   private readonly limit: number;
   private readonly fetcher: RepositoryFetcher;
   private readonly changeChecker: RepositoryChangeChecker;
+  private readonly finishedChecker: FinishedChangeChecker;
   private readonly detailer: MapDetailFetcher;
   private readonly now: () => Date;
 
@@ -53,6 +59,7 @@ export class RepositoryStore {
     if (!Number.isInteger(this.limit) || this.limit <= 0) throw new Error('Repository cache limit must be positive.');
     this.fetcher = options.fetcher ?? fetchMaps;
     this.changeChecker = options.changeChecker ?? haveMapTicketsChanged;
+    this.finishedChecker = options.finishedChecker ?? haveFinishedMapsChanged;
     this.detailer = options.detailer ?? fetchMapDetails;
     this.now = options.now ?? (() => new Date());
   }
@@ -155,9 +162,9 @@ export class RepositoryStore {
   }
 
   /**
-   * Re-reads the repository only if a map's tickets changed. Only active maps, the archived ones in
-   * `open`, and the finished ones are asked: another archived map costs nothing until it is opened. A
-   * finished map is asked so a reopened ticket returns it to the active list without waiting for a full read.
+   * Re-reads the repository only if a map's tickets changed, or a finished check no longer holds. Only
+   * active maps, and the settled ones in `open`, are asked about their tickets: a settled map costs nothing
+   * until it is opened. Finished maps, and maps whose summary says finished, are asked through the map list.
    */
   async refreshIfChanged(repo: string, open: readonly number[] = []): Promise<MapSnapshot> {
     const normalized = normalizeRepo(repo);
@@ -169,11 +176,13 @@ export class RepositoryStore {
     if (entry.snapshot === null) return this.snapshot(normalized, false, open);
 
     const snapshot = entry.snapshot;
-    const watched = snapshot.maps.filter(
-      (map) => (map.ticketsLoaded && (map.settled === null || open.includes(map.number))) || (map.settled?.reason === 'finished' && map.open),
-    );
+    const watched = snapshot.maps.filter((map) => map.ticketsLoaded && (map.settled === null || open.includes(map.number)));
     entry.refreshInFlight = (async () => {
-      const changed = await this.changeChecker(normalized, watched.map((map) => map.number));
+      const [ticketsChanged, finishedChanged] = await Promise.all([
+        this.changeChecker(normalized, watched.map((map) => map.number)),
+        this.finishedChanged(normalized, entry, snapshot),
+      ]);
+      const changed = ticketsChanged || finishedChanged;
       this.requireCurrent(normalized, entry);
       const current = changed ? await (entry.inFlight ?? this.fetchSnapshot(normalized, entry)) : await (entry.inFlight ?? entry.snapshot ?? snapshot);
       return this.withTickets(normalized, current, open);
@@ -182,6 +191,16 @@ export class RepositoryStore {
     });
 
     return entry.refreshInFlight;
+  }
+
+  /**
+   * Whether a finished check no longer holds. An archived finished map has no tickets read, so its
+   * reopened or added ticket shows only in the map list. After a restart the saved snapshot knows no
+   * basis, so it is read once to learn it.
+   */
+  private async finishedChanged(repo: string, entry: RepositoryEntry, snapshot: MapSnapshot): Promise<boolean> {
+    if (entry.finishedWatch === undefined) return snapshot.maps.some((map) => map.settled?.reason === 'finished');
+    return this.finishedChecker({ repo, mapLabel: this.options.mapLabel }, entry.finishedWatch, this.now());
   }
 
   private fetchSnapshot(repo: string, entry: RepositoryEntry): Promise<MapSnapshot> {
@@ -208,12 +227,13 @@ export class RepositoryStore {
         ? list({}, null)
         : Promise.all([choices?.(repo) ?? {}, viewer?.(repo) ?? null]).then(([forRepo, who]) => list(forRepo, who))
     )
-      .then(({ maps, hiddenMaps, publicMaps, warnings }) => {
+      .then(({ maps, hiddenMaps, publicMaps, finishedWatch, warnings }) => {
         this.requireCurrent(repo, entry);
         const choicesChanged = (entry.choiceRevision ?? 0) !== choiceRevision;
         if (choicesChanged) maps = maps.map((map) => entry.settleOverrides?.has(map.number) ? { ...map, settled: entry.settleOverrides.get(map.number) ?? null } : map);
         const snapshot = { repo, fetchedAt: startedAt, maps, hiddenMaps: hiddenMaps ?? 0, publicMaps: publicMaps ?? [], warnings };
         entry.snapshot = snapshot;
+        entry.finishedWatch = finishedWatch ?? {};
         entry.restored = false;
         entry.persistedScope = choicesChanged ? null : persistedScope;
         if (this.options.persistence !== undefined && persistedScope !== null && !choicesChanged) {

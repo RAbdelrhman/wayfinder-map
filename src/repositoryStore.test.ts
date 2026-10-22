@@ -199,20 +199,21 @@ describe('RepositoryStore settling', () => {
     expect(opened.maps.find((candidate) => candidate.number === 2)?.ticketsLoaded).toBe(false);
   });
 
-  it('asks the background check about finished maps, so a reopened ticket returns one to the list', async () => {
+  it('asks whether a finished check still holds on each background check, so a reopened ticket returns the map to the list', async () => {
     const finished: MapSettlement = { reason: 'finished', since: '2026-09-25T00:00:00.000Z' };
-    const manual: MapSettlement = { reason: 'manual', since: '2026-09-25T00:00:00.000Z' };
+    const watch = { 2: { basis: 'list-1', unattached: {}, retryAt: null } };
     let reopened = false;
     const fetcher = vi.fn<RepositoryFetcher>(async () => ({
-      maps: [map(1, null, true), map(2, reopened ? null : finished, reopened), map(3, manual, false)],
+      maps: [map(1, null, true), map(2, reopened ? null : finished, reopened)],
+      finishedWatch: reopened ? {} : watch,
       warnings: [],
     }));
-    const changeChecker = vi.fn(async (_repo: string, numbers: readonly number[]) => reopened && numbers.includes(2));
-    const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher, changeChecker });
+    const finishedChecker = vi.fn(async () => reopened);
+    const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher, changeChecker: async () => false, finishedChecker });
     await cache.snapshot('owner/repo');
 
     const quiet = await cache.refreshIfChanged('owner/repo');
-    expect(changeChecker).toHaveBeenLastCalledWith('owner/repo', [1, 2]);
+    expect(finishedChecker).toHaveBeenLastCalledWith({ repo: 'owner/repo', mapLabel: 'wayfinder:map' }, watch, expect.any(Date));
     expect(quiet.maps[1]?.settled).toEqual(finished);
     expect(fetcher).toHaveBeenCalledTimes(1);
 
@@ -220,7 +221,9 @@ describe('RepositoryStore settling', () => {
     const returned = await cache.refreshIfChanged('owner/repo');
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(returned.maps[1]).toMatchObject({ settled: null, ticketsLoaded: true });
-    expect(returned.maps[2]?.settled).toEqual(manual);
+    // Nothing is left to watch, so the next check asks about nothing more than the list says.
+    await cache.refreshIfChanged('owner/repo');
+    expect(finishedChecker).toHaveBeenLastCalledWith(expect.anything(), {}, expect.any(Date));
   });
 
   it('applies a settle saved while the first read is in flight with the old choices', async () => {
