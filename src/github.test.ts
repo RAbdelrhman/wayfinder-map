@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type MockExecFile = (
@@ -25,6 +27,7 @@ import {
   fetchMaps,
   fetchTicketWithParent,
   gh304Output,
+  haveMapTicketsChanged,
   ghProblem,
   isOpenState,
   mapPrototypeBranches,
@@ -498,13 +501,15 @@ describe('fetchMaps finished maps', () => {
     attached = {};
     execFileMock.mockImplementation(async (_file, args) => {
       ghCalls.push(args);
+      // Like GitHub, a read whose If-None-Match names the current ETag answers 304; the ETag follows the content.
       const respond = (value: unknown): { stdout: Buffer; stderr: Buffer } => {
         const text = typeof value === 'string' ? value : JSON.stringify(value);
-        return { stdout: Buffer.from(args.includes('--include') ? ['HTTP/2.0 200 OK', 'ETag: "mock"', '', text].join('\r\n') : text), stderr: Buffer.alloc(0) };
+        const etag = `"${createHash('sha1').update(text).digest('hex')}"`;
+        if (args.includes(`If-None-Match: ${etag}`)) return { stdout: Buffer.from('HTTP/2.0 304 Not Modified\r\n\r\n'), stderr: Buffer.alloc(0) };
+        return { stdout: Buffer.from(args.includes('--include') ? ['HTTP/2.0 200 OK', `ETag: ${etag}`, '', text].join('\r\n') : text), stderr: Buffer.alloc(0) };
       };
-      if (args.includes('--slurp')) {
-        return respond([maps.map((map) => ({ title: `Map ${String(map.number)}`, body: '', state: 'open', updated_at: RECENT, closed_at: null, ...map, sub_issues_summary: summary(map.number) }))]);
-      }
+      const mapIssue = (map: (typeof maps)[number]): unknown => ({ title: `Map ${String(map.number)}`, body: '', state: 'open', updated_at: RECENT, closed_at: null, ...map, sub_issues_summary: summary(map.number) });
+      if (args.includes('--slurp')) return respond([maps.map(mapIssue)]);
       if (args[1] === 'graphql') return respond('count 0\n');
       const path = args.find((arg) => arg.startsWith('repos/')) ?? '';
       const subIssues = /issues\/(\d+)\/sub_issues/.exec(path);
@@ -514,6 +519,9 @@ describe('fetchMaps finished maps', () => {
         return respond((attached[number] ?? []).map((ticket) => ({ title: `Ticket ${String(ticket.number)}`, body: '', labels: [], ...ticket })));
       }
       if (path.includes('/dependencies/')) return respond([]);
+      const issue = /issues\/(\d+)$/.exec(path);
+      const found = issue === null ? undefined : maps.find((map) => map.number === Number(issue[1]));
+      if (found !== undefined) return respond(mapIssue(found));
       throw new Error(`Unexpected gh call: ${args.join(' ')}`);
     });
   });
@@ -530,8 +538,9 @@ describe('fetchMaps finished maps', () => {
     const { maps: listed } = await fetchMaps(options);
 
     expect(listed[0]).toMatchObject({ settled: { reason: 'finished', since: RECENT }, tickets: [], ticketsLoaded: false });
-    // The one sub-issue read that confirms it; no blocker or dependency reads.
+    // The two reads that confirm it, the sub-issues and the map issue; no blocker or dependency reads.
     expect(ticketCalls()).toEqual(['repos/o/r/issues/1/sub_issues']);
+    expect(ghCalls.filter((args) => args.includes('repos/o/r/issues/1'))).toHaveLength(1);
   });
 
   it('counts a ticket closed as not planned as done', async () => {
@@ -590,6 +599,7 @@ describe('fetchMaps finished maps', () => {
     ghCalls.length = 0;
     await settledOf(restored);
     expect(ticketCalls()).toEqual(['repos/o/r/issues/1/sub_issues', 'repos/o/r/issues/10/dependencies/blocked_by', 'repos/o/r/issues/11/dependencies/blocked_by']);
+    expect(ghCalls.some((args) => args.includes('repos/o/r/issues/1'))).toBe(false);
   });
 
   it('keeps a map the user archived by hand manual, even when it is finished', async () => {
@@ -604,6 +614,37 @@ describe('fetchMaps finished maps', () => {
 
     attached[1] = done(10, 12);
     expect(await settledOf()).toMatchObject({ reason: 'finished' });
+  });
+
+  it('archives a map whose tickets are all done while the summary still lags, and not one whose body lists an unread ticket', async () => {
+    maps = [{ number: 1 }, { number: 2, body: '- [x] #20\n- [x] #22' }];
+    attached[1] = done(10, 11);
+    summaries[1] = { total: 2, completed: 1 };
+    attached[2] = done(20, 21);
+    summaries[2] = { total: 2, completed: 1 };
+
+    const result = (await fetchMaps(options)).maps;
+
+    expect(result[0]).toMatchObject({ number: 1, settled: { reason: 'finished', since: RECENT }, ticketsLoaded: true, tickets: [{ number: 10 }, { number: 11 }] });
+    // #22 is listed but can't be read, so the loaded tickets are not all the map shows.
+    expect(result[1]?.settled).toBeNull();
+  });
+
+  it('lets the change check see a reopened ticket, or a ticket added to the body, on a finished map', async () => {
+    attached[1] = done(10, 11);
+    await fetchMaps(options);
+    expect(await haveMapTicketsChanged('o/r', [1])).toBe(false);
+
+    maps = [{ number: 1, body: '- [ ] #12' }];
+    expect(await haveMapTicketsChanged('o/r', [1])).toBe(true);
+    expect(await settledOf()).toBeNull();
+
+    attached[1] = done(10, 11, 12);
+    expect(await settledOf()).toMatchObject({ reason: 'finished' });
+    expect(await haveMapTicketsChanged('o/r', [1])).toBe(false);
+
+    attached[1] = [...done(10, 11), ...open(12)];
+    expect(await haveMapTicketsChanged('o/r', [1])).toBe(true);
   });
 
   it('keeps a map active when its sub-issues cannot be read or show a ticket the summary missed', async () => {

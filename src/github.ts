@@ -612,20 +612,31 @@ function summaryFinished(issue: MapIssue): boolean {
 
 /**
  * Whether a map the summary calls finished is: the summary counts only attached sub-issues, so a ticket
- * its body lists without attaching it, which the app still shows, keeps it active. The sub-issue read
- * also checks every ticket is closed and leaves the ETags the next change check compares against, so a
- * reopened ticket on an archived map is noticed without reading the whole map. A failed read confirms nothing.
+ * its body lists without attaching it, which the app still shows, keeps it active. Two reads confirm it:
+ * the sub-issues, which must all be closed, and the map issue itself, for its current body. Both leave
+ * the ETags the next change check compares against, so a reopened ticket or a ticket added to the body
+ * of an archived map is noticed without reading the whole map. A failed read confirms nothing.
  */
 async function isFinished(repo: string, issue: MapIssue): Promise<boolean> {
   try {
     const subIssues = await subIssueWatcher.fetch(repo, issue.number);
+    const current = await subIssueWatcher.fetchBodyIssue(repo, issue.number, issue.number);
     const attached = new Set(subIssues.map((subIssue) => subIssue.number));
-    const listed = parseChildNumbers(issue.body ?? '', repo).filter((number) => number !== issue.number);
+    const listed = parseChildNumbers(current?.body ?? issue.body ?? '', repo).filter((number) => number !== issue.number);
     return subIssues.length > 0 && subIssues.every((subIssue) => !isOpenState(subIssue.state)) && listed.every((number) => attached.has(number));
   } catch {
     subIssueWatcher.clear(repo, issue.number);
     return false;
   }
+}
+
+/**
+ * A map just read in full is finished when it shows a ticket and every ticket is done, even though
+ * the summary hadn't yet said so. Not when a ticket its body lists couldn't be attached or read.
+ */
+function finishedByTickets(map: WayfinderMap, fallbacks: Fallbacks): boolean {
+  const unread = fallbacks.maps.includes(map.number) || fallbacks.unattachedTickets.some((entry) => entry.mapNumber === map.number);
+  return !unread && map.tickets.length > 0 && map.tickets.every((ticket) => !ticket.open);
 }
 
 /**
@@ -705,7 +716,13 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     const issueFacts = facts(mapIssue);
     const settled = settlementOf(issueFacts, choices[mapIssue.number], ticketsChanged(mapIssue), now);
     if (settled !== null && !expand.has(mapIssue.number)) return settledMap(repo, mapIssue, settled);
-    return { ...(await loadMap(options, mapIssue, fallbacks)), settled };
+    const loaded = await loadMap(options, mapIssue, fallbacks);
+    // The summary can lag the tickets; a map just read in full is checked against them too.
+    const mayFinish = (settled === null || settled.reason === 'idle') && issueFacts.open && choices[mapIssue.number] === undefined;
+    if (mayFinish && finishedByTickets(loaded, fallbacks)) {
+      return { ...loaded, settled: { reason: 'finished', since: issueFacts.updatedAt ?? now.toISOString() } };
+    }
+    return { ...loaded, settled };
   });
 
   maps.sort((a, b) => Number(b.open) - Number(a.open) || a.number - b.number);
