@@ -6,24 +6,29 @@
     B  Menu under the avatar; sign out is confirmed in an alert.
     C  Account screen; sign out happens at once, and the welcome screen says how to revoke on GitHub.
     D  Settings screen with Account on top; sign out is confirmed in an action sheet.
+  Round 2 (from the user's Wayfinder notes on A, B-confirm, C and D):
+    E  The avatar opens a Settings page in C's style, account only; sign out is confirmed with B's alert.
+    F  E, plus Notifications and Desktop rows in the same style, pointing at #225 and #224.
 */
 (() => {
   const params = new URLSearchParams(location.search);
-  const OPT = ['A', 'B', 'C', 'D'].includes(params.get('acct')) ? params.get('acct') : null;
+  const OPT = ['A', 'B', 'C', 'D', 'E', 'F'].includes(params.get('acct')) ? params.get('acct') : null;
   if (!OPT) return;
   const D = window.MOBILE;
   const u = D.user;
   const esc = Kit.esc;
   const ic = (name) => Kit.icon(name);
   Kit.icons.signout = '<path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>';
+  Kit.icons.desktop = '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>';
 
   const startOpen = params.get('open');
   const st = {
-    open: OPT === 'C' || OPT === 'D' ? (startOpen === 'confirm' ? 'confirm' : null) : ['menu', 'confirm'].includes(startOpen) ? startOpen : null,
+    open: OPT !== 'A' && OPT !== 'B' ? (startOpen === 'confirm' ? 'confirm' : null) : ['menu', 'confirm'].includes(startOpen) ? startOpen : null,
     signedOut: startOpen === 'out',
   };
   const REVOKE = 'github.com/settings/applications';
-  const page = OPT === 'C' ? 'account' : OPT === 'D' ? 'settings' : null;
+  const page = OPT === 'C' ? 'account' : OPT === 'A' || OPT === 'B' ? null : 'settings';
+  const ROUND2 = OPT === 'E' || OPT === 'F';
 
   const face = (size) => `<span class="avatar ac-face" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px" aria-hidden="true">${esc(u.initial)}</span>`;
   const who = () => `<span class="ac-who"><span class="ac-name">${esc(u.name)}</span><span class="ac-login">@${esc(u.login)}</span></span>`;
@@ -54,11 +59,14 @@
 
   /* ---------- B: menu, then alert ---------- */
   function menuB() {
-    if (st.open === 'confirm')
-      return `<div class="ac-layer"><div class="m-scrim"></div>
+    if (st.open === 'confirm') return alertB();
+    return menuBody();
+  }
+  const alertB = () => `<div class="ac-layer"><div class="m-scrim"></div>
         <section class="ac-alert" role="alertdialog" aria-modal="true" aria-labelledby="ac-title" aria-describedby="ac-desc">
           <h2 id="ac-title">Sign out?</h2><p id="ac-desc">Wayfinder will forget @${esc(u.login)}’s GitHub sign-in on this phone.</p>
           <div class="ac-alert-actions"><button data-act="acct-close" data-focus>Cancel</button><button class="ac-danger" data-act="acct-signout">Sign out</button></div></section></div>`;
+  function menuBody() {
     return `<div class="ac-layer"><div class="ac-clear" data-act="acct-close"></div>
       <div class="ac-menu" role="menu" aria-label="Account">
         <div class="ac-menu-head" role="presentation">${face(36)}${who()}</div>
@@ -104,7 +112,30 @@
         <div class="ac-action-group"><button class="ac-action-cancel" data-act="acct-close" data-focus>Cancel</button></div></section></div>`;
   }
 
+  /* ---------- E and F (round 2): C's page as Settings, B's alert ---------- */
+  function settings2({ status, bar, backBtn }) {
+    const more =
+      OPT === 'F'
+        ? `<div class="m-section-title">App</div>
+      <div class="m-group">
+        <button class="m-row" data-toast="Notifications settings are designed in #225">${ic('bell')}<span class="m-row-main"><span class="m-row-title">Notifications</span><span class="m-row-sub">Designed in #225</span></span>${ic('chevron')}</button>
+        <button class="m-row" data-toast="Desktop pairing is designed in #224">${ic('desktop')}<span class="m-row-main"><span class="m-row-title">Desktop</span><span class="m-row-sub">Pairing is designed in #224</span></span>${ic('chevron')}</button>
+      </div>`
+        : '';
+    return `${status()}${bar('Settings', backBtn('Maps'))}<div class="m-scroll">
+      <div class="ac-profile is-page">${face(72)}<h2 class="ac-name-lg">${esc(u.name)}</h2><span class="ac-login">@${esc(u.login)}</span></div>
+      <div class="m-section-title">GitHub</div>
+      <div class="m-group">
+        <div class="m-row">${ic('check')}<span class="m-row-main"><span class="m-row-title">Signed in</span><span class="m-row-sub">With a device code · since ${esc(u.since)}</span></span></div>
+        <button class="m-row" data-toast="Would open github.com/${esc(u.login)}">${ic('github')}<span class="m-row-main"><span class="m-row-title">Open profile on GitHub</span></span>${ic('external')}</button>
+      </div>${more}
+      <div class="m-section-title">This phone</div>
+      <div class="m-group"><button class="m-row ac-danger" data-act="acct-confirm">${ic('signout')}<span class="m-row-main"><span class="m-row-title">Sign out</span><span class="m-row-sub">Forgets your GitHub sign-in on this phone</span></span></button></div>
+    </div>`;
+  }
+
   function overlay() {
+    if (ROUND2) return st.open === 'confirm' ? alertB() : '';
     if (OPT === 'A') return st.open ? sheetA() : '';
     if (OPT === 'B') return st.open ? menuB() : '';
     if (OPT === 'D') return actionSheetD();
@@ -119,7 +150,7 @@
 
   const app = () => document.getElementById('app');
   const focusIn = () => (app().querySelector('.ac-layer [data-focus]') ?? app().querySelector('.ac-layer button'))?.focus();
-  const focusOpener = () => app().querySelector(OPT === 'D' ? '[data-act="acct-confirm"]' : '.ac-avatar')?.focus();
+  const focusOpener = () => app().querySelector(OPT === 'D' || ROUND2 ? '[data-act="acct-confirm"]' : '.ac-avatar')?.focus();
 
   function handle(act, el, { render, go, back, stack, ui }) {
     const here = stack[stack.length - 1];
@@ -170,6 +201,6 @@
     signedOutNotice,
     handle,
     key,
-    screens: page === 'account' ? { account: accountScreen } : page === 'settings' ? { settings: settingsScreen } : {},
+    screens: page === 'account' ? { account: accountScreen } : page === 'settings' ? { settings: ROUND2 ? settings2 : settingsScreen } : {},
   };
 })();
