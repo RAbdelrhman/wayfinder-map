@@ -180,6 +180,8 @@ window.CANVAS = {
                 idea: "Sections are named Account (Signed in, Open profile on GitHub) and Preferences (Notifications, Desktop). Sign out sits alone in its own untitled group at the bottom, as iOS Settings does.",
                 pros: ["Plain words people know from other apps","Sign out is set apart, so it’s hard to hit by mistake"],
                 cons: ["“Preferences” is vague for two rows"],
+                disposition: 'keep',
+                feedback: 'G-a is my choice',
                 basedOn: 'F',
               },
             },
