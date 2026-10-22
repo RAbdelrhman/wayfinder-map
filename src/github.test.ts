@@ -622,6 +622,39 @@ describe('fetchMaps finished maps', () => {
     expect(finishedWatch?.[1]?.retryAt).toBe(NOW.getTime() + 2 * 60_000);
   });
 
+  it('does not archive a map from the tickets its body lists when the sub-issues could not be read, and looks again later', async () => {
+    // #11 is open and attached, but only #10 is listed in the body, so a failed sub-issue read shows #10 alone.
+    maps = [{ number: 1, body: '- [x] #10' }];
+    attached[1] = [...done(10), ...open(11)];
+    loose[10] = { number: 10, state: 'closed' };
+    failSubIssues = [1];
+
+    const { maps: listed, finishedWatch } = await read();
+
+    expect(listed[0]?.settled).toBeNull();
+    expect(finishedWatch?.[1]?.retryAt).toBe(NOW.getTime() + 2 * 60_000);
+    failSubIssues = [];
+    expect(await changed(finishedWatch, new Date(NOW.getTime() + 2 * 60_000))).toBe(true);
+    expect(await settledOf()).toBeNull();
+  });
+
+  it('looks again later at a map whose only ticket is listed in the body and could not be read', async () => {
+    maps = [{ number: 1, body: '- [x] #10' }];
+    const { maps: listed, finishedWatch } = await read();
+
+    expect(listed[0]?.settled).toBeNull();
+    expect(finishedWatch?.[1]?.retryAt).toBe(NOW.getTime() + 2 * 60_000);
+
+    // Still unreadable: nothing is read again until the retry is due, however often the check runs.
+    expect(await changed(finishedWatch)).toBe(false);
+    expect(await changed(finishedWatch)).toBe(false);
+    expect(await changed(finishedWatch, new Date(NOW.getTime() + 2 * 60_000))).toBe(true);
+    // Once it can be read, the check sees it at once.
+    loose[10] = { number: 10, state: 'closed' };
+    expect(await changed(finishedWatch)).toBe(true);
+    expect(await settledOf()).toMatchObject({ reason: 'finished' });
+  });
+
   it('keeps a map active, and looks again later, when its sub-issues cannot be read', async () => {
     attached[1] = done(10);
     failSubIssues = [1];

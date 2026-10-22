@@ -636,8 +636,8 @@ async function listMapIssues(repo: string, mapLabel: string): Promise<MapIssue[]
 export interface FinishedWatch {
   /** The map's state, ticket counts and body as the list showed them. */
   basis: string;
-  /** Tickets the body lists without attaching them, and whether each was open. Neither the sub-issues nor the summary show them. */
-  unattached: Record<number, boolean>;
+  /** Tickets the body lists without attaching them, and whether each was open (null when it couldn't be read). Neither the sub-issues nor the summary show them. */
+  unattached: Record<number, boolean | null>;
   /** When a read failed or a listed ticket couldn't be read: look again from this time (ms), whatever the list says. */
   retryAt: number | null;
 }
@@ -665,12 +665,13 @@ type FinishedState = 'finished' | 'active' | 'unknown';
 
 /**
  * Finished means the map shows a ticket and every ticket it shows is done. `unknown` when a ticket the
- * body lists couldn't be read, since it may be open.
+ * body lists couldn't be read, since it may be open; an open ticket that was read settles it as active.
  */
 function finishedState(tickets: readonly { number: number; open: boolean }[], listed: readonly number[]): FinishedState {
-  if (tickets.length === 0 || tickets.some((ticket) => ticket.open)) return 'active';
+  if (tickets.some((ticket) => ticket.open)) return 'active';
   const read = new Set(tickets.map((ticket) => ticket.number));
-  return listed.every((number) => read.has(number)) ? 'finished' : 'unknown';
+  if (!listed.every((number) => read.has(number))) return 'unknown';
+  return tickets.length === 0 ? 'active' : 'finished';
 }
 
 /**
@@ -678,15 +679,16 @@ function finishedState(tickets: readonly { number: number; open: boolean }[], li
  * without attaching them, which the app shows and the summary doesn't count. Reads no blockers. Throws
  * when the sub-issues can't be read.
  */
-async function checkFinished(repo: string, issue: MapIssue): Promise<{ state: FinishedState; unattached: Record<number, boolean> }> {
+async function checkFinished(repo: string, issue: MapIssue): Promise<{ state: FinishedState; unattached: Record<number, boolean | null> }> {
   const listed = listedTickets(repo, issue);
   const subIssues = await subIssueWatcher.fetch(repo, issue.number);
   const attached = new Set(subIssues.map((subIssue) => subIssue.number));
-  const extra = (await pool(listed.filter((number) => !attached.has(number)), 8, (number) => fetchIssue(repo, number))).filter(
-    (raw): raw is RawIssue => raw !== null,
-  );
+  const loose = listed.filter((number) => !attached.has(number));
+  const fetched = await pool(loose, 8, (number) => fetchIssue(repo, number));
+  const extra = fetched.filter((raw): raw is RawIssue => raw !== null);
   const read = [...subIssues, ...extra].map((raw) => ({ number: raw.number, open: isOpenState(raw.state) }));
-  return { state: finishedState(read, listed), unattached: Object.fromEntries(extra.map((raw) => [raw.number, isOpenState(raw.state)])) };
+  const unattached = Object.fromEntries(loose.map((number, index) => [number, fetched[index] === null || fetched[index] === undefined ? null : isOpenState(fetched[index].state)]));
+  return { state: finishedState(read, listed), unattached };
 }
 
 /**
@@ -708,9 +710,10 @@ export async function haveFinishedMapsChanged(
   }
   const unattached = numbers.flatMap((number) => Object.entries(watch[number]?.unattached ?? {}).map(([ticket, open]) => ({ ticket: Number(ticket), open })));
   const current = await pool(unattached, 6, ({ ticket }) => fetchIssue(options.repo, ticket));
+  // A ticket that was unreadable and still is changes nothing; the retry time covers it.
   return unattached.some(({ open }, index) => {
     const raw = current[index];
-    return raw === null || raw === undefined || isOpenState(raw.state) !== open;
+    return (raw === null || raw === undefined ? null : isOpenState(raw.state)) !== open;
   });
 }
 
@@ -787,12 +790,15 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     const loaded = await loadMap(options, mapIssue, fallbacks);
     // The list can be older than the tickets just read, so a map read in full is judged on those tickets too.
     const mayFinish = (settled === null || settled.reason === 'idle') && issueFacts.open && choices[mapIssue.number] === undefined;
-    const state = mayFinish ? finishedState(loaded.tickets, listedTickets(repo, mapIssue)) : 'active';
+    // When the sub-issues couldn't be read the tickets are the body's alone, so all of them done proves nothing.
+    const incomplete = fallbacks.maps.includes(mapIssue.number);
+    const judged = mayFinish ? finishedState(loaded.tickets, listedTickets(repo, mapIssue)) : 'active';
+    const state = judged === 'finished' && incomplete ? 'unknown' : judged;
     if (state === 'active') return { ...loaded, settled };
     const unattached = fallbacks.unattachedTickets.find((entry) => entry.mapNumber === mapIssue.number)?.ticketNumbers ?? [];
     watch[mapIssue.number] = {
       basis: listBasis(mapIssue),
-      unattached: Object.fromEntries(unattached.map((number) => [number, loaded.tickets.find((ticket) => ticket.number === number)?.open ?? true])),
+      unattached: Object.fromEntries(unattached.map((number) => [number, loaded.tickets.find((ticket) => ticket.number === number)?.open ?? null])),
       retryAt: state === 'unknown' ? retryAt : null,
     };
     return state === 'finished' ? { ...loaded, settled: { reason: 'finished', since: issueFacts.updatedAt ?? now.toISOString() } } : { ...loaded, settled };
