@@ -3,6 +3,7 @@ import { useColorScheme, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider, useAuth } from './src/auth/AuthProvider';
+import { SignedIn } from './src/auth/SignedIn';
 import { SignInScreen } from './src/auth/SignInScreen';
 import { themes } from './src/auth/theme';
 
@@ -25,9 +26,10 @@ function Root() {
   return (
     <>
       <StatusBar style="auto" />
-      {/* Signed in: blank until the repos and maps screens from #229 land. */}
-      {state.phase === 'loading' || state.phase === 'signedIn' ? (
+      {state.phase === 'loading' ? (
         <View style={{ flex: 1, backgroundColor: plane }} />
+      ) : state.phase === 'signedIn' ? (
+        <SignedIn session={state.session} />
       ) : (
         <SignInScreen />
       )}

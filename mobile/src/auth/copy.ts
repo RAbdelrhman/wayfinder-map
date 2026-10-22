@@ -22,3 +22,22 @@ export function formatCountdown(remainingMs: number): string {
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "Oct 20" for a sign-in this year, "Oct 20, 2025" for an earlier one. */
+export function formatSince(signedInAt: number, now: number): string {
+  const when = new Date(signedInAt);
+  const day = `${MONTHS[when.getMonth()]} ${when.getDate()}`;
+  return when.getFullYear() === new Date(now).getFullYear() ? day : `${day}, ${when.getFullYear()}`;
+}
+
+/** The name Settings shows: the profile name, or the login when the profile has none. */
+export function displayName(session: { name: string | null; login: string }): string {
+  return session.name ?? session.login;
+}
+
+/** The letter in the avatar circle. */
+export function initialOf(session: { name: string | null; login: string }): string {
+  return displayName(session).charAt(0).toUpperCase();
+}

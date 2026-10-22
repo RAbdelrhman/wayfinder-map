@@ -2,7 +2,7 @@
 
 The phone app reads maps from GitHub directly, so it signs in with GitHub's [OAuth device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow): the app shows a code, you approve it on github.com, and the app receives a token. There is no redirect URL and no client secret in the app.
 
-The screens are the sign-in direction picked in #223 (S-A: welcome, code, waiting).
+The sign-in screens are the direction picked in #223 (S-A: welcome, code, waiting). Signing out and the Settings page are the design picked in #316 (G-a).
 
 ## One-time setup: the GitHub OAuth app
 
@@ -29,20 +29,22 @@ If a map lives in an organization that restricts OAuth apps, an owner has to app
 |---|---|
 | Welcome | **Sign in with GitHub** posts the client ID and scope to `https://github.com/login/device/code`. |
 | Code | GitHub returns an 8-character code, valid for 15 minutes. **Copy code and open GitHub** copies it and opens `github.com/login/device`. |
-| Waiting | The app polls `https://github.com/login/oauth/access_token` every `interval` seconds (GitHub sends 5), starting right after the code appears. `slow_down` adds 5 seconds (or uses the new `interval` GitHub sends). A dropped connection is retried on the next tick. |
-| Approved | The token is written to secure storage, then the app moves on. If the write fails, the app shows "Couldn't save the token" instead of pretending to be signed in. |
-| Stopped | `expired_token`, `access_denied` and GitHub rejections each show one screen with **Get a new code**. **Back** on the code screen cancels and stops polling. |
+| Waiting | The app polls `https://github.com/login/oauth/access_token` every `interval` seconds (GitHub sends 5), starting right after the code appears. Every request gives up after 15 seconds and is retried on the next tick. `slow_down` adds 5 seconds (or uses the new `interval` GitHub sends). A dropped connection or a 5xx is retried the same way. |
+| Approved | The app asks `https://api.github.com/user` who owns the token (login and name), writes the session to secure storage, then moves on. If GitHub can't say who it is, the app shows "Couldn't reach GitHub"; if the write fails it shows "Couldn't save the token". It never pretends to be signed in. |
+| Stopped | `expired_token`, `access_denied` and GitHub rejections each show one screen with **Get a new code**. **Back** on the code screen cancels and stops polling. A request that GitHub answers with a 5xx counts as "Couldn't reach GitHub", not as a bad setup. |
 
 ## Where the token lives
 
-`expo-secure-store` writes it under the key `wayfinder.github.token`: Keychain on iOS (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`, so a backup restored onto another phone doesn't carry it) and Keystore-backed encrypted preferences on Android. The token is never written to AsyncStorage, logs or the URL. On launch the app reads it back and skips sign-in when it finds one; an unreadable store counts as signed out.
+`expo-secure-store` writes one JSON value under the key `wayfinder.github.session`: the token, the GitHub login and name (for Settings and the sign-out notice), and when you signed in. Keychain on iOS (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`, so a backup restored onto another phone doesn't carry it); Keystore-backed encrypted preferences on Android. The token is never written to AsyncStorage, logs or a URL. On launch the app reads the session back and skips sign-in when it finds one; an unreadable or malformed store counts as signed out.
 
-Signing out deletes the stored token on this phone. It can't revoke the token at GitHub, because that call needs a client secret. To revoke it everywhere, remove Wayfinder at <https://github.com/settings/applications>. OAuth app tokens don't expire on their own.
+## Signing out
+
+Avatar on Maps → **Settings** → **Sign out** → the alert "Sign out? Wayfinder will forget @login's GitHub sign-in on this phone." Confirming deletes the stored session and returns to the welcome screen, which says "Signed out of @login." Signing out can't revoke the token at GitHub, because that call needs a client secret. To revoke it everywhere, remove Wayfinder at <https://github.com/settings/applications>. OAuth app tokens don't expire on their own.
 
 ## Code map
 
 - `mobile/src/auth/deviceFlow.ts`: the state machine (`authReducer`) and the polling loop (`runDeviceFlow`), with fetch, clock and sleep injected.
-- `mobile/src/auth/tokenStore.ts` and `secureStorage.ts`: the token's key and the SecureStore adapter.
-- `mobile/src/auth/AuthProvider.tsx`: React wiring (`useAuth()` gives `state`, `signIn`, `cancel`, `signOut`). Later screens read the token from `state` when its `phase` is `signedIn`.
-- `mobile/src/auth/SignInScreen.tsx`: the S-A screens.
+- `mobile/src/auth/sessionStore.ts` and `secureStorage.ts`: the session's key and shape, and the SecureStore adapter.
+- `mobile/src/auth/AuthProvider.tsx`: React wiring (`useAuth()` gives `state`, `signIn`, `cancel`, `signOut`). Later screens read the token from `state.session.token` when `state.phase` is `signedIn`.
+- `mobile/src/auth/SignInScreen.tsx`: the S-A screens. `MapsScreen.tsx` (only the top bar until #229), `SettingsScreen.tsx` and `SignedIn.tsx` (the switch between them) are the signed-in side.
 - Tests: `bun run test` in `mobile/`.

@@ -1,7 +1,7 @@
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 // The prototype's glyphs (24px grid, 2px round strokes), the same paths the desktop's icon set uses.
-export type IconName = 'compass' | 'github' | 'copy' | 'refresh' | 'back';
+export type IconName = 'compass' | 'github' | 'copy' | 'refresh' | 'back' | 'check' | 'external' | 'signout';
 
 export function Icon({ name, color, size = 20 }: { name: IconName; color: string; size?: number }) {
   return (
@@ -22,6 +22,21 @@ export function Icon({ name, color, size = 20 }: { name: IconName; color: string
         </>
       )}
       {name === 'back' && <Path d="m15 18-6-6 6-6" />}
+      {name === 'check' && <Path d="M20 6 9 17l-5-5" />}
+      {name === 'external' && (
+        <>
+          <Path d="M15 3h6v6" />
+          <Path d="M10 14 21 3" />
+          <Path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+        </>
+      )}
+      {name === 'signout' && (
+        <>
+          <Path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4" />
+          <Path d="M16 17l5-5-5-5" />
+          <Path d="M21 12H9" />
+        </>
+      )}
       {name === 'copy' && (
         <>
           <Rect x={9} y={9} width={13} height={13} rx={2} />

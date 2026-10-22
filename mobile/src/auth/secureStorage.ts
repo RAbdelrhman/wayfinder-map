@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 
-import { createTokenStore, type KeyValueStore } from './tokenStore';
+import { createSessionStore, type KeyValueStore } from './sessionStore';
 
 // This device only: the token must not travel in a backup restored onto another phone.
 const options = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
@@ -11,4 +11,4 @@ const secureStore: KeyValueStore = {
   remove: (key) => SecureStore.deleteItemAsync(key, options),
 };
 
-export const tokenStore = createTokenStore(secureStore);
+export const sessionStore = createSessionStore(secureStore);

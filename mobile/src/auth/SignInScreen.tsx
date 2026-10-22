@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from './AuthProvider';
+import { BackButton } from './BackButton';
 import { failureCopy, formatCountdown } from './copy';
 import type { DeviceGrant, FailureReason } from './deviceFlow';
 import { Icon, type IconName } from './Icon';
@@ -42,14 +43,33 @@ export function SignInScreen() {
       body = <Failed t={t} reason={state.reason} onRetry={signIn} />;
       break;
     default:
-      body = <Welcome t={t} busy={state.phase === 'requesting'} onSignIn={signIn} />;
+      body = (
+        <Welcome
+          t={t}
+          busy={state.phase === 'requesting'}
+          signedOutLogin={state.phase === 'signedOut' ? state.signedOutLogin : null}
+          onSignIn={signIn}
+        />
+      );
   }
   return <SafeAreaView style={[styles.fill, { backgroundColor: t.plane }]}>{body}</SafeAreaView>;
 }
 
-function Welcome({ t, busy, onSignIn }: { t: Theme; busy: boolean; onSignIn: () => void }) {
+function Welcome(props: { t: Theme; busy: boolean; signedOutLogin: string | null; onSignIn: () => void }) {
+  const { t, busy, signedOutLogin, onSignIn } = props;
   return (
     <>
+      {signedOutLogin ? (
+        <View
+          style={[styles.notice, { backgroundColor: t.surface, borderColor: t.hairline }]}
+          accessibilityRole="alert"
+        >
+          <Icon name="check" color={t.stateFrontier} size={18} />
+          <Text style={[styles.noticeText, { color: t.textPrimary }]}>
+            <Text style={styles.noticeStrong}>Signed out of @{signedOutLogin}.</Text>
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.hero}>
         <Logo icon="compass" background={t.textPrimary} color={t.plane} />
         <Text style={[styles.title, { color: t.textPrimary }]} accessibilityRole="header">
@@ -70,20 +90,13 @@ function CodeStep(props: { t: Theme; grant: DeviceGrant; waiting: boolean; onCop
   return (
     <>
       <View style={styles.bar}>
-        <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Back" style={styles.backTouch}>
-          {({ pressed }) => (
-            <View
-              style={[styles.backFace, { borderColor: t.hairline, backgroundColor: pressed ? t.wash : 'transparent' }]}
-            >
-              <Icon name="back" color={t.textSecondary} size={18} />
-              <Text style={[styles.backLabel, { color: t.textSecondary }]}>Back</Text>
-            </View>
-          )}
-        </Pressable>
+        <View style={styles.barSide}>
+          <BackButton t={t} label="Back" onPress={onBack} />
+        </View>
         <Text style={[styles.barTitle, { color: t.textPrimary }]} accessibilityRole="header">
           Sign in
         </Text>
-        <View style={styles.barSpacer} />
+        <View style={styles.barSide} />
       </View>
       <View style={[styles.hero, styles.heroTop]}>
         <Text style={[styles.lead, { color: t.textSecondary }]}>
@@ -209,6 +222,18 @@ const styles = StyleSheet.create({
   lead: { fontSize: 16, textAlign: 'center' },
   foot: { gap: 10, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24 },
   fine: { fontSize: 13, textAlign: 'center' },
+  notice: {
+    flexDirection: 'row',
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  noticeText: { flex: 1, fontSize: 14 },
+  noticeStrong: { fontWeight: '700' },
   button: {
     minHeight: 50,
     flexDirection: 'row',
@@ -219,22 +244,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   buttonLabel: { fontSize: 16, fontWeight: '600' },
-  bar: { minHeight: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 4 },
-  barTitle: { flex: 1, fontSize: 17, fontWeight: '600', textAlign: 'center' },
-  barSpacer: { width: 74 },
-  backTouch: { minHeight: 44, minWidth: 74, justifyContent: 'center' },
-  backFace: {
-    height: 34,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    paddingLeft: 6,
-    paddingRight: 12,
-    borderWidth: 1,
-    borderRadius: 9,
-    alignSelf: 'flex-start',
-  },
-  backLabel: { fontSize: 14, fontWeight: '500' },
+  bar: { minHeight: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
+  barTitle: { fontSize: 17, fontWeight: '600', textAlign: 'center' },
+  barSide: { flex: 1, alignItems: 'flex-start' },
   code: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 20, marginBottom: 6 },
   codeChar: { fontFamily: mono, fontSize: 30, fontWeight: '600', textAlign: 'center' },
   codeBox: { minWidth: 30, paddingVertical: 10, borderRadius: 8, borderWidth: 1, overflow: 'hidden' },

@@ -42,4 +42,4 @@ Docs: https://docs.expo.dev/eas/index.md
 
 ## GitHub sign-in
 
-The device-flow sign-in lives in `src/auth/`; setting up the GitHub OAuth app and the client ID is in `docs/mobile-sign-in.md`. Read the token through `useAuth()`; never store it anywhere but SecureStore.
+The device-flow sign-in lives in `src/auth/`; setting up the GitHub OAuth app and the client ID is in `docs/mobile-sign-in.md`. Read the token through `useAuth()` (`state.session.token`); never store it anywhere but SecureStore (`src/auth/sessionStore.ts`).

@@ -2,9 +2,12 @@
 // Pure TypeScript with injected fetch, clock and sleep, so Vitest runs it without a device.
 
 export const GITHUB_SCOPE = 'repo';
+/** A request that takes longer than this counts as a dropped connection. */
+export const REQUEST_TIMEOUT_MS = 15_000;
 
 const DEVICE_CODE_URL = 'https://github.com/login/device/code';
 const ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token';
+const USER_URL = 'https://api.github.com/user';
 const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code';
 // GitHub: on slow_down, add 5 seconds to the interval.
 const SLOW_DOWN_STEP_SECONDS = 5;
@@ -18,24 +21,34 @@ export type DeviceGrant = {
   intervalSeconds: number;
 };
 
-/** Why sign-in stopped: the code lapsed, the user said no, GitHub refused, the network failed, or the token could not be saved. */
+/** What the phone keeps after a sign-in: the token, who it belongs to, and when it was issued. */
+export type Session = {
+  token: string;
+  login: string;
+  /** The profile name, which GitHub lets people leave empty. */
+  name: string | null;
+  signedInAt: number;
+};
+
+/** Why sign-in stopped: the code lapsed, the user said no, GitHub refused, the network failed, or the session could not be saved. */
 export type FailureReason = 'expired' | 'denied' | 'rejected' | 'network' | 'storage';
 
 export type AuthState =
   | { phase: 'loading' }
-  | { phase: 'signedOut' }
+  /** `signedOutLogin` is who just signed out, for the welcome screen's notice. */
+  | { phase: 'signedOut'; signedOutLogin: string | null }
   | { phase: 'requesting' }
   | { phase: 'code'; grant: DeviceGrant }
   | { phase: 'waiting'; grant: DeviceGrant }
-  | { phase: 'signedIn'; token: string }
+  | { phase: 'signedIn'; session: Session }
   | { phase: 'failed'; reason: FailureReason };
 
 export type AuthEvent =
-  | { type: 'tokenLoaded'; token: string | null }
+  | { type: 'sessionLoaded'; session: Session | null }
   | { type: 'start' }
   | { type: 'codeIssued'; grant: DeviceGrant }
   | { type: 'openedGitHub' }
-  | { type: 'approved'; token: string }
+  | { type: 'approved'; session: Session }
   | { type: 'failed'; reason: FailureReason }
   | { type: 'cancel' }
   | { type: 'signOut' };
@@ -45,9 +58,11 @@ export const initialAuthState: AuthState = { phase: 'loading' };
 /** Events that don't fit the current phase are dropped, so a late poll result can't undo a cancel or sign-out. */
 export function authReducer(state: AuthState, event: AuthEvent): AuthState {
   switch (event.type) {
-    case 'tokenLoaded':
+    case 'sessionLoaded':
       if (state.phase !== 'loading') return state;
-      return event.token ? { phase: 'signedIn', token: event.token } : { phase: 'signedOut' };
+      return event.session
+        ? { phase: 'signedIn', session: event.session }
+        : { phase: 'signedOut', signedOutLogin: null };
     case 'start':
       return state.phase === 'signedOut' || state.phase === 'failed' ? { phase: 'requesting' } : state;
     case 'codeIssued':
@@ -56,7 +71,7 @@ export function authReducer(state: AuthState, event: AuthEvent): AuthState {
       return state.phase === 'code' ? { phase: 'waiting', grant: state.grant } : state;
     case 'approved':
       return state.phase === 'code' || state.phase === 'waiting'
-        ? { phase: 'signedIn', token: event.token }
+        ? { phase: 'signedIn', session: event.session }
         : state;
     case 'failed':
       return state.phase === 'requesting' || state.phase === 'code' || state.phase === 'waiting'
@@ -64,17 +79,20 @@ export function authReducer(state: AuthState, event: AuthEvent): AuthState {
         : state;
     case 'cancel':
       return state.phase === 'requesting' || state.phase === 'code' || state.phase === 'waiting'
-        ? { phase: 'signedOut' }
+        ? { phase: 'signedOut', signedOutLogin: null }
         : state;
     case 'signOut':
-      return state.phase === 'signedIn' ? { phase: 'signedOut' } : state;
+      // From any phase: signing out also abandons a sign-in in progress.
+      return state.phase === 'loading'
+        ? state
+        : { phase: 'signedOut', signedOutLogin: state.phase === 'signedIn' ? state.session.login : null };
   }
 }
 
 export type FetchLike = (
   url: string,
-  init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal },
-) => Promise<{ json: () => Promise<unknown> }>;
+  init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal },
+) => Promise<{ status: number; json: () => Promise<unknown> }>;
 
 export type FlowDeps = {
   clientId: string;
@@ -82,8 +100,9 @@ export type FlowDeps = {
   now: () => number;
   /** Resolves after `ms`, or right away once `signal` aborts. */
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
-  /** Persists the token. The flow reports `approved` only after this resolves. */
-  saveToken: (token: string) => Promise<void>;
+  requestTimeoutMs: number;
+  /** Persists the session. The flow reports `approved` only after this resolves. */
+  saveSession: (session: Session) => Promise<void>;
 };
 
 function form(fields: Record<string, string>): string {
@@ -92,23 +111,59 @@ function form(fields: Record<string, string>): string {
     .join('&');
 }
 
-async function post(deps: FlowDeps, url: string, fields: Record<string, string>, signal: AbortSignal) {
-  const response = await deps.fetch(url, {
-    method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: form(fields),
-    signal,
+/**
+ * Sends one request and returns the JSON object GitHub answered with. Throws on a dropped connection, a timeout, an
+ * unreadable reply or a 5xx, so callers treat all of them as "couldn't reach GitHub", not as a refusal.
+ */
+async function send(
+  deps: FlowDeps,
+  url: string,
+  init: { method: string; headers: Record<string, string>; body?: string },
+  signal: AbortSignal,
+): Promise<Record<string, unknown>> {
+  const request = new AbortController();
+  const abort = () => request.abort();
+  if (signal.aborted) abort();
+  signal.addEventListener('abort', abort);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      abort();
+      reject(new Error('GitHub did not answer in time'));
+    }, deps.requestTimeoutMs);
   });
-  const body: unknown = await response.json();
-  return typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+  try {
+    const answer = (async () => {
+      const response = await deps.fetch(url, { ...init, signal: request.signal });
+      if (response.status >= 500) throw new Error(`GitHub answered ${response.status}`);
+      const body: unknown = await response.json();
+      return typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+    })();
+    return await Promise.race([answer, timeout]);
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', abort);
+  }
 }
+
+const formPost = (deps: FlowDeps, url: string, fields: Record<string, string>, signal: AbortSignal) =>
+  send(
+    deps,
+    url,
+    {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form(fields),
+    },
+    signal,
+  );
 
 export type CodeResult = { ok: true; grant: DeviceGrant } | { ok: false; reason: FailureReason };
 
 export async function requestDeviceCode(deps: FlowDeps, signal: AbortSignal): Promise<CodeResult> {
   let body: Record<string, unknown>;
   try {
-    body = await post(deps, DEVICE_CODE_URL, { client_id: deps.clientId, scope: GITHUB_SCOPE }, signal);
+    body = await formPost(deps, DEVICE_CODE_URL, { client_id: deps.clientId, scope: GITHUB_SCOPE }, signal);
   } catch {
     return { ok: false, reason: 'network' };
   }
@@ -140,13 +195,13 @@ export type PollResult =
   | { kind: 'pending' }
   | { kind: 'slowDown'; intervalSeconds: number | null }
   | { kind: 'failed'; reason: FailureReason }
-  // A dropped connection or an unreadable reply: ask again on the next tick.
+  // A dropped connection, a timeout, a 5xx or an unreadable reply: ask again on the next tick.
   | { kind: 'retry' };
 
 export async function pollForToken(deps: FlowDeps, grant: DeviceGrant, signal: AbortSignal): Promise<PollResult> {
   let body: Record<string, unknown>;
   try {
-    body = await post(
+    body = await formPost(
       deps,
       ACCESS_TOKEN_URL,
       { client_id: deps.clientId, device_code: grant.deviceCode, grant_type: DEVICE_GRANT_TYPE },
@@ -172,6 +227,26 @@ export async function pollForToken(deps: FlowDeps, grant: DeviceGrant, signal: A
     default:
       // device_flow_disabled, incorrect_client_credentials, incorrect_device_code, unsupported_grant_type.
       return { kind: 'failed', reason: 'rejected' };
+  }
+}
+
+/** Asks GitHub who owns the token, for the Settings page and the sign-out notice. `null` when it can't be told. */
+export async function fetchProfile(
+  deps: FlowDeps,
+  token: string,
+  signal: AbortSignal,
+): Promise<{ login: string; name: string | null } | null> {
+  try {
+    const body = await send(
+      deps,
+      USER_URL,
+      { method: 'GET', headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}` } },
+      signal,
+    );
+    if (typeof body.login !== 'string' || !body.login) return null;
+    return { login: body.login, name: typeof body.name === 'string' && body.name ? body.name : null };
+  } catch {
+    return null;
   }
 }
 
@@ -202,13 +277,18 @@ export async function runDeviceFlow(
     const result = await pollForToken(deps, grant, signal);
     if (signal.aborted) return;
     switch (result.kind) {
-      case 'approved':
+      case 'approved': {
+        const profile = await fetchProfile(deps, result.token, signal);
+        if (signal.aborted) return;
+        if (!profile) return emit({ type: 'failed', reason: 'network' });
+        const session: Session = { token: result.token, ...profile, signedInAt: deps.now() };
         try {
-          await deps.saveToken(result.token);
+          await deps.saveSession(session);
         } catch {
           return emit({ type: 'failed', reason: 'storage' });
         }
-        return emit({ type: 'approved', token: result.token });
+        return emit({ type: 'approved', session });
+      }
       case 'failed':
         return emit({ type: 'failed', reason: result.reason });
       case 'slowDown':

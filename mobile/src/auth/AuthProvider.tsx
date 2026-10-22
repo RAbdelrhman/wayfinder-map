@@ -11,8 +11,15 @@ import {
 } from 'react';
 import { Linking } from 'react-native';
 
-import { authReducer, initialAuthState, runDeviceFlow, type AuthState, type FlowDeps } from './deviceFlow';
-import { tokenStore } from './secureStorage';
+import {
+  authReducer,
+  initialAuthState,
+  REQUEST_TIMEOUT_MS,
+  runDeviceFlow,
+  type AuthState,
+  type FlowDeps,
+} from './deviceFlow';
+import { sessionStore } from './secureStorage';
 
 const clientId = process.env.EXPO_PUBLIC_GITHUB_CLIENT_ID ?? '';
 
@@ -36,7 +43,7 @@ type Auth = {
   copyCodeAndOpenGitHub: () => void;
   /** Backs out of a sign-in in progress. */
   cancel: () => void;
-  /** Deletes the token from secure storage and returns to the welcome screen. */
+  /** Deletes the session from secure storage and returns to the welcome screen. Rejects if storage can't be cleared. */
   signOut: () => Promise<void>;
 };
 
@@ -50,8 +57,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let live = true;
-    void tokenStore.load().then((token) => {
-      if (live) dispatch({ type: 'tokenLoaded', token });
+    void sessionStore.load().then((session) => {
+      if (live) dispatch({ type: 'sessionLoaded', session });
     });
     return () => {
       live = false;
@@ -69,7 +76,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const controller = new AbortController();
     attempt.current = controller;
     void runDeviceFlow(
-      { clientId, fetch, now: Date.now, sleep, saveToken: tokenStore.save },
+      {
+        clientId,
+        fetch,
+        now: Date.now,
+        sleep,
+        requestTimeoutMs: REQUEST_TIMEOUT_MS,
+        saveSession: sessionStore.save,
+      },
       dispatch,
       controller.signal,
     );
@@ -90,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     attempt.current?.abort();
-    await tokenStore.clear();
+    await sessionStore.clear();
     dispatch({ type: 'signOut' });
   }, []);
 
