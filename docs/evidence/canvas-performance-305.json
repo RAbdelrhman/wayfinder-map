@@ -171,7 +171,7 @@
   },
   "review": {
     "round1": "Source correct; original Done-when0/4 Pass. No unapproved UI, duplicate control, or unordered overlap.",
-    "round2": "Pending independent browser-trace attribution review"
+    "round2": "Stopped at Claude API rate limit; no verdict produced"
   },
   "remaining": [
     "Zoom cause and fix not demonstrated",
