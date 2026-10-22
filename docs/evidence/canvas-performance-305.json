@@ -1,0 +1,184 @@
+{
+  "status": "partial optimization; original performance acceptance not met",
+  "date": "2026-10-22",
+  "base": "6dce3d6",
+  "retainedChange": "Skip identical feedback layer HTML; preserve changed marks and focus",
+  "userObservation": "User says canvas feels really smooth and asks to finish existing improvements.",
+  "checks": [
+    {
+      "command": "bun run typecheck",
+      "exitCode": 0,
+      "logSha256": "c56410fec3213c9f0143dc3930988099578cafb87a96138bb28554bfe1e18489"
+    },
+    {
+      "command": "bun run lint",
+      "exitCode": 0,
+      "logSha256": "93fc39e24111b0c7eaab8aa739776e2a723fc80183646f1481e80dd71e2722bd"
+    },
+    {
+      "command": "bun run test",
+      "exitCode": 0,
+      "logSha256": "77f3d269f3a66d581a27cd1d00cbedf7de2f4b60240120c828ac320466dfbdd3"
+    }
+  ],
+  "testFiles": 128,
+  "tests": 1683,
+  "panFlowCheck": {
+    "surface": "Electron 44.4.3 development wrapper; shared worktree UI on localhost4495; not installed release",
+    "method": "Three native pointer drags per zoom per arm, each scheduled for four seconds at 60 Hz. CDP round trips stretched the schedule. Before response restores only old compiled HTML-cache guard. Both renderer rAF clocks and browser-target trace recorded. Entry fixture bypasses discovery; gallery iframes hidden in both arms. Background throttling disabled; test window foregrounded before each run.",
+    "limitations": [
+      "Before and after batches, not interleaved",
+      "Three repeats per arm/zoom do not establish absence of rare frames",
+      "rAF intervals are not presented-frame proof",
+      "One after viewer interval exceeds33ms",
+      "No localhost browser acceptance measurement",
+      "Maximum input schedule drift was 514–2393 ms; actual input rate below scheduled60Hz."
+    ],
+    "rows": [
+      {
+        "arm": "before",
+        "zoom": 1,
+        "runs": 3,
+        "childListMutations": [
+          228,
+          228,
+          228
+        ],
+        "canvas": {
+          "frames": 897,
+          "over20": 1,
+          "over33": 1,
+          "worstMs": 33.20000000000073,
+          "fpsRange": [
+            59.799460395441564,
+            60.0013333629636
+          ],
+          "duplicateTimestamps": 0
+        },
+        "viewer": {
+          "frames": 896,
+          "over20": 2,
+          "over33": 2,
+          "worstMs": 33.65599999999904,
+          "fpsRange": [
+            59.78234780614341,
+            60.001090928925976
+          ],
+          "duplicateTimestamps": 0
+        },
+        "maximumInputScheduleDriftMs": 1351.1575333333326
+      },
+      {
+        "arm": "before",
+        "zoom": 2,
+        "runs": 3,
+        "childListMutations": [
+          232,
+          228,
+          228
+        ],
+        "canvas": {
+          "frames": 875,
+          "over20": 0,
+          "over33": 0,
+          "worstMs": 17.30000000000291,
+          "fpsRange": [
+            60,
+            60.00130437618207
+          ],
+          "duplicateTimestamps": 0
+        },
+        "viewer": {
+          "frames": 875,
+          "over20": 0,
+          "over33": 0,
+          "worstMs": 17.30000000000291,
+          "fpsRange": [
+            60,
+            60.000413795957265
+          ],
+          "duplicateTimestamps": 0
+        },
+        "maximumInputScheduleDriftMs": 985.5302000000011
+      },
+      {
+        "arm": "after",
+        "zoom": 1,
+        "runs": 3,
+        "childListMutations": [
+          0,
+          0,
+          0
+        ],
+        "canvas": {
+          "frames": 822,
+          "over20": 0,
+          "over33": 0,
+          "worstMs": 17.699999999999818,
+          "fpsRange": [
+            59.99955224214746,
+            60.001290350330116
+          ],
+          "duplicateTimestamps": 0
+        },
+        "viewer": {
+          "frames": 821,
+          "over20": 0,
+          "over33": 0,
+          "worstMs": 17.700000000000728,
+          "fpsRange": [
+            60.00043165778172,
+            60.00174550532378
+          ],
+          "duplicateTimestamps": 0
+        },
+        "maximumInputScheduleDriftMs": 514.0766999999996
+      },
+      {
+        "arm": "after",
+        "zoom": 2,
+        "runs": 3,
+        "childListMutations": [
+          0,
+          0,
+          0
+        ],
+        "canvas": {
+          "frames": 929,
+          "over20": 0,
+          "over33": 0,
+          "worstMs": 17.19999999999709,
+          "fpsRange": [
+            60,
+            60.0015228812914
+          ],
+          "duplicateTimestamps": 0
+        },
+        "viewer": {
+          "frames": 928,
+          "over20": 1,
+          "over33": 1,
+          "worstMs": 33.799999999995634,
+          "fpsRange": [
+            59.77567331587082,
+            60.00060914324001
+          ],
+          "duplicateTimestamps": 0
+        },
+        "maximumInputScheduleDriftMs": 2393.435599999997
+      }
+    ]
+  },
+  "review": {
+    "round1": "Source correct; original Done-when0/4 Pass. No unapproved UI, duplicate control, or unordered overlap.",
+    "round2": "Pending independent browser-trace attribution review"
+  },
+  "remaining": [
+    "Zoom cause and fix not demonstrated",
+    "Remaining pan stalls not fully attributed",
+    "200percent text sharpness oracle not completed",
+    "CSS zoom scroll extents within2px not verified",
+    "Repeated desktop and localhost acceptance evidence missing"
+  ],
+  "rejectedExperiments": "All layer, transition, containment, CSS zoom, gradient and GPU launch-flag experiments remain test-only and are excluded from source."
+}

@@ -142,6 +142,7 @@ export class CanvasFeedback {
   private viewport: Rect | null = null;
   private palette: [string, string][] = [];
   private readonly marksLayer: HTMLElement;
+  private marksHtml: string | null = null;
   private readonly popLayer: HTMLElement;
   private readonly live: HTMLElement;
 
@@ -357,8 +358,14 @@ export class CanvasFeedback {
       document.activeElement instanceof HTMLElement && this.marksLayer.contains(document.activeElement)
         ? [...document.activeElement.attributes].find((attr) => attr.name.startsWith('data-fb-'))
         : undefined;
-    setTrustedHtml(this.marksLayer, `${capture}${hover}${marks}${targets}${hint}`);
-    if (focused) [...this.marksLayer.querySelectorAll<HTMLElement>(`[${focused.name}]`)].find((el) => el.getAttribute(focused.name) === focused.value)?.focus({ preventScroll: true });
+    const html = `${capture}${hover}${marks}${targets}${hint}`;
+    // A board scroll still reports layout with no marks. Keep the unchanged hint
+    // mounted instead of rebuilding its DOM on every frame.
+    if (html !== this.marksHtml) {
+      setTrustedHtml(this.marksLayer, html);
+      this.marksHtml = html;
+      if (focused) [...this.marksLayer.querySelectorAll<HTMLElement>(`[${focused.name}]`)].find((el) => el.getAttribute(focused.name) === focused.value)?.focus({ preventScroll: true });
+    }
     this.placePopover();
   }
   private hintHtml(context: FeedbackContext): string {
