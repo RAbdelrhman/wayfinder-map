@@ -662,6 +662,23 @@ describe('fetchMaps finished maps', () => {
     expect(await haveMapTicketsChanged('o/r', [1])).toBe(false);
   });
 
+  it('keeps watching the map issue while body-only work holds a finished map active, so removing it archives the map', async () => {
+    attached[1] = done(10, 11);
+    expect((await settledOf())?.reason).toBe('finished');
+
+    maps = [{ number: 1, body: '- [ ] #12' }];
+    expect(await haveMapTicketsChanged('o/r', [1])).toBe(true);
+    ghCalls.length = 0;
+    expect(await settledOf()).toBeNull();
+    // Rejected by the summary path, so the map is confirmed once, not again after it is read in full.
+    expect(ghCalls.filter((args) => args.includes('repos/o/r/issues/1'))).toHaveLength(1);
+
+    expect(await haveMapTicketsChanged('o/r', [1])).toBe(false);
+    maps = [{ number: 1 }];
+    expect(await haveMapTicketsChanged('o/r', [1])).toBe(true);
+    expect((await settledOf())?.reason).toBe('finished');
+  });
+
   it('uses the map issue as it is now, not the list body, so a ticket added since keeps the map active', async () => {
     maps = [{ number: 1, body: '- [x] #10\n- [ ] #12' }];
     staleListBodies[1] = '- [x] #10';

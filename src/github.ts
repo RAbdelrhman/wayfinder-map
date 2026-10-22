@@ -308,7 +308,7 @@ function subIssuesArgs(repo: string, mapNumber: number, page: number, etag?: str
 export class SubIssueWatcher {
   private readonly etags = new Map<string, Map<number, Map<number, string | null>>>();
   private readonly bodyIssueEtags = new Map<string, Map<number, Map<number, string | null>>>();
-  /** The map issue's own ETag, kept only for finished maps, whose body can gain a ticket the sub-issues never show. */
+  /** The map issue's own ETag, kept for maps that are or could be finished, whose body can add or drop a ticket the sub-issues never show. */
   private readonly mapIssueEtags = new Map<string, Map<number, string>>();
 
   constructor(private readonly runGh: GhApiRunner = ghIncludingHeaders) {}
@@ -700,13 +700,12 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
 
   // A hand-made choice settles the question, so only maps without one are checked.
   const finished = new Set<number>();
-  await pool(
-    mapIssues.filter((issue) => isOpenState(issue.state) && choices[issue.number] === undefined && summaryFinished(issue)),
-    options.concurrency ?? 6,
-    async (issue) => {
-      if (await isFinished(repo, issue)) finished.add(issue.number);
-    },
-  );
+  const candidates = mapIssues.filter((issue) => isOpenState(issue.state) && choices[issue.number] === undefined && summaryFinished(issue));
+  await pool(candidates, options.concurrency ?? 6, async (issue) => {
+    if (await isFinished(repo, issue)) finished.add(issue.number);
+  });
+  // Maps whose own issue stays watched: they may finish, or stop being finished, by an edit to their body alone.
+  const bodyWatched = new Set(candidates.map((issue) => issue.number));
   const facts = (issue: MapIssue): MapIssueFacts => ({
     open: isOpenState(issue.state),
     closedAt: issue.closedAt ?? null,
@@ -737,15 +736,16 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     const loaded = await loadMap(options, mapIssue, fallbacks);
     // The summary can lag the tickets, so a map read in full whose tickets are all done is confirmed too.
     const mayFinish = (settled === null || settled.reason === 'idle') && issueFacts.open && choices[mapIssue.number] === undefined;
-    const done = mayFinish && !finished.has(mapIssue.number) && loaded.tickets.length > 0 && loaded.tickets.every((ticket) => !ticket.open);
+    const done = mayFinish && !bodyWatched.has(mapIssue.number) && loaded.tickets.length > 0 && loaded.tickets.every((ticket) => !ticket.open);
+    if (done) bodyWatched.add(mapIssue.number);
     if (done && (await isFinished(repo, mapIssue))) {
       return { ...loaded, settled: { reason: 'finished', since: issueFacts.updatedAt ?? now.toISOString() } };
     }
     return { ...loaded, settled };
   });
 
-  // Only a finished map's own issue is watched; a map that stopped being finished goes back to its sub-issues alone.
-  for (const map of maps) if (map.settled?.reason !== 'finished') subIssueWatcher.forgetMapIssue(repo, map.number);
+  // Every other map is watched through its sub-issues alone.
+  for (const map of maps) if (!bodyWatched.has(map.number)) subIssueWatcher.forgetMapIssue(repo, map.number);
   maps.sort((a, b) => Number(b.open) - Number(a.open) || a.number - b.number);
   return {
     maps,
