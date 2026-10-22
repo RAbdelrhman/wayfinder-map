@@ -661,6 +661,12 @@ function summaryFinished(issue: MapIssue): boolean {
   return total > 0 && completed === total;
 }
 
+/** No sub-issue is open, so an edit to the body alone can finish the map: only the tickets it lists decide. */
+function onlyBodyCanOpen(issue: MapIssue): boolean {
+  const { total, completed } = issue.progress ?? { total: 0, completed: 0 };
+  return completed === total;
+}
+
 type FinishedState = 'finished' | 'active' | 'unknown';
 
 /**
@@ -708,12 +714,14 @@ export async function haveFinishedMapsChanged(
     const issue = listed.get(number);
     if (issue === undefined || listBasis(issue) !== watch[number]?.basis) return true;
   }
-  const unattached = numbers.flatMap((number) => Object.entries(watch[number]?.unattached ?? {}).map(([ticket, open]) => ({ ticket: Number(ticket), open })));
+  // A ticket that couldn't be read isn't asked about again here: its retry time covers it.
+  const unattached = numbers
+    .flatMap((number) => Object.entries(watch[number]?.unattached ?? {}).map(([ticket, open]) => ({ ticket: Number(ticket), open })))
+    .filter((entry) => entry.open !== null);
   const current = await pool(unattached, 6, ({ ticket }) => fetchIssue(options.repo, ticket));
-  // A ticket that was unreadable and still is changes nothing; the retry time covers it.
   return unattached.some(({ open }, index) => {
     const raw = current[index];
-    return (raw === null || raw === undefined ? null : isOpenState(raw.state)) !== open;
+    return raw === null || raw === undefined || isOpenState(raw.state) !== open;
   });
 }
 
@@ -746,8 +754,13 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
   const finished = new Set<number>();
   const watch: Record<number, FinishedWatch> = {};
   const retryAt = now.getTime() + FINISHED_RETRY_MS;
+  const mayFinish = (issue: MapIssue): boolean => isOpenState(issue.state) && choices[issue.number] === undefined;
+  // A map with no attached ticket is read in full below, which reads what its body lists; watch it from the list meanwhile.
+  for (const issue of mapIssues) {
+    if (mayFinish(issue) && onlyBodyCanOpen(issue) && !summaryFinished(issue)) watch[issue.number] = { basis: listBasis(issue), unattached: {}, retryAt: null };
+  }
   await pool(
-    mapIssues.filter((issue) => isOpenState(issue.state) && choices[issue.number] === undefined && summaryFinished(issue)),
+    mapIssues.filter((issue) => mayFinish(issue) && summaryFinished(issue)),
     options.concurrency ?? 6,
     async (issue) => {
       try {
@@ -789,13 +802,14 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     if (settled !== null && !expand.has(mapIssue.number)) return settledMap(repo, mapIssue, settled);
     const loaded = await loadMap(options, mapIssue, fallbacks);
     // The list can be older than the tickets just read, so a map read in full is judged on those tickets too.
-    const mayFinish = (settled === null || settled.reason === 'idle') && issueFacts.open && choices[mapIssue.number] === undefined;
+    const canFinish = (settled === null || settled.reason === 'idle') && mayFinish(mapIssue);
     // When the sub-issues couldn't be read the tickets are the body's alone, so all of them done proves nothing.
     const incomplete = fallbacks.maps.includes(mapIssue.number);
-    const judged = mayFinish ? finishedState(loaded.tickets, listedTickets(repo, mapIssue)) : 'active';
+    const judged = canFinish ? finishedState(loaded.tickets, listedTickets(repo, mapIssue)) : 'active';
     const state = judged === 'finished' && incomplete ? 'unknown' : judged;
-    if (state === 'active') return { ...loaded, settled };
     const unattached = fallbacks.unattachedTickets.find((entry) => entry.mapNumber === mapIssue.number)?.ticketNumbers ?? [];
+    // Still watched while active when only body-only tickets could hold it there: an edit to the body can finish it.
+    if (state === 'active' && !(canFinish && onlyBodyCanOpen(mapIssue) && unattached.length > 0)) return { ...loaded, settled };
     watch[mapIssue.number] = {
       basis: listBasis(mapIssue),
       unattached: Object.fromEntries(unattached.map((number) => [number, loaded.tickets.find((ticket) => ticket.number === number)?.open ?? null])),

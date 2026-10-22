@@ -645,14 +645,35 @@ describe('fetchMaps finished maps', () => {
     expect(listed[0]?.settled).toBeNull();
     expect(finishedWatch?.[1]?.retryAt).toBe(NOW.getTime() + 2 * 60_000);
 
-    // Still unreadable: nothing is read again until the retry is due, however often the check runs.
+    // Still unreadable: it isn't asked about again until the retry is due, however often the check runs.
+    ghCalls.length = 0;
     expect(await changed(finishedWatch)).toBe(false);
     expect(await changed(finishedWatch)).toBe(false);
+    expect(ghCalls.filter((args) => args.includes('repos/o/r/issues/10'))).toHaveLength(0);
     expect(await changed(finishedWatch, new Date(NOW.getTime() + 2 * 60_000))).toBe(true);
-    // Once it can be read, the check sees it at once.
+    loose[10] = { number: 10, state: 'closed' };
+    expect(await settledOf()).toMatchObject({ reason: 'finished' });
+  });
+
+  it('sees a body edit finish a map whose only tickets are listed in the body, or that has none yet', async () => {
+    maps = [{ number: 1, body: '- [ ] #10\n- [x] #11' }, { number: 2 }];
+    loose[10] = { number: 10, state: 'open' };
+    loose[11] = { number: 11, state: 'closed' };
+    const { maps: listed, finishedWatch } = await read();
+    expect(listed.map((map) => map.settled)).toEqual([null, null]);
+    expect(Object.keys(finishedWatch ?? {})).toEqual(['1', '2']);
+    expect(await changed(finishedWatch)).toBe(false);
+
+    // Closing the last open body-only ticket finishes the first map too.
     loose[10] = { number: 10, state: 'closed' };
     expect(await changed(finishedWatch)).toBe(true);
-    expect(await settledOf()).toMatchObject({ reason: 'finished' });
+    loose[10] = { number: 10, state: 'open' };
+
+    // Removing the open ticket from the body finishes the first map; the second gains a closed one.
+    maps = [{ number: 1, body: '- [x] #11' }, { number: 2, body: '- [x] #11' }];
+    expect(await changed({ 1: finishedWatch?.[1] as never })).toBe(true);
+    expect(await changed({ 2: finishedWatch?.[2] as never })).toBe(true);
+    expect((await read()).maps.map((map) => map.settled?.reason)).toEqual(['finished', 'finished']);
   });
 
   it('keeps a map active, and looks again later, when its sub-issues cannot be read', async () => {
