@@ -47,7 +47,8 @@
     `<header class="m-bar">${left || '<span style="width:44px"></span>'}<h1>${esc(title)}</h1>${right}</header>`;
   const largeBar = (title, left = '', right = '') =>
     `<header class="m-bar is-large"><div class="m-bar-row">${left || '<span></span>'}${right}</div><h1>${esc(title)}</h1></header>`;
-  const avatar = window.ACCOUNT?.on ? window.ACCOUNT.avatar() : `<button class="m-icon-btn" data-toast="Account: signed in as @${D.user.login}. Sign out lives here." aria-label="Account, signed in as ${D.user.login}"><span class="avatar" style="width:30px;height:30px">${D.user.initial}</span></button>`;
+  // Built on each render: the #316 avatar carries aria-expanded for its open menu.
+  const avatar = () => (window.ACCOUNT?.on ? window.ACCOUNT.avatar() : `<button class="m-icon-btn" data-toast="Account: signed in as @${D.user.login}. Sign out lives here." aria-label="Account, signed in as ${D.user.login}"><span class="avatar" style="width:30px;height:30px">${D.user.initial}</span></button>`);
   const cached = EDGE === 'offline' ? `<div class="m-cached" role="status">${ic('refresh')}<span>Offline. Showing what GitHub sent 18 min ago.</span></div>` : '';
 
   function progress(c, total, withLegend = true) {
@@ -177,7 +178,7 @@
   function repos() {
     if (V === 'A') {
       const body = EDGE === 'loading' ? loadingRows() : EDGE === 'empty' ? emptyMaps() : `<div class="m-group">${repoRows()}</div>`;
-      return `${status()}${largeBar('Repositories', '', avatar)}${cached}<div class="m-scroll">
+      return `${status()}${largeBar('Repositories', '', avatar())}${cached}<div class="m-scroll">
         <div class="m-search">${ic('search')}<input aria-label="Search repositories" placeholder="Search"></div>
         <div class="m-section-title">With maps</div>${body}</div>`;
     }
@@ -197,7 +198,7 @@
                     ${n ? `<div class="m-next">${dot('frontier')}<span class="m-row-main"><b>Next:</b> #${n.number} ${esc(n.title)}</span></div>` : c.frontier ? `<div class="m-next">${dot('frontier')}<span class="m-row-main">${c.frontier} ready to start</span></div>` : ''}</button>`;
                 })
                 .join('');
-      return `${status()}${largeBar('Following', '', avatar)}${cached}<div class="m-scroll">${cards}
+      return `${status()}${largeBar('Following', '', avatar())}${cached}<div class="m-scroll">${cards}
         <button class="m-btn is-quiet" data-act="browse" style="margin-top:4px">${ic('plus')}Follow another map</button></div>`;
     }
     if (REMIX === 'filter') return reposFiltered();
@@ -205,7 +206,7 @@
     const repoNames = ['All', ...new Set(D.maps.map((m) => m.repo.split('/')[1]))];
     const shown = D.maps.filter((m) => ui.mapsFilter === 'All' || m.repo.endsWith(`/${ui.mapsFilter}`));
     const body = EDGE === 'loading' ? loadingRows() : EDGE === 'empty' ? emptyMaps() : `<div class="m-group">${shown.map((m) => mapRow(m, { repo: true })).join('')}</div>`;
-    return `${status()}${largeBar('Maps', '', avatar)}${cached}<div class="m-scroll">
+    return `${status()}${largeBar('Maps', '', avatar())}${cached}<div class="m-scroll">
       <div class="m-search">${ic('search')}<input aria-label="Search maps" placeholder="Search maps and repos"></div>
       <div class="m-filter" role="group" aria-label="Filter by repository">${repoNames.map((r) => `<button data-act="maps-filter" data-f="${esc(r)}" aria-pressed="${ui.mapsFilter === r}">${esc(r)}</button>`).join('')}</div>
       <div class="m-section-title">Recently active</div>${body}</div>`;
@@ -220,7 +221,7 @@
     const shown = D.maps.filter((m) => ui.mapsFilter === 'All' || m.repo === ui.mapsFilter).sort((a, b) => minutesAgo(a.updated) - minutesAgo(b.updated));
     const label = ui.mapsFilter === 'All' ? 'All maps' : ui.mapsFilter.split('/')[1];
     const body = EDGE === 'loading' ? loadingRows() : EDGE === 'empty' ? emptyMaps() : `<div class="m-group">${shown.map((m) => mapRow(m, { repo: ui.mapsFilter === 'All' })).join('')}</div>`;
-    return `${status()}${largeBar('Maps', '', avatar)}${cached}<div class="m-scroll">
+    return `${status()}${largeBar('Maps', '', avatar())}${cached}<div class="m-scroll">
       <div class="m-search">${ic('search')}<input aria-label="Search maps" placeholder="Search maps and repos"></div>
       <div class="m-filter-row"><button class="m-filter-btn" data-act="filter-open" aria-haspopup="dialog" aria-label="Filter by repository, showing ${esc(label)}">${ic('filter')}<span>Filter by</span><b>${esc(label)}</b>${ic('down')}</button></div>
       <div class="m-section-title">${ui.mapsFilter === 'All' ? 'Latest' : `${shown.length} map${shown.length === 1 ? '' : 's'} · latest first`}</div>${body}</div>${ui.picker ? repoPicker() : ''}`;
