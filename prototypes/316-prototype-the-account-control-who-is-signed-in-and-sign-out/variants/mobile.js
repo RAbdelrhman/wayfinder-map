@@ -411,7 +411,9 @@
       here().screen = 'map';
     }
     const screen = here().screen;
-    app.innerHTML = window.ACCOUNT?.screens[screen] ? window.ACCOUNT.screens[screen]({ status, bar, backBtn }) : screen === 'signin' ? signin() : screen === 'repos' ? repos() : screen === 'repos-browse' ? reposBrowse() : screen === 'maps' ? maps() : screen === 'map' ? mapView() : ticketPage();
+    // #316 screens come from a fixed list; screen is from the URL, so only own entries count.
+    const accountScreen = window.ACCOUNT && Object.hasOwn(window.ACCOUNT.screens, screen) ? window.ACCOUNT.screens[screen] : null;
+    app.innerHTML = typeof accountScreen === 'function' ? accountScreen({ status, bar, backBtn }) : screen === 'signin' ? signin() : screen === 'repos' ? repos() : screen === 'repos-browse' ? reposBrowse() : screen === 'maps' ? maps() : screen === 'map' ? mapView() : ticketPage();
     if (window.ACCOUNT?.on) app.insertAdjacentHTML('beforeend', window.ACCOUNT.overlay());
     document.title = `${V} · ${screen}`;
     const sheet = app.querySelector('.m-sheet .m-scroll');
