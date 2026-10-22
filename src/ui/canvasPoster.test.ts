@@ -32,7 +32,12 @@ describe('decoded poster cache', () => {
     expect(cache.ready('/poster')).toBe(image);
     expect(calls).toBe(1);
   });
-  it('retains failure as unavailable and bounds cached entries', async () => {
+  it('retries a transient failure and bounds cached entries', async () => {
+    let calls = 0;
+    const retry = new PosterCache(async () => { calls++; throw new Error('temporary'); });
+    await retry.whenReady('/retry');
+    await retry.whenReady('/retry');
+    expect(calls).toBe(2);
     const cache = new PosterCache(async () => { throw new Error('decode failed'); }, 1);
     expect(await cache.whenReady('/one')).toBeNull();
     await cache.whenReady('/two');

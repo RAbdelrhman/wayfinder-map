@@ -10,9 +10,11 @@ Decision: implement the user's **A+B, round 2** choice from #310, merged in PR #
 - A stored poster covers boot time without reducing live readiness. Whole-board entries use `assets/poster.png`, `.jpg`, `.jpeg` or `.webp` beside the selected board. Variant entries reuse their tile image when present. No screenshot is generated automatically, and a poster is only as fresh as its SHA-addressed branch content.
 - The chosen skeleton covers missing, failed and still-decoding posters. A late decode cannot cover an already-live or replaced canvas. A stalled document retains the skeleton after the existing status timeout.
 
-#306's zero speculative file-download budget on startup and list refresh remains: poster requests start on focus, pointer intent or activation, never by scanning a rendered list. Decoded pictures have a bounded 24-entry cache.
+#306's zero server-wide speculative file-download budget on startup and list refresh remains. As the #310 decision explicitly permits, each rendered card selects its one stored poster per new SHA. The viewer requests that picture with the card so it can decode before activation. Decoded pictures have a bounded 24-entry cache. A failed read can retry on viewer intent.
 
-## Measurements, 2026-10-22
+Prototype authors run `bun run canvas:poster prototypes/<task-id>` after their final edit, then `bun run canvas:poster --check prototypes/<task-id>`, and commit `assets/poster.webp` on that prototype branch. The capture uses installed Chrome, real board content and a 1280 × 800 viewport. It does not push or modify other branches. Existing branches without a poster keep the chosen skeleton fallback.
+
+## Initial measurements, 2026-10-22
 
 Same Intel i7-8750H laptop as #214. Actual production shared UI from this worktree, built with `node scripts/build.mjs`. Localhost ran the CLI server on port 4494 in T3 Code's Chromium preview; desktop ran Electron 44.4.3 with its own server and isolated development profile. These are development builds, not an installed release update.
 
@@ -29,7 +31,7 @@ The probe samples each `requestAnimationFrame`: a visible stage is covered by it
 | Localhost #196 | None | 20.8 / 25.5 ms | 295.2 / 342.1 ms | 0 |
 | Localhost #163 | None | 29.9 / 38.4 ms | 152.3 / 228.6 ms | 0 |
 
-The chosen loading state opens under 300 ms in every sampled run and covers the previously empty interval. Live interactivity still exceeds 300 ms on some heavy-board opens. This change does not claim faster document boot, universal sub-300 ms interactivity, or the pan/zoom performance owned by #305.
+The chosen loading state opens under 300 ms in every sampled run and covers the previously empty interval. Live interactivity still exceeds 300 ms on some heavy-board opens. This change does not claim faster document boot, universal sub-300 ms interactivity, or the pan/zoom performance owned by #305. These initial runs preceded the independent review's system-theme and poster-workflow corrections below.
 
 Raw local records: `.audit/desktop-final.json`, `.audit/localhost-final.json`; the desktop CDP driver is `.audit/measure-desktop.mjs`, and the shared browser probe is `.audit/probe.js`. Localhost was driven through `preview_evaluate` using that probe. The initial run overlapped repository tests; the final repeated samples above did not.
 
@@ -37,7 +39,15 @@ Raw local records: `.audit/desktop-final.json`, `.audit/localhost-final.json`; t
 
 - `bun run typecheck`: passed.
 - `bun run lint`: passed.
-- `bun run test`: 127 files, 1,678 tests passed.
+- `bun run test`: 128 files, 1,682 tests passed after the review fixes.
 - New Vitest cases cover named escaped skeleton content, same-origin poster addresses, stored-poster selection, decoded-only cache behavior, cache bounds, startup request budget, poster failure, late decode, immediate loading coverage and stalled-load coverage.
 
 Physical touch, screen-reader output, and the installed release are not verified by these development measurements.
+
+## Independent review corrections
+
+Round 1 correctly rejected a light skeleton under the system dark theme and the missing poster producer/card preload. Both are corrected. A structural stylesheet test now pairs every explicit-dark skeleton override with its system-dark twin. Runtime checks with no saved theme report `rgb(22,22,21)` under system dark and `rgb(236,235,230)` under system light. A stalled load stops pulsing at the status timeout; transient poster failures can retry. Narrow pane/float skeleton captions retain the prototype's fixed grid and its disclosed layout tradeoff.
+
+The capture command was exercised on #310 and on an archive of the real #196 branch at `ee804286cc4227ba817e03c0de0cb2e5a1e57c2a`. Both produced valid WebPs. The #196 capture was visually inspected. An Electron network fixture supplies that captured image and adds its filename to the prototype discovery response, exercising the actual card metadata, preloader, decode, stage and live handoff. It records one request before the click, one total, both poster and skeleton present synchronously at the click, poster frames before the live frame, and zero empty frames. This is an integration fixture; it does not claim the old remote #196 branch was backfilled. No other prototype branch was modified.
+
+The same-session before-change Electron baseline in `.audit/desktop-baseline.jsonl` measured #196 at 319.8 ms median live ready and 272 ms median empty stage, with a cold first-open outlier of 1,457 ms empty. #163 had 102 ms median empty stage. These complement the earlier #214 baseline above.

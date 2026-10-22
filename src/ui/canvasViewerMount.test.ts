@@ -19,7 +19,7 @@ const GLOBALS = [
 
 let browser: Window;
 /** Each test gets its own window: the viewer registers document and window listeners that cannot be removed. */
-function setup(loadPoster?: PosterLoader): { app: HTMLElement; viewer: HTMLElement } {
+function setup(loadPoster?: PosterLoader, withPoster = false): { app: HTMLElement; viewer: HTMLElement } {
   browser = new Window({ url: 'http://127.0.0.1:4479/repos/octo/repo/maps/205', settings: { disableIframePageLoading: true } });
   for (const name of GLOBALS) vi.stubGlobal(name, browser[name]);
   vi.stubGlobal('window', browser);
@@ -27,6 +27,7 @@ function setup(loadPoster?: PosterLoader): { app: HTMLElement; viewer: HTMLEleme
   app.id = 'app';
   setTrustedHtml(app, `${entry(42)}${entry(43)}<iframe class="decision-variant-page" tabindex="-1" aria-hidden="true" title=""></iframe>`);
   document.body.append(app);
+  if (withPoster) app.querySelector<HTMLElement>('[data-canvas-url]')!.dataset['canvasPoster'] = board(42).replace('index.html', 'assets/poster.webp');
   mountCanvasViewer(app, undefined, loadPoster ? { loadPoster } : {});
   return { app, viewer: document.querySelector<HTMLElement>('#canvas-viewer')! };
 }
@@ -57,16 +58,24 @@ describe('unprepared loading stage (#304)', () => {
     expect(frames()[0]!.classList.contains('is-ready')).toBe(true);
   });
 
-  it('does not request posters on list render, and keeps the skeleton when decoding fails', async () => {
+  it('requests a stored poster with its card and keeps the skeleton when decoding fails', async () => {
     const load = vi.fn<PosterLoader>().mockRejectedValue(new Error('invalid image'));
-    const { app, viewer } = setup(load);
-    entryFor(app, 42).dataset['canvasPoster'] = board(42).replace('index.html', 'assets/poster.png');
-    vi.advanceTimersByTime(1000);
-    expect(load).not.toHaveBeenCalled();
+    const { app, viewer } = setup(load, true);
+    expect(load).toHaveBeenCalledTimes(1);
     entryFor(app, 42).click();
     await Promise.resolve(); await Promise.resolve();
     expect(load).toHaveBeenCalledTimes(1);
     expect(viewer.querySelector('.vw-poster-image')).toBeNull();
+    expect(viewer.querySelector('.vw-skeleton')).not.toBeNull();
+  });
+
+  it('puts the card-decoded poster on the stage synchronously at an unprepared click', async () => {
+    const load = vi.fn<PosterLoader>().mockImplementation(async () => document.createElement('img'));
+    const { app, viewer } = setup(load, true);
+    await Promise.resolve();
+    entryFor(app, 42).click();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(viewer.querySelector('.vw-poster-image')).not.toBeNull();
     expect(viewer.querySelector('.vw-skeleton')).not.toBeNull();
   });
 

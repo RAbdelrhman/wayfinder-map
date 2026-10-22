@@ -39,7 +39,10 @@ export class PosterCache {
     };
     entry.settled = this.load(url).then(
       (image) => (entry.image = image),
-      () => null,
+      () => {
+        if (this.entries.get(url) === entry) this.entries.delete(url);
+        return null;
+      },
     );
     this.entries.set(url, entry);
     this.trim();

@@ -470,13 +470,28 @@ export function mountCanvasViewer(
     viewer.animate(reverse ? [large, small] : [small, large], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
   };
   const posters = new PosterCache(options.loadPoster);
-  /** A poster is requested only on intent (dwell, focus, press or open), never when a list renders: #306 allows no speculative file downloads. */
+  /** A card-selected read, allowed by #306; no server-wide branch warm-up is added. */
   const requestPoster = (from: Element | null): void => {
     const source = posterSource(from, location.origin);
     if (!source) return;
     if (source.tile?.complete && source.tile.naturalWidth > 0) posters.adopt(source.url, source.tile);
     else posters.request(source.url);
   };
+  const requestedCards = new Set<string>();
+  const requestCardPosters = (): void => {
+    for (const entry of app.querySelectorAll<HTMLElement>('[data-canvas-poster]')) {
+      const source = posterSource(entry, location.origin);
+      if (!source || requestedCards.has(source.url)) continue;
+      requestedCards.add(source.url);
+      requestPoster(entry);
+    }
+  };
+  let posterScan: ReturnType<typeof setTimeout> | undefined;
+  new MutationObserver(() => {
+    clearTimeout(posterScan);
+    posterScan = setTimeout(requestCardPosters, 0);
+  }).observe(app, { childList: true, subtree: true });
+  requestCardPosters();
   /** What sits on the stage until the canvas paints: the skeleton, and over it a poster that has decoded. */
   let placeholder = 0;
   const paintPlaceholder = (route: CanvasRoute, from: Element | null): void => {
@@ -532,6 +547,7 @@ export function mountCanvasViewer(
     timer = setTimeout(() => {
       if (source === 'loading') {
         source = 'none';
+        stage.querySelector('.vw-skeleton')?.classList.add('is-stalled');
         paint();
       }
     }, 3000);

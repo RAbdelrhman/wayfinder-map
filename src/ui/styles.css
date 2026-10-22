@@ -7959,6 +7959,13 @@ textarea.input {
 .vw-skel-frame figcaption b { color: #0b0b0b; }
 :root[data-theme='dark'] .vw-skel-frame figcaption { color: #b6b4ad; }
 :root[data-theme='dark'] .vw-skel-frame figcaption b { color: #f2f1ec; }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) .vw-skeleton { background: #161615; color: #f2f1ec; }
+  :root:where(:not([data-theme='light'])) .vw-skel-bar { background: #1f1f1d; border-color: rgb(255 255 255 / 10%); }
+  :root:where(:not([data-theme='light'])) .vw-skel-frame figcaption { color: #b6b4ad; }
+  :root:where(:not([data-theme='light'])) .vw-skel-frame figcaption b { color: #f2f1ec; }
+}
+.vw-skeleton.is-stalled .wf-bone::before { animation: none; }
 .vw-skeleton .wf-bone.is-block { display: block; width: 100%; height: auto; }
 .vw-skel-shot { aspect-ratio: 16 / 10; }
 .vw-skel-present { display: grid; place-items: center; overflow: hidden; padding: 18px; }
