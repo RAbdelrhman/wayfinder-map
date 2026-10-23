@@ -231,14 +231,24 @@ describe('RepositoryStore settling', () => {
     const watch = { 1: { basis: 'a', unattached: {}, retryAt: null }, 2: { basis: 'b', unattached: {}, retryAt: null } };
     const fetcher = vi.fn<RepositoryFetcher>(async () => ({ maps: [map(1, finished, false), map(2, finished, false)], finishedWatch: watch, warnings: [] }));
     const finishedChecker = vi.fn(async () => false);
-    const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher, changeChecker: async () => false, finishedChecker });
+    const detailer = vi.fn<MapDetailFetcher>(async (_options, unread) => ({
+      maps: unread.map((candidate) => map(candidate.number, candidate.settled, true)),
+      warnings: [],
+    }));
+    const cache = new RepositoryStore({ mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', fetcher, changeChecker: async () => false, finishedChecker, detailer });
     await cache.snapshot('owner/repo');
 
     await cache.settle('owner/repo', 1, { reason: 'manual', since: '2026-10-01T00:00:00.000Z' });
     await cache.refreshIfChanged('owner/repo');
     expect(finishedChecker).toHaveBeenLastCalledWith(expect.anything(), { 2: watch[2] }, expect.any(Date));
+    expect(detailer).not.toHaveBeenCalled();
 
-    await cache.settle('owner/repo', 2, null);
+    const restored = await cache.settle('owner/repo', 2, null);
+    expect(detailer).toHaveBeenCalledExactlyOnceWith(
+      { repo: 'owner/repo', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' },
+      [expect.objectContaining({ number: 2, settled: null, ticketsLoaded: false })],
+    );
+    expect(restored?.maps[1]).toMatchObject({ number: 2, settled: null, ticketsLoaded: true });
     await cache.refreshIfChanged('owner/repo');
     expect(finishedChecker).toHaveBeenLastCalledWith(expect.anything(), {}, expect.any(Date));
   });
