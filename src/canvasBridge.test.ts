@@ -159,7 +159,7 @@ describe('sandboxed canvas bridge', () => {
     it('gives each option frame a compositor layer, so scrolling does not repaint the pages inside', () => {
       const { append, style } = inject({});
       expect(append).toHaveBeenCalledWith(style);
-      expect(style.textContent).toBe('#stage .frame { will-change: transform; } #stage.wf-zoomed-in .frame { will-change: auto; }');
+      expect(style.textContent).toContain('#stage .frame { will-change: transform; } #stage.wf-zoomed-in .frame { will-change: auto; }');
     });
     it('leaves snapshots and option pages, which have no board, alone', () => {
       expect(inject(null).append).not.toHaveBeenCalled();

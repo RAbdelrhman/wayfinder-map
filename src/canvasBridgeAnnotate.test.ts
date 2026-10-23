@@ -24,6 +24,23 @@ function boot(html: string) {
 }
 
 describe('wrapper hit tests and marks (#213)', () => {
+  it('hides legacy presentation notes and their toggle while keeping board notes visible', () => {
+    boot(`<div id="stage"><aside class="note" id="board-note">Option notes</aside></div>
+      <div id="present-view"><button id="notes">Notes</button><aside class="note" id="side-note">Legacy feedback</aside></div>`);
+    const sidebar = document.querySelector<HTMLElement>('#side-note')!;
+    const toggle = document.querySelector<HTMLElement>('#notes')!;
+    const boardNote = document.querySelector<HTMLElement>('#board-note')!;
+    expect(getComputedStyle(sidebar).display).toBe('none');
+    expect(getComputedStyle(toggle).display).toBe('none');
+    expect(getComputedStyle(boardNote).display).not.toBe('none');
+    // The old engine resets hidden each time an option opens or N is pressed.
+    sidebar.hidden = true;
+    sidebar.hidden = false;
+    expect(getComputedStyle(sidebar).display).toBe('none');
+    document.querySelector<HTMLElement>('#present-view')!.hidden = true;
+    expect(getComputedStyle(boardNote).display).not.toBe('none');
+  });
+
   it('names what is under the pointer, finds it again, and reads its colour', () => {
     const page = boot(`<main><div class="card"><h3>Continue</h3><p id="long">A paragraph that runs well past forty characters, so it is no name.</p></div>
       <button aria-label="Close the hero">×</button><span style="background-color: rgb(47, 111, 208)">Go</span></main>`);
