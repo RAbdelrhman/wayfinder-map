@@ -147,7 +147,7 @@ There is **no accuracy conclusion**. Keep logic as the default and preserve the 
 
 Built so #173 can compare the rules with a model on the same tickets. Logic only stays the default, and nothing below runs unless the user opts in.
 
-**Opt-in.** Settings → Calibration is Off by default (browser storage `wayfinder-map:auto-calibration:v1`). Turning it on asks for a shadow model: any ready Codex or Claude model, defaulting to the model mapped to the Simple tier. For each task or research ticket Start next (and the auto map) then makes one extra model call, with the same headless CLI and rating prompt as #166, beside the rules rating. Prototype and grilling tickets get no call and no pair. When the shadow model is also the rating model chosen for Auto, its one answer serves as both and no second call is made. Start waits until the shadow answers so no record loses its pair.
+**Opt-in.** Settings â†’ Calibration is Off by default (browser storage `wayfinder-map:auto-calibration:v1`). Turning it on asks for a shadow model: any ready Codex or Claude model, defaulting to the model mapped to the Simple tier. For each task or research ticket Start next (and the auto map) then makes one extra model call, with the same headless CLI and rating prompt as #166, beside the rules rating. Prototype and grilling tickets get no call and no pair. When the shadow model is also the rating model chosen for Auto, its one answer serves as both and no second call is made. Start waits until the shadow answers so no record loses its pair.
 
 **The shadow never decides.** `pickAuto` reads only the active rating (rules, or the rating model with its fallback). The pair travels beside it in the request and is stored; it is not an input to the tier, model, or `overrides`. A test compares an entry built with and without a pair.
 
@@ -192,7 +192,7 @@ Ramon explicitly chose "Close as inconclusive with the current evidence, waiving
 
 ### Current local sample
 
-Read `~/.wayfinder-map/hand-offs.json` and `~/.wayfinder-map/auto-maps.json` at 2026-10-23 13:21 UTC against source `838ef87`. The retained store has 16 hand-offs, all `untracked`, four with Auto decisions and zero with a non-null calibration pair. There are no retained map #121 records. Of the four Auto records, one is a task, one is research, one is a prototype and one is grilling; all belong to map #236. Persisted calibration is `off`.
+Read `~/.wayfinder-map/hand-offs.json` and `~/.wayfinder-map/auto-maps.json` at 2026-10-23 13:21 UTC against source `838ef87`. The retained store has 16 hand-offs, all `untracked`, four with Auto decisions and zero with a non-null calibration pair. There are no retained map #121 records. Of the four Auto records, one is a task, one is research, one is a prototype and one is grilling; three belong to map #236, and the grilling record belongs to map #205. Persisted calibration is `off`.
 
 This is a local retained snapshot, not an all-time or cross-machine count. The store's 30-day retention means missing older records cannot establish that no hand-offs ever completed. #186 is now closed and its paired tracking is merged in PR #190; the instrumentation gap described in the earlier readiness audit is historical. Collection was not enabled for this closeout.
 
