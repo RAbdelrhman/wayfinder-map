@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.22](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.21...v0.2.22) (2026-10-23)
+
+
+### Bug Fixes
+
+* make Windows release tests deterministic ([#333](https://github.com/RAbdelrhman/wayfinder-map/issues/333)) ([9684877](https://github.com/RAbdelrhman/wayfinder-map/commit/9684877d8db4bf1a9450b95720f5278e12b102c2))
+
 ## [0.2.21](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.20...v0.2.21) (2026-10-22)
 
 
