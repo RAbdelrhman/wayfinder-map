@@ -4,6 +4,8 @@ import { CanvasFeedback } from './canvasFeedback.js';
 import type { FeedbackContext } from './canvasFeedback.js';
 import { PROTOTYPE_HOST_VERSION } from '../prototypes.js';
 import { setTrustedHtml } from './trustedHtml.js';
+import { Window } from 'happy-dom';
+import { resetShortcuts, saveShortcut } from '../canvasShortcuts.js';
 
 const SHA = 'a'.repeat(40);
 const URL_ = `/proto/octo/repo/prototype%2F42-home/${SHA}/${PROTOTYPE_HOST_VERSION}/prototypes/42/index.html`;
@@ -75,6 +77,37 @@ afterEach(() => {
 });
 
 describe('scrolling without changed feedback', () => {
+  it('keeps saved hints, exact modifier handlers and nested canvas keys consistent without firing in text', async () => {
+    vi.stubGlobal('localStorage', new Window().localStorage);
+    try {
+      const view = mount({});
+      await saveShortcut('element', 'Shift+Q');
+      await saveShortcut('panel', 'Shift+F');
+      view.repaint();
+      expect(view.$('[data-fb-tool="element"]')?.getAttribute('aria-keyshortcuts')).toBe('Shift+Q');
+      expect(view.$('[data-fb-act="panel"]')?.getAttribute('title')).toBe('Feedback panel (Shift+F)');
+      expect(view.key('E')).toBe(false);
+      expect(view.key('q')).toBe(false);
+      const event = new KeyboardEvent('keydown', { key: 'q', shiftKey: true });
+      expect(view.feedback.key(event)).toBe(true);
+      expect(view.$('[data-fb-tool="element"]')?.getAttribute('aria-pressed')).toBe('true');
+      view.feedback.canvasKey('Shift+Q');
+      expect(view.$('[data-fb-tool="element"]')?.getAttribute('aria-pressed')).toBe('false');
+      const editable = document.createElement('div');
+      editable.contentEditable = 'true';
+      const child = document.createElement('span');
+      editable.append(child);
+      document.body.append(editable);
+      for (const target of [child, document.createElement('input'), document.createElement('textarea')]) {
+        const typed = Object.defineProperty(new KeyboardEvent('keydown', { key: 'q', shiftKey: true }), 'target', { value: target });
+        expect(view.feedback.key(typed)).toBe(false);
+      }
+      await resetShortcuts();
+      view.repaint();
+      expect(view.$('[data-fb-tool="element"]')?.getAttribute('aria-keyshortcuts')).toBe('E');
+      expect(view.key('E')).toBe(true);
+    } finally { vi.unstubAllGlobals(); }
+  });
   it('keeps the board hint mounted across layout messages and updates it when the context changes', () => {
     const view = mount({ option: null });
     const hint = view.$('.cf-hint');

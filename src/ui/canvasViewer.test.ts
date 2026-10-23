@@ -258,7 +258,9 @@ describe('pin and note messages and routes (#213)', () => {
     expect(readCanvasMessage({ wf: 1, type: 'targets', items: [{ name: 'Card', selector: '#card', rect }] })).not.toBeNull();
     expect(readCanvasMessage({ wf: 1, type: 'targets', items: [{ name: 'Card', rect }] })).toBeNull();
     expect(readCanvasMessage({ wf: 1, type: 'key', key: 'E' })).toEqual({ wf: 1, type: 'key', key: 'E' });
-    expect(readCanvasMessage({ wf: 1, type: 'key', key: 'X' })).toBeNull();
+    expect(readCanvasMessage({ wf: 1, type: 'key', key: 'Ctrl+Alt+X' })).toEqual({ wf: 1, type: 'key', key: 'Ctrl+Alt+X' });
+    expect(readCanvasMessage({ wf: 1, type: 'key', key: 'Meta+X' })).toBeNull();
+    expect(readCanvasMessage({ wf: 1, type: 'key', key: 'ctrl+x' })).toBeNull();
     expect(readCanvasMessage({ wf: 1, type: 'targets', items: [{ name: 'Card', selector: '#card', rect: { left: 1 } }] })).toBeNull();
     for (const value of [
       { ...hit, color: 'red; background:url(x)' },

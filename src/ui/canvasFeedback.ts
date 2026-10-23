@@ -1,3 +1,4 @@
+import { shortcutAria, shortcutAssignments, shortcutFromEvent } from '../canvasShortcuts.js';
 /**
  * D4 from #210 (kept in PR #290, recorded in #211): pins, elements, colours and notes on a canvas
  * option, collected in a closable feedback panel, reviewed there and posted as one comment on the
@@ -27,7 +28,7 @@ export const FEEDBACK_ICONS = {
 
 export type FeedbackTool = 'pin' | 'element' | 'color';
 type ToolId = FeedbackTool | 'note';
-/** The tool keys ship fixed (#211); rebinding them waits for the Settings UI picked in #292. */
+/** Default tool metadata; actual keys come from the saved #292 D assignments. */
 export const FEEDBACK_TOOLS: readonly { id: ToolId; name: string; icon: string; key: string; mode: boolean }[] = [
   { id: 'pin', name: 'Pin', icon: FEEDBACK_ICONS.pin, key: 'P', mode: true },
   { id: 'element', name: 'Select element', icon: FEEDBACK_ICONS.cursor, key: 'E', mode: true },
@@ -254,23 +255,25 @@ export class CanvasFeedback {
     const compact = size !== 'full';
     const n = session.marks.length;
     const badge = n ? `<span class="badge cf-badge">${String(n)}</span>` : '';
-    const tools = `<div class="segmented cf-toolgroup" role="group" aria-label="Feedback tools">${FEEDBACK_TOOLS.map((tool) => {
+    const assignments = shortcutAssignments();
+    const tools = `<div class="segmented cf-toolgroup" role="group" aria-label="Feedback tools">${FEEDBACK_TOOLS.map((defaultTool) => {
+      const tool = { ...defaultTool, key: assignments[defaultTool.id] };
       const off = this.offReason(tool.id, context);
       const on = tool.mode && this.tool === tool.id;
-      return `<button type="button" class="seg${on ? ' is-on' : ''}" data-fb-tool="${tool.id}" aria-label="${tool.name}" aria-keyshortcuts="${tool.key}"${tool.mode ? ` aria-pressed="${String(on)}"` : ''}${off ? ` aria-disabled="true" title="${escapeHtml(off)}"` : ` title="${tool.name} (${tool.key})"`}>${icon(tool.icon)}${compact ? '' : `<span class="vw-lbl">${tool.name}</span><kbd>${tool.key}</kbd>`}</button>`;
+      return `<button type="button" class="seg${on ? ' is-on' : ''}" data-fb-tool="${tool.id}" aria-label="${tool.name}" aria-keyshortcuts="${shortcutAria(tool.key)}"${tool.mode ? ` aria-pressed="${String(on)}"` : ''}${off ? ` aria-disabled="true" title="${escapeHtml(off)}"` : ` title="${tool.name} (${tool.key})"`}>${icon(tool.icon)}${compact ? '' : `<span class="vw-lbl">${tool.name}</span><kbd>${tool.key}</kbd>`}</button>`;
     }).join('')}</div>`;
     const why =
       context.source === 'none'
         ? `<span class="cf-chip is-warn" title="${NO_BRIDGE}">${icon(INFO)}${compact ? 'Notes only' : 'Notes only: this canvas did not answer'}</span>`
         : '';
-    const row = `<div class="cf-toolrow" role="toolbar" aria-label="Annotate">${tools}${why}</div>`;
+    const row = `<div class="cf-toolrow" role="toolbar" aria-label="Annotate">${tools}${why}<span class="topbar-spacer"></span><button type="button" class="ghost cf-shortcuts" data-canvas-shortcuts title="Change these keys in Settings &rsaquo; Keyboard shortcuts">${icon('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 15h10"/>')}Shortcuts</button></div>`;
     if (compact) {
       const tab = (id: 'canvas' | 'feedback', label: string): string =>
-        `<button type="button" role="tab" class="seg${this.paneTab === id ? ' is-on' : ''}" aria-selected="${String(this.paneTab === id)}" data-fb-tab="${id}"${id === 'feedback' ? ` aria-keyshortcuts="${PANEL_KEY}"` : ''}>${label}${id === 'feedback' && n ? ` ${badge}` : ''}</button>`;
+        `<button type="button" role="tab" class="seg${this.paneTab === id ? ' is-on' : ''}" aria-selected="${String(this.paneTab === id)}" data-fb-tab="${id}"${id === 'feedback' ? ` aria-keyshortcuts="${shortcutAria(shortcutAssignments().panel)}"` : ''}>${label}${id === 'feedback' && n ? ` ${badge}` : ''}</button>`;
       return { bar: '', row, tabs: `<div class="segmented cf-tabs" role="tablist" aria-label="Pane view">${tab('canvas', 'Canvas')}${tab('feedback', 'Feedback')}</div>` };
     }
     const chip = session.posted && context.ticket !== null ? `<span class="cf-chip is-ok">${icon(CHECK)}Posted to #${String(context.ticket)}</span>` : '';
-    const toggle = `<button type="button" class="ghost cf-toggle${this.panelOpen ? ' is-on' : ''}" data-fb-act="panel" aria-pressed="${String(this.panelOpen)}" aria-controls="vw-feedback" aria-keyshortcuts="${PANEL_KEY}" title="Feedback panel (${PANEL_KEY})">${icon(FEEDBACK_ICONS.panel)}<span class="vw-lbl">Feedback</span>${badge}<kbd>${PANEL_KEY}</kbd></button>`;
+    const toggle = `<button type="button" class="ghost cf-toggle${this.panelOpen ? ' is-on' : ''}" data-fb-act="panel" aria-pressed="${String(this.panelOpen)}" aria-controls="vw-feedback" aria-keyshortcuts="${shortcutAria(shortcutAssignments().panel)}" title="Feedback panel (${shortcutAssignments().panel})">${icon(FEEDBACK_ICONS.panel)}<span class="vw-lbl">Feedback</span>${badge}<kbd>${shortcutAssignments().panel}</kbd></button>`;
     return { bar: `${chip}${toggle}<span class="vw-sep"></span>`, row, tabs: '' };
   }
 
@@ -488,7 +491,7 @@ export class CanvasFeedback {
   }
   private panelHtml(context: FeedbackContext): string {
     const ticket = context.ticket === null ? 'the prototype ticket' : `#${String(context.ticket)}`;
-    const close = `<button type="button" class="iconbtn" data-fb-act="panel-close" aria-label="Close the feedback panel (${PANEL_KEY})" title="Close (${PANEL_KEY})">${icon(CLOSE)}</button>`;
+    const close = `<button type="button" class="iconbtn" data-fb-act="panel-close" aria-label="Close the feedback panel (${shortcutAssignments().panel})" title="Close (${shortcutAssignments().panel})">${icon(CLOSE)}</button>`;
     if (this.panel === 'review') {
       const posting = this.session()?.posting ?? false;
       const error = this.error ? `<div class="cf-banner" role="alert">${icon(INFO)}<span>${escapeHtml(this.error)}</span></div>` : '';
@@ -572,9 +575,10 @@ export class CanvasFeedback {
   }
   /** A tool key pressed while focus was inside the canvas, which the canvas left alone. */
   canvasKey(key: string): void {
-    const tool = FEEDBACK_TOOLS.find((candidate) => candidate.key === key);
+    const assignments = shortcutAssignments();
+    const tool = FEEDBACK_TOOLS.find((candidate) => assignments[candidate.id] === key);
     if (tool) this.useTool(tool.id);
-    else if (key === PANEL_KEY) this.togglePanel();
+    else if (key === assignments.panel) this.togglePanel();
   }
   onHit(hit: CanvasHit): void {
     const asked = this.requests.get(hit.requestId);
@@ -844,18 +848,20 @@ export class CanvasFeedback {
       this.setColor(Number(dot.dataset['fbSvdot']), fromHsv(hsv), hsv);
       return true;
     }
-    const typing = target?.matches('textarea, input:not([type=range]), select') ?? false;
-    if (typing || event.ctrlKey || event.metaKey || event.altKey) return false;
-    const letter = event.key.length === 1 ? event.key.toUpperCase() : '';
-    const tool = FEEDBACK_TOOLS.find((candidate) => candidate.key === letter);
+    const typing = target?.closest('textarea, input:not([type=range]), select, [contenteditable]') !== null && target !== null;
+    if (typing || event.defaultPrevented || event.isComposing || event.repeat) return false;
+    const letter = shortcutFromEvent(event);
+    const assignments = shortcutAssignments();
+    const tool = FEEDBACK_TOOLS.find((candidate) => assignments[candidate.id] === letter);
     if (tool) {
       this.useTool(tool.id);
       return true;
     }
-    if (letter === PANEL_KEY) {
+    if (letter === assignments.panel) {
       this.togglePanel();
       return true;
     }
+    if (event.ctrlKey || event.metaKey || event.altKey) return false;
     if (event.key === 'Enter' && this.tool === 'pin' && !target?.matches('button, a')) {
       const box = this.canvas.getBoundingClientRect();
       this.request('pin', box.width / 2, box.height / 2);

@@ -1,3 +1,4 @@
+import { inCanvasFrame, mountCanvasReturn } from './canvasShortcutSettings.js';
 import { bindAccountMark, bindUpdater } from './chrome.js';
 import { mountNavigation } from './navigation.js';
 import { mountSettingsPage } from './settings.js';
@@ -19,10 +20,12 @@ function toast(message: string, ms = 5000): void {
   toastTimer = setTimeout(() => { element.hidden = true; }, ms);
 }
 
+const canvas = inCanvasFrame();
 mountNavigation({ shell: need('app'), sidebar: need('sidebar-shell'), topbar: need('nav-topbar'), topbarRoot: need('topbar'), page: 'settings', repo: null, mapNumber: null, view: 'map' });
+if (canvas) mountCanvasReturn(need('topbar'));
 bindAccountMark(document.getElementById('account-mark'));
 bindUpdater(need('updater'), toast);
-const refreshLocal = mountSettingsPage(need('main'), toast);
+const refreshLocal = mountSettingsPage(need('main'), toast, { canvas });
 const tour = mountTour({ toast, app: need('app') });
 need('main').addEventListener('click', (event) => {
   if (event.target instanceof Element && event.target.closest('[data-settings-tour]') !== null) tour.start();

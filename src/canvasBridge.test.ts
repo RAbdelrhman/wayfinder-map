@@ -4,8 +4,68 @@ import { describe, expect, it, vi } from 'vitest';
 import { CANVAS_BRIDGE_SCRIPT, viewerPrototypeBytes } from './canvasBridge.js';
 import { readCanvasMessage } from './ui/canvasViewer.js';
 import ts from 'typescript';
+import { Window } from 'happy-dom';
 
 describe('sandboxed canvas bridge', () => {
+  it('gives saved tools priority over the real engine listener, preserving text entry and unassigned engine keys', () => {
+    const browser = new Window({ url: 'http://localhost/proto/o/r/prototype%2F318/index.html' });
+    const parent = { postMessage: vi.fn() };
+    const theme = vi.fn(), menu = vi.fn(), notes = vi.fn();
+    const source = readFileSync('prototypes/canvas/canvas.js', 'utf8');
+    const start = source.indexOf("  document.addEventListener('keydown', (event) => {");
+    const end = source.indexOf("  addEventListener('hashchange', route);", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const context = {
+      window: browser, document: browser.document, location: browser.location,
+      parent, Element: browser.Element, URL, state: { page: { presentable: [] } },
+      pages: [{}, {}], presenting: () => ({}), $: () => ({ open: false }),
+      toggleTheme: theme, toggleMenu: menu, toggleNotes: notes,
+    };
+    // Register the actual engine first. Event phases, rather than listener registration order,
+    // must keep its commands from swallowing the configured tool key.
+    runInNewContext(source.slice(start, end), context);
+    runInNewContext(CANVAS_BRIDGE_SCRIPT, context);
+    browser.document.body.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 't', bubbles: true, cancelable: true }));
+    expect(theme).toHaveBeenCalledOnce();
+    theme.mockClear();
+    const configure = (pin: string): void => {
+      const event = new browser.MessageEvent('message', { data: { wf: 1, type: 'shortcuts', keys: [pin, 'E', 'C', 'N', 'F'] } });
+      Object.defineProperty(event, 'source', { value: parent });
+      browser.dispatchEvent(event);
+      parent.postMessage.mockClear();
+    };
+    const press = (key: string, shiftKey = false, repeat = false): void => {
+      browser.document.body.dispatchEvent(new browser.KeyboardEvent('keydown', { key, shiftKey, repeat, bubbles: true, cancelable: true }));
+    };
+    configure('T');
+    press('t');
+    press('t', false, true);
+    expect(theme).not.toHaveBeenCalled();
+    expect(parent.postMessage).toHaveBeenCalledOnce();
+    expect(parent.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'key', key: 'T' }, '*');
+    configure('Shift+P');
+    press('P', true);
+    press('P', true, true);
+    expect(menu).not.toHaveBeenCalled();
+    expect(parent.postMessage).toHaveBeenCalledOnce();
+    expect(parent.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'key', key: 'Shift+P' }, '*');
+    press('p');
+    expect(menu).toHaveBeenCalledOnce();
+    parent.postMessage.mockClear();
+    press('n');
+    press('n', false, true);
+    expect(notes).not.toHaveBeenCalled();
+    expect(parent.postMessage).toHaveBeenCalledOnce();
+    expect(parent.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'key', key: 'N' }, '*');
+    configure('T');
+    const input = browser.document.createElement('input');
+    browser.document.body.append(input);
+    input.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 't', bubbles: true, cancelable: true }));
+    expect(parent.postMessage).not.toHaveBeenCalled();
+    expect(theme).not.toHaveBeenCalled();
+    void browser.happyDOM.abort();
+  });
   it('distinguishes child Back from Forward and ignores spoofed document messages', () => {
     const listeners = new Map<string, (event: unknown) => void>();
     const parent = { postMessage: vi.fn() };
@@ -258,12 +318,28 @@ describe('sandboxed canvas bridge', () => {
     expect(replace).toHaveBeenCalledWith('#p/B');
     documentListeners.get('keydown')?.({ key: 'Escape' });
     expect(parent.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'key', key: 'Escape' }, '*');
-    // A tool key the canvas left alone goes to the viewer; one the canvas used (P, its page menu) does not.
-    listeners.get('keydown')?.({ key: 'e', defaultPrevented: false, target: null });
+    listeners.get('message')?.({ source: parent, data: { wf: 1, type: 'shortcuts', keys: ['P', 'E', 'C', 'N', 'F'] } });
+    // The configured tool listener handles only valid, uncancelled input.
+    listeners.get('keydown')?.({ key: 'e', defaultPrevented: false, target: null, preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() });
     expect(parent.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'key', key: 'E' }, '*');
     parent.postMessage.mockClear();
     listeners.get('keydown')?.({ key: 'p', defaultPrevented: true, target: null });
     listeners.get('keydown')?.({ key: 'f', ctrlKey: true, defaultPrevented: false, target: null });
+    expect(parent.postMessage).not.toHaveBeenCalled();
+    // Only the actual parent configures the keys; canonical combinations replace fixed defaults.
+    const keys = ['Shift+Q', 'E', 'C', 'N', 'F'];
+    listeners.get('message')?.({ source: parent, data: { wf: 1, type: 'shortcuts', keys } });
+    const preventDefault = vi.fn();
+    listeners.get('keydown')?.({ key: 'p', target: null, preventDefault });
+    expect(parent.postMessage).not.toHaveBeenCalled();
+    listeners.get('keydown')?.({ key: 'q', shiftKey: true, target: null, preventDefault, stopImmediatePropagation: vi.fn() });
+    expect(parent.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'key', key: 'Shift+Q' }, '*');
+    expect(preventDefault).toHaveBeenCalledOnce();
+    parent.postMessage.mockClear();
+    listeners.get('message')?.({ source: {}, data: { wf: 1, type: 'shortcuts', keys: ['P', 'E', 'C', 'N', 'F'] } });
+    listeners.get('keydown')?.({ key: 'p', target: null, preventDefault });
+    listeners.get('keydown')?.({ key: 'q', shiftKey: true, isComposing: true, target: null, preventDefault });
+    listeners.get('keydown')?.({ key: 'q', shiftKey: true, getModifierState: () => true, target: null, preventDefault });
     expect(parent.postMessage).not.toHaveBeenCalled();
   });
 });

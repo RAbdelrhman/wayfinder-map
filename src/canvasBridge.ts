@@ -1,5 +1,7 @@
+import { normalizeShortcut, shortcutFromEvent } from './canvasShortcuts.js';
+
 /** Runs in the prototype's opaque origin. No API or privileged operation is exposed. */
-function canvasBridge(): void {
+function canvasBridge(normalize: typeof normalizeShortcut, fromEvent: typeof shortcutFromEvent): void {
   const historyState = window.history?.state as Record<string, unknown> | null;
   const documentId = typeof historyState?.['wfDocument'] === 'string' ? historyState['wfDocument'] : `${Date.now()}-${Math.random()}`;
   if (window.history) window.history.replaceState({ ...historyState, wfDocument: documentId }, '');
@@ -24,7 +26,9 @@ function canvasBridge(): void {
     },
     true,
   );
-  const TOOL_KEYS = ['P', 'E', 'C', 'N', 'F'];
+  let toolKeys = ['P', 'E', 'C', 'N', 'F'];
+  let toolsConfigured = false;
+  const configureChild = (child: Window): void => { if (toolsConfigured) child.postMessage({ wf: 1, type: 'shortcuts', keys: toolKeys }, '*'); };
   type Item = { id?: string; name?: string; src?: string; kind?: string; styles?: string[] };
   type Page = { id?: string; title?: string; name?: string; sections?: { items?: Item[] }[]; items?: Item[] };
   type Config = {
@@ -322,6 +326,14 @@ function canvasBridge(): void {
   window.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (typeof event.data !== 'object' || event.data === null) return;
     const message = event.data as Record<string, unknown>;
+    if (event.source === parent && message['wf'] === 1 && message['type'] === 'shortcuts') {
+      const keys = message['keys'];
+      if (!Array.isArray(keys) || keys.length !== 5 || !keys.every((key: unknown) => typeof key === 'string' && normalize(key) === key) || new Set(keys).size !== 5) return;
+      toolKeys = keys as string[];
+      toolsConfigured = true;
+      for (const child of document.querySelectorAll('iframe')) if (child.contentWindow) configureChild(child.contentWindow);
+      return;
+    }
     if (event.source !== parent && message['wf'] === 1 && (message['type'] === 'hit' || message['type'] === 'layout' || message['type'] === 'targets')) {
       if (event.source === presentFrame()?.contentWindow) relay(message);
       return;
@@ -330,6 +342,10 @@ function canvasBridge(): void {
     if (event.source !== parent) {
       // Escape from an option document does not bubble through an iframe.
       const child = [...document.querySelectorAll('iframe')].some((frame) => frame.contentWindow === event.source);
+      if (child && event.source && message['wf'] === 1 && message['type'] === 'ready') {
+        configureChild(event.source as Window);
+        return;
+      }
       if (child && event.source && message['wf'] === 1 && message['type'] === 'document' && typeof message['id'] === 'string') {
         const trail = childHistory.get(event.source) ?? { ids: [], index: -1 };
         const index = trail.ids.indexOf(message['id']);
@@ -347,7 +363,7 @@ function canvasBridge(): void {
         post({ type: 'back' });
         return;
       }
-      if (child && message['wf'] === 1 && message['type'] === 'key' && typeof message['key'] === 'string' && TOOL_KEYS.includes(message['key'])) {
+      if (child && message['wf'] === 1 && message['type'] === 'key' && typeof message['key'] === 'string' && toolKeys.includes(message['key'])) {
         post({ type: 'key', key: message['key'] });
         return;
       }
@@ -378,14 +394,16 @@ function canvasBridge(): void {
     },
     true,
   );
-  // The viewer's tool keys (#213), when the canvas left them alone: this runs after the engine's own
-  // document listener, so a key the engine used (P for its page menu) stays the engine's.
+  // #318: saved viewer assignments win over the engine's document-level commands.
+  // Window capture runs first even when the engine registered its listener before this bridge.
   window.addEventListener('keydown', (event) => {
-    const key = event.key.length === 1 ? event.key.toUpperCase() : '';
-    if (!TOOL_KEYS.includes(key) || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+    const key = fromEvent(event, true);
+    if (!toolsConfigured || !key || !toolKeys.includes(key) || event.defaultPrevented) return;
     if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]')) return;
-    post({ type: 'key', key });
-  });
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (!event.repeat) post({ type: 'key', key });
+  }, true);
   // On a canvas board, each option page repaints on every scroll step unless the compositor holds it in a layer of its own.
   const onBoard = (): void => {
     if (!document.querySelector('#stage')) return;
@@ -399,7 +417,7 @@ function canvasBridge(): void {
   onBoard();
 }
 
-export const CANVAS_BRIDGE_SCRIPT = `;(${canvasBridge.toString()})();`;
+export const CANVAS_BRIDGE_SCRIPT = `;(${canvasBridge.toString()})(${normalizeShortcut.toString()}, ${shortcutFromEvent.toString()});`;
 
 /**
  * Runs in the engine's own document, in place of its `stage.style.zoom = …`. CSS zoom lays out every embedded
