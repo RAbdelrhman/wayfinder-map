@@ -129,7 +129,9 @@ describe('the Spotlight card stays clear of its target', { timeout: 120_000 }, (
   for (const viewport of VIEWPORTS) {
     it(`at ${String(viewport.width)}×${String(viewport.height)}`, async () => {
       const page = await browser.newPage({ viewport });
-      page.setDefaultTimeout(3000);
+      // Cold Windows runners can take more than three seconds to stabilize the first card.
+      // This suite checks layout and pointer reachability, not a startup performance budget.
+      page.setDefaultTimeout(10_000);
       await page.setContent(html);
       await page.evaluate(() => { window.tour.start(); });
       /** Checks the card against the target this state should highlight, or none. */
