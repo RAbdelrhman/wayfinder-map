@@ -9187,3 +9187,59 @@ a.archive-door:hover {
     transition: none;
   }
 }
+
+/* ---------- Settings › Keyboard shortcuts (#318, prototype #292 D) ---------- */
+.settings-live, .shortcut-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.settings-save-note.is-saved { color: var(--handoff-pr-ready); font-weight: 600; }
+/* Focus lands on the heading for screen readers on arrival; it is not a control, so no ring. */
+.settings-page #settings-category-title:focus { outline: none; }
+.settings-canvas-return { flex: none; gap: 7px; }
+.settings-page .shortcut-section { max-width: 560px; scroll-margin-top: 24px; transition: box-shadow 0.4s ease-out; }
+.shortcut-section.is-arriving { box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-claimed) 35%, transparent); }
+.shortcut-list { list-style: none; display: grid; gap: 2px; margin: 0; padding: 4px 0 8px; }
+.shortcut-icon { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 8px; background: var(--wash); color: var(--text-secondary); transition: background 0.12s; }
+.shortcut-icon .i { width: 15px; height: 15px; }
+.shortcut-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 10px 8px 8px; border: 1px solid transparent; border-radius: 10px; background: none; text-align: left; font-weight: 500; color: var(--text-primary); }
+.shortcut-row:hover { background: var(--wash); }
+.shortcut-row:hover .shortcut-icon, .shortcut-row:focus-visible .shortcut-icon { background: var(--surface-1); color: var(--text-primary); }
+.shortcut-item.is-capturing .shortcut-row { border-color: var(--hairline); background: var(--wash); }
+.shortcut-section kbd { display: inline-block; min-width: 24px; padding: 0 7px; font-size: 12px; line-height: 20px; text-align: center; color: var(--text-primary); }
+.shortcut-plus { margin: 0 3px; color: var(--text-muted); font-size: 12px; }
+.shortcut-key { display: inline-flex; align-items: center; min-height: 28px; padding: 0 2px; border: 1px solid transparent; border-radius: 7px; }
+.shortcut-key.is-capturing { padding: 0 10px; border: 1.5px dashed var(--state-claimed); background: color-mix(in srgb, var(--state-claimed) 8%, transparent); }
+.shortcut-item.is-error .shortcut-key.is-capturing { border-color: var(--state-failed); background: color-mix(in srgb, var(--state-failed) 7%, transparent); }
+.shortcut-wait { color: var(--text-secondary); font-size: 12.5px; animation: shortcut-blink 1.2s ease-in-out infinite; }
+@keyframes shortcut-blink { 50% { opacity: 0.45; } }
+.shortcut-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--state-claimed); }
+/* The shipped .cf-chip.is-ok is 3.96:1 in light, so a save is marked with text only. */
+.shortcut-saved { display: inline-flex; align-items: center; gap: 5px; color: var(--handoff-pr-ready); font-size: 12px; font-weight: 600; }
+.shortcut-saved .i { width: 14px; height: 14px; }
+.settings-page .shortcut-help { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0 8px 50px; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+.shortcut-help .i { width: 15px; height: 15px; margin-top: 2px; flex: none; }
+.shortcut-help.is-error { color: var(--state-failed); }
+.shortcut-help.is-error kbd { color: var(--text-primary); }
+.shortcut-fix { margin-left: 6px; padding: 0; color: var(--accent-text); font-size: 12px; }
+.shortcut-fix:hover { color: var(--text-primary); }
+.shortcut-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0 10px 8px; border-top: 1px solid var(--hairline); color: var(--text-muted); font-size: 12.5px; }
+.shortcut-foot [aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
+.shortcut-dialog { width: min(440px, calc(100vw - 32px)); padding: 20px; }
+.shortcut-reset-list { list-style: none; margin: 0 0 18px; padding: 0; }
+.shortcut-reset-list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 13px; }
+.shortcut-reset-list li + li { border-top: 1px solid var(--hairline); }
+.shortcut-reset-list .grow { flex: 1; }
+.shortcut-dialog kbd { display: inline-block; min-width: 24px; padding: 0 7px; font-size: 12px; line-height: 20px; text-align: center; color: var(--text-primary); }
+.shortcut-was kbd { color: var(--text-muted); text-decoration: line-through; }
+.shortcut-arrow { color: var(--text-muted); }
+.shortcut-dialog-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.shortcut-dialog button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+@media (max-width: 720px) {
+  .settings-page .shortcut-help { margin-left: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shortcut-wait { animation: none; }
+  .shortcut-section { transition: none; }
+}
+.settings-canvas-context { padding-left: 8px; margin-left: 2px; border-left: 1px solid var(--hairline); color: var(--text-muted); font-size: 12px; }
+@media (max-width: 720px) {
+  .settings-canvas-context { display: none; }
+}

@@ -16,6 +16,9 @@ import { DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_KINDS } from '../notificati
 import type { NotificationKind, NotificationSettings } from '../notificationTypes.js';
 import { canvasSize, isCanvasSize, saveCanvasSize } from './canvasPreference.js';
 import { TOUR_COPY } from './tourCopy.js';
+import { KEYBOARD, mountShortcutSettings, shortcutSectionHtml } from './canvasShortcutSettings.js';
+import type { ShortcutView } from './canvasShortcutSettings.js';
+import { CHECK, icon } from './icons.js';
 
 /* Settings (#40, #104): the GitHub account and the preferences that belong to no one page. */
 
@@ -41,28 +44,39 @@ export interface SettingsView {
   notifications: NotificationSettings | null;
   /** The action in flight, so its button can say so and the rest stay still. */
   busy: 'switch' | 'logout' | null;
+  /** Keyboard shortcuts' rows and recording state; the section stays empty without it. */
+  shortcuts?: ShortcutView;
 }
 
 const THEME_LABEL: Record<Theme, string> = { light: 'Light', dark: 'Dark' };
-export const SETTINGS_CATEGORIES = ['appearance', 'tasks', 'notifications', 'progress', 'account', 'help'] as const;
+export const SETTINGS_CATEGORIES = ['appearance', 'shortcuts', 'tasks', 'notifications', 'progress', 'account', 'help'] as const;
 export type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number];
-const CATEGORY_LABEL: Record<SettingsCategory, string> = { appearance: 'Appearance', tasks: 'Tasks & models', notifications: 'Notifications', progress: 'Progress', account: 'Account', help: TOUR_COPY.settings.category };
+const CATEGORY_LABEL: Record<SettingsCategory, string> = { appearance: 'Appearance', shortcuts: 'Keyboard shortcuts', tasks: 'Tasks & models', notifications: 'Notifications', progress: 'Progress', account: 'Account', help: TOUR_COPY.settings.category };
 const CATEGORY_HINT: Record<SettingsCategory, string> = {
   appearance: 'Choose how Wayfinder looks.',
+  shortcuts: 'Keys for the canvas viewer’s tools. Click one, then press a letter, alone or with Shift, Alt or Ctrl.',
   tasks: 'Set the defaults for new tickets and maps. You can override them on a ticket.',
   notifications: 'Choose which updates need your attention.',
   progress: 'Set your daily goal and decide when a ticket counts as stalled.',
   account: 'Manage the GitHub account Wayfinder uses.',
   help: TOUR_COPY.settings.hint,
 };
-const CATEGORY_ICON: Record<SettingsCategory, string> = { appearance: 'moon', tasks: 'sliders', notifications: 'bell', progress: 'map', account: 'person', help: 'help' };
+const CATEGORY_ICON: Record<Exclude<SettingsCategory, 'shortcuts'>, string> = { appearance: 'moon', tasks: 'sliders', notifications: 'bell', progress: 'map', account: 'person', help: 'help' };
 
 export function settingsCategory(value: string | null): SettingsCategory {
   return SETTINGS_CATEGORIES.find((category) => category === value) ?? 'appearance';
 }
 
-export function settingsNavigationHtml(category: SettingsCategory): string {
-  return SETTINGS_CATEGORIES.map((candidate) => `<a href="/settings?section=${candidate}" data-settings-category="${candidate}"${candidate === category ? ' aria-current="location"' : ''}><span data-icon="${CATEGORY_ICON[candidate]}" aria-hidden="true"></span>${CATEGORY_LABEL[candidate]}</a>`).join('');
+/** `canvas` keeps the viewer's Back to canvas while Settings runs inside the canvas frame. */
+export function settingsHref(category: SettingsCategory, canvas = false): string {
+  return `/settings?section=${category}${canvas ? '&canvas=1' : ''}`;
+}
+
+export function settingsNavigationHtml(category: SettingsCategory, canvas = false): string {
+  return SETTINGS_CATEGORIES.map((candidate) => {
+    const glyph = candidate === 'shortcuts' ? `<span aria-hidden="true">${icon(KEYBOARD)}</span>` : `<span data-icon="${CATEGORY_ICON[candidate]}" aria-hidden="true"></span>`;
+    return `<a href="${settingsHref(candidate, canvas)}" data-settings-category="${candidate}"${candidate === category ? ' aria-current="location"' : ''}>${glyph}${CATEGORY_LABEL[candidate]}</a>`;
+  }).join('');
 }
 export const NOTIFICATION_SETTINGS_EVENT = 'wayfinder:notification-settings';
 const NOTIFICATION_LABEL: Record<NotificationKind, readonly [string, string]> = {
@@ -184,6 +198,7 @@ export function settingsBodyHtml(view: SettingsView, category?: SettingsCategory
       <h3 id="settings-account-title">GitHub account</h3>
       ${accountHtml(view.account, view.busy)}
     </section>`,
+    shortcuts: view.shortcuts === undefined ? '' : shortcutSectionHtml(view.shortcuts),
     appearance: `<section class="settings-section"><div class="settings-row"><span class="grow">Theme<span class="hint">Use a light or dark appearance throughout the app.</span></span>${themes}</div><div class="settings-row"><span class="grow">Open canvases</span>${segmented('Open canvases', (['full', 'pane', 'float'] as const).map((size) => seg('data-settings-canvas', size, { full: 'Full window', pane: 'Side pane', float: 'Floating' }[size], size === canvasSize())).join(''))}</div></section>`,
     tasks: `<section class="settings-section" aria-labelledby="settings-tasks-title">
       <h3 id="settings-tasks-title">Task defaults</h3>
@@ -248,12 +263,26 @@ function postJson<T>(url: string, body?: unknown): Promise<T> {
   });
 }
 
-/** Mount the dedicated Settings page. Categories have URLs and follow browser history. */
-export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms?: number) => void): () => void {
-  setTrustedHtml(root, `<header class="settings-page-heading"><div><h1>Settings</h1><p>Make Wayfinder work your way.</p></div><span class="settings-save-note"><span data-icon="check" aria-hidden="true"></span>Changes save automatically</span></header><div class="settings-page-layout"><nav class="settings-categories" aria-label="Settings categories"></nav><div><div id="settings-load-status" role="status"></div><header class="settings-category-heading"><h2 id="settings-category-title"></h2><p id="settings-category-hint"></p></header><div id="settings-body"></div></div></div>`);
+/**
+ * Mount the dedicated Settings page. Categories have URLs and follow browser history. With
+ * `canvas`, Settings runs inside the canvas viewer's frame: the viewer owns the one history entry,
+ * so changing category replaces it, and arriving on Keyboard shortcuts focuses its heading.
+ */
+export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms?: number) => void, options: { canvas?: boolean } = {}): () => void {
+  const canvas = options.canvas === true;
+  setTrustedHtml(root, `<header class="settings-page-heading"><div><h1>Settings</h1><p>Make Wayfinder work your way.</p></div><span class="settings-save-note" id="settings-save-note"></span></header><div class="settings-page-layout"><nav class="settings-categories" aria-label="Settings categories"></nav><div><div id="settings-load-status" role="status"></div><header class="settings-category-heading"><h2 id="settings-category-title" tabindex="-1"></h2><p id="settings-category-hint"></p></header><div id="settings-body"></div></div></div><div class="settings-live" id="settings-live" role="status" aria-live="polite"></div>`);
   const body = root.querySelector<HTMLElement>('#settings-body')!;
   const nav = root.querySelector<HTMLElement>('.settings-categories')!;
   const loadStatus = root.querySelector<HTMLElement>('#settings-load-status')!;
+  const saveNote = root.querySelector<HTMLElement>('#settings-save-note')!;
+  const live = root.querySelector<HTMLElement>('#settings-live')!;
+  let liveTimer: ReturnType<typeof setTimeout> | undefined;
+  // Cleared first so the same sentence twice is still spoken.
+  const announce = (text: string): void => {
+    live.textContent = '';
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => { live.textContent = text; }, 40);
+  };
   let category = settingsCategory(new URLSearchParams(location.search).get('section'));
   let calibrationOpen = false;
   let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), rater: autoRater(), calibration: calibrationMode(), models: currentCatalog(), tierModels: tierDefaults(), cap: handOffCap(), progress: null, stalls: null, notifications: null, busy: null };
@@ -266,7 +295,11 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
     calibrationOpen = body.querySelector<HTMLDetailsElement>('#settings-calibration')?.open ?? calibrationOpen;
     // The HTML builders escape account/catalog strings; hostile-field DOM tests cover this boundary.
     // nosemgrep: javascript.browser.security.insecure-document-method, javascript.browser.security.insecure-innerhtml
-    setTrustedHtml(body, settingsBodyHtml(view, category));
+    setTrustedHtml(body, settingsBodyHtml({ ...view, shortcuts: shortcuts.view() }, category));
+    if (shortcuts.arriving()) body.querySelector('.shortcut-section')?.classList.add('is-arriving');
+    const saved = category === 'shortcuts' ? shortcuts.view().saved : null;
+    saveNote.classList.toggle('is-saved', saved !== null);
+    setTrustedHtml(saveNote, `${icon(CHECK)}${saved === null ? 'Changes save automatically' : `Saved · ${escapeHtml(saved.text)}`}`);
     const details = body.querySelector<HTMLDetailsElement>('#settings-calibration');
     if (details !== null) details.open = calibrationOpen;
     root.querySelector<HTMLElement>('#settings-category-title')!.textContent = CATEGORY_LABEL[category];
@@ -274,6 +307,8 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
     paintIcons(body);
     if (focusKey !== null) body.querySelector<HTMLElement>(focusKey)?.focus();
   };
+
+  const shortcuts = mountShortcutSettings({ body, redraw: draw, announce, active: () => category === 'shortcuts' });
 
   let loadSequence = 0;
   const load = async (): Promise<void> => {
@@ -315,9 +350,10 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
   };
   const showCategory = (): void => {
     category = settingsCategory(new URLSearchParams(location.search).get('section'));
+    if (category !== 'shortcuts') shortcuts.stop();
     // IDs, labels and icons come from the fixed category allowlist; query text is never interpolated.
     // nosemgrep: javascript.browser.security.insecure-document-method, javascript.browser.security.insecure-innerhtml
-    setTrustedHtml(nav, settingsNavigationHtml(category));
+    setTrustedHtml(nav, settingsNavigationHtml(category, canvas));
     paintIcons(nav);
     draw();
   };
@@ -325,7 +361,8 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
     const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('[data-settings-category]') : null;
     if (link === null || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
     event.preventDefault();
-    history.pushState(null, '', link.href);
+    if (canvas) history.replaceState(history.state, '', link.href);
+    else history.pushState(null, '', link.href);
     showCategory();
     nav.querySelector<HTMLElement>('[aria-current]')?.focus();
     root.scrollTop = 0;
@@ -503,8 +540,13 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
       void accountAction('logout', () => postJson<HomeAccount>('/api/auth/logout'), 'Signed out of GitHub.');
     }
   });
+  if (canvas && category === 'shortcuts') shortcuts.arrive();
   showCategory();
   paintIcons(root);
+  if (canvas && category === 'shortcuts') {
+    root.querySelector<HTMLElement>('#settings-category-title')!.focus();
+    announce('Settings, Keyboard shortcuts. Back to canvas returns to the viewer.');
+  }
   void load();
   loadModels();
   return () => {
@@ -516,7 +558,7 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
 
 /** A selector that finds the same control after a redraw, so keyboard focus stays put. */
 export function focusKeyOf(element: Element): string | null {
-  for (const attribute of ['data-settings-theme', 'data-settings-canvas', 'data-settings-tier', 'data-settings-rater', 'data-settings-calibration', 'data-settings-model', 'data-settings-effort', 'data-settings-cap', 'data-settings-goal', 'data-settings-claim-days', 'data-settings-hand-off-days', 'data-settings-notification', 'data-settings-switch']) {
+  for (const attribute of ['data-shortcut-edit', 'data-shortcut-fix', 'data-settings-theme', 'data-settings-canvas', 'data-settings-tier', 'data-settings-rater', 'data-settings-calibration', 'data-settings-model', 'data-settings-effort', 'data-settings-cap', 'data-settings-goal', 'data-settings-claim-days', 'data-settings-hand-off-days', 'data-settings-notification', 'data-settings-switch']) {
     const value = element.getAttribute(attribute);
     if (value !== null) return `[${attribute}="${value}"]`;
   }
@@ -524,5 +566,6 @@ export function focusKeyOf(element: Element): string | null {
   if (element.hasAttribute('data-settings-calibration-model')) return '[data-settings-calibration-model]';
   if (element.id === 'settings-calibration' || element.matches('#settings-calibration > summary')) return '#settings-calibration > summary';
   if (element.hasAttribute('data-settings-tour')) return '[data-settings-tour]';
+  if (element.hasAttribute('data-shortcut-reset')) return '[data-shortcut-reset]';
   return element.hasAttribute('data-settings-logout') ? '[data-settings-logout]' : null;
 }

@@ -1,3 +1,5 @@
+import { normalizeShortcut, shortcutAssignments, SHORTCUTS_CHANGED, SHORTCUTS_KEY } from '../canvasShortcuts.js';
+import { mountCanvasSettings } from './canvasSettings.js';
 import { setTrustedHtml, insertTrustedHtml } from './trustedHtml.js';
 import { parsePrototypeFilePath } from '../prototypes.js';
 import { canvasSize, isCanvasSize } from './canvasPreference.js';
@@ -49,7 +51,7 @@ export type CanvasMessage =
   | { wf: 1; type: 'state'; page: string | null; option: string | null; presenting: boolean }
   | { wf: 1; type: 'back' }
   | { wf: 1; type: 'document'; id: string }
-  | { wf: 1; type: 'key'; key: 'Escape' | 'P' | 'E' | 'C' | 'N' | 'F' }
+  | { wf: 1; type: 'key'; key: string }
   | { wf: 1; type: 'targets'; items: { name: string; selector: string; rect: CanvasRect }[] }
   | ({ wf: 1; type: 'hit' } & CanvasHit)
   | { wf: 1; type: 'layout'; marks: { id: number; rect: CanvasRect | null }[]; viewport: CanvasRect };
@@ -92,7 +94,7 @@ export function readCanvasMessage(value: unknown): CanvasMessage | null {
   if (!record(value) || value['wf'] !== 1) return null;
   if (value['type'] === 'back') return { wf: 1, type: 'back' };
   if (value['type'] === 'document' && typeof value['id'] === 'string') return { wf: 1, type: 'document', id: value['id'] };
-  if (value['type'] === 'key' && ['Escape', 'P', 'E', 'C', 'N', 'F'].includes(String(value['key']))) return value as CanvasMessage;
+  if (value['type'] === 'key' && (value['key'] === 'Escape' || (typeof value['key'] === 'string' && normalizeShortcut(value['key']) === value['key']))) return value as CanvasMessage;
   if (value['type'] === 'targets') {
     const items = value['items'];
     if (!Array.isArray(items) || items.length > 200) return null;
@@ -664,6 +666,18 @@ export function mountCanvasViewer(
       origin?.focus({ preventScroll: true });
     }
   });
+  const syncShortcuts = (): void => {
+    frame?.contentWindow?.postMessage({ wf: 1, type: 'shortcuts', keys: Object.values(shortcutAssignments()) }, '*');
+  };
+  const settings = mountCanvasSettings(viewer, app, () => {
+    syncShortcuts();
+    paint();
+    toolbar.querySelector<HTMLElement>('[data-canvas-shortcuts]')?.focus();
+  }, () => ({ title: routing.current?.title ?? '', option: optionId }));
+  window.addEventListener(SHORTCUTS_CHANGED, () => { syncShortcuts(); paint(); });
+  window.addEventListener('storage', (event) => {
+    if (event.key === SHORTCUTS_KEY || event.key === null) { syncShortcuts(); paint(); }
+  });
   window.addEventListener(
     'popstate',
     (event) => {
@@ -736,6 +750,7 @@ export function mountCanvasViewer(
   toolbar.addEventListener('click', (event) => {
     const button = event.target instanceof Element ? event.target.closest<HTMLElement>('button') : null;
     if (!button) return;
+    if (button.hasAttribute('data-canvas-shortcuts')) { settings.open(); return; }
     if (button.dataset['scroll']) {
       const strip = toolbar.querySelector<HTMLElement>('.vw-options');
       strip?.scrollBy({
@@ -802,6 +817,7 @@ export function mountCanvasViewer(
       }
     }
     if (message.type === 'ready') {
+      syncShortcuts();
       pages = message.pages;
       source = message.source;
       clearTimeout(timer);
@@ -816,6 +832,7 @@ export function mountCanvasViewer(
       feedback.stateChanged();
     }
     if (message.type === 'targets') return feedback.onTargets(message.items);
+    if (settings.isOpen() && (message.type === 'key' || message.type === 'back')) return;
     if (message.type === 'key' && message.key !== 'Escape') return feedback.canvasKey(message.key);
     if (message.type === 'key' && feedback.escape()) return;
     if ((message.type === 'key' || message.type === 'back') && routing.current) routing.close();
@@ -824,7 +841,7 @@ export function mountCanvasViewer(
   document.addEventListener(
     'keydown',
     (event) => {
-      if (!routing.current) return;
+      if (!routing.current || settings.isOpen()) return;
       // In the pane and the floating window the map stays live, so its keys stay its own.
       const inViewer = size === 'full' || (event.target instanceof Node && viewer.contains(event.target));
       if (inViewer && !menu && feedback.key(event)) {
@@ -888,7 +905,7 @@ export function mountCanvasViewer(
     });
   window.addEventListener('resize', () => {
     if (!routing.current) return;
-    applySize();
+    applySize(!settings.isOpen());
     // A narrower window can push the open option out of the strip.
     syncStrip(toolbar.querySelector<HTMLElement>('.vw-options .is-on'));
   });
