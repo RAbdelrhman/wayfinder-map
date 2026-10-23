@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.23](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.22...v0.2.23) (2026-10-23)
+
+
+### Features
+
+* add canvas keyboard shortcut settings ([#338](https://github.com/RAbdelrhman/wayfinder-map/issues/338)) ([95fa54d](https://github.com/RAbdelrhman/wayfinder-map/commit/95fa54da0819623779f8d2e9593c0777906b3ad9))
+
+
+### Bug Fixes
+
+* hide legacy prototype presentation notes ([#339](https://github.com/RAbdelrhman/wayfinder-map/issues/339)) ([274d24d](https://github.com/RAbdelrhman/wayfinder-map/commit/274d24de6d83ccfa5973d052c410190d401630bb))
+
 ## [0.2.22](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.21...v0.2.22) (2026-10-23)
 
 
