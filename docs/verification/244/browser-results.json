@@ -1,0 +1,37 @@
+{
+  "results": [
+    "First-launch invitation, Not now, and reload suppression passed",
+    "Accepting the first-launch invitation starts step one and exits cleanly",
+    "Settings Help replay and exit passed",
+    "Full planning, blocked ticket, ready ticket, simulated hand-off, completion, replay after completion, Escape passed; zero HTTP mutations during demo",
+    "Manual Archive, archived-map Open with unchanged disk preferences, and Restore passed",
+    "Automatic Finished archive and persistent Restore override passed",
+    "Settings account switch Alice to Bob to Alice preserved Alice manual archive and finished Restore override, with neither leaking to Bob"
+  ],
+  "mutations": [
+    [
+      "POST",
+      "/api/repos/fixture/tutorial/settle"
+    ],
+    [
+      "POST",
+      "/api/repos/fixture/tutorial/settle"
+    ],
+    [
+      "POST",
+      "/api/repos/fixture/tutorial/settle"
+    ],
+    [
+      "POST",
+      "/api/repos/fixture/tutorial/settle"
+    ],
+    [
+      "POST",
+      "/api/auth/switch"
+    ],
+    [
+      "POST",
+      "/api/auth/switch"
+    ]
+  ]
+}
