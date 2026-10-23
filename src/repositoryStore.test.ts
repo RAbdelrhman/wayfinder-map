@@ -248,7 +248,7 @@ describe('RepositoryStore settling', () => {
       { repo: 'owner/repo', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' },
       [expect.objectContaining({ number: 2, settled: null, ticketsLoaded: false })],
     );
-    expect(restored?.maps[1]).toMatchObject({ number: 2, settled: null, ticketsLoaded: true });
+    expect(restored?.maps[1]).toEqual(map(2, null, true));
     await cache.refreshIfChanged('owner/repo');
     expect(finishedChecker).toHaveBeenLastCalledWith(expect.anything(), {}, expect.any(Date));
   });
