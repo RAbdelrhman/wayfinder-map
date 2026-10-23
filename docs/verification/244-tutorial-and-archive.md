@@ -59,3 +59,11 @@ The browser fixture listens on loopback port 4484. The desktop fixture uses the 
 Installed Windows release packaging, Windows 10, ARM64, live GitHub keyring account switching, live-provider map data, cross-device preferences, screen-reader output and exhaustive accessibility are Not Verified. The ticket's desktop/browser flow checks passed with controlled provider fixtures; this report does not claim those untested integration or release layers. No real repository archive preferences or GitHub issues were changed by the runtime checks.
 
 Independent verification and hosted PR state are recorded in the ticket closeout comment.
+
+## PR review follow-up
+
+CodeRabbit found three valid fixture issues on PR #336. Both fixtures now use one shared read-only API guard, including explicit methods and implicit POST requests with fields or input. Unknown desktop routes are rejected even when they carry headers, and the known map-issue watcher reads are modeled explicitly. Electron window startup now sits inside the cleanup block, so a failed `firstWindow()` still closes the process.
+
+`src/tutorialArchiveFixtures.test.ts` exercises the actual fixture handlers in a VM without starting the application or writing files. Its 25 Vitest cases cover attempted writes to recognized routes in both fixtures, explicit GET with fields, unknown header-bearing routes and Electron startup-failure cleanup. The first test run had a relative module-resolution error in the test VM; correcting the harness made all 25 pass. Both updated browser and desktop replays also passed with empty forbidden/rejected call lists. Typecheck, lint and the nine-size tour-layout check passed again. The full Vitest rerun passed 129 files and 1,736 tests, including the 25 new fixture regression cases.
+
+The initial Windows CI run passed seven tour-layout sizes but timed out on the first click at 1440 by 900 and 1280 by 800 while Playwright waited for stable buttons. The tour-layout script and application code are unchanged by this PR. The failed Windows job was rerun; hosted outcomes belong to the ticket closeout evidence.

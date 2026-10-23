@@ -4,6 +4,7 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 const { promisify } = require('node:util');
+const { requireReadOnlyApi } = require('./read-only-api.cjs');
 const root = path.resolve(__dirname, '../../..');
 const isolated = path.join(root, '.shots', '244', 'desktop-home');
 fs.mkdirSync(isolated, { recursive: true });
@@ -23,14 +24,11 @@ async function fake(file, args) {
   fs.writeFileSync(path.join(root, '.shots', '244', 'desktop-calls.json'), JSON.stringify({ calls, rejected }, null, 2));
   if (file !== 'gh') throw new Error(`Blocked process ${file}`);
   if (args[0] === 'auth' && args[1] === 'switch') { login = args.at(-1); return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) }; }
-  const methodFlag = args.findIndex(arg => arg === '-X' || arg === '--method');
-  const inlineMethod = args.find(arg => arg.startsWith('--method=') || (arg.startsWith('-X') && arg.length > 2));
-  const hasBody = args.some(arg => /^(-[fF]|--(?:raw-)?field(?:=|$)|--input(?:=|$))/.test(arg));
-  const method = methodFlag >= 0 ? args[methodFlag + 1] : inlineMethod?.replace(/^(--method=|-X)/, '') ?? (hasBody ? 'POST' : 'GET');
-  if (args[0] === 'api' && method !== 'GET') {
+  try { requireReadOnlyApi(args); }
+  catch (error) {
     rejected.push([file, args]);
     fs.writeFileSync(path.join(root, '.shots', '244', 'desktop-calls.json'), JSON.stringify({ calls, rejected }, null, 2));
-    throw new Error(`Blocked fixture write method ${method}`);
+    throw error;
   }
   let data;
   const route = args.at(-1);
@@ -46,8 +44,9 @@ async function fake(file, args) {
   else if (route.endsWith('/dependencies/blocked_by')) data = [];
   else if (/issues\/11$/.test(route)) data = issue(11);
   else if (/issues\/21$/.test(route)) data = issue(21, true);
-  else if (args.includes('-H') || args.includes('--include')) data = {};
-  else { rejected.push([file, args]); throw new Error(`Blocked fixture call ${args.join(' ')}`); }
+  else if (/issues\/10$/.test(route)) data = maps[0];
+  else if (/issues\/20$/.test(route)) data = maps[1];
+  else { rejected.push([file, args]); fs.writeFileSync(path.join(root, '.shots', '244', 'desktop-calls.json'), JSON.stringify({ calls, rejected }, null, 2)); throw new Error(`Blocked fixture call ${args.join(' ')}`); }
   const output = args.includes('--include') || args.includes('-i') ? `HTTP/2.0 200 OK\r\nETag: "fixture"\r\n\r\n${JSON.stringify(data)}` : JSON.stringify(data);
   return { stdout: Buffer.from(output), stderr: Buffer.alloc(0) };
 }

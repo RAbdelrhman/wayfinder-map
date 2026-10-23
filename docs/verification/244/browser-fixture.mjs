@@ -5,6 +5,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { build } from 'esbuild';
+import readOnlyApi from './read-only-api.cjs';
 
 await mkdir('.shots/244', { recursive: true });
 let login = 'alice';
@@ -17,6 +18,8 @@ async function fake(file, args) {
   calls.push([file, args]);
   await writeFile('.shots/244/calls.json', JSON.stringify({ calls, forbidden }, null, 2));
   if (file !== 'gh') throw new Error(`Blocked process: ${file}`);
+  try { readOnlyApi.requireReadOnlyApi(args); }
+  catch (error) { forbidden.push([file, args]); await writeFile('.shots/244/calls.json', JSON.stringify({ calls, forbidden }, null, 2)); throw error; }
   if (args[0] === 'auth' && args[1] === 'switch') { login = args.at(-1); return { stdout: Buffer.from(''), stderr: Buffer.alloc(0) }; }
   const route = args.at(-1);
   if (args.includes('repos/fixture/tutorial') && args.includes('--jq')) return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
