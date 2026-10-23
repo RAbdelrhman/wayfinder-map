@@ -408,7 +408,10 @@ function canvasBridge(normalize: typeof normalizeShortcut, fromEvent: typeof sho
   const onBoard = (): void => {
     if (!document.querySelector('#stage')) return;
     const layers = document.createElement('style');
-    layers.textContent = '#stage .frame { will-change: transform; } #stage.wf-zoomed-in .frame { will-change: auto; }';
+    layers.textContent = '#stage .frame { will-change: transform; } #stage.wf-zoomed-in .frame { will-change: auto; }' +
+      // Wayfinder owns feedback. Keep board notes, but suppress the legacy presentation sidebar and its toggle,
+      // including in canvases served from older prototype branches.
+      ' #present-view #side-note, #present-view #notes { display: none !important; }';
     document.head.append(layers);
   };
   // Waiting for load also waits for every option iframe and its network requests.
