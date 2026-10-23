@@ -185,3 +185,28 @@ Built so #173 can compare the rules with a model on the same tickets. Logic only
 - `earliestExpiresAt`: the oldest eligible hand-off's end plus 30 days. The store deletes a hand-off then, so #173 must take its counts and any per-type tables from the records before that time. The summary holds counts only, and Wayfinder keeps no archive past the retention.
 
 The 30-completion gate counts `eligible` across both types and reports each type's count. #173 can then report by ticket type from the same call: rating time (median and p95 with sample counts and timeout counts) from `calibration.*.elapsedMs` and `status`, tokens and cost from `tokens` and `cost`, and agreement from `tier` of each method against the user's explicit tier correction. Only the rater that proposed (`proposedBy`) could have influenced the user. When the rating model differs from the shadow, its own rating time and tokens are not kept; only the rules and the shadow are compared.
+
+## Inconclusive closeout of #173, 2026-10-23
+
+Ramon explicitly chose "Close as inconclusive with the current evidence, waiving the 30-hand-off wait" in T3 thread `20e0ffe7-d3d1-4f67-8e8b-926cea0a6d9a`. This supersedes the earlier instruction to leave #173 open until 30 eligible completions. The wait is waived; no accuracy result is claimed.
+
+### Current local sample
+
+Read `~/.wayfinder-map/hand-offs.json` and `~/.wayfinder-map/auto-maps.json` at 2026-10-23 13:21 UTC against source `838ef87`. The retained store has 16 hand-offs, all `untracked`, four with Auto decisions and zero with a non-null calibration pair. There are no retained map #121 records. Of the four Auto records, one is a task, one is research, one is a prototype and one is grilling; all belong to map #236. Persisted calibration is `off`.
+
+This is a local retained snapshot, not an all-time or cross-machine count. The store's 30-day retention means missing older records cannot establish that no hand-offs ever completed. #186 is now closed and its paired tracking is merged in PR #190; the instrumentation gap described in the earlier readiness audit is historical. Collection was not enabled for this closeout.
+
+Apply the inclusion and label rules above: task/research only, paired predictions on the same input, a finished session or verified merged PR, and no usage-limit failure in the difficulty labels. Exclude active/untracked records and prototype/grilling tickets. Explicit user tier corrections are the primary labels; provider substitutions and unknown model-change reasons are not difficulty labels. A merged PR establishes that the chosen configuration worked, not that an easier tier would fail.
+
+| Ticket type, map #121 | Eligible completions | Explicit correction labels | Rules agreement | Shadow agreement | Attributable rating cost | Rating latency, median / p95 |
+| --- | ---: | ---: | --- | --- | --- | --- |
+| Task | 0 | 0 | Unavailable, 0 labels | Unavailable, 0 labels | Unavailable, 0 measurements | Unavailable, 0 measurements |
+| Research | 0 | 0 | Unavailable, 0 labels | Unavailable, 0 labels | Unavailable, 0 measurements | Unavailable, 0 measurements |
+
+The wider local repository sample also has zero eligible completions and zero paired measurements. Missing cost and latency are unavailable, not zero. There is no denominator for agreement or uncertainty intervals, and no confirmed upward difficulty change among eligible records. The older 13-ticket experiment remains separate and cannot fill this sample.
+
+### Recommendation and disposition
+
+There is **no accuracy conclusion** about whether rules or a cheap model better predict the user's choice. Keep the rules default and retain model rating as a user-selected option. Retain shadow ratings as an optional experiment, off by default. The available evidence supports neither promoting them nor removing them for poor accuracy. This recommendation does not change the user's selected active rater or any runtime setting.
+
+Close #173 as inconclusive under the explicit waiver. Any future calibration study needs a fresh opt-in sample and the same label, cost and latency provenance before making an accuracy claim. No follow-up collection work is required by this closeout.
