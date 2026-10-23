@@ -14,8 +14,16 @@ concurrency:
 
 jobs:
   desktop:
-    name: Desktop checks
-    runs-on: ubuntu-latest
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Desktop checks
+          - os: windows-2025
+            name: Windows checks
     steps:
       - uses: actions/checkout@v4
 
