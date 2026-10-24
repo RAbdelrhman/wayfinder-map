@@ -174,8 +174,9 @@ sends you to the system browser.
 - **Review and post.** Review shows the comment before it is sent. Post puts all the
   notes on the prototype's ticket as one comment, with each pin's option and location
   written out, so the agent that built the canvas can read it.
-- **Go back.** Esc, Close or the browser's Back returns to the exact spot you were
-  on in the map.
+- **Go back.** Close or the browser's Back returns to the exact spot you were on in the
+  map. Esc steps back the same way: it clears an open tool, returns from an option to
+  the board, then closes the canvas.
 
 ![Option A open full size, with pin 1 on the Tasks and models section and its note in the Feedback panel](docs/images/in-app-canvas-pin.png)
 
