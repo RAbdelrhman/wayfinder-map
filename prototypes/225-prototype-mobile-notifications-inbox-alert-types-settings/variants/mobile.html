@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Wayfinder on a phone</title>
+    <!-- PROTOTYPE (#225): pushes, the Inbox and Notifications settings, ?nt=A|B|C, on #316's G-a Settings
+         (?acct=G&names=a) and #223's picked screens (?v=C&remix=filter). mobile.*, account.* are copied unchanged from #316. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="mobile.css" />
+    <link rel="stylesheet" href="account.css" />
+    <link rel="stylesheet" href="notify.css" />
+  </head>
+  <body class="viz-root">
+    <main id="app" class="m-app"></main>
+    <script src="../../canvas/kit/kit.js"></script>
+    <script src="mobile-data.js"></script>
+    <script src="account.js"></script>
+    <script src="notify-data.js"></script>
+    <script src="notify.js"></script>
+    <script src="mobile.js"></script>
+  </body>
+</html>
