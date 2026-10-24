@@ -38,6 +38,9 @@ Nobody edits the version by hand. The **Release** workflow
 It collects everything merged to `main` and works out the bump from the conventional
 commits: while the version is below 1.0, `feat:` and `fix:` both bump the patch
 number, and a breaking change bumps the minor. It also writes `CHANGELOG.md`.
+A commit typed `highlight:` goes under **Highlights**, ahead of Features, so a headline
+feature leads the notes. It counts as a change like any other (a patch bump below 1.0),
+and the squash title of its PR is the line readers see.
 Merging that PR sets the version in `package.json`, creates the tag and a draft
 GitHub release, and then starts the Windows workflow on that tag. The release stays a
 draft until that workflow attaches the installers and `latest-*.yml`, then it is

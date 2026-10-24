@@ -5,6 +5,10 @@
 An interactive map of a repo's wayfinder maps, served on localhost. Click a ticket
 and T3 Code starts a thread on it, in its own worktree, already working.
 
+Prototypes open inside Wayfinder too, in the desktop app and on localhost: compare
+design options, open one full size, and pin notes that go to the prototype ticket,
+without leaving for a browser. See [The in-app canvas](#the-in-app-canvas).
+
 Works against any repo that keeps its wayfinder maps in GitHub Issues. Nothing about
 it is specific to one project.
 
@@ -149,6 +153,37 @@ Private only hides a map inside Wayfinder. It is not access control. Every priva
 carries the note "Private in Wayfinder only. If the repository is public, this issue
 can still be read on GitHub." GitHub still decides who can read the issue.
 
+## The in-app canvas
+
+A prototype's design canvas opens inside Wayfinder. Click a tile and the canvas opens
+from it, in the desktop app and on the localhost page alike. Opening a canvas never
+sends you to the system browser.
+
+![The viewer showing a design canvas with two Settings page options side by side, and the Feedback panel on the right](docs/images/in-app-canvas-board.png)
+
+- **Compare.** The toolbar's option strip switches between the board and each option.
+  Switching does not reload the canvas.
+- **Open one full size.** An option fills the viewer, live and clickable. The viewer
+  opens full window by default. The toolbar switches it to a side pane beside the live
+  map, or a floating window you move and resize from any corner. **Settings › Appearance
+  › Open canvases** sets which one a canvas opens in.
+- **Pin notes.** Pin (P), Select element (E), Color picker (C) and Note (N) mark a
+  spot, an element or a colour on the option you have open. Each mark carries your
+  note, and the Feedback panel (F) lists them. Change the keys in **Settings › Keyboard
+  shortcuts**.
+- **Review and post.** Review shows the comment before it is sent. Post puts all the
+  notes on the prototype's ticket as one comment, with each pin's option and location
+  written out, so the agent that built the canvas can read it.
+- **Go back.** Close or the browser's Back returns to the exact spot you were on in the
+  map. Esc steps back the same way: it clears an open tool, returns from an option to
+  the board, then closes the canvas.
+
+![Option A open full size, with pin 1 on the Tasks and models section and its note in the Feedback panel](docs/images/in-app-canvas-pin.png)
+
+You view and annotate in Wayfinder; you do not build or edit a canvas there, and the
+viewer has no pick. The pick stays in the T3 Code thread, where you decide with the
+agent. A canvas runs sandboxed, so its scripts cannot reach Wayfinder's API.
+
 ## Prototypes
 
 Prototype tickets keep their prototype on a throwaway branch named
@@ -192,7 +227,8 @@ you open a prototype months later, after the app it was built in has moved on.
 
 **Prototypes** is a gallery. Each tile shows the prototype running, scaled down, with
 its ticket and the one-line decision it led to underneath. Click a tile and the
-prototype opens full size in a new tab, live and clickable. It lives in two places:
+prototype opens in the [in-app canvas viewer](#the-in-app-canvas), live and clickable.
+It lives in two places:
 the beaker in a map's left rail shows that map's prototypes, and the repository page
 links to every prototype across its maps. A prototype ticket's panel shows its tile
 too.
