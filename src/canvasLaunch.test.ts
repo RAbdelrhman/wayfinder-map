@@ -18,6 +18,7 @@ describe('in-app canvas launch (#215)', () => {
     for (const [, image = ''] of readme.matchAll(/!\[[^\]]*\]\((docs\/images\/[^)]+)\)/g)) {
       await expect(access(join(root, image))).resolves.toBeUndefined();
     }
+    expect(readme).toContain('docs/images/in-app-canvas-board.png');
     expect(readme).toContain('docs/images/in-app-canvas-pin.png');
   });
 

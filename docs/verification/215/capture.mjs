@@ -5,14 +5,15 @@
 import { chromium } from 'playwright-core';
 import { build } from 'esbuild';
 import { pathToFileURL } from 'node:url';
-import { resolve, extname, join } from 'node:path';
-import { readFile, mkdir } from 'node:fs/promises';
+import { resolve, extname, join, sep } from 'node:path';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 
 const origin = process.argv[2] ?? 'http://127.0.0.1:4488';
 const out = resolve('docs/images');
 await mkdir(out, { recursive: true });
-await build({ entryPoints: ['src/canvasBridge.ts'], outfile: '.generated/215-bridge.mjs', bundle: true, platform: 'node', format: 'esm' });
-const { viewerPrototypeBytes } = await import(pathToFileURL(resolve('.generated/215-bridge.mjs')).href);
+const bridgeFile = `.generated/215-bridge-${String(process.pid)}.mjs`;
+await build({ entryPoints: ['src/canvasBridge.ts'], outfile: bridgeFile, bundle: true, platform: 'node', format: 'esm' });
+const { viewerPrototypeBytes } = await import(pathToFileURL(resolve(bridgeFile)).href);
 
 const board = 'prototypes/settings-page';
 const sha = 'a'.repeat(40);
@@ -23,7 +24,10 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, dev
 page.setDefaultTimeout(20000);
 await page.route(`**${base}/**`, async (route) => {
   const rel = decodeURIComponent(new URL(route.request().url()).pathname.slice(base.length + 1));
-  const bytes = await readFile(resolve(rel)).catch(() => null);
+  // Serve only the boards and the app stylesheet, never a path a canvas made up.
+  const file = resolve(rel);
+  const allowed = [resolve('prototypes'), resolve('src/ui')].some((dir) => file.startsWith(dir + sep));
+  const bytes = allowed ? await readFile(file).catch(() => null) : null;
   if (!bytes) return route.fulfill({ status: 404, body: 'missing' });
   const type = types[extname(rel)] ?? 'application/octet-stream';
   const html = type === 'text/html' || rel.endsWith('canvas.js');
@@ -42,7 +46,7 @@ await page.evaluate(({ canvas }) => {
 await page.getByRole('link', { name: 'open', exact: true }).click();
 await page.locator('#canvas-viewer .vw-frame.is-ready').waitFor();
 await page.waitForTimeout(1500);
-await page.screenshot({ path: join(out, 'in-app-canvas-board.png') });
+const boardShot = await page.screenshot();
 
 // Open one option full size, drop a pin and write the note.
 await page.locator('#vw-toolbar [data-go=settings-A]').click();
@@ -56,5 +60,8 @@ const note = page.locator('textarea[data-fb-note]').first();
 await note.waitFor();
 await note.fill('Give Calibration its own entry instead of hiding it.');
 await page.waitForTimeout(800);
-await page.screenshot({ path: join(out, 'in-app-canvas-pin.png') });
+const pinShot = await page.screenshot();
 await browser.close();
+// Write both only once both exist, so a failed run never leaves mismatched images.
+await writeFile(join(out, 'in-app-canvas-board.png'), boardShot);
+await writeFile(join(out, 'in-app-canvas-pin.png'), pinShot);
