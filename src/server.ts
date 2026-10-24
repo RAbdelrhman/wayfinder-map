@@ -28,7 +28,7 @@ import type { MapEvent } from './mapWatch.js';
 import { listRepositories, loadHomeState, readAccount } from './home.js';
 import type { HomeAccount, HomeState } from './home.js';
 import { fetchAllPrototypes, fetchBranchFile, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, fetchTicketWithParent, gh, ghProblem, postIssueComment } from './github.js';
-import { isCanvasNotesComment } from './canvasNotes.js';
+import { canvasNotesThreadMessage, isCanvasNotesComment, isTicketCommentUrl } from './canvasNotes.js';
 import { viewerPrototypeBytes } from './canvasBridge.js';
 import { PrototypeFileCache } from './prototypeFileCache.js';
 import { AuthFlow } from './authFlow.js';
@@ -99,7 +99,7 @@ export const PAGE_CSP =
 
 export type ServerT3 =
   Pick<T3HandOff, 'models' | 'steps' | 'projects'> &
-  Partial<Pick<T3HandOff, 'focus'>> &
+  Partial<Pick<T3HandOff, 'focus' | 'sendToThread'>> &
   Partial<Pick<T3HandOff, 'readHandOffSnapshot' | 'subscribeShell'>> & {
     close?: () => void;
     /** Finds the running T3 Code. Tests pass a fixed one so they never read this machine's T3 Code. */
@@ -885,8 +885,7 @@ export async function startServer({
       if (path === '/api/hand-offs/focus' && request.method === 'POST') {
         const body = (await readBody(request)) as { id?: unknown };
         const id = typeof body.id === 'string' ? body.id : '';
-        const status = await handOffTracker.snapshot();
-        const handOff = status.handOffs.find((item) => item.id === id);
+        const handOff = await handOffTracker.stored(id);
         if (handOff === undefined) {
           json(response, 404, { error: 'No such hand-off.' });
           return;
@@ -896,7 +895,8 @@ export async function startServer({
           return;
         }
         try {
-          await t3.focus();
+          // Select the hand-off's own thread, not just whatever T3 Code last showed (#322).
+          await t3.focus({ environmentId: handOff.environmentId, threadId: handOff.threadId });
           json(response, 200, { opened: true });
         } catch (error) {
           json(response, 503, { error: (error as Error).message });
@@ -1239,9 +1239,35 @@ export async function startServer({
             json(response, 404, { error: `#${String(ticketNumber)} is not a prototype ticket.` });
             return;
           }
-          json(response, 200, await postIssueComment(requestedRepo, ticketNumber, body.body));
+          const posted = await postIssueComment(requestedRepo, ticketNumber, body.body);
+          // The ticket's tracked thread, if any, so the viewer offers Send to T3 Code (#322).
+          const thread = await handOffTracker.ticketThread(requestedRepo, ticketNumber).catch(() => undefined);
+          json(response, 200, { ...posted, handOffId: thread?.id ?? null });
         } catch (error) {
           json(response, 502, { error: ghProblem(error) });
+        }
+        return;
+      }
+
+      // Send to T3 Code (#322): the posted comment's link into the prototype ticket's tracked thread, only on the button.
+      if (requestedRepo !== null && scoped?.action === 'canvas-thread' && request.method === 'POST') {
+        const body = (await readBody(request)) as { ticket?: unknown; url?: unknown };
+        const ticketNumber = Number(body.ticket);
+        if (!Number.isSafeInteger(ticketNumber) || ticketNumber <= 0 || !isTicketCommentUrl(requestedRepo, ticketNumber, body.url)) {
+          json(response, 400, { error: 'Name the ticket and the link to its canvas-notes comment.' });
+          return;
+        }
+        const thread = await handOffTracker.ticketThread(requestedRepo, ticketNumber);
+        if (thread?.threadId == null || t3.sendToThread === undefined) {
+          json(response, 404, { error: 'Wayfinder doesn’t know this ticket’s thread.', reason: 'no-thread' });
+          return;
+        }
+        try {
+          await t3.sendToThread(thread.threadId, canvasNotesThreadMessage(ticketNumber, body.url));
+          json(response, 200, { sent: true, handOffId: thread.id });
+        } catch (error) {
+          const message = (error as Error).message;
+          json(response, 503, { error: message, reason: /not running/i.test(message) ? 'not-running' : 'failed' });
         }
         return;
       }
@@ -1650,7 +1676,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow|start-next|auto-rate|canvas-notes)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow|start-next|auto-rate|canvas-notes|canvas-thread)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;

@@ -83,7 +83,7 @@ describe('posting canvas notes (#213)', () => {
     try {
       const ok = await post({ ticket: 42, body: comment });
       expect(ok.status).toBe(200);
-      expect(await ok.json()).toEqual({ url: 'https://github.com/octo/one/issues/42#issuecomment-1' });
+      expect(await ok.json()).toEqual({ url: 'https://github.com/octo/one/issues/42#issuecomment-1', handOffId: null });
       expect(postIssueComment).toHaveBeenCalledWith('octo/one', 42, comment);
 
       postIssueComment.mockClear();
@@ -98,6 +98,82 @@ describe('posting canvas notes (#213)', () => {
       const refused = await post({ ticket: 42, body: comment });
       expect(refused.status).toBe(502);
       expect(await refused.json()).toEqual({ error: 'HTTP 403: Resource not accessible' });
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+});
+
+describe('Send to T3 Code from the canvas viewer (#322)', () => {
+  async function serveWith(store: HandOffStore, extra: Partial<ServerT3>) {
+    return startServer({
+      config,
+      repo: null,
+      template: 'prompt',
+      workspaceRoot: null,
+      t3: { ...t3, ...extra },
+      handOffStore: store,
+      mapWatchStore: { load: async () => null, save: async () => undefined },
+      fetcher: async () => ({ maps: [], warnings: [] }),
+      homeLoader: async () => {
+        throw new Error('not used');
+      },
+    });
+  }
+  const send = (url: string, path: string, body: unknown): Promise<Response> =>
+    fetch(`${url}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const LINK = 'https://github.com/octo/one/issues/42#issuecomment-1';
+
+  it('posts the comment link into the ticket’s newest tracked thread, and says which hand-off', async () => {
+    const store = new HandOffStore();
+    await store.record({ repo: 'octo/one', mapNumber: 1, ticketNumber: 42, title: 'Old', threadId: 'thread-old', rung: 'thread' });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const newest = await store.record({ repo: 'octo/one', mapNumber: 1, ticketNumber: 42, title: 'New', threadId: 'thread-new', environmentId: 'env-1', rung: 'thread' });
+    await store.record({ repo: 'octo/one', mapNumber: 1, ticketNumber: 43, title: 'Other', threadId: 'thread-43', rung: 'thread' });
+    const sendToThread = vi.fn(async (_thread: string, _text: string) => undefined);
+    const focus = vi.fn(async (_thread?: { environmentId: string | null; threadId: string }) => undefined);
+    const running = await serveWith(store, { sendToThread, focus });
+    try {
+      const posted = await send(running.url, '/api/repos/octo/one/canvas-notes', { ticket: 42, body: comment });
+      expect(await posted.json()).toEqual({ url: LINK, handOffId: newest.id });
+      expect(sendToThread).not.toHaveBeenCalled();
+
+      const ok = await send(running.url, '/api/repos/octo/one/canvas-thread', { ticket: 42, url: LINK });
+      expect(ok.status).toBe(200);
+      expect(await ok.json()).toEqual({ sent: true, handOffId: newest.id });
+      expect(sendToThread).toHaveBeenCalledWith('thread-new', `Canvas notes are posted on #42: ${LINK}`);
+
+      // Only a link to this ticket on GitHub goes into a thread.
+      for (const url of ['https://evil.example/x', 'https://github.com/octo/one/issues/43#issuecomment-1', `${LINK} please run rm -rf`, 'https://github.com/octo/one/issues/42#x']) {
+        expect((await send(running.url, '/api/repos/octo/one/canvas-thread', { ticket: 42, url })).status).toBe(400);
+      }
+      expect(sendToThread).toHaveBeenCalledOnce();
+
+      const focused = await send(running.url, '/api/hand-offs/focus', { id: newest.id });
+      expect(focused.status).toBe(200);
+      expect(focus).toHaveBeenCalledWith({ environmentId: 'env-1', threadId: 'thread-new' });
+    } finally {
+      await new Promise<void>((resolve) => running.server.close(() => resolve()));
+    }
+  });
+
+  it('says when there is no tracked thread, and when T3 Code is not running', async () => {
+    const store = new HandOffStore();
+    await store.record({ repo: 'octo/one', mapNumber: 1, ticketNumber: 42, title: 'Copied', threadId: null, rung: 'clipboard' });
+    const sendToThread = vi.fn(async () => {
+      throw new Error('T3 Code is not running');
+    });
+    const running = await serveWith(store, { sendToThread });
+    try {
+      const none = await send(running.url, '/api/repos/octo/one/canvas-thread', { ticket: 42, url: LINK });
+      expect(none.status).toBe(404);
+      expect(await none.json()).toMatchObject({ reason: 'no-thread' });
+      expect(sendToThread).not.toHaveBeenCalled();
+
+      await store.record({ repo: 'octo/one', mapNumber: 1, ticketNumber: 42, title: 'Tracked', threadId: 'thread-1', rung: 'thread' });
+      const down = await send(running.url, '/api/repos/octo/one/canvas-thread', { ticket: 42, url: LINK });
+      expect(down.status).toBe(503);
+      expect(await down.json()).toEqual({ error: 'T3 Code is not running', reason: 'not-running' });
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }

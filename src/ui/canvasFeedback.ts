@@ -4,14 +4,14 @@ import { shortcutAria, shortcutAssignments, shortcutFromEvent } from '../canvasS
  * option, collected in a closable feedback panel, reviewed there and posted as one comment on the
  * prototype ticket. There is no pick here: the pick is made in the T3 Code thread for the pick ticket.
  */
-import { CANVAS_NOTES_MARKER, canvasNotesComment, markOrder, markScope, markTitle } from '../canvasNotes.js';
+import { CANVAS_NOTES_MARKER, canvasNotesComment, canvasNotesThreadMessage, markOrder, markScope, markTitle } from '../canvasNotes.js';
 import type { CanvasMark, CanvasNotesContext, CanvasNotesSource } from '../canvasNotes.js';
 import { parsePrototypeFilePath } from '../prototypes.js';
 import { scopedApiPath } from '../repoRoutes.js';
 import { BASIC_COLORS, PROJECT_COLOR_TOKENS, clamp, fromHsv, parseColor, rgbText, toHsv } from './canvasColor.js';
 import type { Hsv } from './canvasColor.js';
 import type { CanvasSize } from './canvasPreference.js';
-import { icon, CHECK, CLOSE, EXTERNAL, INFO, PLUS } from './icons.js';
+import { icon, CHECK, CLOSE, COPY, EXTERNAL, INFO, PLAY, PLUS, REFRESH } from './icons.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
 import { setTrustedHtml } from './trustedHtml.js';
 
@@ -69,11 +69,28 @@ interface Mark extends CanvasMark {
   /** Pins: the element under the pin and the place inside it, for tracking only (not posted). */
   anchor?: { selector: string; ax: number; ay: number };
 }
+/** A comment on GitHub, and the ticket's tracked T3 Code thread when the post found one. */
+interface Posted {
+  url: string;
+  body: string;
+  at: number;
+  handOffId: string | null;
+}
+/** Send to T3 Code, from the bar over the canvas (#322, E in #314). Only the button sends. */
+type ThreadSend = { state: 'idle' } | { state: 'sending' } | { state: 'sent'; handOffId: string } | { state: 'failed'; reason: string };
 interface Session {
   marks: Mark[];
   /** Set when the marks as they stand are exactly what was posted. */
-  posted: { url: string | null; body: string } | null;
+  posted: Posted | null;
+  /** The last post, kept through edits, so posting the same notes again asks first. */
+  last: Posted | null;
   posting: boolean;
+  /** Why the last post did not reach GitHub. */
+  failed: string | null;
+  /** The posted bar over the canvas, until it is dismissed. */
+  bar: boolean;
+  send: ThreadSend;
+  copied: boolean;
   /** No bridge: the option the person says is showing. */
   chosen: string | null;
 }
@@ -102,10 +119,23 @@ const safeColor = (value: string | undefined): string => (value && HEX.test(valu
 
 async function postJson(url: string, body: unknown): Promise<unknown> {
   const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  const value = (await response.json().catch(() => ({}))) as { error?: string };
-  if (!response.ok) throw new Error(value.error ?? 'GitHub did not take the comment.');
+  const value = (await response.json().catch(() => ({}))) as { error?: string; reason?: string };
+  if (!response.ok) throw Object.assign(new Error(value.error ?? 'The server did not answer.'), { reason: value.reason });
   return value;
 }
+
+/** How long ago a post was, for the post-again check. */
+export function postedAgo(at: number, now = Date.now()): string {
+  const minutes = Math.floor((now - at) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${plural(minutes, 'minute')} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${plural(hours, 'hour')} ago`;
+  return `on ${new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
+
+const SPIN = '<span class="cf-spin" aria-hidden="true"></span>';
+const T3_NEXT = 'Return to your T3 Code thread to continue.';
 
 /** The comment as GitHub shows it: the hidden block for agents is left out of the preview. */
 export function commentPreviewHtml(markdown: string): string {
@@ -135,7 +165,6 @@ export class CanvasFeedback {
   private ptab: 'canvas' | 'project' | 'basic' = 'canvas';
   private hsv: Hsv | null = null;
   private markdownView = false;
-  private error: string | null = null;
   private notice: string | null = null;
   private noticeTimer: ReturnType<typeof setTimeout> | undefined;
   private hover: { rect: Rect; name: string } | null = null;
@@ -146,6 +175,9 @@ export class CanvasFeedback {
   private marksHtml: string | null = null;
   private readonly popLayer: HTMLElement;
   private readonly live: HTMLElement;
+  /** The bar over the canvas: posted, sending, sent, not sent, not posted. */
+  private readonly barSlot: HTMLElement;
+  private dialog: HTMLDialogElement | null = null;
 
   constructor(
     private readonly host: FeedbackHost,
@@ -160,7 +192,13 @@ export class CanvasFeedback {
     this.live.className = 'cf-live';
     this.live.setAttribute('role', 'status');
     this.live.setAttribute('aria-live', 'polite');
-    canvas.append(this.marksLayer, this.popLayer, this.live);
+    this.barSlot = document.createElement('div');
+    this.barSlot.className = 'cf-barslot';
+    this.barSlot.hidden = true;
+    canvas.append(this.marksLayer, this.popLayer);
+    canvas.before(this.barSlot);
+    // Beside the canvas, not in it: the side pane hides the canvas on the Feedback tab, where posting happens.
+    (canvas.parentElement ?? canvas).append(this.live);
     this.wire();
   }
 
@@ -170,7 +208,7 @@ export class CanvasFeedback {
     if (!context) return null;
     let session = this.sessions.get(context.url);
     if (!session) {
-      session = { marks: [], posted: null, posting: false, chosen: null };
+      session = { marks: [], posted: null, last: null, posting: false, failed: null, bar: false, send: { state: 'idle' }, copied: false, chosen: null };
       this.sessions.set(context.url, session);
     }
     return session;
@@ -272,7 +310,7 @@ export class CanvasFeedback {
         `<button type="button" role="tab" class="seg${this.paneTab === id ? ' is-on' : ''}" aria-selected="${String(this.paneTab === id)}" data-fb-tab="${id}"${id === 'feedback' ? ` aria-keyshortcuts="${shortcutAria(shortcutAssignments().panel)}"` : ''}>${label}${id === 'feedback' && n ? ` ${badge}` : ''}</button>`;
       return { bar: '', row, tabs: `<div class="segmented cf-tabs" role="tablist" aria-label="Pane view">${tab('canvas', 'Canvas')}${tab('feedback', 'Feedback')}</div>` };
     }
-    const chip = session.posted && context.ticket !== null ? `<span class="cf-chip is-ok">${icon(CHECK)}Posted to #${String(context.ticket)}</span>` : '';
+    const chip = session.posted && context.ticket !== null ? `<span class="cf-chip is-ok">${icon(CHECK)}Posted to GitHub · #${String(context.ticket)}</span>` : '';
     const toggle = `<button type="button" class="ghost cf-toggle${this.panelOpen ? ' is-on' : ''}" data-fb-act="panel" aria-pressed="${String(this.panelOpen)}" aria-controls="vw-feedback" aria-keyshortcuts="${shortcutAria(shortcutAssignments().panel)}" title="Feedback panel (${shortcutAssignments().panel})">${icon(FEEDBACK_ICONS.panel)}<span class="vw-lbl">Feedback</span>${badge}<kbd>${shortcutAssignments().panel}</kbd></button>`;
     return { bar: `${chip}${toggle}<span class="vw-sep"></span>`, row, tabs: '' };
   }
@@ -286,7 +324,7 @@ export class CanvasFeedback {
   paint(): void {
     const context = this.host.context();
     if (!context) return;
-    const focus = document.activeElement instanceof HTMLElement && (this.aside.contains(document.activeElement) || this.popLayer.contains(document.activeElement))
+    const focus = document.activeElement instanceof HTMLElement && [this.aside, this.popLayer, this.barSlot].some((part) => part.contains(document.activeElement))
       ? [...document.activeElement.attributes].find((attr) => attr.name.startsWith('data-fb-'))
       : undefined;
     const textField = (el: Element | null | undefined): el is HTMLTextAreaElement | HTMLInputElement =>
@@ -299,6 +337,7 @@ export class CanvasFeedback {
     this.canvas.classList.toggle('is-pinning', this.tool === 'pin');
     this.canvas.classList.toggle('is-selecting', this.tool === 'element' || this.tool === 'color');
     if (panel) setTrustedHtml(this.aside, this.panelHtml(context));
+    this.paintBar(context, canvas);
     this.paintMarks();
     this.paintPopover();
     this.track();
@@ -311,6 +350,64 @@ export class CanvasFeedback {
   private repaint(): void {
     this.host.repaintToolbar();
     this.paint();
+  }
+
+  // ---------- the bar over the canvas (#322, E in #314) ----------
+  private paintBar(context: FeedbackContext, canvasShown: boolean): void {
+    const html = canvasShown ? this.barHtml(context) : '';
+    if (html === this.barSlot.dataset['html']) return;
+    // Keyed on the markup, so a repaint for a mark or a hover leaves the bar and its focus alone.
+    this.barSlot.dataset['html'] = html;
+    setTrustedHtml(this.barSlot, html);
+    this.barSlot.hidden = html === '';
+  }
+  private ticketUrl(context: FeedbackContext): string | null {
+    const repo = parsePrototypeFilePath(context.url.split(/[?#]/)[0] ?? '')?.repo;
+    return repo && context.ticket !== null ? `https://github.com/${repo}/issues/${String(context.ticket)}` : null;
+  }
+  private viewLink(url: string, label = 'View comment'): string {
+    return `<a class="ghost cf-sm" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${icon(EXTERNAL)}${label}</a>`;
+  }
+  /** "Not posted" for GitHub's answer, said where the person will see it. */
+  private failedText(context: FeedbackContext, session: Session, where: 'bar' | 'panel'): string {
+    const ticket = `#${String(context.ticket)}`;
+    const reason = session.failed ? ` ${session.failed.replace(/\.?$/, '.')}` : '';
+    const notes = plural(session.marks.length, 'note');
+    return where === 'bar'
+      ? `GitHub did not answer.${reason} Your ${notes} ${session.marks.length === 1 ? 'is' : 'are'} still here. If the connection dropped while posting, check ${ticket} before you try again from the panel.`
+      : `GitHub did not answer.${reason} Your ${notes} ${session.marks.length === 1 ? 'is' : 'are'} still here. If the connection dropped while posting, check ${ticket} before you try again so it isn’t posted twice.`;
+  }
+  private barHtml(context: FeedbackContext): string {
+    const session = this.session();
+    if (!session || context.ticket === null) return '';
+    const where = `GitHub · #${String(context.ticket)}`;
+    const check = this.ticketUrl(context);
+    if (session.failed !== null && !session.posting)
+      return `<div class="cf-bar is-warn" role="alert"><span class="cf-bar-ic">${icon(INFO)}</span><div class="cf-bar-t"><b>Not posted to ${where}</b><span>${escapeHtml(this.failedText(context, session, 'bar'))}</span></div><div class="cf-bar-row">${check ? this.viewLink(check, `Check #${String(context.ticket)}`) : ''}</div></div>`;
+    const posted = session.posted;
+    if (!posted || !session.bar) return '';
+    const ticket = `#${String(context.ticket)}`;
+    const message = canvasNotesThreadMessage(context.ticket, posted.url);
+    const close = `<button type="button" class="iconbtn" data-fb-act="bar-close" aria-label="Dismiss the posted message">${icon(CLOSE)}</button>`;
+    const ok = `<span class="cf-ok">${icon(CHECK)}</span>`;
+    const shell = (warn: boolean, head: string, text: string, row: string): string =>
+      `<div class="cf-bar${warn ? ' is-warn' : ''}" role="${warn ? 'alert' : 'status'}" aria-labelledby="cf-bar-h">${warn ? `<span class="cf-bar-ic">${icon(INFO)}</span>` : ok}<div class="cf-bar-t"><b id="cf-bar-h" tabindex="-1">${head}</b>${text}</div><div class="cf-bar-row">${row}</div>${close}</div>`;
+    const view = this.viewLink(posted.url);
+    const copy = `<button type="button" class="primary cf-sm" data-fb-act="bar-copy">${icon(COPY)}${session.copied ? 'Copied' : 'Copy message for T3 Code'}</button>`;
+    const quote = (verb: string): string => `<span class="cf-msg">${verb}: “${escapeHtml(message)}”</span>`;
+    if (posted.handOffId === null)
+      return shell(false, `Posted to ${where}`, `<span>${T3_NEXT} Wayfinder doesn’t know this ticket’s thread, so paste the message there yourself.</span>${quote('Copies')}`, `${view}${copy}`);
+    const send = session.send;
+    if (send.state === 'sending')
+      return shell(false, `Posted to ${where}`, `<span>Sending the link to your T3 Code thread for ${ticket}…</span>${quote('Sends')}`, `${view}<button type="button" class="primary cf-sm" data-fb-act="bar-send" disabled aria-busy="true">${SPIN}Sending…</button>`);
+    if (send.state === 'sent')
+      return shell(false, `Posted to ${where} · sent to T3 Code`, `<span>Your T3 Code thread for ${ticket} has the link, and the agent is reading it. Continue there.</span>`, `${view}<button type="button" class="primary cf-sm" data-open-handoff="${escapeHtml(send.handOffId)}">${icon(PLAY)}Open T3 Code thread</button>`);
+    if (send.state === 'failed')
+      return shell(true, `Posted to ${where} · not sent to T3 Code`, `<span>${escapeHtml(send.reason)} The notes are safe on GitHub.</span>${quote('Sends')}`, `${copy}<button type="button" class="ghost cf-sm" data-fb-act="bar-send">${icon(REFRESH)}Try sending again</button>`);
+    return shell(false, `Posted to ${where}`, `<span>${T3_NEXT} Send the link so the agent picks up these notes.</span>${quote('Sends')}`, `${view}<button type="button" class="primary cf-sm" data-fb-act="bar-send">${icon(FEEDBACK_ICONS.send)}Send to T3 Code</button>`);
+  }
+  private focusBar(selector = '#cf-bar-h'): void {
+    this.barSlot.querySelector<HTMLElement>(selector)?.focus();
   }
   /** Moves marks with the canvas's scroll; cheap enough for every layout message. */
   private paintMarks(): void {
@@ -482,7 +579,7 @@ export class CanvasFeedback {
     const sent = posted ? this.session()?.posted : null;
     const md = sent ? sent.body : this.comment(context);
     const url = sent?.url ?? null;
-    const open = posted && url ? `<a class="ghost cf-sm" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${icon(EXTERNAL)}Open</a>` : '';
+    const open = posted && url !== null ? `<a class="ghost cf-sm" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${icon(EXTERNAL)}Open</a>` : '';
     return `<article class="cf-gh" aria-label="${posted ? 'Posted' : 'Comment'} on ${ticket}">
       <header class="cf-gh-head"><span>${posted ? 'Posted' : 'Comment'} on <b>${escapeHtml(context.title)}</b></span>${open}</header>
       <div class="cf-gh-tabs segmented" role="group" aria-label="Preview of the comment on ${ticket}"><button type="button" class="seg${this.markdownView ? '' : ' is-on'}" aria-pressed="${String(!this.markdownView)}" data-fb-view="rendered">Preview</button><button type="button" class="seg${this.markdownView ? ' is-on' : ''}" aria-pressed="${String(this.markdownView)}" data-fb-view="markdown">Markdown</button></div>
@@ -493,18 +590,26 @@ export class CanvasFeedback {
     const ticket = context.ticket === null ? 'the prototype ticket' : `#${String(context.ticket)}`;
     const close = `<button type="button" class="iconbtn" data-fb-act="panel-close" aria-label="Close the feedback panel (${shortcutAssignments().panel})" title="Close (${shortcutAssignments().panel})">${icon(CLOSE)}</button>`;
     if (this.panel === 'review') {
-      const posting = this.session()?.posting ?? false;
-      const error = this.error ? `<div class="cf-banner" role="alert">${icon(INFO)}<span>${escapeHtml(this.error)}</span></div>` : '';
-      const disabled = context.ticket === null ? ' disabled title="Wayfinder does not know this canvas’s ticket"' : posting ? ' disabled' : '';
+      const session = this.session();
+      const posting = session?.posting ?? false;
+      const failed = !posting && session?.failed != null;
+      const where = context.ticket === null ? 'GitHub' : `GitHub · #${String(context.ticket)}`;
+      const check = this.ticketUrl(context);
+      // The side pane and the floating window hide the canvas on this tab, so the bar's explanation shows here.
+      const error =
+        failed && session && context.size !== 'full' && context.ticket !== null
+          ? `<div class="cf-banner" role="alert">${icon(INFO)}<div class="cf-banner-t"><b>Not posted to ${where}</b><span>${escapeHtml(this.failedText(context, session, 'panel'))}</span>${check ? this.viewLink(check, `Check #${String(context.ticket)}`) : ''}</div></div>`
+          : '';
+      const disabled = context.ticket === null ? ' disabled title="Wayfinder does not know this canvas’s ticket"' : posting ? ' disabled aria-busy="true"' : '';
+      const label = posting ? `${SPIN}Posting to GitHub…` : failed ? `${icon(REFRESH)}Try again` : `${icon(FEEDBACK_ICONS.send)}Post to ${where}`;
       return `<header class="cf-panel-head"><button type="button" class="iconbtn" data-fb-act="panel-edit" aria-label="Back to edit">${icon(FEEDBACK_ICONS.left)}</button><h2>Review before posting</h2><span class="topbar-spacer"></span>${close}</header>
-        <div class="cf-panel-body"><p class="cf-muted">Exactly what goes to ${ticket}. Your marks stay on the canvas while you read.</p>${this.card(context, false)}${error}</div>
-        <footer class="cf-panel-foot"><button type="button" class="ghost" data-fb-act="panel-edit">Edit</button><span class="topbar-spacer"></span><button type="button" class="primary" data-fb-act="post"${disabled}>${icon(FEEDBACK_ICONS.send)}${posting ? 'Posting…' : `Post to ${ticket}`}</button></footer>`;
+        <div class="cf-panel-body"><p class="cf-muted">Exactly what goes to GitHub, as a comment on ${ticket}. It does not go to your T3 Code thread. Your marks stay on the canvas while you read.</p>${this.card(context, false)}${error}</div>
+        <footer class="cf-panel-foot"><button type="button" class="ghost" data-fb-act="panel-edit">Edit</button><span class="topbar-spacer"></span><button type="button" class="primary" data-fb-act="post"${disabled}>${label}</button></footer>`;
     }
     if (this.panel === 'posted' && this.session()?.posted) {
-      const pick = context.pick === null ? 'the pick ticket' : `#${String(context.pick)}`;
-      return `<header class="cf-panel-head"><span class="cf-ok">${icon(CHECK)}</span><h2>Posted to ${ticket}</h2><span class="topbar-spacer"></span>${close}</header>
-        <div class="cf-panel-body"><p class="cf-muted">The agent picks these up for the next revision. When you stop revising, make the pick in the T3 Code thread for ${pick}.</p>${this.card(context, true)}</div>
-        <footer class="cf-panel-foot"><span class="topbar-spacer"></span><button type="button" class="primary" data-fb-act="panel-fresh">Start new feedback</button></footer>`;
+      return `<header class="cf-panel-head"><span class="cf-ok">${icon(CHECK)}</span><h2>Posted to GitHub · ${ticket}</h2><span class="topbar-spacer"></span>${close}</header>
+        <div class="cf-panel-body"><p class="cf-muted">${T3_NEXT}</p>${this.card(context, true)}</div>
+        <footer class="cf-panel-foot"><span class="topbar-spacer"></span><button type="button" class="ghost" data-fb-act="panel-fresh">Start new feedback</button></footer>`;
     }
     const page = this.currentPage(context);
     const current = this.currentOption(context);
@@ -760,9 +865,17 @@ export class CanvasFeedback {
     this.editing = null;
     this.hover = null;
     this.panel = this.session()?.posted ? 'posted' : 'edit';
-    this.error = null;
+    this.dialog?.close();
     this.layout.clear();
     this.viewport = null;
+  }
+  /** Post, or ask first when these exact notes are already on GitHub. */
+  private requestPost(): void {
+    const context = this.host.context();
+    const session = this.session();
+    if (!context || !session || session.posting) return;
+    if (session.last && session.last.body === this.comment(context)) return this.openPostAgain(context, session.last);
+    void this.post();
   }
   private async post(): Promise<void> {
     const context = this.host.context();
@@ -773,28 +886,132 @@ export class CanvasFeedback {
     const ticket = context.ticket;
     const body = this.comment(context);
     session.posting = true;
-    this.error = null;
-    this.paint();
+    session.failed = null;
+    this.say(`Posting to GitHub, #${String(ticket)}…`);
+    this.repaint();
     // The person may edit, or open another canvas, while GitHub answers: only the sent body counts.
     const here = (): boolean => this.session() === session;
+    let focus: 'bar' | 'post' | null = null;
     try {
-      const result = (await (this.host.post ?? postJson)(scopedApiPath(repo, 'canvas-notes'), { ticket, body })) as { url?: unknown };
-      const url = typeof result.url === 'string' && result.url.startsWith('https://github.com/') ? result.url : null;
+      const result = (await (this.host.post ?? postJson)(scopedApiPath(repo, 'canvas-notes'), { ticket, body })) as { url?: unknown; handOffId?: unknown };
+      const url = typeof result.url === 'string' && result.url.startsWith('https://github.com/') ? result.url : `https://github.com/${repo}/issues/${String(ticket)}`;
+      const sent: Posted = { url, body, at: Date.now(), handOffId: typeof result.handOffId === 'string' ? result.handOffId : null };
+      session.last = sent;
       const current = here() ? this.host.context() : null;
       if (current && this.comment(current) === body) {
-        session.posted = { url, body };
+        session.posted = sent;
+        session.bar = true;
+        session.send = { state: 'idle' };
+        session.copied = false;
         if (this.panel === 'review') this.panel = 'posted';
         this.editing = null;
         this.tool = null;
-        this.say(`Posted to #${String(ticket)}.`);
-      } else if (here()) this.say(`Posted to #${String(ticket)}. Your later edits are not in it yet.`);
+        // E: the panel closes and the bar over the canvas says where the notes went.
+        if (current.size === 'full') this.panelOpen = false;
+        else this.paneTab = 'canvas';
+        focus = 'bar';
+        this.say(`Posted to GitHub, #${String(ticket)}. ${T3_NEXT}`);
+      } else if (here()) this.say(`Posted to GitHub, #${String(ticket)}. Your later edits are not in it yet.`);
     } catch (error) {
-      if (here()) this.error = `Couldn't post to #${String(ticket)}: ${(error as Error).message} Your notes are still here; try again.`;
+      if (here()) {
+        session.failed = (error as Error).message;
+        focus = 'post';
+        this.say(`Not posted to #${String(ticket)}. Your notes are still here.`);
+      }
     } finally {
       session.posting = false;
       this.repaint();
     }
+    if (focus === 'bar') this.focusBar();
+    if (focus === 'post') this.aside.querySelector<HTMLElement>('[data-fb-act="post"]')?.focus();
   }
+
+  /** The post-again check: a modal with Cancel focused. Closing it returns focus to Post. */
+  private openPostAgain(context: FeedbackContext, last: Posted): void {
+    this.dialog?.close();
+    const dialog = document.createElement('dialog');
+    dialog.className = 'cf-dialog';
+    dialog.setAttribute('aria-labelledby', 'cf-dialog-h');
+    dialog.setAttribute('aria-describedby', 'cf-dialog-d');
+    const where = `GitHub · #${String(context.ticket)}`;
+    setTrustedHtml(
+      dialog,
+      `<h2 id="cf-dialog-h">Post these notes again?</h2>
+      <p id="cf-dialog-d">These exact notes are already a comment on ${where}, posted ${escapeHtml(postedAgo(last.at))}. Posting again adds a second copy. Nothing goes to your T3 Code thread either way.</p>
+      <div class="cf-dialog-row">${this.viewLink(last.url)}<span class="topbar-spacer"></span><button type="button" class="ghost" data-fb-act="dialog-cancel" autofocus>Cancel</button><button type="button" class="ghost cf-danger" data-fb-act="dialog-post">Post a second copy</button></div>`,
+    );
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      if (this.dialog === dialog) this.dialog = null;
+      if (dialog.returnValue !== 'post') this.aside.querySelector<HTMLElement>('[data-fb-act="post"]')?.focus();
+    });
+    (this.canvas.closest('#canvas-viewer') ?? document.body).append(dialog);
+    this.dialog = dialog;
+    dialog.showModal();
+    dialog.querySelector<HTMLElement>('[data-fb-act="dialog-cancel"]')?.focus();
+  }
+
+  /** Send to T3 Code: the comment link into the prototype ticket's tracked thread, queued behind any running turn. */
+  private async sendToThread(): Promise<void> {
+    const context = this.host.context();
+    const session = this.session();
+    const posted = session?.posted;
+    const repo = context ? parsePrototypeFilePath(context.url.split(/[?#]/)[0] ?? '')?.repo : undefined;
+    if (!context || !session || !posted || !repo || context.ticket === null || session.send.state === 'sending') return;
+    const ticket = `#${String(context.ticket)}`;
+    session.send = { state: 'sending' };
+    this.say(`Sending to your T3 Code thread for ${ticket}…`);
+    this.paint();
+    this.focusBar();
+    try {
+      const result = (await (this.host.post ?? postJson)(scopedApiPath(repo, 'canvas-thread'), { ticket: context.ticket, url: posted.url })) as { handOffId?: unknown };
+      session.send = { state: 'sent', handOffId: typeof result.handOffId === 'string' ? result.handOffId : (posted.handOffId ?? '') };
+      this.say(`Sent to your T3 Code thread for ${ticket}.`);
+    } catch (error) {
+      const { message, reason } = error as Error & { reason?: unknown };
+      if (reason === 'no-thread') {
+        // The thread was forgotten since the post: offer the copy instead.
+        posted.handOffId = null;
+        session.send = { state: 'idle' };
+        this.say('Wayfinder doesn’t know this ticket’s thread. Copy the message instead.');
+      } else {
+        session.send = {
+          state: 'failed',
+          reason: reason === 'not-running' ? 'T3 Code isn’t running, so the message didn’t reach the thread.' : `T3 Code didn’t take the message (${message.replace(/\.$/, '')}).`,
+        };
+        this.say('Not sent to T3 Code. The notes are safe on GitHub.');
+      }
+    }
+    if (this.session() !== session) return;
+    this.paint();
+    this.focusBar();
+  }
+
+  private async copyMessage(): Promise<void> {
+    const context = this.host.context();
+    const session = this.session();
+    if (!context || !session?.posted || context.ticket === null) return;
+    try {
+      await navigator.clipboard.writeText(canvasNotesThreadMessage(context.ticket, session.posted.url));
+      session.copied = true;
+      this.say('Copied. Paste it in your T3 Code thread.');
+    } catch {
+      this.say('Could not copy. Select the message and copy it yourself.');
+    }
+    this.paint();
+    this.focusBar('[data-fb-act="bar-copy"]');
+  }
+
+  /** Open T3 Code thread: the same hand-off control Home uses, which selects that thread in T3 Code. */
+  private async openThread(id: string): Promise<void> {
+    try {
+      await (this.host.post ?? postJson)('/api/hand-offs/focus', { id });
+      this.say('Opened your T3 Code thread.');
+    } catch (error) {
+      this.flash((error as Error).message);
+    }
+  }
+
   private moveSelected(mark: Mark): void {
     // Ask the canvas what the pin now sits on, once the arrow keys settle. A question already out
     // describes where the pin was, so its answer must not move it back.
@@ -836,6 +1053,7 @@ export class CanvasFeedback {
     const context = this.host.context();
     if (!context) return false;
     const target = event.target instanceof Element ? event.target : null;
+    if (this.dialog?.open) return this.dialogKey(event, this.dialog);
     if (event.key === 'Escape') return this.escape();
     const dot = target?.closest<HTMLElement>('[data-fb-svdot]');
     if (dot && event.key.startsWith('Arrow')) {
@@ -884,6 +1102,21 @@ export class CanvasFeedback {
     return false;
   }
 
+  /** The post-again dialog keeps Esc and Tab to itself; Enter and Space still press its buttons. */
+  private dialogKey(event: KeyboardEvent, dialog: HTMLDialogElement): boolean {
+    if (event.key === 'Escape') {
+      dialog.close();
+      return true;
+    }
+    if (event.key === 'Tab') {
+      const items = [...dialog.querySelectorAll<HTMLElement>('a[href], button')];
+      const at = items.indexOf(document.activeElement as HTMLElement);
+      items[(at + (event.shiftKey ? -1 : 1) + items.length) % items.length]?.focus();
+      return true;
+    }
+    return event.key !== 'Enter' && event.key !== ' ';
+  }
+
   private wire(): void {
     const root = this.canvas.closest<HTMLElement>('#canvas-viewer') ?? document.body;
     root.addEventListener('click', (event) => {
@@ -897,6 +1130,7 @@ export class CanvasFeedback {
       const button = target?.closest<HTMLElement>('button');
       if (!button) return;
       const d = button.dataset;
+      if (d['openHandoff'] !== undefined && this.barSlot.contains(button)) return void this.openThread(d['openHandoff']);
       if (d['fbTarget'] !== undefined && (this.tool === 'element' || this.tool === 'color')) {
         const picked = this.targets.find((candidate) => candidate.key === d['fbTarget']);
         if (picked) this.request(this.tool, picked.rect.left + picked.rect.width / 2, picked.rect.top + picked.rect.height / 2);
@@ -957,22 +1191,43 @@ export class CanvasFeedback {
           else this.paneTab = 'canvas';
           return this.repaint();
         }
-        case 'panel-review':
+        case 'panel-review': {
           this.panel = 'review';
           this.tool = null;
           this.editing = null;
-          this.error = null;
+          const session = this.session();
+          if (session) session.failed = null;
           return this.repaint();
+        }
         case 'panel-edit':
           this.panel = 'edit';
           return this.repaint();
         case 'post':
+          return this.requestPost();
+        case 'dialog-cancel':
+          return this.dialog?.close();
+        case 'dialog-post':
+          this.dialog?.close('post');
           return void this.post();
+        case 'bar-close': {
+          const session = this.session();
+          if (session) session.bar = false;
+          this.paint();
+          // The chip in the toolbar still says it posted.
+          const size = this.host.context()?.size;
+          document.querySelector<HTMLElement>(size === 'full' ? '#canvas-viewer .cf-toggle' : '#canvas-viewer [data-fb-tab="feedback"]')?.focus();
+          return;
+        }
+        case 'bar-send':
+          return void this.sendToThread();
+        case 'bar-copy':
+          return void this.copyMessage();
         case 'panel-fresh': {
           const session = this.session();
           if (session) {
             session.marks = [];
             session.posted = null;
+            session.last = null;
           }
           this.panel = 'edit';
           return this.repaint();

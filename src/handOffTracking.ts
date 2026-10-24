@@ -1102,6 +1102,19 @@ export class HandOffTracker {
     return live === undefined ? undefined : this.toDto(live);
   }
 
+  /** The newest hand-off that started a T3 Code thread for the ticket, live or not: the thread its agent reads. */
+  async ticketThread(repo: string, ticketNumber: number): Promise<StoredHandOff | undefined> {
+    const records = await this.store.list();
+    return records
+      .filter((item) => item.repo.toLowerCase() === repo.toLowerCase() && item.ticketNumber === ticketNumber && item.threadId !== null)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  }
+
+  /** One stored hand-off, with the T3 Code environment its thread lives in. */
+  async stored(id: string): Promise<StoredHandOff | undefined> {
+    return (await this.store.list()).find((item) => item.id === id);
+  }
+
   /** How many hand-offs are live on this machine, across every repository and map, after a fresh look at T3 Code. */
   async liveCount(): Promise<number> {
     this.start();

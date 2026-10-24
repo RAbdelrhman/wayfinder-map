@@ -66,7 +66,7 @@ export function draftMapPath(repo: string, draftId: string): string {
 }
 
 /** The repository-scoped API calls the page makes, so a page can name a repo other than the launch one. */
-export type ScopedApiAction = 'snapshot' | 'hand-off' | 'new-map' | 'prototypes' | 'ticket' | 'workspace' | 'clone' | 'icon' | 'events' | 'settle' | 'follow' | 'start-next' | 'auto-rate' | 'canvas-notes';
+export type ScopedApiAction = 'snapshot' | 'hand-off' | 'new-map' | 'prototypes' | 'ticket' | 'workspace' | 'clone' | 'icon' | 'events' | 'settle' | 'follow' | 'start-next' | 'auto-rate' | 'canvas-notes' | 'canvas-thread';
 
 export function scopedApiPath(repo: string, action: ScopedApiAction): string {
   return `/api${repoPath(repo)}/${action}`;

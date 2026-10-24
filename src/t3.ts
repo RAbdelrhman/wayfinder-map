@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 
 import { copyToClipboard } from './clipboard.js';
 import { appControlAddress, openWorkspace, stateDirFor } from './t3App.js';
-import { T3Api, samePath, serverCommand, threadCommands, threadDefaults } from './t3Api.js';
+import { T3Api, followUpCommand, samePath, serverCommand, threadAppLink, threadCommands, threadDefaults } from './t3Api.js';
 import type { ServerCommand } from './t3Api.js';
 import { hiddenModelsFromSettings, toCatalog, toModelSelection } from './models.js';
 import type { HiddenModels, ModelCatalog, ModelChoice } from './models.js';
@@ -182,15 +182,21 @@ export async function handOff(input: HandOffInput, steps: HandOffSteps): Promise
   return { rung: copied ? 'clipboard' : null, copied, threadId: null, prompt: plain, notice, error, tracking: null };
 }
 
-/** Bring T3 Code forward. A second launch of the desktop app just focuses the first. */
-function reveal(command: ServerCommand | null, origin: string): void {
+/**
+ * Bring T3 Code forward. A second launch of the desktop app just focuses the first; given a
+ * thread link (`t3code://threads/<environment>/<thread>`) it also selects that thread.
+ */
+function reveal(command: ServerCommand | null, origin: string, thread: { environmentId: string; threadId: string } | null = null): void {
   if (command !== null && /server\.asar/.test(command.script)) {
     const env = { ...process.env };
     delete env['ELECTRON_RUN_AS_NODE'];
-    spawn(command.exe, [], { detached: true, stdio: 'ignore', env, windowsHide: false }).unref();
+    const args = thread === null ? [] : [threadAppLink(thread.environmentId, thread.threadId)];
+    spawn(command.exe, args, { detached: true, stdio: 'ignore', env, windowsHide: false }).unref();
     return;
   }
-  void openExternal(origin).catch(() => undefined);
+  // The web app routes a thread as /<environment>/<thread>, as the desktop link resolves to.
+  const target = thread === null ? origin : new URL(`/${encodeURIComponent(thread.environmentId)}/${encodeURIComponent(thread.threadId)}`, origin).href;
+  void openExternal(target).catch(() => undefined);
 }
 
 interface T3Config {
@@ -272,13 +278,34 @@ export class T3HandOff {
     return { api, command, origin };
   }
 
-  /** Bring the running T3 Code window forward for a tracked thread. */
-  async focus(): Promise<void> {
+  /**
+   * Bring the running T3 Code window forward. Given a thread, select it there too; a hand-off
+   * stored without its environment uses the running server's, which is where its thread lives.
+   */
+  async focus(thread?: { environmentId: string | null; threadId: string }): Promise<void> {
     const runtime = await detectT3();
     if (runtime.origin === null || runtime.pid === null) throw new Error('T3 Code is not running');
     const command = await serverCommand(runtime.pid);
     if (command === null) throw new Error('could not find the T3 Code binary');
-    reveal(command, runtime.origin);
+    if (thread === undefined) return reveal(command, runtime.origin);
+    let environmentId = thread.environmentId;
+    if (environmentId === null) {
+      const { api } = await this.connect(runtime);
+      const descriptor = (await api.environment()) as { environmentId?: unknown } | null;
+      if (typeof descriptor?.environmentId !== 'string') throw new Error('T3 Code did not say which environment it runs');
+      environmentId = descriptor.environmentId;
+    }
+    reveal(command, runtime.origin, { environmentId, threadId: thread.threadId });
+  }
+
+  /** Post `text` into an existing thread as the user. It queues behind a running turn rather than interrupting it. */
+  async sendToThread(threadId: string, text: string): Promise<void> {
+    const runtime = await detectT3();
+    const { api } = await this.connect(runtime);
+    const snapshot = await api.snapshot();
+    const thread = snapshot.threads.find((candidate) => candidate.id === threadId);
+    if (thread === undefined || thread.deletedAt !== null) throw new Error('T3 Code no longer has this thread');
+    await api.dispatch(followUpCommand(threadId, text, thread));
   }
 
   /** T3 Code's providers and settings, cached for a minute: the reply is large and rarely changes. */

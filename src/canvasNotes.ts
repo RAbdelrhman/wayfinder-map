@@ -156,3 +156,16 @@ export function canvasNotesComment(context: CanvasNotesContext, marks: readonly 
 export function isCanvasNotesComment(body: unknown): body is string {
   return typeof body === 'string' && body.length <= 65_000 && body.startsWith(`${CANVAS_NOTES_HEADING}\n`) && body.includes(CANVAS_NOTES_MARKER);
 }
+
+/** What Send to T3 Code posts into the ticket's thread (#322, E in #314). */
+export function canvasNotesThreadMessage(ticket: number, url: string): string {
+  return `Canvas notes are posted on #${String(ticket)}: ${url}`;
+}
+
+/** Only a link to the ticket on GitHub, or to one comment on it, goes into a thread. */
+export function isTicketCommentUrl(repo: string, ticket: number, url: unknown): url is string {
+  if (typeof url !== 'string') return false;
+  const base = `https://github.com/${repo}/issues/${String(ticket)}`.toLowerCase();
+  const [head, fragment, ...rest] = url.split('#');
+  return rest.length === 0 && head?.toLowerCase() === base && (fragment === undefined || /^issuecomment-\d+$/.test(fragment));
+}

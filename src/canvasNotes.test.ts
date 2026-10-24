@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CANVAS_NOTES_MARKER, canvasNotesComment, isCanvasNotesComment, markOrder, markTitle } from './canvasNotes.js';
+import { CANVAS_NOTES_MARKER, canvasNotesComment, isCanvasNotesComment, isTicketCommentUrl, markOrder, markTitle } from './canvasNotes.js';
 import type { CanvasMark, CanvasNotesContext } from './canvasNotes.js';
 
 const SHA = '0123456789abcdef0123456789abcdef01234567';
@@ -134,5 +134,16 @@ describe('canvas notes comment', () => {
     expect(isCanvasNotesComment('Closing this ticket.')).toBe(false);
     expect(isCanvasNotesComment(`### Canvas notes from Wayfinder\n${'x'.repeat(70_000)}${CANVAS_NOTES_MARKER}{} -->`)).toBe(false);
     expect(isCanvasNotesComment(42)).toBe(false);
+  });
+});
+
+describe('isTicketCommentUrl', () => {
+  it('accepts only the ticket or one of its comments on GitHub', () => {
+    expect(isTicketCommentUrl('octo/one', 42, 'https://github.com/octo/one/issues/42#issuecomment-9')).toBe(true);
+    expect(isTicketCommentUrl('octo/one', 42, 'https://github.com/Octo/One/issues/42')).toBe(true);
+    expect(isTicketCommentUrl('octo/one', 42, 'https://github.com/octo/one/issues/420')).toBe(false);
+    expect(isTicketCommentUrl('octo/one', 42, 'https://github.com/octo/one/issues/42#issuecomment-9#x')).toBe(false);
+    expect(isTicketCommentUrl('octo/one', 42, 'https://github.com/octo/one/issues/42?x#issuecomment-9')).toBe(false);
+    expect(isTicketCommentUrl('octo/one', 42, 42)).toBe(false);
   });
 });
