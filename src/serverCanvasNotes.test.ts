@@ -85,6 +85,7 @@ describe('posting canvas notes (#213)', () => {
       expect(ok.status).toBe(200);
       expect(await ok.json()).toEqual({ url: 'https://github.com/octo/one/issues/42#issuecomment-1', handOffId: null });
       expect(postIssueComment).toHaveBeenCalledWith('octo/one', 42, comment);
+      expect(postIssueComment).toHaveBeenCalledOnce();
 
       postIssueComment.mockClear();
       expect((await post({ ticket: 7, body: comment })).status).toBe(404);

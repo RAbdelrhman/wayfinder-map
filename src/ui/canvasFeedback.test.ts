@@ -694,6 +694,9 @@ describe('E from #314: the confirmation after posting (#322)', () => {
     view.click('[data-fb-act="post"]');
     view.click('[data-fb-act="dialog-post"]');
     await vi.waitFor(() => expect(view.post).toHaveBeenCalledTimes(2));
+    // The second copy is the same comment, posted to GitHub again.
+    expect(view.post.mock.calls[1]).toEqual(view.post.mock.calls[0]);
+    expect(view.post.mock.calls[1]![0]).toBe('/api/repos/octo/repo/canvas-notes');
   });
 });
 
