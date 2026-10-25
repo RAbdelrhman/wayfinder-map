@@ -8412,6 +8412,8 @@ button.cf-row-kind:hover { color: var(--accent-text); text-decoration: underline
 .vw.is-c .cf-bar-t, .vw.is-f .cf-bar-t { flex-basis: calc(100% - 90px); }
 .vw.is-c .cf-bar-row, .vw.is-f .cf-bar-row { order: 3; margin-left: 40px; }
 .cf-bar-t .cf-msg { color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+/* Muted text is under 4.5:1 on the amber bar in dark. */
+.cf-bar.is-warn .cf-msg { color: var(--text-secondary); }
 .cf-bar a.ghost, .cf-banner a.ghost, .cf-dialog a.ghost { text-decoration: none; }
 .cf-bar .cf-sm, .cf-banner .cf-sm, .cf-dialog .cf-sm { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
 .cf-bar .cf-sm .i, .cf-banner .cf-sm .i, .cf-dialog .cf-sm .i { width: 14px; height: 14px; }
