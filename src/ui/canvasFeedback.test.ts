@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CanvasFeedback } from './canvasFeedback.js';
+import { CanvasFeedback, postedAgo } from './canvasFeedback.js';
 import type { FeedbackContext } from './canvasFeedback.js';
 import { PROTOTYPE_HOST_VERSION } from '../prototypes.js';
 import { setTrustedHtml } from './trustedHtml.js';
@@ -156,7 +156,7 @@ describe('D4 without the bridge: notes only, with the option chooser', () => {
     view.click('[data-fb-act="panel-review"]');
     expect(view.$('#vw-feedback h2')!.textContent).toBe('Review before posting');
     view.click('[data-fb-act="post"]');
-    await vi.waitFor(() => expect(view.$('#vw-feedback h2')!.textContent).toBe('Posted to #42'));
+    await vi.waitFor(() => expect(view.$('.cf-bar b')!.textContent).toBe('Posted to GitHub · #42'));
     expect(view.post).toHaveBeenCalledOnce();
     const [url, body] = view.post.mock.calls[0]!;
     expect(url).toBe('/api/repos/octo/repo/canvas-notes');
@@ -165,8 +165,10 @@ describe('D4 without the bridge: notes only, with the option chooser', () => {
     expect(comment).toContain('`prototype/42-home` @ `aaaaaaa` · `prototypes/42/index.html`');
     expect(comment).toContain('1. **Whole page**, note: Too much padding.');
     expect(comment).toContain('2. **B · Split hero**, note on the whole option: Too tall.');
-    expect(view.$('#vw-feedback')!.textContent).toContain('make the pick in the T3 Code thread for #43');
-    expect(view.$('.cf-chip.is-ok')!.textContent).toBe('Posted to #42');
+    expect(view.$('.cf-chip.is-ok')!.textContent).toBe('Posted to GitHub · #42');
+    view.click('[data-fb-act="panel"]');
+    expect(view.$('#vw-feedback h2')!.textContent).toBe('Posted to GitHub · #42');
+    expect(view.$('#vw-feedback')!.textContent).toContain('Return to your T3 Code thread to continue.');
   });
 
   it('keeps the notes and says why when GitHub refuses the comment', async () => {
@@ -177,7 +179,8 @@ describe('D4 without the bridge: notes only, with the option chooser', () => {
     view.click('[data-fb-act="panel-review"]');
     view.click('[data-fb-act="post"]');
     await vi.waitFor(() => expect(view.$('[role="alert"]')).not.toBeNull());
-    expect(view.$('[role="alert"]')!.textContent).toBe("Couldn't post to #42: HTTP 403. Your notes are still here; try again.");
+    expect(view.$('[role="alert"]')!.textContent).toContain('Not posted to GitHub · #42');
+    expect(view.$('[role="alert"]')!.textContent).toContain('HTTP 403. Your 1 note is still here.');
     expect(view.$('#vw-feedback h2')!.textContent).toBe('Review before posting');
   });
 });
@@ -289,7 +292,7 @@ describe('verifier findings on #213', () => {
     view.click('[data-fb-act="panel-edit"]');
     view.type('#vw-feedback [data-fb-note]', 'UNSENT EDIT');
     first.resolve({ url: 'https://github.com/octo/repo/issues/42#issuecomment-1' });
-    await vi.waitFor(() => expect(view.$('.cf-live')!.textContent).toBe('Posted to #42. Your later edits are not in it yet.'));
+    await vi.waitFor(() => expect(view.$('.cf-live')!.textContent).toBe('Posted to GitHub, #42. Your later edits are not in it yet.'));
     expect(view.$('#vw-feedback h2')!.textContent).toBe('Feedback');
     expect(view.$('.cf-chip.is-ok')).toBeNull();
 
@@ -468,5 +471,240 @@ describe('verifier findings on #213', () => {
     const select = view.$<HTMLSelectElement>('[data-fb-option]')!;
     expect([...select.options].map((option) => option.value)).toEqual(['A', 'B']);
     expect(select.value).toBe('B');
+  });
+});
+
+describe('E from #314: the confirmation after posting (#322)', () => {
+  const COMMENT = 'https://github.com/octo/repo/issues/42#issuecomment-1';
+  const MESSAGE = `Canvas notes are posted on #42: ${COMMENT}`;
+  type Answer = (url: string, body: unknown) => Promise<unknown>;
+  /** Mount, add one note, and open Review. `answers` reply to each POST in order. */
+  function reviewed(overrides: Partial<FeedbackContext>, answers: Answer[] = []) {
+    const view = mount({ source: 'none', pages: [], page: null, option: null, ...overrides });
+    view.post.mockImplementation(async (url: string, body: unknown) => {
+      const next = answers.shift();
+      if (next) return next(url, body);
+      return url.endsWith('/canvas-notes') ? { url: COMMENT, handOffId: 'h-42' } : { sent: true, handOffId: 'h-42' };
+    });
+    if (overrides.size && overrides.size !== 'full') view.click('[data-fb-tab="feedback"]');
+    view.key('n');
+    view.type('#vw-feedback [data-fb-note]', 'Too tall.');
+    view.click('[data-fb-act="panel-review"]');
+    return view;
+  }
+  const failure = (message: string, reason?: string): Answer => async () => {
+    throw Object.assign(new Error(message), { reason });
+  };
+  const posted: Answer = async () => ({ url: COMMENT, handOffId: 'h-42' });
+  async function postAndWait(view: ReturnType<typeof reviewed>): Promise<void> {
+    view.click('[data-fb-act="post"]');
+    await vi.waitFor(() => expect(view.$('.cf-bar')).not.toBeNull());
+  }
+
+  it('names GitHub in Review and on Post, and says it does not go to the thread', () => {
+    const view = reviewed({});
+    expect(view.$('#vw-feedback .cf-panel-body > p')!.textContent).toContain(
+      'Exactly what goes to GitHub, as a comment on #42. It does not go to your T3 Code thread.',
+    );
+    expect(view.$('[data-fb-act="post"]')!.textContent).toBe('Post to GitHub · #42');
+  });
+
+  it('shows Posting to GitHub… busy and announced, then closes the panel for the green bar with focus on its heading', async () => {
+    const pending = deferred();
+    const view = reviewed({}, [async () => pending.promise]);
+    view.click('[data-fb-act="post"]');
+    const post = view.$<HTMLButtonElement>('[data-fb-act="post"]')!;
+    expect(post.textContent).toBe('Posting to GitHub…');
+    expect(post.disabled).toBe(true);
+    expect(post.getAttribute('aria-busy')).toBe('true');
+    expect(view.$('.cf-live')!.getAttribute('aria-live')).toBe('polite');
+    expect(view.$('.cf-live')!.textContent).toBe('Posting to GitHub, #42…');
+
+    pending.resolve({ url: COMMENT, handOffId: 'h-42' });
+    await vi.waitFor(() => expect(view.$('.cf-bar')).not.toBeNull());
+    expect(view.$<HTMLElement>('#vw-feedback')!.hidden).toBe(true);
+    const bar = view.$('.cf-bar')!;
+    expect(bar.getAttribute('role')).toBe('status');
+    expect(bar.querySelector('b')!.textContent).toBe('Posted to GitHub · #42');
+    expect(bar.textContent).toContain('Return to your T3 Code thread to continue. Send the link so the agent picks up these notes.');
+    expect(bar.querySelector('.cf-msg')!.textContent).toBe(`Sends: “${MESSAGE}”`);
+    expect(bar.querySelector<HTMLAnchorElement>('a')!.href).toBe(COMMENT);
+    expect(bar.querySelector('a')!.textContent).toBe('View comment');
+    expect(bar.querySelector('[data-fb-act="bar-send"]')!.textContent).toBe('Send to T3 Code');
+    expect(bar.querySelector('[data-fb-act="bar-send"]')!.className).toContain('primary');
+    expect(bar.querySelector('[data-fb-act="bar-close"]')!.getAttribute('aria-label')).toBe('Dismiss the posted message');
+    expect(document.activeElement).toBe(bar.querySelector('#cf-bar-h'));
+    expect(view.$('.cf-chip.is-ok')!.textContent).toBe('Posted to GitHub · #42');
+    expect(view.$('.cf-live')!.textContent).toBe('Posted to GitHub, #42. Return to your T3 Code thread to continue.');
+  });
+
+  it('shows the bar on the side pane’s Canvas tab', async () => {
+    const view = reviewed({ size: 'pane' });
+    await postAndWait(view);
+    expect(view.feedback.paneTab).toBe('canvas');
+    expect(view.$<HTMLElement>('.vw-canvas')!.hidden).toBe(false);
+    expect(view.$<HTMLElement>('.cf-barslot')!.hidden).toBe(false);
+    expect(document.activeElement).toBe(view.$('#cf-bar-h'));
+    view.click('[data-fb-tab="feedback"]');
+    expect(view.$<HTMLElement>('.cf-barslot')!.hidden).toBe(true);
+  });
+
+  it('keeps the toolbar chip after the bar is dismissed', async () => {
+    const view = reviewed({});
+    await postAndWait(view);
+    view.click('[data-fb-act="bar-close"]');
+    expect(view.$('.cf-bar')).toBeNull();
+    expect(view.$<HTMLElement>('.cf-barslot')!.hidden).toBe(true);
+    expect(view.$('.cf-chip.is-ok')!.textContent).toBe('Posted to GitHub · #42');
+  });
+
+  it('sends nothing to T3 Code until the button, then sends the link into the tracked thread', async () => {
+    const sending = deferred();
+    const view = reviewed({}, [posted, async () => sending.promise]);
+    await postAndWait(view);
+    expect(view.post).toHaveBeenCalledTimes(1);
+
+    view.click('[data-fb-act="bar-send"]');
+    expect(view.post).toHaveBeenLastCalledWith('/api/repos/octo/repo/canvas-thread', { ticket: 42, url: COMMENT });
+    const busy = view.$<HTMLButtonElement>('[data-fb-act="bar-send"]')!;
+    expect(busy.textContent).toBe('Sending…');
+    expect(busy.disabled).toBe(true);
+    expect(busy.getAttribute('aria-busy')).toBe('true');
+
+    sending.resolve({ sent: true, handOffId: 'h-42' });
+    await vi.waitFor(() => expect(view.$('.cf-bar b')!.textContent).toBe('Posted to GitHub · #42 · sent to T3 Code'));
+    expect(view.$('.cf-bar')!.textContent).toContain('Your T3 Code thread for #42 has the link, and the agent is reading it. Continue there.');
+    const open = view.$<HTMLButtonElement>('[data-open-handoff]')!;
+    expect(open.textContent).toBe('Open T3 Code thread');
+    expect(open.dataset['openHandoff']).toBe('h-42');
+    expect(view.$('.cf-bar a')!.textContent).toBe('View comment');
+    expect(document.activeElement).toBe(view.$('#cf-bar-h'));
+
+    open.click();
+    expect(view.post).toHaveBeenLastCalledWith('/api/hand-offs/focus', { id: 'h-42' });
+  });
+
+  it('turns amber with Copy message and Try sending again when T3 Code is not running', async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const view = reviewed({}, [posted, failure('T3 Code is not running', 'not-running')]);
+    await postAndWait(view);
+    view.click('[data-fb-act="bar-send"]');
+    await vi.waitFor(() => expect(view.$('.cf-bar.is-warn')).not.toBeNull());
+    const bar = view.$('.cf-bar')!;
+    expect(bar.getAttribute('role')).toBe('alert');
+    expect(bar.querySelector('b')!.textContent).toBe('Posted to GitHub · #42 · not sent to T3 Code');
+    expect(bar.textContent).toContain('T3 Code isn’t running, so the message didn’t reach the thread. The notes are safe on GitHub.');
+    expect(bar.querySelector('[data-fb-act="bar-copy"]')!.textContent).toBe('Copy message for T3 Code');
+    expect(bar.querySelector('[data-fb-act="bar-send"]')!.textContent).toBe('Try sending again');
+
+    view.click('[data-fb-act="bar-copy"]');
+    await vi.waitFor(() => expect(view.$('[data-fb-act="bar-copy"]')!.textContent).toBe('Copied'));
+    expect(writeText).toHaveBeenCalledWith(MESSAGE);
+
+    view.click('[data-fb-act="bar-send"]');
+    await vi.waitFor(() => expect(view.$('.cf-bar b')!.textContent).toBe('Posted to GitHub · #42 · sent to T3 Code'));
+  });
+
+  it('says why when T3 Code refuses the message', async () => {
+    const view = reviewed({}, [posted, failure('T3 Code no longer has this thread', 'failed')]);
+    await postAndWait(view);
+    view.click('[data-fb-act="bar-send"]');
+    await vi.waitFor(() => expect(view.$('.cf-bar.is-warn')).not.toBeNull());
+    expect(view.$('.cf-bar')!.textContent).toContain('T3 Code didn’t take the message (T3 Code no longer has this thread).');
+  });
+
+  it('offers only Copy message when Wayfinder does not know the ticket’s thread', async () => {
+    const view = reviewed({}, [async () => ({ url: COMMENT, handOffId: null })]);
+    await postAndWait(view);
+    expect(view.$('[data-fb-act="bar-send"]')).toBeNull();
+    expect(view.$('.cf-bar')!.textContent).toContain('Wayfinder doesn’t know this ticket’s thread, so paste the message there yourself.');
+    expect(view.$('[data-fb-act="bar-copy"]')!.textContent).toBe('Copy message for T3 Code');
+    expect(view.$('.cf-msg')!.textContent).toBe(`Copies: “${MESSAGE}”`);
+  });
+
+  it('falls back to Copy message when the thread is forgotten before the send', async () => {
+    const view = reviewed({}, [posted, failure('Wayfinder doesn’t know this ticket’s thread.', 'no-thread')]);
+    await postAndWait(view);
+    view.click('[data-fb-act="bar-send"]');
+    await vi.waitFor(() => expect(view.$('[data-fb-act="bar-copy"]')).not.toBeNull());
+    expect(view.$('[data-fb-act="bar-send"]')).toBeNull();
+  });
+
+  it('explains a failed post on an amber bar, with Check #N there and Try again only in the panel', async () => {
+    const view = reviewed({}, [failure('HTTP 502.')]);
+    view.click('[data-fb-act="post"]');
+    await vi.waitFor(() => expect(view.$('.cf-bar.is-warn')).not.toBeNull());
+    const bar = view.$('.cf-bar')!;
+    expect(bar.getAttribute('role')).toBe('alert');
+    expect(bar.querySelector('b')!.textContent).toBe('Not posted to GitHub · #42');
+    expect(bar.textContent).toContain('GitHub did not answer. HTTP 502. Your 1 note is still here. If the connection dropped while posting, check #42 before you try again from the panel.');
+    expect(bar.querySelector('a')!.textContent).toBe('Check #42');
+    expect(bar.querySelector<HTMLAnchorElement>('a')!.href).toBe('https://github.com/octo/repo/issues/42');
+    expect(document.querySelectorAll('[data-fb-act="post"]')).toHaveLength(1);
+    expect(view.$('[data-fb-act="post"]')!.textContent).toBe('Try again');
+    expect(view.$('#vw-feedback [role="alert"]')).toBeNull();
+    expect(view.$('.cf-live')!.textContent).toBe('Not posted to #42. Your notes are still here.');
+    expect(document.activeElement).toBe(view.$('[data-fb-act="post"]'));
+  });
+
+  it('shows the failure above Try again on the side pane’s Feedback tab, where the bar is hidden', async () => {
+    const view = reviewed({ size: 'pane' }, [failure('HTTP 502.')]);
+    view.click('[data-fb-act="post"]');
+    await vi.waitFor(() => expect(view.$('#vw-feedback [role="alert"]')).not.toBeNull());
+    expect(view.$<HTMLElement>('.cf-barslot')!.hidden).toBe(true);
+    const banner = view.$('#vw-feedback [role="alert"]')!;
+    expect(banner.textContent).toContain('Not posted to GitHub · #42');
+    expect(banner.textContent).toContain('check #42 before you try again so it isn’t posted twice.');
+    expect(banner.querySelector('a')!.textContent).toBe('Check #42');
+    expect(view.$('[data-fb-act="post"]')!.textContent).toBe('Try again');
+    expect(document.querySelectorAll('[data-fb-act="post"]')).toHaveLength(1);
+  });
+
+  it('asks before posting identical notes again, with Cancel focused and Esc back to Post', async () => {
+    const view = mount({});
+    view.post.mockImplementation(async () => ({ url: COMMENT, handOffId: 'h-42' }));
+    view.click('[data-fb-tool="pin"]');
+    view.$<HTMLElement>('[data-fb-capture]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    answer(view);
+    view.feedback.onLayout([{ id: 1, rect: { left: 100, top: 80, width: 0, height: 0 } }], { left: 0, top: 0, width: 800, height: 600 });
+    view.type('.cf-pop [data-fb-note]', 'Too tall.');
+    view.click('[data-fb-act="panel-review"]');
+    await postAndWait(view);
+    // Open the pin, change its note and change it back: these exact notes are already on GitHub.
+    view.click('.cf-pin');
+    view.type('.cf-pop [data-fb-note]', 'Too tall!');
+    view.type('.cf-pop [data-fb-note]', 'Too tall.');
+    view.click('[data-fb-act="panel"]');
+    view.click('[data-fb-act="panel-review"]');
+    view.click('[data-fb-act="post"]');
+    const dialog = view.$<HTMLDialogElement>('dialog.cf-dialog')!;
+    expect(dialog.open).toBe(true);
+    expect(dialog.querySelector('h2')!.textContent).toBe('Post these notes again?');
+    expect(dialog.textContent).toContain('These exact notes are already a comment on GitHub · #42, posted just now. Posting again adds a second copy.');
+    expect(document.activeElement).toBe(dialog.querySelector('[data-fb-act="dialog-cancel"]'));
+    expect(dialog.querySelector('a')!.textContent).toBe('View comment');
+    expect(dialog.querySelector('[data-fb-act="dialog-post"]')!.textContent).toBe('Post a second copy');
+    expect(view.post).toHaveBeenCalledTimes(1);
+
+    expect(view.key('Escape', dialog.querySelector('[data-fb-act="dialog-cancel"]')!)).toBe(true);
+    expect(view.$('dialog.cf-dialog')).toBeNull();
+    expect(document.activeElement).toBe(view.$('[data-fb-act="post"]'));
+
+    view.click('[data-fb-act="post"]');
+    view.click('[data-fb-act="dialog-post"]');
+    await vi.waitFor(() => expect(view.post).toHaveBeenCalledTimes(2));
+    // The second copy is the same comment, posted to GitHub again.
+    expect(view.post.mock.calls[1]).toEqual(view.post.mock.calls[0]);
+    expect(view.post.mock.calls[1]![0]).toBe('/api/repos/octo/repo/canvas-notes');
+  });
+});
+
+describe('postedAgo', () => {
+  it('says how long ago in words', () => {
+    const now = Date.UTC(2026, 9, 24, 12);
+    expect(postedAgo(now - 10_000, now)).toBe('just now');
+    expect(postedAgo(now - 4 * 60_000, now)).toBe('4 minutes ago');
+    expect(postedAgo(now - 60 * 60_000, now)).toBe('1 hour ago');
   });
 });

@@ -124,6 +124,21 @@ describe('keyboard focus while the viewer is open', () => {
     expect(refocus).toHaveBeenCalledTimes(1);
   });
 
+  it('gives focus back to where it was in the viewer, such as a posted bar’s heading (#322)', () => {
+    const { app, viewer } = setup();
+    entryFor(app, 42).click();
+    const heading = document.createElement('b');
+    heading.tabIndex = -1;
+    viewer.querySelector('.vw-stage')!.prepend(heading);
+    heading.focus();
+    const back = vi.spyOn(heading, 'focus');
+    const close = vi.spyOn(document.querySelector<HTMLElement>('[data-close]')!, 'focus');
+    focusInto(app.querySelector('.decision-variant-page')!);
+    vi.runAllTimers();
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(close).not.toHaveBeenCalled();
+  });
+
   it('leaves focus in the canvas itself alone', () => {
     const { app } = setup();
     entryFor(app, 42).click();

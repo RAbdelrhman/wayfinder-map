@@ -77,6 +77,7 @@ export interface T3Project {
 }
 
 export interface T3Thread {
+  id?: string;
   projectId: string;
   modelSelection: unknown;
   runtimeMode: string;
@@ -194,7 +195,8 @@ export class T3Api {
           text: message.text,
           attachments: message.attachments,
           modelSelection: command['modelSelection'],
-          dispatchMode: { type: 'start_immediately' },
+          // T3 Code queues either mode behind an active run; a caller can ask for the queue outright.
+          dispatchMode: command['dispatchMode'] ?? { type: 'start_immediately' },
         });
       }
       return this.rpc('orchestration.dispatchCommand', command['type'] === 'thread.create'
@@ -427,6 +429,28 @@ export function threadDefaults(
     runtimeMode: newest?.runtimeMode ?? 'full-access',
     interactionMode: newest?.interactionMode ?? 'default',
   };
+}
+
+/**
+ * A message into an existing thread, as the composer sends a follow-up. It waits behind any turn
+ * the agent is running instead of interrupting it. V1 needs the thread's model and modes; V2 takes
+ * them from the thread.
+ */
+export function followUpCommand(threadId: string, text: string, thread: Pick<T3Thread, 'modelSelection' | 'runtimeMode' | 'interactionMode'> | null, now = new Date().toISOString()): Record<string, unknown> {
+  return {
+    type: 'thread.turn.start',
+    commandId: randomUUID(),
+    threadId,
+    message: { messageId: randomUUID(), role: 'user', text, attachments: [] },
+    dispatchMode: { type: 'queue_after_active' },
+    ...(thread === null ? {} : { modelSelection: thread.modelSelection, runtimeMode: thread.runtimeMode, interactionMode: thread.interactionMode }),
+    createdAt: now,
+  };
+}
+
+/** The desktop app's link to one thread; it selects that thread in the open window. */
+export function threadAppLink(environmentId: string, threadId: string): string {
+  return `t3code://threads/${encodeURIComponent(environmentId)}/${encodeURIComponent(threadId)}`;
 }
 
 export interface ThreadInput {

@@ -739,12 +739,19 @@ export function mountCanvasViewer(
     true,
   );
   // A live tile preview can focus itself while the viewer is open, and Esc would then go to that hidden frame.
+  // Focus goes back where it was in the viewer (a posted bar's heading, Try again), or to Close.
+  let lastFocus: HTMLElement | null = null;
+  viewer.addEventListener('focusin', (event) => {
+    if (event.target instanceof HTMLElement && !(event.target instanceof HTMLIFrameElement)) lastFocus = event.target;
+  });
   window.addEventListener('blur', () => {
     if (!routing.current) return;
     setTimeout(() => {
       const active = document.activeElement;
-      if (routing.current && active instanceof HTMLIFrameElement && !viewer.contains(active) && active.getAttribute('aria-hidden') === 'true')
-        toolbar.querySelector<HTMLElement>('[data-close]')?.focus({ preventScroll: true });
+      if (routing.current && active instanceof HTMLIFrameElement && !viewer.contains(active) && active.getAttribute('aria-hidden') === 'true') {
+        const back = lastFocus?.isConnected && !lastFocus.closest('[hidden]') ? lastFocus : toolbar.querySelector<HTMLElement>('[data-close]');
+        back?.focus({ preventScroll: true });
+      }
     });
   });
   toolbar.addEventListener('click', (event) => {

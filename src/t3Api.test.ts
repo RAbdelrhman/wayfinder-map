@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { T3Api, parseServerCommand, samePath, threadCommands, threadDefaults } from './t3Api.js';
+import { T3Api, followUpCommand, parseServerCommand, samePath, threadAppLink, threadCommands, threadDefaults } from './t3Api.js';
 import type { T3Snapshot, T3Thread } from './t3Api.js';
 
 describe('parseServerCommand', () => {
@@ -289,5 +289,31 @@ describe('T3 shell stream', () => {
       api.revoke();
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('follow-up messages into a thread (#322)', () => {
+  it('queues behind a running turn on protocol 2, never interrupting it', async () => {
+    const api = new T3Api('http://127.0.0.1:3773', { exe: 't3', script: 'server.mjs' });
+    vi.spyOn(api, 'environment').mockResolvedValue({ orchestrationProtocolVersion: 2 });
+    const rpc = vi.spyOn(api, 'rpc').mockResolvedValue({});
+    const command = followUpCommand('t1', 'Canvas notes are posted on #42: https://github.com/o/r/issues/42#issuecomment-1', null);
+    await api.dispatch(command);
+    expect(rpc).toHaveBeenLastCalledWith('orchestration.dispatchCommand', expect.objectContaining({
+      type: 'message.dispatch',
+      threadId: 't1',
+      text: 'Canvas notes are posted on #42: https://github.com/o/r/issues/42#issuecomment-1',
+      dispatchMode: { type: 'queue_after_active' },
+      createdBy: 'user',
+    }));
+  });
+
+  it('carries the thread’s model and modes for protocol 1', () => {
+    const command = followUpCommand('t1', 'hi', { modelSelection: { model: 'm' }, runtimeMode: 'full-access', interactionMode: 'default' }, '2026-10-24T00:00:00Z');
+    expect(command).toMatchObject({ type: 'thread.turn.start', threadId: 't1', modelSelection: { model: 'm' }, runtimeMode: 'full-access', interactionMode: 'default', createdAt: '2026-10-24T00:00:00Z', message: { role: 'user', text: 'hi', attachments: [] } });
+  });
+
+  it('links the desktop app to one thread', () => {
+    expect(threadAppLink('env 1', 'thread-7')).toBe('t3code://threads/env%201/thread-7');
   });
 });

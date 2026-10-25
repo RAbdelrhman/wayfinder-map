@@ -762,6 +762,10 @@ export class HandOffStore {
     if (kind === 'snapshot' || kind === 'synchronized') {
       const snapshot = event['snapshot'] ?? eventValue?.['snapshot'] ?? event['value'];
       const shell = record(snapshot);
+      // A resumed subscription (afterSequence) opens with T3 Code's project metadata snapshot, whose
+      // thread lists are always empty. That says nothing about threads, so it must not delete hand-offs.
+      const noThreads = (key: string): boolean => !Array.isArray(shell?.[key]) || (shell[key] as unknown[]).length === 0;
+      if (shell !== null && noThreads('threads') && noThreads('archivedThreads')) return;
       const snapshotWithSequence = sequence !== null && shell !== null && finiteNumber(shell['snapshotSequence']) === null
         ? { ...shell, snapshotSequence: sequence }
         : snapshot;
@@ -1100,6 +1104,19 @@ export class HandOffTracker {
     const records = await this.store.list();
     const live = records.find((item) => item.repo.toLowerCase() === repo.toLowerCase() && item.ticketNumber === ticketNumber && isLiveHandOff(item));
     return live === undefined ? undefined : this.toDto(live);
+  }
+
+  /** The newest hand-off that started a T3 Code thread for the ticket, live or not: the thread its agent reads. */
+  async ticketThread(repo: string, ticketNumber: number): Promise<StoredHandOff | undefined> {
+    const records = await this.store.list();
+    return records
+      .filter((item) => item.repo.toLowerCase() === repo.toLowerCase() && item.ticketNumber === ticketNumber && item.threadId !== null)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  }
+
+  /** One stored hand-off, with the T3 Code environment its thread lives in. */
+  async stored(id: string): Promise<StoredHandOff | undefined> {
+    return (await this.store.list()).find((item) => item.id === id);
   }
 
   /** How many hand-offs are live on this machine, across every repository and map, after a fresh look at T3 Code. */
