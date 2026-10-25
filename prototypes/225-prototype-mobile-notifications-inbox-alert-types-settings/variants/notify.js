@@ -166,7 +166,6 @@
       })
       .join('');
     return `${inboxBar(status, backBtn)}${syncBanner(`Showing history from ${N.syncedAt}. New alerts arrive when it’s back.`)}<div class="m-scroll nt-a nt-d">
-      ${st.rows.length ? `<p class="nt-a-summary">${activeNeeds()} need you · ${unreadActivity()} new on your maps</p>` : ''}
       ${filtersA()}
       ${list.length ? `<ol class="nt-d-rail">${items}</ol>${fine}` : empty()}</div>`;
   }
