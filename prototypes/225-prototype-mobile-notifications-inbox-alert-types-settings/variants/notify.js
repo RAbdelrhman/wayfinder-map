@@ -1,7 +1,8 @@
 /*
   PROTOTYPE (#225): pushes, the Inbox and Notifications settings on the phone.
   Hooks into #316's window.ACCOUNT (G-a Settings) the same way account.js hooks into #223's mobile.js.
-  ?nt=A|B|C picks the look. Every option shows the same confirmed behaviour:
+  ?nt=A|B|C picks a Round 1 look; ?nt=D is Round 2's remix of them (C's timeline and pushes, A's header and rows,
+  B's icons, unread dots and settings, one colour per alert type). Every option shows the same confirmed behaviour:
     - Six needs-you kinds push; Ready to start is shared, never pushed. One Push to this phone switch per phone.
     - The Inbox is the desktop's synced history (alerts and map activity); read state is this phone's own.
     - The badge counts unread needs-you only. Every alert or push opens ticket detail.
@@ -10,7 +11,7 @@
 */
 (() => {
   const params = new URLSearchParams(location.search);
-  const OPT = ['A', 'B', 'C'].includes(params.get('nt')) ? params.get('nt') : null;
+  const OPT = ['A', 'B', 'C', 'D'].includes(params.get('nt')) ? params.get('nt') : null;
   if (!OPT || !window.ACCOUNT) return;
   const ACC = window.ACCOUNT;
   const N = window.NOTIFY;
@@ -138,6 +139,68 @@
       ${head}${filtersC()}${list.length ? `<ol class="nt-c-rail">${items}</ol>${fine}` : empty()}</div>`;
   }
 
+  /* ---------- D · Round 2 remix: C's timeline under A's header, A's rows, B's icons and dots ---------- */
+  // Each alert type gets its own colour (--nt-t-<kind>, notify.css); the icon and kind text still say the type.
+  // "Ready to start" is map activity here as on the desktop, so its activity row takes that type's colour; other activity stays grey.
+  const EVENT_KIND = { 'ticket-next': 'unblocked' };
+  const kindOf = (r) => (r.type === 'needs' ? r.kind : EVENT_KIND[r.event]);
+  const tone = (kind) => (kind ? ` style="--t: var(--nt-t-${kind})"` : '');
+  function rowD(r) {
+    const needs = r.type === 'needs';
+    const kind = kindOf(r);
+    const icon = needs ? KIND[r.kind].icon : r.icon;
+    const body = needs
+      ? `<span class="nt-kind">${esc(KIND[r.kind].label)}</span><span class="nt-d-title">${esc(titleOf(r))}</span><span class="nt-d-scope">${esc(scope(r))}</span>`
+      : `<span class="nt-d-act">${esc(titleOf(r))}</span><span class="nt-d-scope">${esc(scope(r))}${r.away ? ' · <span class="nt-away">While you were away</span>' : ''}</span>`;
+    return `<li class="nt-d-item${needs ? ' is-needs' : ''}${kind ? ' is-typed' : ''}${r.read ? ' is-read' : ''}"${tone(kind)}><time class="nt-d-time">${esc(r.clock)}</time><span class="nt-d-node" aria-hidden="true">${ic(icon)}</span>
+      <button class="nt-d-body" data-act="nt-open" data-id="${r.id}" aria-label="${esc(rowLabel(r))}"><span class="nt-d-main">${body}</span>${r.read ? '' : '<span class="nt-b-dot nt-d-dot"></span>'}</button></li>`;
+  }
+  function inboxD({ status, backBtn }) {
+    const list = shown();
+    let day = null;
+    const items = list
+      .map((r) => {
+        const label = r.day !== day ? `<li class="nt-d-day">${r.day}</li>` : '';
+        day = r.day;
+        return label + rowD(r);
+      })
+      .join('');
+    return `${inboxBar(status, backBtn)}${syncBanner(`Showing history from ${N.syncedAt}. New alerts arrive when it’s back.`)}<div class="m-scroll nt-a nt-d">
+      ${st.rows.length ? `<p class="nt-a-summary">${activeNeeds()} need you · ${unreadActivity()} new on your maps</p>` : ''}
+      ${filtersA()}
+      ${list.length ? `<ol class="nt-d-rail">${items}</ol>${fine}` : empty()}</div>`;
+  }
+
+  // B's settings layout, with each type's icon in its colour.
+  function typeRowD(k, hint) {
+    return `<label class="m-row nt-srow nt-d-srow${st.offline ? ' is-locked' : ''}" for="nt-sw-${k.kind}"${tone(k.kind)}><span class="nt-d-ico">${ic(k.icon)}</span>
+      <span class="m-row-main"><span class="m-row-title" id="nt-t-${k.kind}">${esc(k.setting)}</span><span class="nt-hint" id="nt-h-${k.kind}">${hint}</span></span>${sw(k.kind, st.types[k.kind], k.setting, true)}</label>`;
+  }
+  function settingsD({ status, backBtn }) {
+    const pushed = PUSH_KINDS.map((k) => typeRowD(k, esc(k.hint))).join('');
+    const ready = KIND.unblocked;
+    return `${settingsBar(status, backBtn)}${offlineSettings()}<div class="m-scroll">
+      <div class="m-card nt-b-hero${st.push ? ' is-on' : ''}${st.offline ? ' is-locked' : ''}">
+        <div class="nt-b-hero-head"><span class="nt-b-icon is-phone">${ic('phone')}</span><h3 id="nt-t-push">Push to this phone</h3>${sw('push', st.push, 'Push to this phone', true)}</div>
+        <p id="nt-h-push">${pushHint()}</p><p class="nt-b-only">Only this phone. Your desktop and other phones keep their own.</p></div>
+      <div class="m-section-title">Pushed to phones</div>
+      <p class="nt-note">${SHARED}</p>
+      <div class="m-group">${pushed}</div>
+      <div class="m-section-title">Inbox only</div>
+      <div class="m-group">${typeRowD(ready, `${esc(ready.hint)} Never pushed.`)}</div></div>`;
+  }
+
+  // A design reference, not an app screen: the seven type colours with their contrast on this theme's surfaces.
+  function colorsD({ status }) {
+    const rows = N.kinds
+      .map((k) => `<li class="nt-d-swatch"${tone(k.kind)}><span class="nt-d-ico">${ic(k.icon)}</span><span class="m-row-main"><span class="nt-kind">${esc(k.label)}</span><span class="nt-hint">${k.push ? 'Needs you · pushed' : 'Map activity · never pushed'}</span></span><span class="nt-d-ratio" data-kind="${k.kind}"></span></li>`)
+      .join('');
+    return `${status()}<header class="m-bar ac-bar3"><span></span><h1>Type colours</h1><span></span></header><div class="m-scroll">
+      <p class="nt-note nt-d-ref">Design reference for option D, not an app screen. Kind text on the card surface; the ratio is measured live in this theme. The unread dot keeps blue (--accent-text), which no type uses.</p>
+      <ul class="m-group nt-d-swatches">${rows}</ul>
+      <p class="nt-note nt-after">Amber, red and green are the desktop’s tokens (--handoff-needs-you, --state-failed, --handoff-pr-ready). Orange, magenta, violet and teal are new, proposed for this prototype only.</p></div>`;
+  }
+
   /* ---------- settings ---------- */
   const lock = () => (st.offline ? ' disabled' : '');
   const sw = (key, on, title, hint) =>
@@ -207,6 +270,7 @@
     const m = mapOf(r);
     if (OPT === 'A') return { title: `${m.repo} · Map #${m.number} ${m.title}`, sub: '', body: `${k}: #${r.ticket} ${r.title}` };
     if (OPT === 'B') return { title: k, sub: `Map #${m.number} · ${m.title}`, body: `#${r.ticket} ${r.title}` };
+    // C, and D (which keeps C's pushes): the ticket leads.
     return { title: `#${r.ticket} ${r.title}`, sub: '', body: `${k} · Map #${m.number} ${m.title}` };
   }
   function lockScreen() {
@@ -245,10 +309,11 @@
   }
   Object.assign(ACC.screens, {
     settings: settingsG,
-    inbox: { A: inboxA, B: inboxB, C: inboxC }[OPT],
-    notif: { A: settingsA, B: settingsB, C: settingsC }[OPT],
+    inbox: { A: inboxA, B: inboxB, C: inboxC, D: inboxD }[OPT],
+    notif: { A: settingsA, B: settingsB, C: settingsC, D: settingsD }[OPT],
     lock: lockScreen,
     home: homeScreen,
+    ...(OPT === 'D' ? { colors: colorsD } : {}),
   });
 
   const app = () => document.getElementById('app');
@@ -322,6 +387,20 @@
     face.innerHTML = `${ic('back')}${name}`;
     face.parentElement.setAttribute('aria-label', `Back to ${name}`);
   }).observe(document.getElementById('app'), { childList: true });
+
+  // D's colour reference: measure each kind colour against its row's surface in the current theme.
+  if (OPT === 'D') {
+    const rgb = (c) => c.match(/[\d.]+/g).slice(0, 3).map(Number);
+    const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; const [r, g, b] = rgb(c).map(f); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+    new MutationObserver(() => {
+      for (const out of app().querySelectorAll('.nt-d-ratio:empty')) {
+        const li = out.closest('li');
+        const a = lum(getComputedStyle(li.querySelector('.nt-kind')).color);
+        const b = lum(getComputedStyle(li.closest('.m-group')).backgroundColor);
+        out.textContent = `${((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)).toFixed(1)}:1`;
+      }
+    }).observe(app(), { childList: true });
+  }
 
   // ?tap=<row id> opens the Inbox and taps that row, through the same path as a real tap.
   const tap = params.get('tap');

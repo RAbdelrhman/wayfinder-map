@@ -872,3 +872,246 @@
   font-size: 14px;
   font-weight: 600;
 }
+
+/* ---------- D · Round 2 remix: C's timeline, A's header and rows, B's icons, dots and settings ---------- */
+/* One colour per alert type. Amber, red and green are the desktop's tokens; orange, magenta, violet and
+   teal are new and proposed for this prototype only. Blue stays the unread dot's (--accent-text). */
+.viz-root {
+  --nt-t-threadWaiting: var(--handoff-needs-you);
+  --nt-t-failingCi: var(--state-failed);
+  --nt-t-reviewReady: var(--handoff-pr-ready);
+  --nt-t-handOffError: #b04000;
+  --nt-t-stalled: #ad1a6c;
+  --nt-t-prototypeReady: #6a3fd0;
+  --nt-t-unblocked: #0b6e76;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) .viz-root {
+    --nt-t-handOffError: #ff9a57;
+    --nt-t-stalled: #ff7dc4;
+    --nt-t-prototypeReady: #b9a0ff;
+    --nt-t-unblocked: #45cdd6;
+  }
+}
+
+:root[data-theme='dark'] .viz-root {
+  --nt-t-handOffError: #ff9a57;
+  --nt-t-stalled: #ff7dc4;
+  --nt-t-prototypeReady: #b9a0ff;
+  --nt-t-unblocked: #45cdd6;
+}
+
+/* The rail runs through the centre of the node column; both come from the same three numbers. */
+.nt-d-rail {
+  --d-time: 46px;
+  --d-gap: 6px;
+  --d-node: 32px;
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nt-d-rail::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--d-time) + var(--d-gap) + var(--d-node) / 2 - 1px);
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--gridline);
+}
+
+.nt-d-day {
+  margin: 14px 0 6px calc(var(--d-time) + var(--d-gap) * 2 + var(--d-node));
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.nt-d-day:first-child {
+  margin-top: 2px;
+}
+
+.nt-d-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--d-time) var(--d-node) minmax(0, 1fr);
+  column-gap: var(--d-gap);
+  align-items: start;
+  margin-bottom: 8px;
+}
+
+.nt-d-time {
+  padding-top: 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* B's round kind icon, sitting on the rail. Opaque, with a plane-coloured ring, so the rail stops at its edge. */
+.nt-d-node {
+  position: relative;
+  z-index: 1;
+  width: var(--d-node);
+  height: var(--d-node);
+  display: grid;
+  place-items: center;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--t, var(--text-muted)) 14%, var(--plane));
+  box-shadow: 0 0 0 3px var(--plane);
+  color: var(--t, var(--text-secondary));
+}
+
+.nt-d-node .i {
+  width: 16px;
+  height: 16px;
+}
+
+.nt-d-item.is-read .nt-d-node {
+  background: var(--plane);
+  box-shadow: 0 0 0 3px var(--plane), inset 0 0 0 1.5px color-mix(in srgb, var(--t, var(--text-muted)) 55%, var(--plane));
+}
+
+.nt-d-item:not(.is-typed).is-read .nt-d-node {
+  box-shadow: 0 0 0 3px var(--plane), inset 0 0 0 1.5px var(--baseline);
+}
+
+/* A's row: kind line, title, scope; needs-you sits on A's card with its coloured bar. Activity stays plain (C). */
+.nt-d-body {
+  position: relative;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  min-height: 44px;
+  padding: 9px 4px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.nt-d-item.is-needs .nt-d-body {
+  padding: 12px 14px 12px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--surface-1);
+}
+
+.nt-d-item.is-needs .nt-d-body::before {
+  content: '';
+  position: absolute;
+  inset: 10px auto 10px 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--t);
+}
+
+.nt-d-item.is-needs.is-read .nt-d-body::before {
+  opacity: 0.35;
+}
+
+.nt-d-body:active {
+  background: var(--wash);
+}
+
+.nt-d-body:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.nt-d-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.nt-d .nt-kind,
+.nt-d-swatch .nt-kind {
+  color: var(--t, var(--handoff-needs-you));
+}
+
+.nt-d-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
+}
+
+.nt-d-act {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.nt-d-item.is-read .nt-d-title,
+.nt-d-item.is-read .nt-d-act {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.nt-d-scope {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.nt-d-dot {
+  margin-top: 4px;
+}
+
+/* Settings and the colour reference: B's layout, each type's icon in its colour. */
+.nt-d-ico {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--t) 14%, transparent);
+  color: var(--t);
+}
+
+.nt-d-ico .i {
+  width: 16px;
+  height: 16px;
+}
+
+.nt-d-swatches {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nt-d-swatch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--gridline);
+}
+
+.nt-d-swatch:first-child {
+  border-top: 0;
+}
+
+.nt-d-ratio {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nt-note.nt-d-ref {
+  margin: 4px 4px 12px;
+}
