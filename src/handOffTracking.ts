@@ -762,6 +762,10 @@ export class HandOffStore {
     if (kind === 'snapshot' || kind === 'synchronized') {
       const snapshot = event['snapshot'] ?? eventValue?.['snapshot'] ?? event['value'];
       const shell = record(snapshot);
+      // A resumed subscription (afterSequence) opens with T3 Code's project metadata snapshot, whose
+      // thread lists are always empty. That says nothing about threads, so it must not delete hand-offs.
+      const noThreads = (key: string): boolean => !Array.isArray(shell?.[key]) || (shell[key] as unknown[]).length === 0;
+      if (shell !== null && noThreads('threads') && noThreads('archivedThreads')) return;
       const snapshotWithSequence = sequence !== null && shell !== null && finiteNumber(shell['snapshotSequence']) === null
         ? { ...shell, snapshotSequence: sequence }
         : snapshot;

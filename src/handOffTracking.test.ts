@@ -411,6 +411,18 @@ describe('HandOffStore', () => {
     }
   });
 
+  it('keeps hand-offs when a resumed shell stream opens with its thread-less project snapshot', async () => {
+    const store = new HandOffStore();
+    await store.record(input);
+    await store.applySnapshot('env-1', input.t3Origin, { snapshotSequence: 7, threads: [{ id: input.threadId, session: { status: 'running' } }] });
+    // T3 Code answers a subscription with afterSequence with projects only: threads and archivedThreads are always empty.
+    await store.applyEvent('env-1', input.t3Origin, {
+      kind: 'snapshot',
+      snapshot: { schemaVersion: 2, snapshotSequence: 7, threads: [], archivedThreads: [], projects: [{ id: 'p1' }] },
+    });
+    await expect(store.list()).resolves.toMatchObject([{ threadId: input.threadId, status: 'running' }]);
+  });
+
   it('keeps records written concurrently by separate store instances', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
     const filePath = join(directory, 'hand-offs.json');
