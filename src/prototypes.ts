@@ -162,6 +162,16 @@ export function parsePrototypeShotPath(pathname: string): { repo: string; file: 
   }
 }
 
+/** The repository a canvas file or variant screenshot path belongs to, or null for any other path. */
+export function prototypeAssetRepo(pathname: string): string | null {
+  return parsePrototypeFilePath(pathname)?.repo ?? parsePrototypeShotPath(pathname)?.repo ?? null;
+}
+
+/** Whether a canvas URL is a bare picture, which carries no bridge to pass keys back to the viewer. */
+export function isPictureUrl(url: string): boolean {
+  return /\.(?:avif|gif|jpe?g|png|webp)$/i.test(url.split(/[?#]/)[0] ?? '');
+}
+
 /**
  * The variants a ticket's screenshots stand for. `43-B.jpg` is variant B of #43, and a lone
  * `17.jpg` is #17's only variant. Screenshots of other tickets are ignored.

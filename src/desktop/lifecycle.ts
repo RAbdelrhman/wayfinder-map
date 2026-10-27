@@ -27,6 +27,16 @@ export function isInternalUrl(target: string, expectedOrigin: string | null): bo
   }
 }
 
+/** Paths the server answers with files or data rather than an app page; the window has no Back to leave one. */
+const RAW_RESOURCE_PREFIXES = ['/proto/', '/proto-shot/', '/api/'];
+
+/** An app page the main window may show: internal, and not a raw file or API response. */
+export function isAppPageUrl(target: string, expectedOrigin: string | null): boolean {
+  if (!isInternalUrl(target, expectedOrigin)) return false;
+  const { pathname } = new URL(target);
+  return !RAW_RESOURCE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
 export function isSafeExternalUrl(target: string): boolean {
   try {
     const protocol = new URL(target).protocol;

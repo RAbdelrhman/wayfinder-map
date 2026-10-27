@@ -1,7 +1,7 @@
 import { normalizeShortcut, shortcutAssignments, SHORTCUTS_CHANGED, SHORTCUTS_KEY } from '../canvasShortcuts.js';
 import { mountCanvasSettings } from './canvasSettings.js';
 import { setTrustedHtml, insertTrustedHtml } from './trustedHtml.js';
-import { parsePrototypeFilePath } from '../prototypes.js';
+import { isPictureUrl, prototypeAssetRepo } from '../prototypes.js';
 import { canvasSize, isCanvasSize } from './canvasPreference.js';
 import type { CanvasSize } from './canvasPreference.js';
 import { escapeHtml } from './markdown.js';
@@ -31,9 +31,12 @@ export interface CanvasPage {
 export function isCanvasClick(event: Pick<MouseEvent, 'button' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'>): boolean {
   return event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
 }
-/** Every viewer frame retains the existing opaque-origin capabilities. */
+/**
+ * Every viewer frame retains the existing opaque-origin capabilities. A picture takes no pointer input:
+ * focus inside it would swallow Escape, since no bridge passes keys back from a bare image.
+ */
 export function canvasFrameHtml(route: CanvasRoute): string {
-  return `<iframe class="vw-frame" sandbox="allow-scripts" title="Canvas: ${escapeHtml(route.title)}" src="${escapeHtml(route.url)}"></iframe>`;
+  return `<iframe class="vw-frame${isPictureUrl(route.url) ? ' is-picture' : ''}" sandbox="allow-scripts" title="Canvas: ${escapeHtml(route.title)}" src="${escapeHtml(route.url)}"></iframe>`;
 }
 
 export function canvasOptionForFile(pages: readonly CanvasPage[], file: string | null): { page: string; option: string } | null {
@@ -180,7 +183,7 @@ export function readCanvasRoute(value: unknown, origin: string): CanvasRoute | n
     const github = new URL(value['github']);
     if (
       url.origin !== origin ||
-      parsePrototypeFilePath(url.pathname) === null ||
+      prototypeAssetRepo(url.pathname) === null ||
       github.protocol !== 'https:' ||
       github.hostname !== 'github.com'
     )

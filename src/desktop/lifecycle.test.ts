@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { DESKTOP_PORT, DesktopLifecycle, isInternalUrl, isSafeExternalUrl, startOnStablePort } from './lifecycle.js';
+import { DESKTOP_PORT, DesktopLifecycle, isAppPageUrl, isInternalUrl, isSafeExternalUrl, startOnStablePort } from './lifecycle.js';
 
 describe('DesktopLifecycle', () => {
   it('keeps window-close behavior and permits retry when quit preparation fails', async () => {
@@ -34,6 +34,14 @@ describe('desktop navigation boundary', () => {
     expect(isInternalUrl('http://127.0.0.1:4481/repos/owner/repo', 'http://127.0.0.1:4481')).toBe(true);
     expect(isInternalUrl('http://127.0.0.1:4482/', 'http://127.0.0.1:4481')).toBe(false);
     expect(isInternalUrl('https://example.com/', 'http://127.0.0.1:4481')).toBe(false);
+  });
+
+  it('keeps the window off raw files and API responses, which it has no way back from', () => {
+    const origin = 'http://127.0.0.1:4481';
+    for (const path of ['/', '/repos/owner/repo/maps/5?canvas=x', '/settings']) expect(isAppPageUrl(origin + path, origin)).toBe(true);
+    for (const path of ['/proto-shot/owner/repo/5-B.jpg', '/proto/owner/repo/prototype%2F5/index.html', '/api/maps'])
+      expect(isAppPageUrl(origin + path, origin)).toBe(false);
+    expect(isAppPageUrl('https://example.com/', origin)).toBe(false);
   });
 
   it('allows only web URLs through the operating-system browser', () => {

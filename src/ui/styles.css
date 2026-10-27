@@ -7705,6 +7705,11 @@ textarea.input {
   opacity: 1;
 }
 
+/* A bare picture never takes focus, so Escape keeps reaching the viewer. */
+.vw-frame.is-picture {
+  pointer-events: none;
+}
+
 /* ---------- toolbar ---------- */
 
 .vw-bar {
