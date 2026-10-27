@@ -85,6 +85,45 @@ and short windows. These are browser layout checks, not real device tests.
 Report actual phone/emulator, OS keyboard, safe areas, touch and assistive
 technology evidence separately; mark unexercised layers Not Verified.
 
+## Comparing flow options
+
+When comparing multi-screen flows, use the presentation pattern from
+[Wayfinder #224](https://github.com/RAbdelrhman/wayfinder-map/tree/prototype/224-prototype-starting-a-ticket-and-watching-its-session/prototypes/224-prototype-starting-a-ticket-and-watching-its-session):
+
+1. Start with an **Overview** page comparing every option at the same meaningful
+   moment, with its name, idea, and trade-offs. Use comparable sample data.
+2. Give each option a separate named canvas page, such as **A · On the ticket**.
+   Put that option's individual screens and states on its page, grouped into
+   sections in flow order. Each screen/state is a presentable item, rather than
+   one long image of the whole flow. Include relevant loading, empty, error,
+   offline, and recovery states.
+3. Keep shared screens in a clearly labelled section on the Overview or a shared
+   page. Say which options use them instead of duplicating them without context.
+
+Use existing `pages`, `sections`, and `kind: 'page'` items. For example, an
+Overview item `A` can show `variants/phone.html?o=A&s=live`; page `option-a`
+can contain `A-start` and `A-live` items pointing at the same fixture's start
+and live states. Give pages stable explicit IDs and items clear option/state IDs
+so feedback and deep links identify the exact screen. #224's pages are Overview,
+A · On the ticket, B · Session page, and C · Desktop on Maps.
+
+For phone flows, keep phone-sized screen items and the phone-shaped **Present**
+view where relevant. #224 uses 390 × 844 items with `boardWidth: 300`.
+Check both the board comparison and individual screens in Present; organising
+the board into pages must not turn the presented phone into a desktop layout.
+Use the repository's shared phone presentation helper when available, rather
+than copying #224's CSS into new boards.
+
+This is a default for comparing flows, not a required shape for every canvas.
+Single-screen comparisons, component sheets, palettes, typography, moodboards,
+and other non-flow work can use top-level `sections` or another suitable layout.
+Keep iteration pages and round labels separate from option identity; preserve
+earlier options and `note.basedOn` lineage when adding a round.
+
+The presentation pattern does not select an option. Leave `disposition` and
+`feedback` unset until the user makes that decision. Referencing #224 does not
+approve its product behaviour or authorise changes to that canvas.
+
 ## Rules (the sandbox)
 
 The canvas has to work when served as sandboxed files at an opaque origin, as prototype viewers (Wayfinder, for one) serve them. So:

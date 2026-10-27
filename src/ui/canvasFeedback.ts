@@ -6,7 +6,7 @@ import { shortcutAria, shortcutAssignments, shortcutFromEvent } from '../canvasS
  */
 import { CANVAS_NOTES_MARKER, canvasNotesComment, canvasNotesThreadMessage, markOrder, markScope, markTitle } from '../canvasNotes.js';
 import type { CanvasMark, CanvasNotesContext, CanvasNotesSource } from '../canvasNotes.js';
-import { parsePrototypeFilePath } from '../prototypes.js';
+import { parsePrototypeFilePath, parsePrototypeShotPath, prototypeAssetRepo } from '../prototypes.js';
 import { scopedApiPath } from '../repoRoutes.js';
 import { BASIC_COLORS, PROJECT_COLOR_TOKENS, clamp, fromHsv, parseColor, rgbText, toHsv } from './canvasColor.js';
 import type { Hsv } from './canvasColor.js';
@@ -218,7 +218,8 @@ export class CanvasFeedback {
   }
   /** The file the viewer opened, for snapshots and canvases that never answered. */
   private file(context: FeedbackContext): string {
-    return parsePrototypeFilePath(context.url.split(/[?#]/)[0] ?? '')?.file ?? context.url;
+    const path = context.url.split(/[?#]/)[0] ?? '';
+    return parsePrototypeFilePath(path)?.file ?? parsePrototypeShotPath(path)?.file ?? context.url;
   }
   private bridged(context: FeedbackContext): boolean {
     return context.source === 'dom' || context.source === 'engine';
@@ -362,7 +363,7 @@ export class CanvasFeedback {
     this.barSlot.hidden = html === '';
   }
   private ticketUrl(context: FeedbackContext): string | null {
-    const repo = parsePrototypeFilePath(context.url.split(/[?#]/)[0] ?? '')?.repo;
+    const repo = prototypeAssetRepo(context.url.split(/[?#]/)[0] ?? '');
     return repo && context.ticket !== null ? `https://github.com/${repo}/issues/${String(context.ticket)}` : null;
   }
   private viewLink(url: string, label = 'View comment'): string {
@@ -881,7 +882,7 @@ export class CanvasFeedback {
     const context = this.host.context();
     const session = this.session();
     if (!context || !session || context.ticket === null || session.posting || !session.marks.length) return;
-    const repo = parsePrototypeFilePath(context.url.split(/[?#]/)[0] ?? '')?.repo;
+    const repo = prototypeAssetRepo(context.url.split(/[?#]/)[0] ?? '');
     if (!repo) return;
     const ticket = context.ticket;
     const body = this.comment(context);
@@ -956,7 +957,7 @@ export class CanvasFeedback {
     const context = this.host.context();
     const session = this.session();
     const posted = session?.posted;
-    const repo = context ? parsePrototypeFilePath(context.url.split(/[?#]/)[0] ?? '')?.repo : undefined;
+    const repo = context ? prototypeAssetRepo(context.url.split(/[?#]/)[0] ?? '') : undefined;
     if (!context || !session || !posted || !repo || context.ticket === null || session.send.state === 'sending') return;
     const ticket = `#${String(context.ticket)}`;
     session.send = { state: 'sending' };

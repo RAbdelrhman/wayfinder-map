@@ -199,6 +199,13 @@ in its own `prototypes/<task-id>/` directory. Ticket tasks use `<ticket>-<title-
 non-ticket tasks use a descriptive ID such as `onboarding-flow`. Existing boards,
 including the legacy `prototypes/canvas/`, retain their content and URLs.
 The options are described in `config.js`, and its `README.md` is the full reference.
+
+For multi-screen flow comparisons, start with an Overview comparing the options,
+then a separate named page per option containing its individual screens and
+states. Keep phone-shaped Present views where relevant. Single-screen studies,
+component sheets, palettes, and other non-flow canvases can keep a simpler
+layout. See [Comparing flow options](prototypes/canvas/README.md#comparing-flow-options).
+
 To add one, use the `design-canvas` skill:
 
 ```sh
@@ -345,6 +352,10 @@ already did. `{{typeSteps}}` tells the agent that grilling and prototype tickets
 human-in-the-loop: grill the user one question at a time and decide nothing without
 them, and tells prototype agents which branch to push to and to build a design canvas (or a snapshot). It is empty for other types. An unknown one is left in the text rather than silently blanked,
 so a typo is visible.
+
+Grilling and prototype instructions are retained when a custom template omits
+`{{typeSteps}}`. Blank templates for those ticket types use the complete default
+prompt, including ticket and worktree context.
 
 ## Terminal options
 

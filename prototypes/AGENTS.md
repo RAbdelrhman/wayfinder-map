@@ -20,6 +20,13 @@ to overwrite any existing directory. If the ID is already taken, inspect the
 canvas. Continue there only when it is the same task; otherwise use a new ID.
 For iterations of the same task, preserve baseline pages, feedback, and lineage.
 
+For multi-screen flow comparisons, start with an Overview comparing all options,
+then give each option a separate named page containing its individual screens
+and states in flow order. Keep phone-shaped Present views where relevant.
+Follow [Comparing flow options](canvas/README.md#comparing-flow-options), based on
+#224. This is guidance for suitable flows, not a requirement for single screens,
+component sheets, palettes, or other non-flow canvases. It records no product pick.
+
 Use the design-canvas skill with an explicit directory argument. Read the new
 canvas's README, author real options, and run `node <dir>/tools/check.mjs`.
 Keep sandbox rules and relative paths. Inspect the preview and provide the exact
