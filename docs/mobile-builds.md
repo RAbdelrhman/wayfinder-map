@@ -17,6 +17,14 @@ The adjacent `.json` manifest identifies the exact source, an empty working-tree
 change list, checksum and installation time. SHA-256:
 `91619200fa3e876984050c1da462cbe615083fc7e017562c920eca27dec58414`.
 
+GitHub retains the same APK, `SHA256SUMS.txt`, and a public-safe build manifest in
+the draft prerelease `mobile-v1.1.0`. Find it with
+`gh release view mobile-v1.1.0 --repo RAbdelrhman/wayfinder-map`.
+The draft is visible to repository collaborators and stays unpublished while
+[PR #352](https://github.com/RAbdelrhman/wayfinder-map/pull/352) completes review
+and CI. Mobile tags use `mobile-v*` so they do not trigger the desktop `v*`
+release workflow. Preserve the exact APK source SHA even after a squash merge.
+
 Physical-phone checks used RAbdelrhman: 13 live maps across three repositories,
 including map #217 with 21 tickets. Repository filtering and Path / Tickets /
 Brief work, including state filtering and the complete Destination text. Ticket
