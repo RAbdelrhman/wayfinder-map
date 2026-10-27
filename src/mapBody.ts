@@ -25,7 +25,7 @@ export function parseMapBody(body: string): MapSections {
   let current: keyof MapSections | null = null;
   const buffers = new Map<keyof MapSections, string[]>();
 
-  for (const line of body.split(/\r?\n/)) {
+  for (const line of body.replace(/^\uFEFF/, '').split(/\r?\n/)) {
     const heading = /^#{1,6}\s+(.*?)\s*$/.exec(line);
     if (heading) {
       const text = (heading[1] ?? '').trim().toLowerCase();

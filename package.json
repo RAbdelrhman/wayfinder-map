@@ -31,7 +31,7 @@
     "canvas:create": "node scripts/create-canvas.mjs",
     "canvas:poster": "node scripts/capture-canvas-poster.mjs",
     "capture:prototype-thumbnails": "node prototypes/canvas/tools/capture-thumbnails.mjs",
-    "lint": "eslint src/ scripts/",
+    "lint": "eslint src/ scripts/ mobile/src/ mobile/plugins/",
     "prepare": "node scripts/build.mjs"
   },
   "devDependencies": {

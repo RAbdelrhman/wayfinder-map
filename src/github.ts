@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 
 import { criticalPath } from './criticalPath.js';
+import { ticketStateOf } from './ticketState.js';
+export { ticketStateOf } from './ticketState.js';
 import { parseBlockedByLine, parseChildNumbers, parseMapBody } from './mapBody.js';
 import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SHOTS_DIR, PROTOTYPE_SNAPSHOT_FILE, canvasEntries, isHtml, isSelfContained, pickPreview, prototypeTicketNumber, prototypeVariantInfo, unlistedCanvasBoards, verdictComment } from './prototypes.js';
 import { idleCutoff, isIdleCandidate, settlementOf } from './settling.js';
@@ -10,7 +12,7 @@ import { isMapShown, mapVisibility } from './visibility.js';
 import type { Viewer } from './visibility.js';
 import type { MapIssueFacts, SettleChoices } from './settling.js';
 import { TICKET_TYPES } from './types.js';
-import type { MapSettlement, OutsideTicket, Prototype, PublicMap, PrototypeVariant, Ticket, TicketState, TicketType, WayfinderMap } from './types.js';
+import type { MapSettlement, OutsideTicket, Prototype, PublicMap, PrototypeVariant, Ticket, TicketType, WayfinderMap } from './types.js';
 
 const run = promisify(execFile);
 
@@ -229,13 +231,6 @@ export function toOutsideTicket(raw: RawIssue, repo: string, links: OutsideLinks
     blocks: links.blocks ?? [],
     waitsOn: links.waitsOn ?? [],
   };
-}
-
-export function ticketStateOf(open: boolean, openBlockers: number[], assignee: string | null): TicketState {
-  if (!open) return 'done';
-  if (openBlockers.length > 0) return 'blocked';
-  if (assignee !== null) return 'claimed';
-  return 'frontier';
 }
 
 export interface FetchOptions {

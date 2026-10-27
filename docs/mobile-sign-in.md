@@ -6,6 +6,13 @@ The sign-in screens are the direction picked in #223 (S-A: welcome, code, waitin
 
 ## One-time setup: the GitHub OAuth app
 
+For Ramon's existing personal build, reuse [Wayfinder Map Mobile](https://github.com/settings/applications/3956110)
+under the RAbdelrhman account. Device Flow was verified enabled on 2026-10-27,
+and sign-in was exercised on the installed Android app. Read its public client ID
+there and configure `mobile/.env.local`; do not create another registration just
+because a fresh checkout lacks that ignored local file. Existing build and install
+records are in [mobile-builds.md](mobile-builds.md).
+
 You do this once, in your own GitHub account. The app needs only the client ID.
 
 1. Open <https://github.com/settings/developers> and choose **OAuth Apps → New OAuth App**.

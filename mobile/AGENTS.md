@@ -1,5 +1,14 @@
 This is an Expo/React Native mobile application. Prioritize mobile-first patterns, performance, and cross-platform compatibility.
 
+## Existing builds
+
+Read `../docs/mobile-builds.md` before reporting mobile availability or installing
+an APK. It records actual native builds, installation evidence, artifact paths,
+known limitations, and the repeatable archive/build script. Keep its build history
+current when delivering a new phone build. Never confuse an approved HTML canvas
+with implemented native screens or claim that the older sign-in-only APK is the
+latest build without checking this record.
+
 ## Prototype presentation and test evidence
 
 For HTML phone prototypes and browser screen-layout testing, follow

@@ -64,6 +64,17 @@ export default defineConfig([
     languageOptions: { globals: globals.browser },
   },
   {
+    files: ['mobile/src/**/*.{ts,tsx}'],
+    extends: [js.configs.recommended, tseslint.configs.recommended],
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+    rules: { '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', ignoreRestSiblings: true }] },
+  },
+  {
+    files: ['mobile/plugins/**/*.js'],
+    extends: [js.configs.recommended],
+    languageOptions: { globals: globals.node },
+  },
+  {
     files,
     ignores: ['src/ui/trustedHtml.ts'],
     plugins: { 'html-sinks': { rules: { 'no-computed-injection': computedSinkRule } } },
