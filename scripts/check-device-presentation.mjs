@@ -23,7 +23,7 @@ try {
   execFileSync(process.execPath, [join(root, 'scripts/create-canvas.mjs'), 'phone-check', '--mobile'], { cwd: fixture });
   const phonePath = join(fixture, 'prototypes/phone-check/variants/phone.html');
   const phone = (await readFile(phonePath, 'utf8')).replace('<!-- Author this task\'s chosen screen options here. -->',
-    '<button id="first">First</button><button id="last" style="margin-top:auto">Last</button>');
+    '<span id="canvas-device-style" hidden></span><button id="first">First</button><button id="last" style="margin-top:auto">Last</button>');
   await writeFile(phonePath, phone);
   const bundle = async (options) => (await build({ bundle: true, write: false, format: 'esm', ...options })).outputFiles[0].text;
   const bridgeSource = await bundle({ entryPoints: [join(root, 'src/canvasBridge.ts')], platform: 'node' });
@@ -72,7 +72,7 @@ try {
     return { x: rect.x, y: rect.y, w: rect.width, h: rect.height, width: innerWidth, height: innerHeight,
       radius: css.borderRadius, transform: css.transform, backdrop: getComputedStyle(document.body).backgroundColor,
       scrollW: document.documentElement.scrollWidth, scrollH: document.documentElement.scrollHeight,
-      styles: document.querySelectorAll('#canvas-device-style').length };
+      styles: document.head.querySelectorAll('style[data-canvas-device-style="phone"]').length };
   });
   const check = (box, framed) => {
     assert.equal(box.styles, 1);

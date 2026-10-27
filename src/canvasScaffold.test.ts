@@ -40,6 +40,7 @@ describe('canvas:create', () => {
     expect(config).toContain('width: 390, height: 844, boardWidth: 240');
     const phone = await readFile(join(board, 'variants/phone.html'), 'utf8');
     expect(phone).toContain('data-canvas-device="phone"');
+    expect(phone).toContain('src="../../canvas/kit/kit.js"');
     expect(phone).toContain('src="../../canvas/device.js"');
     expect(phone.indexOf('kit/kit.js')).toBeLessThan(phone.indexOf('canvas/device.js'));
     expect(await readdir(board)).not.toContain('device.js');

@@ -6,9 +6,9 @@
  */
 (() => {
   const app = document.querySelector('body.viz-root > #app[data-canvas-device="phone"]');
-  if (!app || document.getElementById('canvas-device-style')) return;
+  if (!app || document.head.querySelector('style[data-canvas-device-style="phone"]')) return;
   const style = document.createElement('style');
-  style.id = 'canvas-device-style';
+  style.dataset.canvasDeviceStyle = 'phone';
   style.textContent = `@media (min-width: 520px) {
     body.viz-root {
       display: grid;
