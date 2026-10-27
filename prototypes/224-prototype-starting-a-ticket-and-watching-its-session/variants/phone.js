@@ -21,6 +21,11 @@
   const ic = Kit.icon;
   const app = document.getElementById('app');
 
+  // Match #226's phone-sized presentation while leaving narrow phone views full width.
+  const fitDevice = () => document.documentElement.style.setProperty('--device-fit', String(Math.min(1, (innerHeight - 24) / 844, (innerWidth - 24) / 390)));
+  addEventListener('resize', fitDevice);
+  fitDevice();
+
   const ticketBy = (n) => P.tickets.find((t) => t.number === n);
   const toMin = (t) => {
     const [h, m] = t.split(':').map(Number);

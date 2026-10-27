@@ -1242,3 +1242,21 @@ div.st-tool,
     transition: none;
   }
 }
+/* Match #226's centered phone frame when presenting in a wide window. */
+@media (min-width: 520px) {
+  body.viz-root {
+    display: grid;
+    place-items: center;
+    place-content: center;
+    background: color-mix(in srgb, var(--plane) 88%, var(--text-primary));
+  }
+
+  #app.m-app {
+    flex: none;
+    width: 390px;
+    height: 844px;
+    border-radius: 36px;
+    box-shadow: 0 0 0 1px var(--hairline), var(--shadow);
+    transform: scale(var(--device-fit, 1));
+  }
+}
