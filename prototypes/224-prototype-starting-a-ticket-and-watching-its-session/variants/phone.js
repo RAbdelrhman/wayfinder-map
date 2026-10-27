@@ -9,10 +9,20 @@
     C  On Maps: Start is one tap with Undo; Maps lists what is on the desktop; Live reads
        newest first.
   Settings → Desktop (pairing, waiting starts, unpair, replace) is the same page in all three.
+  Round 2, ?m=M1|M2|M3: choosing the model, on A's start and Session tab with B's pairing pages.
+  Without ?m every A, B and C frame is unchanged.
+    M1  Tier in the alert: Simple / Mid / Hard; the phone sends the tier and RAMON-PC picks its model.
+    M2  Model page: the alert names the model, Change opens a page; the exact model is sent, and a
+        start whose model has gone is turned down.
+    M3  Run as on the ticket: a row above Start, kept per ticket; the exact model is sent, and a
+        model that has gone falls back to the tier's default.
 */
 (() => {
   const params = new URLSearchParams(location.search);
-  const O = ['A', 'B', 'C'].includes(params.get('o')) ? params.get('o') : 'A';
+  const M = ['M1', 'M2', 'M3'].includes(params.get('m')) ? params.get('m') : null;
+  const O = M ? 'A' : ['A', 'B', 'C'].includes(params.get('o')) ? params.get('o') : 'A';
+  // Round 2 pairs through B's pages: the guide, the "Pair with RAMON-PC?" check and Paired.
+  const PB = O === 'B' || M !== null;
   const P = window.PHONE;
   const R = P.run230;
   const L = window.RUN_LOOKS;
@@ -48,6 +58,8 @@
     overlay: null, // { kind: start | queue | sheet | unpair | replace | scan, … }
     snack: null, // C: { text, n, frozen }
     found: null, // the desktop a replacement scan found
+    cat: JSON.parse(JSON.stringify(window.MODELS ?? null)), // round 2: the catalog RAMON-PC last relayed
+    choice: {}, // round 2: n → { tier, pick: { instanceId, model, effort } | null }
   };
   const stack = [{ screen: 'maps' }];
   const ui = { tab: 'overview', mapTab: 'path', filter: 'all', btab: 'summary', picker: false, focus: null, scroll: null };
@@ -294,7 +306,7 @@
   }
 
   const titleOf = (entry) =>
-    ({ maps: 'Maps', map: 'Map', ticket: `#${entry.n}`, session: O === 'C' ? 'Live' : 'Session', settings: 'Settings', desktop: 'Desktop', pair: 'Pair', pairconfirm: 'Pair', paired: 'Pair', code: 'Enter code', error: 'Pair' })[entry.screen] ?? 'Back';
+    ({ maps: 'Maps', map: 'Map', ticket: `#${entry.n}`, session: O === 'C' ? 'Live' : 'Session', settings: 'Settings', desktop: 'Desktop', pair: 'Pair', pairconfirm: 'Pair', paired: 'Pair', code: 'Enter code', error: 'Pair', model: 'Model' })[entry.screen] ?? 'Back';
   const backLabel = () => titleOf(stack[stack.length - 2] ?? { screen: 'maps' });
 
   function stateOf(t) {
@@ -533,13 +545,14 @@
     }
     if (out?.kind === 'rejected')
       return `<div class="m-actionbar st-dock"><div class="m-banner st-banner" style="--accent: var(--state-failed)" role="status">${ic('ban')}<span><b>${esc(desk())} didn’t start #${n}.</b> ${esc(out.why)}</span></div>
-        <div class="st-dock-row"><button class="m-btn is-quiet" data-act="dismiss" data-n="${n}">OK</button>${out.watch ? `<button class="m-btn" data-act="watch" data-n="${n}">${ic('eye')}Watch it</button>` : ''}</div></div>`;
+        <div class="st-dock-row"><button class="m-btn is-quiet" data-act="dismiss" data-n="${n}">OK</button>${out.watch ? `<button class="m-btn" data-act="watch" data-n="${n}">${ic('eye')}Watch it</button>` : ''}${out.model ? `<button class="m-btn" data-act="m-again" data-n="${n}">${ic('terminal')}Choose a model</button>` : ''}</div></div>`;
     if (st.holding?.n === n)
       return `<div class="m-actionbar st-dock">${connLine()}<button class="m-btn is-quiet" disabled aria-busy="true"><span class="m-spinner" aria-hidden="true"></span>Starting on ${esc(desk())}…</button></div>`;
     if (q) {
       const sending = q.phase === 'sending';
       const line = sending ? `Sending to ${esc(desk())}…` : `To ${esc(desk())} · since ${q.at}. It sends when this phone can reach ${esc(desk())}.`;
-      return `<div class="m-actionbar st-dock"><div class="st-runline">${pill(sending ? 'sending' : 'waiting')}<span class="st-runmeta">${line}</span></div>
+      const carries = M && q.choice ? `<p class="mo-sends">${ic('terminal')}<span>${esc(sendsLine(q))}</span></p>` : '';
+      return `<div class="m-actionbar st-dock"><div class="st-runline">${pill(sending ? 'sending' : 'waiting')}<span class="st-runmeta">${line}</span></div>${carries}
         <button class="m-btn is-quiet" data-act="cancel" data-n="${n}"${sending ? ' disabled' : ''}>${ic('close')}Cancel start</button></div>`;
     }
     if (run) {
@@ -553,19 +566,294 @@
               : run.status === 'starting'
                 ? `On ${esc(desk())}.`
                 : `${span(run.started, st.clock)} on ${esc(desk())}.`;
-      const sent = out?.kind === 'sent' ? `<p class="st-sentline">${ic('send')}<span>Sent at ${out.at}, when this phone reached ${esc(desk())} again.</span></p>` : '';
+      const sent = out?.kind === 'sent' ? `<p class="st-sentline">${ic('send')}<span>Sent at ${out.at}, when this phone reached ${esc(desk())} again.</span></p>${M && out.note ? `<p class="mo-sends">${ic('terminal')}<span>${esc(out.note)}</span></p>` : ''}` : '';
       const label = O === 'A' ? 'Watch session' : O === 'B' ? 'Open session' : 'Watch live';
       return `<div class="m-actionbar st-dock">${sent}<div class="st-runline">${pill(run.status)}<span class="st-runmeta">${meta}</span></div>
         <button class="m-btn" data-act="watch" data-n="${n}">${ic('eye')}${label}</button></div>`;
     }
     const reason = startableReason(t);
     const offline = st.net === 'offline';
-    return `<div class="m-actionbar st-dock">${connLine()}
+    return `<div class="m-actionbar st-dock">${M === 'M3' && !reason ? pickRow(n, 'Run as') : ''}${connLine()}
       <button class="m-btn" data-act="start" data-n="${n}"${reason ? ' disabled aria-describedby="start-why"' : ''}>${ic(offline ? 'clock' : 'play')}${offline ? `Start when ${esc(desk())} is back` : `Start on ${esc(desk())}`}</button>
       ${reason ? `<p class="st-why" id="start-why">${esc(reason)}</p>` : ''}</div>`;
   }
 
   const watchBar = () => `<div class="m-actionbar st-watchbar"><p class="st-watchonly">${ic('info')}<span>Watch only. Reply and approve in T3 Code on ${esc(desk())}.</span></p></div>`;
+
+  /* ---------- round 2 (?m=): choosing the model ---------- */
+  // The catalog is the one RAMON-PC last relayed (src/models.ts's shape); the tier defaults are its Settings → Tasks.
+  const TL = st.cat?.tierLabel ?? {};
+  const TIER_KEYS = ['simple', 'mid', 'hard'];
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  function findM(ref) {
+    const provider = st.cat.providers.find((p) => p.instanceId === ref.instanceId);
+    const model = provider?.models.find((m) => m.slug === ref.model);
+    return model ? { provider, model } : null;
+  }
+  const effortName = (model, id) => model.effort?.options.find((o) => o.id === (id ?? model.effort.defaultValue))?.label ?? null;
+  function modelText(ref) {
+    const f = findM(ref);
+    if (!f) return null;
+    const e = effortName(f.model, ref.effort);
+    return e ? `${f.model.name} · ${e}` : f.model.name;
+  }
+  const choiceOf = (n) => (st.choice[n] ??= { tier: 'mid', pick: null });
+
+  // What a choice runs on if RAMON-PC starts it now. live is false when the model is gone or its provider isn't ready.
+  function resolve(c) {
+    const ref = c.pick ?? st.cat.tiers[c.tier];
+    const f = findM(ref);
+    const from = c.pick ? (M === 'M3' ? `Kept for this ticket` : 'Chosen for this start') : `${desk()}’s ${TL[c.tier]} default`;
+    return { ref, f, live: !!f && f.provider.ready, text: f ? modelText(ref) : null, from };
+  }
+  // As desktop's liveChoice does: a model that isn't live leaves the pick to T3 Code.
+  const runsOn = (c) => {
+    const r = resolve(c);
+    return r.live ? r.text : 'T3 Code’s default model';
+  };
+
+  // What a waiting start carries to the desktop.
+  const SENDS = {
+    M1: 'Each sends its ticket and tier; RAMON‑PC picks that tier’s model when it arrives.',
+    M2: 'Each sends its ticket and the exact model. RAMON‑PC checks the model is still offered, and turns the start down if it isn’t.',
+    M3: 'Each sends its ticket, tier and exact model. If the model isn’t offered any more, RAMON‑PC runs the tier’s default and says so.',
+  };
+  function sendsLine(q, short = false) {
+    if (M === 'M1') return short ? `Run as ${TL[q.choice.tier]}` : `Sends Run as ${TL[q.choice.tier]}. ${desk()} picks its model when the start arrives.`;
+    return short ? q.label : `Sends ${q.label}. Chosen from the list ${desk()} sent at ${q.asOf}.`;
+  }
+  function queued(n, at = st.clock, c = choiceOf(n)) {
+    const choice = clone(c);
+    return { n, at, phase: 'waiting', choice, label: modelText(choice.pick ?? st.cat.tiers[choice.tier]), asOf: st.cat.asOf };
+  }
+
+  // Reaching RAMON-PC again refreshes the catalog. In this sample GPT-6.1 was hidden in T3 Code meanwhile.
+  function dropGone() {
+    const gone = st.cat.droppedAtReconnect;
+    const provider = st.cat.providers.find((p) => p.instanceId === gone.instanceId);
+    provider.models = provider.models.filter((m) => m.slug !== gone.model);
+    st.cat.asOf = st.clock;
+  }
+
+  // RAMON-PC receives a waiting start that is still eligible: what it does with the model is each option's rule.
+  function arrive(q) {
+    const r = resolve(q.choice);
+    const at = st.clock;
+    if (M === 'M2' && q.choice.pick && !r.live) {
+      st.outcomes[q.n] = { kind: 'rejected', at, why: `${q.label} isn’t offered on ${desk()} any more. Nothing was started.`, model: true };
+      return;
+    }
+    const run = freshRun(q.n);
+    let note;
+    if (M === 'M1') {
+      run.model = runsOn(q.choice);
+      note = `Run as ${TL[q.choice.tier]}: ${desk()} picked ${run.model}.`;
+    } else if (q.choice.pick && !r.live) {
+      run.model = runsOn({ tier: q.choice.tier, pick: null });
+      note = `${q.label} isn’t offered on ${desk()} any more, so it runs on ${run.model}, the ${TL[q.choice.tier]} default.`;
+    } else {
+      run.model = runsOn(q.choice);
+      note = `Runs on ${run.model}, as chosen.`;
+    }
+    st.runs[q.n] = run;
+    st.outcomes[q.n] = { kind: 'sent', at, note };
+  }
+
+  function tierSeg(n) {
+    const c = choiceOf(n);
+    return `<div class="m-seg mo-seg" role="group" aria-labelledby="mo-tier-label">${TIER_KEYS.map(
+      (k) => `<button data-act="m-tier" data-n="${n}" data-tier="${k}" aria-pressed="${!c.pick && c.tier === k}" title="${esc(st.cat.tierHint[k])}">${TL[k]}</button>`,
+    ).join('')}</div>`;
+  }
+
+  function m1Line(n, offline) {
+    const c = choiceOf(n);
+    const r = resolve(c);
+    if (offline) return `<p class="mo-line">${ic('clock')}<span>${esc(desk())} picks the ${TL[c.tier]} model when the start arrives. At ${st.cat.asOf} that was <b>${esc(r.text)}</b>.</span></p>`;
+    if (!r.live) return `<p class="mo-line is-warn">${ic('alert')}<span><b>${TL[c.tier]}’s model isn’t available.</b> ${esc(r.f?.provider.name ?? 'Its provider')} isn’t ready on ${esc(desk())}, so T3 Code picks the model.</span></p>`;
+    return `<p class="mo-line">${ic('terminal')}<span><b>${esc(r.text)}</b>, ${esc(r.from)}</span></p>`;
+  }
+
+  // M2's Model row in the alert and M3's Run as row above Start.
+  function pickRow(n, label) {
+    const r = resolve(choiceOf(n));
+    const sub = r.live ? r.from : `${r.f ? `${r.f.provider.name} isn’t ready` : 'Not offered'} on ${desk()}. T3 Code picks.`;
+    const value = r.live ? r.text : 'T3 Code’s default';
+    return `<button class="mo-pick${r.live ? '' : ' is-warn'}" data-act="m-pick" data-n="${n}" aria-label="${esc(label)}: ${esc(value)}. ${esc(sub)} Change">${ic(r.live ? 'terminal' : 'alert')}<span class="mo-pick-main"><span class="mo-pick-k">${esc(label)}</span><span class="mo-pick-v">${esc(value)}</span><span class="mo-pick-sub">${esc(sub)}</span></span>${ic('chevron')}</button>`;
+  }
+
+  // A's start alert, carrying each option's model control.
+  function modelAlert(ov) {
+    const n = ov.n;
+    const d = desk();
+    const offline = ov.kind === 'queue';
+    const title = offline ? `Can’t reach ${d}` : `Start #${n} on ${d}?`;
+    let body = offline
+      ? `It may be asleep, or Tailscale may be off. Wayfinder can keep this start and send it when this phone reaches ${esc(d)}.`
+      : 'T3 Code opens a new thread for it there. You can watch it here.';
+    let block = '';
+    if (M === 'M1') block = `<span class="mo-label" id="mo-tier-label">Run as</span>${tierSeg(n)}${m1Line(n, offline)}`;
+    else if (M === 'M2')
+      block = `${pickRow(n, 'Model')}${offline ? `<p class="mo-line">${ic('clock')}<span>From the list ${esc(d)} sent at ${st.cat.asOf}. If the model is gone when the start arrives, it’s turned down.</span></p>` : ''}`;
+    else {
+      body = offline
+        ? `${body} It runs on <b>${esc(runsOn(choiceOf(n)))}</b>, or the ${TL[choiceOf(n).tier]} default if that’s gone by then.`
+        : `T3 Code opens a new thread for it there, on <b>${esc(runsOn(choiceOf(n)))}</b>. You can watch it here.`;
+    }
+    return `<div class="ac-layer"><div class="m-scrim"></div>
+      <section class="ac-alert mo-alert" role="alertdialog" aria-modal="true" aria-labelledby="ov-title" aria-describedby="ov-desc">
+        <h2 id="ov-title">${esc(title)}</h2><p id="ov-desc">${body}</p>${block ? `<div class="mo-alert-block">${block}</div>` : ''}
+        <div class="ac-alert-actions"><button data-act="ov-close" data-focus>Cancel</button><button data-act="${offline ? 'ov-queue' : 'ov-start'}">${offline ? 'Send later' : 'Start'}</button></div></section></div>`;
+  }
+
+  // M2 and M3's Model page, laid out as B's "Pair a desktop" page: tile, heading, grouped rows, actions at the foot.
+  function modelPage() {
+    const entry = here();
+    const n = entry.n;
+    const d = desk();
+    const draft = ui.draft;
+    const r = resolve(draft);
+    const offline = st.net === 'offline';
+    const radio = (id, value, checked, disabled, title, sub) =>
+      `<label class="m-row mo-radio${disabled ? ' is-off' : ''}" for="${id}"><input type="radio" name="m-model" id="${id}" value="${esc(value)}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}><span class="mo-mark" aria-hidden="true">${ic('check')}</span><span class="m-row-main"><span class="m-row-title">${title}</span><span class="m-row-sub">${sub}</span></span></label>`;
+    const tiers = TIER_KEYS.map((k) => {
+      const ref = st.cat.tiers[k];
+      const f = findM(ref);
+      const ok = f && f.provider.ready;
+      return radio(`mo-t-${k}`, `tier:${k}`, !draft.pick && draft.tier === k, false, `${TL[k]} default`, esc(ok ? modelText(ref) : `${modelText(ref)} isn’t ready · T3 Code picks`));
+    }).join('');
+    const groups = st.cat.providers
+      .map(
+        (p) =>
+          `<div class="m-section-title">${esc(p.name)}${p.ready ? '' : ' · not ready'}</div><div class="m-group" role="radiogroup" aria-label="${esc(p.name)} models">${p.models
+            .map((m) =>
+              radio(
+                `mo-${p.instanceId}-${m.slug}`,
+                `m:${p.instanceId}::${m.slug}`,
+                draft.pick?.instanceId === p.instanceId && draft.pick.model === m.slug,
+                !p.ready,
+                esc(m.name),
+                esc(p.ready ? (m.effort ? `${m.effort.label}: ${effortName(m)} unless you change it` : 'No reasoning setting') : `${p.why} on ${d}`),
+              ),
+            )
+            .join('')}</div>`,
+      )
+      .join('');
+    const picked = draft.pick ? findM(draft.pick)?.model : null;
+    const effort = picked?.effort
+      ? `<div class="m-section-title" id="mo-effort-label">${esc(picked.effort.label)}</div><div class="m-seg mo-seg mo-effort" role="group" aria-labelledby="mo-effort-label">${picked.effort.options
+          .map((o) => `<button data-act="m-effort" data-v="${o.id}" aria-pressed="${(draft.pick.effort ?? picked.effort.defaultValue) === o.id}">${esc(o.label)}</button>`)
+          .join('')}</div>`
+      : '';
+    const stale = offline
+      ? `<div class="m-banner mo-stale" style="--accent: var(--state-blocked)" role="status">${ic('clock')}<span><b>Can’t reach ${esc(d)}.</b> This is the list it sent at ${st.cat.asOf}. ${
+          M === 'M2' ? 'If the model is gone when the start arrives, the start is turned down.' : 'If the model is gone when the start arrives, it runs on the tier’s default.'
+        }</span></div>`
+      : '';
+    const keep = M === 'M3' ? `Kept for #${n} on this phone until you change it.` : 'For this start only.';
+    return `${status()}${bar('Model')}<div class="m-scroll mo-page">
+      <div class="ac-profile is-page"><span class="st-tile" aria-hidden="true">${ic('terminal')}</span><h2 class="ac-name-lg">Model for #${n}</h2><span class="ac-login st-center">T3 Code on ${esc(d)} runs #${n} with it.</span></div>
+      ${stale}
+      <div class="m-section-title">Tier defaults, set on ${esc(d)}</div><div class="m-group" role="radiogroup" aria-label="Tier defaults">${tiers}</div>
+      ${groups}${effort}
+      <p class="m-fine st-left">${keep} Tier defaults change in Settings → Tasks in Wayfinder on ${esc(d)}.</p></div>
+      <div class="m-foot st-foot"><button class="m-btn" data-act="m-use">${ic('check')}Use ${esc(r.live ? r.text : 'T3 Code’s default')}</button><button class="m-btn is-quiet" data-act="back">Cancel</button></div>`;
+  }
+
+  // Waiting starts for the pending and back-in-reach frames: #233 on the Mid default, #226 on a model picked offline.
+  function twoChosen() {
+    st.choice[233] = { tier: 'mid', pick: null };
+    st.choice[226] = M === 'M1' ? { tier: 'hard', pick: null } : { tier: 'mid', pick: { instanceId: 'codex', model: 'gpt-6.1', effort: 'medium' } };
+    return [queued(233, '10:20'), queued(226, '10:24')];
+  }
+  function codexSignedOut() {
+    const codex = st.cat.providers.find((p) => p.instanceId === 'codex');
+    Object.assign(codex, { ready: false, why: 'Signed out in T3 Code' });
+  }
+  // 10:41: back in reach. #233 is turned down as in round 1; #226 meets each option's model rule.
+  function m2BackInTouch() {
+    phoneOffline();
+    st.clock = '10:41';
+    const [, q226] = twoChosen();
+    backInTouch();
+    delete st.outcomes[226];
+    delete st.runs[226];
+    st.clock = '10:41';
+    dropGone();
+    arrive(q226);
+    Object.assign(st, { clock: '10:42', net: 'online' });
+  }
+
+  const MODEL_SCENARIOS = {
+    start: () => open(...ticketPath(230)),
+    confirm() {
+      open(...ticketPath(230));
+      if (M === 'M3') st.choice[230] = { tier: 'mid', pick: { instanceId: 'claudeAgent', model: 'claude-opus-5-5', effort: 'high' } };
+      askStart(230, true);
+    },
+    unavailable() {
+      codexSignedOut();
+      open(...ticketPath(230));
+      if (M === 'M1') askStart(230, true);
+      else if (M === 'M2') {
+        ui.draft = clone(choiceOf(230));
+        open(...ticketPath(230), { screen: 'model', n: 230, then: 'start' });
+      }
+    },
+    picker() {
+      st.choice[230] = { tier: 'mid', pick: null };
+      ui.draft = { tier: 'mid', pick: { instanceId: 'claudeAgent', model: 'claude-opus-5-5', effort: 'high' } };
+      open(...ticketPath(230), { screen: 'model', n: 230, then: M === 'M2' ? 'start' : null });
+    },
+    offline() {
+      phoneOffline();
+      st.clock = '10:24';
+      st.choice[226] = M === 'M1' ? { tier: 'hard', pick: null } : { tier: 'mid', pick: { instanceId: 'codex', model: 'gpt-6.1', effort: 'medium' } };
+      open(...ticketPath(226));
+      askStart(226, true);
+    },
+    'offline-picker'() {
+      phoneOffline();
+      st.clock = '10:24';
+      ui.draft = { tier: 'mid', pick: { instanceId: 'codex', model: 'gpt-6.1', effort: 'medium' } };
+      open(...ticketPath(226), { screen: 'model', n: 226, then: M === 'M2' ? 'queue' : null });
+    },
+    queued() {
+      phoneOffline();
+      st.clock = '10:25';
+      st.queue = [twoChosen()[1]];
+      open(...ticketPath(226));
+    },
+    pending() {
+      phoneOffline();
+      st.clock = '10:25';
+      st.queue = twoChosen();
+      open(...desktopPath());
+    },
+    sent() {
+      m2BackInTouch();
+      open(...(M === 'M2' ? desktopPath() : ticketPath(226)));
+    },
+    live() {
+      st.choice[230] = { tier: 'mid', pick: null };
+      st.runs[230] = { ...run230('live'), model: runsOn(choiceOf(230)) };
+      open(...watchPath(230));
+    },
+    unpaired() {
+      st.pairing = null;
+      open(...ticketPath(230));
+    },
+    pair() {
+      st.pairing = null;
+      open(...ticketPath(230), { screen: 'pair' });
+    },
+    pairconfirm() {
+      st.pairing = null;
+      st.found = P.desktop;
+      open(...ticketPath(230), { screen: 'pair' }, { screen: 'pairconfirm' });
+    },
+    paired: () => open(...ticketPath(230), { screen: 'pair' }, { screen: 'paired' }),
+  };
 
   /* ---------- watching: the parts every option uses ---------- */
   const TOOL_ICON = { read: 'file', search: 'search', create: 'filePlus', edit: 'pencil', run: 'terminal' };
@@ -798,16 +1086,16 @@
           .map((q) => {
             const t = ticketBy(q.n);
             const busy = q.phase === 'sending';
-            return `<div class="m-row st-qrow"><button class="st-qmain" data-act="ticket" data-n="${q.n}"><span class="m-row-main"><span class="m-row-title">#${q.n} ${esc(t.title)}</span><span class="m-row-sub">${busy ? 'Sending…' : `Waiting since ${q.at}`}</span></span></button><button class="st-qbtn" data-act="cancel" data-n="${q.n}"${busy ? ' disabled' : ''} aria-label="Cancel the start of #${q.n}">Cancel</button></div>`;
+            return `<div class="m-row st-qrow"><button class="st-qmain" data-act="ticket" data-n="${q.n}"><span class="m-row-main"><span class="m-row-title">#${q.n} ${esc(t.title)}</span><span class="m-row-sub">${busy ? 'Sending…' : `Waiting since ${q.at}`}${M && q.choice ? ` · ${esc(sendsLine(q, true))}` : ''}</span></span></button><button class="st-qbtn" data-act="cancel" data-n="${q.n}"${busy ? ' disabled' : ''} aria-label="Cancel the start of #${q.n}">Cancel</button></div>`;
           })
-          .join('')}</div><p class="m-fine st-left">They stay on this phone, even if Wayfinder closes, until they’re sent or cancelled. They send by themselves, oldest first, the next time Wayfinder is open and reaches ${esc(d.name)}, which checks each ticket is still ready.</p>`
+          .join('')}</div><p class="m-fine st-left">They stay on this phone, even if Wayfinder closes, until they’re sent or cancelled. They send by themselves, oldest first, the next time Wayfinder is open and reaches ${esc(d.name)}, which checks each ticket is still ready.${M ? ` ${esc(SENDS[M])}` : ''}</p>`
       : '';
     const missed = Object.entries(st.outcomes).filter(([, o]) => o.kind === 'rejected');
     const rejected = missed.length
       ? `<div class="m-section-title">Didn’t start</div><div class="m-group">${missed
           .map(([n, o]) => {
             const t = ticketBy(Number(n));
-            return `<div class="m-row st-qrow"><button class="st-qmain" data-act="ticket" data-n="${n}"><span class="m-row-main"><span class="m-row-title">#${n} ${esc(t.title)}</span><span class="m-row-sub st-wrap">${esc(o.why)}</span></span></button>${o.watch ? `<button class="st-qbtn" data-act="watch" data-n="${n}" aria-label="Watch #${n}">Watch</button>` : ''}<button class="st-qbtn" data-act="dismiss" data-n="${n}" aria-label="Dismiss #${n}">Dismiss</button></div>`;
+            return `<div class="m-row st-qrow"><button class="st-qmain" data-act="ticket" data-n="${n}"><span class="m-row-main"><span class="m-row-title">#${n} ${esc(t.title)}</span><span class="m-row-sub st-wrap">${esc(o.why)}</span></span></button>${o.watch ? `<button class="st-qbtn" data-act="watch" data-n="${n}" aria-label="Watch #${n}">Watch</button>` : ''}${o.model ? `<button class="st-qbtn" data-act="m-again" data-n="${n}" aria-label="Choose a model for #${n}">Choose model</button>` : ''}<button class="st-qbtn" data-act="dismiss" data-n="${n}" aria-label="Dismiss #${n}">Dismiss</button></div>`;
           })
           .join('')}</div>`
       : '';
@@ -885,6 +1173,7 @@
     const ov = st.overlay;
     if (!ov) return '';
     const d = desk();
+    if (M && (ov.kind === 'start' || ov.kind === 'queue')) return modelAlert(ov);
     if (ov.kind === 'start')
       return alertHtml({ title: `Start #${ov.n} on ${d}?`, body: `T3 Code opens a new thread for it there. You can watch it here.`, ok: 'Start', okAct: 'ov-start' });
     if (ov.kind === 'queue')
@@ -979,6 +1268,7 @@
       case 'paired': return pairedB();
       case 'code': return codePage();
       case 'error': return errorPage(s.kind);
+      case 'model': return modelPage();
       default: return maps();
     }
   }
@@ -1029,6 +1319,8 @@
     // The snackbar and Jump to latest float just above whatever bar sits at the bottom.
     const bottom = app.querySelector('.m-actionbar, .m-foot');
     for (const el of app.querySelectorAll('.st-snack, .st-jump')) el.style.bottom = `${(bottom?.offsetHeight ?? 34) + 10}px`;
+    // Round 2's Model page opens with the current choice in view, unless the out-of-reach banner leads it.
+    if (M && here().screen === 'model' && keep === null && st.net !== 'offline') app.querySelector('input[name="m-model"]:checked')?.closest('.m-group')?.scrollIntoView({ block: 'center' });
     lastKey = key;
     ui.scroll = null;
   }
@@ -1056,7 +1348,9 @@
   }
 
   function back() {
+    const left = here();
     if (stack.length > 1) stack.pop();
+    if (left.screen === 'model' && left.then) st.overlay = { kind: left.then, n: left.n };
     st.notice = null;
     render();
     settle();
@@ -1074,8 +1368,8 @@
   /* ---------- starting ---------- */
   function askStart(n, still = false) {
     if (!st.pairing) {
+      if (PB) return go({ screen: 'pair' });
       if (O === 'A') return go({ screen: 'desktop' });
-      if (O === 'B') return go({ screen: 'pair' });
       st.overlay = { kind: 'scan', forTicket: n };
       return;
     }
@@ -1106,6 +1400,7 @@
   // The desktop accepted a start: T3 Code makes the thread, then the first events arrive.
   function begin(n, open) {
     const run = n === 230 ? { ...run230('live'), status: 'starting', events: [R.base[0]], streaming: null, started: st.clock, planDone: 0 } : freshRun(n);
+    if (M) run.model = runsOn(choiceOf(n));
     st.runs[n] = run;
     if (open) {
       if (O === 'A') ui.tab = 'session';
@@ -1140,6 +1435,7 @@
       }
       const waiting = [...st.queue];
       waiting.forEach((q) => (q.phase = 'sending'));
+      if (M && waiting.length) dropGone();
       render();
       if (!waiting.length) return;
       later(1100, () => {
@@ -1148,14 +1444,15 @@
           if (q.n === 233) {
             st.runs[233] = relayed(233);
             st.outcomes[233] = { kind: 'rejected', at: st.clock, why: 'It was already started on the desktop at 10:38.', watch: true };
-          } else {
+          } else if (M) arrive(q);
+          else {
             st.outcomes[q.n] = { kind: 'sent', at: st.clock };
             st.runs[q.n] = freshRun(q.n);
           }
         }
         const names = (list) => list.map((q) => `#${q.n}`).join(' and ');
-        const sent = waiting.filter((q) => q.n !== 233);
-        const missed = waiting.filter((q) => q.n === 233);
+        const sent = waiting.filter((q) => st.outcomes[q.n]?.kind === 'sent');
+        const missed = waiting.filter((q) => st.outcomes[q.n]?.kind === 'rejected');
         st.reportSeen = false;
         Kit.toast([sent.length ? `Sent ${names(sent)} to ${desk()}.` : '', missed.length ? `${names(missed)} didn’t start.` : ''].filter(Boolean).join(' '));
         render();
@@ -1209,7 +1506,7 @@
       });
     }
     st.found = P.desktop;
-    if (O === 'B') {
+    if (PB) {
       st.overlay = null;
       return go({ screen: 'pairconfirm' });
     }
@@ -1259,7 +1556,7 @@
       case 'ov-queue': {
         const k = st.overlay.n;
         st.overlay = null;
-        st.queue.push({ n: k, at: st.clock, phase: 'waiting' });
+        st.queue.push(M ? queued(k) : { n: k, at: st.clock, phase: 'waiting' });
         render();
         Kit.toast(`Saved on this phone. #${k} sends when it can reach ${desk()}.`);
         return settle('[data-act="cancel"]');
@@ -1296,7 +1593,40 @@
         return jumpVisibility();
       }
       case 'try': return reconnect();
-      case 'pair-start': return go({ screen: O === 'B' ? 'pair' : 'desktop' });
+      case 'm-tier': {
+        Object.assign(choiceOf(n), { tier: el.dataset.tier, pick: null });
+        render();
+        return app.querySelector(`[data-act="m-tier"][data-tier="${el.dataset.tier}"]`)?.focus();
+      }
+      case 'm-pick': {
+        const then = st.overlay?.kind ?? null;
+        ui.draft = JSON.parse(JSON.stringify(choiceOf(n)));
+        st.overlay = null;
+        return go({ screen: 'model', n, then });
+      }
+      case 'm-effort': {
+        ui.draft.pick.effort = el.dataset.v;
+        render();
+        return app.querySelector(`[data-act="m-effort"][data-v="${el.dataset.v}"]`)?.focus();
+      }
+      case 'm-use': {
+        const entry = here();
+        st.choice[entry.n] = JSON.parse(JSON.stringify(ui.draft));
+        stack.pop();
+        if (entry.then) st.overlay = { kind: entry.then, n: entry.n };
+        render();
+        if (!entry.then) Kit.toast(`#${entry.n} runs on ${runsOn(st.choice[entry.n])}.`);
+        return entry.then ? app.querySelector('[data-act="ov-start"], [data-act="ov-queue"]')?.focus() : settle('[data-act="m-pick"]');
+      }
+      case 'm-again': {
+        delete st.outcomes[n];
+        if (here().screen !== 'ticket' || here().n !== n) stack.push({ screen: 'ticket', n });
+        ui.tab = 'overview';
+        askStart(n);
+        render();
+        return settle();
+      }
+      case 'pair-start': return go({ screen: PB ? 'pair' : 'desktop' });
       case 'pair-scan': return openScan(here().screen === 'error' ? {} : { forTicket: O === 'C' && here().screen === 'ticket' ? here().n : undefined });
       case 'pair-code':
         st.overlay = null;
@@ -1306,7 +1636,7 @@
         return afterScan({});
       case 'scan-hit': return afterScan(st.overlay);
       case 'code-submit':
-        if (O === 'B') {
+        if (PB) {
           st.found = P.desktop;
           stack.pop();
           return go({ screen: 'pairconfirm' });
@@ -1357,6 +1687,18 @@
     }
   });
 
+  // Round 2's Model page: a native radio list, so arrows move the choice.
+  app.addEventListener('change', (event) => {
+    const el = event.target;
+    if (el.name !== 'm-model') return;
+    if (el.value.startsWith('tier:')) ui.draft = { tier: el.value.slice(5), pick: null };
+    else {
+      const [instanceId, model] = el.value.slice(2).split('::');
+      ui.draft = { tier: ui.draft.tier, pick: { instanceId, model, effort: findM({ instanceId, model }).model.effort?.defaultValue ?? undefined } };
+    }
+    render();
+  });
+
   // Escape closes what is open, or goes back. Tab stays inside an open overlay. Arrows move between tabs.
   window.addEventListener('keydown', (event) => {
     const layer = app.querySelector('.ac-layer, .st-scan');
@@ -1390,6 +1732,7 @@
   });
 
   const scenario = params.get('s');
-  if (scenario && Object.hasOwn(SCENARIOS, scenario)) SCENARIOS[scenario]();
+  if (M && scenario && Object.hasOwn(MODEL_SCENARIOS, scenario)) MODEL_SCENARIOS[scenario]();
+  else if (scenario && Object.hasOwn(SCENARIOS, scenario)) SCENARIOS[scenario]();
   render();
 })();

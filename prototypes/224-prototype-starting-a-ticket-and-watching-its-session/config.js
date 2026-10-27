@@ -3,6 +3,7 @@
   Built on #223's picked screens (R-C2 Maps, M-C map, T-C ticket) and #316's Settings page (G-a),
   copied into variants/ with their CSS. Follows the confirmed #222 architecture; the desktop side
   of pairing is #335's and notifications are #225's.
+  Round 2 (Choosing the model) follows Ramon's pick of A overall, with B's pairing pages; it is not a final choice.
   Check with: node prototypes/224-prototype-starting-a-ticket-and-watching-its-session/tools/check.mjs
 */
 
@@ -277,6 +278,120 @@ window.CANVAS = {
             { id: 'C-unpaired', name: 'Start, not paired', src: 'variants/phone.html?o=C&s=unpaired', ...PHONE, note: '“No desktop paired. You’ll pair one first.” over “Start on desktop”.' },
             { id: 'C-pair', name: 'Scan to start', src: 'variants/phone.html?o=C&s=pair', ...PHONE, note: 'The scanner says why it opened: to start #230. Tap the code to pair.' },
             { id: 'C-paired', name: 'Paired, starting', src: 'variants/phone.html?o=C&s=paired', ...PHONE, note: 'Back on #230, paired and starting, with Undo.' },
+          ],
+        },
+      ],
+    },
+    {
+      title: 'Choosing the model',
+      round: 'Round 2',
+      question: 'With A’s start and Session tab, and B’s pairing pages, how do you choose the model a phone start runs on, and what happens to that choice while RAMON‑PC is out of reach?',
+      sections: [
+        {
+          title: 'Where this round starts',
+          note: 'Round 1’s pages above are unchanged. Nothing on this page is decided yet: pick, change or combine on the Wayfinder canvas.',
+          items: [
+            {
+              id: 'R2-brief',
+              kind: 'note',
+              name: 'What you said',
+              boardWidth: 340,
+              text: "Your words in the parent thread: “Overall though I choose A. How every I like B pairing page. Another thing I didn’t see is the option to choose which model it is using to start the session.”\n\nSo every frame here starts from A (Start alert on the ticket, Session tab, waiting starts in Settings → Desktop) and pairs through B’s pages (Pair a desktop, “Pair with RAMON‑PC?”, Paired). How A and B combine is shown, not settled.\n\nWhat the desktop does today: the ticket panel’s “Run as” switch picks Simple, Mid or Hard; each tier maps to a model and effort in Settings → Tasks; the model can be changed for one hand-off; a model T3 Code no longer offers is dropped and T3 Code picks (src/ui/app.ts runWithHtml, src/models.ts liveChoice). The catalog is T3 Code’s providers, grouped, with signed-out ones marked “not ready”.\n\nNew here: the phone only knows the list RAMON‑PC last sent, so each option says what a waiting start carries and what RAMON‑PC does if that model has gone by the time it arrives.",
+            },
+          ],
+        },
+        {
+          title: 'Three ways to choose the model, at the same moment',
+          note: '#230 is next up, RAMON‑PC is online, and Start has just been tapped. Each frame is the whole app.',
+          items: [
+            {
+              id: 'M1',
+              name: 'Tier in the alert',
+              src: 'variants/phone.html?m=M1&s=confirm', ...PHONE,
+              note: {
+                idea: 'A’s Start alert gains the desktop’s own Run as switch: Simple, Mid, Hard, with the model each one runs on today. The phone sends the tier; RAMON‑PC picks that tier’s model from Settings → Tasks when the start arrives.',
+                pros: ['Same words and tiers as the desktop’s Run as', 'Nothing on the phone goes stale: a waiting start picks the model it finds on arrival', 'One control, inside the alert you already have'],
+                cons: ['No exact model or effort from the phone; changing what Mid means is done on the desktop', 'The model shown while out of reach is only what Mid meant at 10:14', 'Puts a control inside an alert'],
+                basedOn: ['A', 'A-confirm'],
+              },
+            },
+            {
+              id: 'M2',
+              name: 'Model page from the alert',
+              src: 'variants/phone.html?m=M2&s=confirm', ...PHONE,
+              note: {
+                idea: 'A’s Start alert names the model, with Change. Change opens a Model page laid out like B’s pairing page: the three tier defaults, then every model RAMON‑PC offers by provider, then its effort, with Use at the foot. The exact model is sent. If it has gone when a waiting start arrives, RAMON‑PC turns the start down and the phone offers Choose a model.',
+                pros: ['Any model and effort T3 Code offers, per start', 'You get exactly what you picked, or nothing runs', 'The page reuses B’s pairing-page layout you liked'],
+                cons: ['A turned-down start needs you again, possibly hours later', 'Two steps when you do want to change the model', 'Choice is per start; a ticket you restart asks again'],
+                basedOn: ['A', 'A-confirm', 'B-pair'],
+              },
+            },
+            {
+              id: 'M3',
+              name: 'Run as on the ticket',
+              src: 'variants/phone.html?m=M3&s=start', ...PHONE,
+              note: {
+                idea: 'Like the desktop’s ticket panel: a Run as row sits above Start on the ticket, and opens the same Model page. The choice is kept for that ticket on the phone, and A’s alert names it. The exact model and tier are sent; if the model has gone on arrival, RAMON‑PC runs the tier’s default and the ticket says so.',
+                pros: ['You see the model before tapping Start, as on the desktop', 'A waiting start always runs, even if its model went away', 'The alert stays a plain yes or no'],
+                cons: ['A bigger action bar on every startable ticket', 'A fallback can run on a model you didn’t pick', 'One more thing remembered per ticket on the phone'],
+                basedOn: ['A', 'A-start', 'B-pair'],
+              },
+            },
+            {
+              id: 'R2-review',
+              kind: 'note',
+              name: 'Design review',
+              boardWidth: 340,
+              text: "Sources: Ramon’s message in the parent thread (quoted under What you said); #224 and #222’s confirmed architecture (comment 6184503526: pending starts persist, auto-send to the original desktop, desktop rechecks eligibility, phone is watch-only); src/models.ts (ModelCatalog, liveChoice, toModelSelection) and src/ui/models.ts (tiers, hints, “T3 Code default”, “(not ready)”); src/ui/app.ts runWithHtml (desktop Run as); round 1’s A and B frames. Tokens: src/ui/styles.css only; model.css adds classes, no tokens. Catalog values are made up.\n\nThemes and states, checked headless (Playwright, installed Chrome): all 27 round 2 frames in light and dark at 390×844 and 320×640, no page errors. States: online, provider not ready, out of reach, waiting, back in reach (sent, fallback to the tier default, turned down), live, and B’s pairing steps. Round 1 is untouched: its 62 frames, light and dark, match the previous commit pixel for pixel with animations frozen.\n\nFocus and keyboard: the alerts open on Cancel and trap Tab; M1’s tier buttons and the effort switch are buttons with aria-pressed in a labelled group (as the desktop’s Task tier group); the Model page uses native radio inputs, so arrow keys move the choice, with a focus ring on the mark; Back and Cancel on the Model page return to the alert with its earlier choice.\n\nSemantics: alertdialog with title and description; radios grouped and named per provider; disabled not-ready models say why in text, not colour alone; the warning row names the provider.\n\nContrast and size, by script on the same 108 captures: every visible text ≥ 4.5:1 against its resolved background (3:1 for large text), no control under 24×24px, every button, radio and tab named, a heading on every screen, no sideways scrolling at 320px.\n\nInteraction, by script: M2’s Change opens the Model page, arrow keys move the radio, an effort can be set, Use returns to the alert with it and Start shows it on the Session tab; Escape returns with the old choice. M1’s tier buttons keep focus and update the model line. Try now on waiting starts sends #226 in M1 and M3 (M3 on the Mid default) and turns it down in M2 with Choose a model. Pairing from the ticket goes Pair a desktop → scan → Pair with RAMON‑PC? → Paired → Done back on #230.\n\nFindings: the Model page is long (three providers); the chosen model opens in view, but on the out-of-reach page the banner leads instead.\n\nNot checked: real devices, screen readers, large text, landscape, what T3 Code really relays over the paired connection (the phone catalog shape is assumed to match /api/models), and a phone that has never received a catalog (it would have tiers but no list).",
+            },
+          ],
+        },
+        {
+          title: 'M1 · Tier in the alert',
+          note: 'The phone sends { ticket, tier } with its request ID. RAMON‑PC resolves the tier with its own Settings → Tasks when the start arrives, as the desktop does today.',
+          items: [
+            { id: 'M1-confirm', name: 'Start alert, Run as', src: 'variants/phone.html?m=M1&s=confirm', ...PHONE, note: { idea: 'Mid is the default tier. Each tier button names its hint, as on the desktop; the line under it names the model Mid runs on today.', basedOn: ['A-confirm'] } },
+            { id: 'M1-unavailable', name: 'Tier’s model not ready', src: 'variants/phone.html?m=M1&s=unavailable', ...PHONE, note: { idea: 'Codex is signed out in T3 Code on RAMON‑PC, so Mid’s GPT‑6.1 Sol can’t run. As on the desktop today, T3 Code then picks the model; Simple or Hard can be chosen instead.', basedOn: ['A-confirm'] } },
+            { id: 'M1-offline', name: 'Out of reach', src: 'variants/phone.html?m=M1&s=offline', ...PHONE, note: { idea: 'A’s Send later alert with the same switch. The line says the model is only what that tier meant at 10:14.', basedOn: ['A-offline'] } },
+            { id: 'M1-pending', name: 'Waiting starts', src: 'variants/phone.html?m=M1&s=pending', ...PHONE, note: { idea: 'Settings → Desktop: each waiting start lists the tier it carries, and the fine print says what is sent.', basedOn: ['A-pending'] } },
+            { id: 'M1-sent', name: 'Sent on reconnect', src: 'variants/phone.html?m=M1&s=sent', ...PHONE, note: { idea: '#226 was sent at 10:41 as Hard; the action bar says which model RAMON‑PC picked for it.', basedOn: ['A-sent'] } },
+          ],
+        },
+        {
+          title: 'M2 · Model page from the alert',
+          note: 'The phone sends { ticket, tier, model: { instanceId, model, effort } } with its request ID, the shape T3 Code’s modelSelection takes. RAMON‑PC rechecks the model with the ticket, and turns the start down if it isn’t offered.',
+          items: [
+            { id: 'M2-confirm', name: 'Start alert, Model row', src: 'variants/phone.html?m=M2&s=confirm', ...PHONE, note: { idea: 'The row names the model and where it comes from: RAMON‑PC’s Mid default. Tap it to change.', basedOn: ['A-confirm'] } },
+            { id: 'M2-picker', name: 'Model page', src: 'variants/phone.html?m=M2&s=picker', ...PHONE, note: { idea: 'B’s pairing-page layout: tile and heading, Tier defaults, then Codex, Claude and Grok, then the picked model’s effort. Use returns to the alert with the choice; Back or Cancel returns without it.', basedOn: ['B-pair'] } },
+            { id: 'M2-unavailable', name: 'Provider not ready', src: 'variants/phone.html?m=M2&s=unavailable', ...PHONE, note: { idea: 'Codex is signed out on RAMON‑PC: its models are off with the reason in words, and Mid says it isn’t ready.', basedOn: ['B-pair'] } },
+            { id: 'M2-offline', name: 'Out of reach', src: 'variants/phone.html?m=M2&s=offline', ...PHONE, note: { idea: 'A’s Send later alert with the Model row; a line says the list is from 10:14 and what happens if the model goes.', basedOn: ['A-offline'] } },
+            { id: 'M2-offline-picker', name: 'Model page, out of reach', src: 'variants/phone.html?m=M2&s=offline-picker', ...PHONE, note: { idea: 'The banner says this is RAMON‑PC’s list from 10:14.', basedOn: ['B-pair'] } },
+            { id: 'M2-pending', name: 'Waiting starts', src: 'variants/phone.html?m=M2&s=pending', ...PHONE, note: { idea: 'Each waiting start lists its exact model. Tap Try now to see #226 turned down.', basedOn: ['A-pending'] } },
+            { id: 'M2-rejected', name: 'Turned down, model gone', src: 'variants/phone.html?m=M2&s=sent', ...PHONE, note: { idea: 'By 10:41 GPT‑6.1 was hidden in T3 Code, so #226 didn’t start. Choose model opens the alert again; #233 is turned down as in round 1.', basedOn: ['A-rejected', 'B-rejected'] } },
+          ],
+        },
+        {
+          title: 'M3 · Run as on the ticket',
+          note: 'The phone sends { ticket, tier, model } with its request ID. If the model isn’t offered on arrival, RAMON‑PC runs the tier’s default instead, and the ticket says so.',
+          items: [
+            { id: 'M3-start', name: 'Run as above Start', src: 'variants/phone.html?m=M3&s=start', ...PHONE, note: { idea: 'The row sits in A’s action bar, over the desktop and Start.', basedOn: ['A-start'] } },
+            { id: 'M3-picker', name: 'Model page', src: 'variants/phone.html?m=M3&s=picker', ...PHONE, note: { idea: 'The same page as M2; Use keeps the choice for #230.', basedOn: ['B-pair'] } },
+            { id: 'M3-confirm', name: 'Start alert', src: 'variants/phone.html?m=M3&s=confirm', ...PHONE, note: { idea: 'A’s alert, unchanged except that it names the model.', basedOn: ['A-confirm'] } },
+            { id: 'M3-unavailable', name: 'Provider not ready', src: 'variants/phone.html?m=M3&s=unavailable', ...PHONE, note: { idea: 'The Run as row warns before you tap Start.', basedOn: ['A-start'] } },
+            { id: 'M3-queued', name: 'Waiting, on the ticket', src: 'variants/phone.html?m=M3&s=queued', ...PHONE, note: { idea: 'The waiting start shows what it will send.', basedOn: ['A-queued'] } },
+            { id: 'M3-pending', name: 'Waiting starts', src: 'variants/phone.html?m=M3&s=pending', ...PHONE, note: { idea: 'As M2, with M3’s fallback in the fine print.', basedOn: ['A-pending'] } },
+            { id: 'M3-sent', name: 'Sent, on the default', src: 'variants/phone.html?m=M3&s=sent', ...PHONE, note: { idea: 'GPT‑6.1 had gone by 10:41, so #226 runs on Mid’s GPT‑6.1 Sol · High, and the action bar says so.', basedOn: ['A-sent'] } },
+          ],
+        },
+        {
+          title: 'In all three: the Session tab and B’s pairing pages',
+          note: 'The model a run uses shows on A’s Session tab. Pairing from the ticket goes through B’s pages; after Done, Start uses the option above.',
+          items: [
+            { id: 'R2-live', name: 'Session, with its model', src: 'variants/phone.html?m=M1&s=live', ...PHONE, note: { idea: 'A’s Session tab; the report line names RAMON‑PC and the model.', basedOn: ['A-live'] } },
+            { id: 'R2-unpaired', name: 'Not paired', src: 'variants/phone.html?m=M1&s=unpaired', ...PHONE, note: { idea: 'A’s action bar; Pair a desktop opens B’s page instead of Settings.', basedOn: ['A-unpaired', 'B-unpaired'] } },
+            { id: 'R2-pair', name: 'Pair a desktop', src: 'variants/phone.html?m=M1&s=pair', ...PHONE, note: { idea: 'B’s page, unchanged.', basedOn: ['B-pair'] } },
+            { id: 'R2-pairconfirm', name: 'Pair with RAMON‑PC?', src: 'variants/phone.html?m=M1&s=pairconfirm', ...PHONE, note: { idea: 'B’s check after the scan, unchanged.', basedOn: ['B-pairconfirm'] } },
+            { id: 'R2-paired', name: 'Paired', src: 'variants/phone.html?m=M1&s=paired', ...PHONE, note: { idea: 'Done returns to #230 with Start.', basedOn: ['B-paired'] } },
           ],
         },
       ],
