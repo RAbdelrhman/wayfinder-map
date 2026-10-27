@@ -9,7 +9,35 @@ deliverables. A closed prototype ticket does not mean its native screens shipped
 | Version | Source | Installed proof | Included behavior |
 | --- | --- | --- | --- |
 | 1.0.0 / 1 | PR #351, source `30ad162`, merged as `63a598a` | Samsung SM-S936U, 2026-10-27. APK installation succeeded; compass launcher icon and GitHub sign-in as RAbdelrhman verified. | Sign-in and account settings. Maps was a placeholder. |
-| 1.1.0 / 2 | Current #229 implementation | In progress. Do not claim the device install until this row is updated. | Approved #223 R-C2, M-C, and T-C with live GitHub data. |
+| 1.1.0 / 2 | `fb3be672cce1d2acbbedfcaf6dacd5b9727ac082`, #229 implementation | Samsung SM-S936U, 2026-10-27 15:56 UTC. Install succeeded, existing sign-in retained; repository filtering, map tabs, ticket tabs and issue-link navigation exercised. | Approved #223 R-C2, M-C, and T-C with live GitHub data. |
+
+Latest installed APK:
+`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.1.0-fb3be672-arm64.apk`.
+The adjacent `.json` manifest identifies the exact source, an empty working-tree
+change list, checksum and installation time. SHA-256:
+`91619200fa3e876984050c1da462cbe615083fc7e017562c920eca27dec58414`.
+
+Physical-phone checks used RAbdelrhman: 13 live maps across three repositories,
+including map #217 with 21 tickets. Repository filtering and Path / Tickets /
+Brief work, including state filtering and the complete Destination text. Ticket
+#230's Overview / Links / Activity show its live blocker, dependencies/dependents
+and GitHub comment; a comment's #335 reference opens the linked issue. Settings
+and back navigation work. Sign-in and cached data persisted through the APK
+upgrade. Local screenshots are in `C:/wf229/.audit/phone/`, including
+`maps.png`, `map-path.png`, `map-tickets-blocked.png`, `ticket-overview.png`,
+`ticket-links.png`, `ticket-activity.png`, and `map-brief-final.png`.
+
+Source gates: root typecheck, lint, 1,818 tests across 135 files, and build passed;
+mobile typecheck, 82 tests across six files, and Android/iOS exports passed. The
+Android ARM64 native release build and release lint passed. Public-follow
+inclusion, private-map exclusion, pagination, fallback links/blockers, unknown
+blockers, API failures, corrupt cache handling, account separation and serialized
+cache writes have automated coverage.
+
+Not verified on the physical phone: airplane-mode recovery, a followed map from
+another author, screen-reader speech, light theme and iOS. There is no claim of
+automatic desktop follow synchronization, canvas viewing, pairing, session
+watching or pushes in this APK.
 
 The previous 1.0.0 APK is at
 `C:/wf-phone/artifacts/Wayfinder-Mobile-1.0.0-30ad162-arm64.apk`.

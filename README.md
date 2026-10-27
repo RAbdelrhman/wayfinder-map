@@ -391,6 +391,17 @@ Repos without sub-issues or issue dependencies still render. The tool reads chil
 from a task list or issue links in the map body, and blockers from a
 `Blocked by: #4, #7` line, then says in the header bar that it did so.
 
+## Phone app
+
+The native Expo app lives in `mobile/`. Android personal build 1.1.0 includes
+GitHub sign-in, live map browsing with a repository filter, Path / Tickets / Brief,
+and ticket Overview / Links / Activity. Canvas viewing, live T3 sessions and push
+notifications have separate implementation tickets.
+
+See [mobile builds and installation](docs/mobile-builds.md) for the installed-build
+history, exact APK/source/checksum records, verification, and the Android build
+script. That record distinguishes the native app from the approved HTML prototypes.
+
 ## How it is put together
 
 The CLI package has zero runtime dependencies. A Node HTTP server reads GitHub through `gh`, and the
