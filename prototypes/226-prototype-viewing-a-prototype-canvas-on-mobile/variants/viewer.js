@@ -673,8 +673,7 @@
       case 'retry':
         return download();
       case 'check':
-        ui.panel = null;
-        render();
+        closePanel();
         return Kit.toast(`Checked GitHub: nothing changed since ${cv().updated}, so nothing downloaded.`);
       case 'open-opt':
         ui.opt = el.dataset.id;
