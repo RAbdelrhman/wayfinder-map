@@ -41,4 +41,5 @@ jobs:
       - run: bun run test
       - run: bun run test:canvas
       - run: bun run test:tour-layout
+      - run: bun run test:device-presentation
       - run: bun run build

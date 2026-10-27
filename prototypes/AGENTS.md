@@ -11,6 +11,8 @@ Create a fresh board from the repo root with:
 bun run canvas:create <task-id>
 # For a ticket, also preserve its association:
 bun run canvas:create <ticket>-<title-slug> --ticket <ticket>
+# Phone prototypes use the shared #226 presentation from the start:
+bun run canvas:create <ticket>-<title-slug> --ticket <ticket> --mobile
 ```
 
 The command loads the shared canvas engine, creates fresh content, and refuses
@@ -23,6 +25,29 @@ canvas's README, author real options, and run `node <dir>/tools/check.mjs`.
 Keep sandbox rules and relative paths. Inspect the preview and provide the exact
 canvas URL and visible preview before asking the user to choose. Ask one product
 decision at a time. Do not infer an answer from an unsubmitted form.
+
+## Mobile screens and layout testing
+
+For every new phone prototype, use `canvas:create --mobile` and keep its shared
+`../../canvas/device.js` script. It applies the phone presentation Ramon chose
+from #226, without adding viewer controls. Read the Mobile presentation section
+in `prototypes/canvas/README.md` before authoring or testing a phone screen.
+Keep `width: 390, height: 844, boardWidth: 240` on phone items. The blank generated
+screen is a starting file, not an option ready for review.
+
+Existing canvases keep their authored presentation. Never stack this helper over
+an existing frame or infer a device from a small width or a mobile ticket title.
+The explicit `phone` preset applies only to that phone reference. Desktop,
+tablet, watch and other device shapes need their own declared dimensions and
+chosen presentation; do not force them into the phone preset.
+
+Exercise both themes, board thumbnails, Present mode, Wayfinder's viewer,
+direct page, resize, keyboard focus and Escape. Check a narrow responsive
+viewport separately from the framed desktop presentation, including short and
+landscape windows. `bun run test:device-presentation` checks the shared layout
+in installed Chrome. Report browser viewport checks as layout evidence. They
+do not prove native/device, OS keyboard, safe areas, touch or screen reader
+behavior. Use the actual device/emulator for claims about those layers.
 
 Before sharing or pushing a prototype branch, capture its board poster after the
 final content change, from this checkout's root:

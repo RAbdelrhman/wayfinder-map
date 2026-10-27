@@ -224,6 +224,12 @@ If the repo provides canvas:create, run bun run canvas:create {{ticketSlug}}
 --ticket {{ticketNumber}}. Otherwise, use the design-canvas skill with an
 explicit directory: node ~/.claude/skills/design-canvas/scaffold.mjs
 {{canvasDirectory}}. Set config.js ticket to {{ticketNumber}}.
+For phone prototypes when the repo provides prototypes/canvas/device.js,
+append --mobile to canvas:create. Read
+prototypes/AGENTS.md and prototypes/canvas/README.md for the shared phone
+presentation and layout-test workflow. Preserve existing authored frames;
+never stack frames or force other devices into a phone preset. Browser
+viewport checks are layout evidence, not real device tests.
 Follow {{canvasDirectory}}/README.md, and make node
 {{canvasDirectory}}/tools/check.mjs pass before you show the user.
 Inspect the running canvas yourself, then push {{prototypeBranch}} and
