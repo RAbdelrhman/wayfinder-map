@@ -378,7 +378,28 @@ export class MobileGithub {
     if (!raw.labels.includes('wayfinder:map'))
       throw new Error('This issue is not a Wayfinder map.');
     const warnings: string[] = [];
+    const bodyIssues = async (numbers: number[]): Promise<Issue[]> =>
+      (
+        await pool(numbers, async (number) => {
+          try {
+            return issue(
+              await this.get(`/repos/${ref.repo}/issues/${number}`, signal),
+            );
+          } catch (error) {
+            if (
+              !(error instanceof GithubError) ||
+              ![404, 410].includes(error.status)
+            )
+              throw error;
+            warnings.push(
+              `Linked ticket #${number} is unavailable and was omitted.`,
+            );
+            return null;
+          }
+        })
+      ).filter((child): child is Issue => child !== null);
     let children: Issue[];
+    let usedFallback = false;
     try {
       children = (
         await this.list(
@@ -395,12 +416,11 @@ export class MobileGithub {
       warnings.push(
         'GitHub’s sub-issue endpoint is unavailable. Showing tickets linked in the map body.',
       );
-      children = await pool(
+      usedFallback = true;
+      children = await bodyIssues(
         parseChildNumbers(raw.body, ref.repo).filter(
           (number) => number !== raw.number,
         ),
-        async (number) =>
-          issue(await this.get(`/repos/${ref.repo}/issues/${number}`, signal)),
       );
       if (children.length === 0 && raw.sub_issues_summary.total > 0)
         throw new Error(
@@ -408,18 +428,14 @@ export class MobileGithub {
         );
     }
     const attached = new Set(children.map((child) => child.number));
-    const unattached = parseChildNumbers(raw.body, ref.repo).filter(
-      (number) => number !== raw.number && !attached.has(number),
-    );
+    const unattached = (
+      usedFallback ? [] : parseChildNumbers(raw.body, ref.repo)
+    ).filter((number) => number !== raw.number && !attached.has(number));
     if (unattached.length) {
       warnings.push(
         `Also showing tickets linked in the map body: ${unattached.map((number) => `#${number}`).join(', ')}.`,
       );
-      children.push(
-        ...(await pool(unattached, async (number) =>
-          issue(await this.get(`/repos/${ref.repo}/issues/${number}`, signal)),
-        )),
-      );
+      children.push(...(await bodyIssues(unattached)));
     }
     const tickets = await pool(
       children.filter((child) => !child.pull_request),

@@ -3,16 +3,21 @@ const { withAppBuildGradle } = require('expo/config-plugins');
 const marker = '// wayfinder-shared-bundle-inputs';
 /** @param {string} contents @returns {string} */
 function patchAppBuildGradle(contents) {
-  if (contents.includes(marker)) return contents;
-  return `${contents}\n${marker}
+  const configuration = `${marker}
 // Metro watches ../src, and Gradle must also invalidate its embedded JS bundle when those files change.
 tasks.configureEach { task ->
     if (task.name.startsWith('createBundle') && task.name.endsWith('JsAndAssets')) {
         task.inputs.dir(rootProject.file('../../src'))
             .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+        // Expo inlines .env and process environment values. Always rebundle to avoid stale sign-in configuration.
+        task.outputs.upToDateWhen { false }
     }
 }
 `;
+  if (contents.includes(marker)) {
+    return contents.replace(/\/\/ wayfinder-shared-bundle-inputs[\s\S]*?\r?\n}\r?\n?/, configuration);
+  }
+  return `${contents}\n${configuration}`;
 }
 
 /** @type {import('expo/config-plugins').ConfigPlugin} */

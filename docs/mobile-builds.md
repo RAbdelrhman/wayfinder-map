@@ -73,7 +73,10 @@ From PowerShell at the repository root:
 
 The default archive is `%USERPROFILE%/Downloads/Wayfinder-Mobile/`. Each APK has a
 JSON manifest with the version, source SHA, working-tree changes, checksum and
-installation timestamp. `-SkipBuild` packages an already-completed local build;
+installation timestamp. A unique build ID in both filenames prevents repeated
+builds from overwriting previous APKs. The manifest is saved before installation
+and records a failed installation without claiming the phone was updated.
+`-SkipBuild` packages an already-completed local build;
 use it only immediately after building the same source. A `-working` filename
 means there were source changes beyond the recorded commit. Preserve that
 qualification when reporting provenance.
@@ -88,6 +91,8 @@ The `withSharedSources` Expo config plugin registers repository `src/` as an
 Android JS-bundle task input. Metro's watch folder alone is insufficient for
 incremental release builds; without this Gradle can reuse a stale embedded bundle
 after shared map logic changes. Keep this plugin when regenerating native code.
+It also forces each release build to rebundle so changes to Expo's public
+environment values and `.env` files cannot reuse an old sign-in configuration.
 
 ## Data and implementation boundaries
 
@@ -97,6 +102,10 @@ filter. Map detail has Path / Tickets / Brief. Ticket detail has Overview /
 Links / Activity. Native sub-issues, body-linked tickets, dependency state,
 outside dependency links and comments come from GitHub; these are not prototype
 fixtures. The last successful account-scoped data is retained on the phone.
+Confirmed access failures, HTTP 401 or 404, clear the affected resource's saved
+content. Offline, server and rate-limit failures retain it for recovery. Missing
+body-linked issues are omitted with a warning rather than preventing the whole
+map from loading.
 
 Desktop follows are currently a local file, not a GitHub subscription or a cloud
 service. An optional `EXPO_PUBLIC_FOLLOWED_MAPS` value can seed public references

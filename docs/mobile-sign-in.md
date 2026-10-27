@@ -53,5 +53,6 @@ Avatar on Maps → **Settings** → **Sign out** → the alert "Sign out? Wayfin
 - `mobile/src/auth/deviceFlow.ts`: the state machine (`authReducer`) and the polling loop (`runDeviceFlow`), with fetch, clock and sleep injected.
 - `mobile/src/auth/sessionStore.ts` and `secureStorage.ts`: the session's key and shape, and the SecureStore adapter.
 - `mobile/src/auth/AuthProvider.tsx`: React wiring (`useAuth()` gives `state`, `signIn`, `cancel`, `signOut`). Later screens read the token from `state.session.token` when `state.phase` is `signedIn`.
-- `mobile/src/auth/SignInScreen.tsx`: the S-A screens. `MapsScreen.tsx` (only the top bar until #229), `SettingsScreen.tsx` and `SignedIn.tsx` (the switch between them) are the signed-in side.
+- `mobile/src/auth/SignInScreen.tsx`: the S-A screens; `SettingsScreen.tsx` contains account settings.
+- `mobile/src/app/_layout.tsx`: Expo Router authentication guards and the signed-in browse provider. Routes in `mobile/src/app/` open the native screens in `mobile/src/maps/`, including `MapsScreen.tsx`, `MapScreen.tsx` and `TicketScreen.tsx`.
 - Tests: `bun run test` in `mobile/`.

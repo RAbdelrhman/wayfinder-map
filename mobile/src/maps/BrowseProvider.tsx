@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import type { Session } from '../auth/deviceFlow';
 import { MobileGithub } from './github';
 import { parseFollows, readCache, writeCache } from './cache';
+import { resourceFailure } from './resourceFailure';
 
 type Browse = { api: MobileGithub; session: Session };
 const Context = createContext<Browse | null>(null);
@@ -123,15 +124,17 @@ export function useResource<T>(
             error: null,
           });
       } catch (error) {
+        if (!active) return;
+        const failure = await resourceFailure(
+          AsyncStorage,
+          session.login,
+          key,
+          error,
+        );
         if (active)
           setState((current) => ({
             ...current,
-            loading: false,
-            refreshing: false,
-            error:
-              error instanceof Error
-                ? error.message
-                : 'Couldn’t load this from GitHub. Try again.',
+            ...failure,
           }));
       }
     })();

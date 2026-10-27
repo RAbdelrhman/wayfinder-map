@@ -38,6 +38,62 @@ function setup(
   };
 }
 describe('mobile GitHub maps', () => {
+  it.each([false, true])(
+    'omits deleted body links when sub-issue fallback is %s',
+    async (fallback) => {
+      const { api } = setup((path) => {
+        if (path.endsWith('/issues/1'))
+          return raw(1, {
+            labels: ['wayfinder:map'],
+            body: '- [ ] #2\n- [ ] #3\n- [ ] #4',
+          });
+        if (path.endsWith('/sub_issues'))
+          return fallback ? new Response('', { status: 404 }) : [raw(2)];
+        if (path.endsWith('/issues/2')) return raw(2);
+        if (path.endsWith('/issues/3'))
+          return new Response('', { status: 404 });
+        if (path.endsWith('/issues/4'))
+          return new Response('', { status: 410 });
+        return [];
+      });
+      const result = await api.map({ repo: 'me/project', number: 1 });
+      expect(result.tickets.map((ticket) => ticket.number)).toEqual([2]);
+      expect(result.warnings).toContain(
+        'Linked ticket #3 is unavailable and was omitted.',
+      );
+      expect(result.warnings).toContain(
+        'Linked ticket #4 is unavailable and was omitted.',
+      );
+    },
+  );
+  it.each([401, 403, 429])(
+    'does not hide body-linked ticket failure %s',
+    async (status) => {
+      const { api } = setup((path) => {
+        if (path.endsWith('/issues/1'))
+          return raw(1, { labels: ['wayfinder:map'], body: '- [ ] #2' });
+        if (path.endsWith('/sub_issues')) return [];
+        return new Response('', { status });
+      });
+      await expect(
+        api.map({ repo: 'me/project', number: 1 }),
+      ).rejects.toMatchObject({ status });
+    },
+  );
+  it('does not show an empty completed fallback map when all linked tickets are unavailable', async () => {
+    const { api } = setup((path) =>
+      path.endsWith('/issues/1')
+        ? raw(1, {
+            labels: ['wayfinder:map'],
+            body: '- [ ] #2',
+            sub_issues_summary: { total: 1, completed: 0 },
+          })
+        : new Response('', { status: 404 }),
+    );
+    await expect(api.map({ repo: 'me/project', number: 1 })).rejects.toThrow(
+      'Couldn’t load this map',
+    );
+  });
   it('merges body-linked tickets with native children and respects body blockers when native dependencies are empty', async () => {
     const { api } = setup((path) => {
       if (path.endsWith('/issues/1'))

@@ -29,23 +29,33 @@ try {
   $changes = @(& git -C $repoRoot status --porcelain --untracked-files=normal -- mobile src scripts/build-mobile-android.ps1)
   $label = if ($changes.Count) { "$($commit.Substring(0, 8))-working" } else { $commit.Substring(0, 8) }
   New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
-  $destination = Join-Path $OutputDirectory "Wayfinder-$($config.expo.version)-$label-arm64.apk"
-  Copy-Item -LiteralPath $apk -Destination $destination -Force
+  $buildId = [Guid]::NewGuid().ToString('N')
+  $destination = Join-Path $OutputDirectory "Wayfinder-$($config.expo.version)-$label-$buildId-arm64.apk"
+  [IO.File]::Copy($apk, $destination, $false)
   $manifest = [ordered]@{
     app = 'Wayfinder'; package = $config.expo.android.package; version = $config.expo.version
     versionCode = $config.expo.android.versionCode; architecture = 'arm64-v8a'
-    sourceCommit = $commit; workingTreeChanges = $changes
+    sourceCommit = $commit; workingTreeChanges = $changes; buildId = $buildId
     apk = $destination; sha256 = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
     packagedAt = [DateTimeOffset]::UtcNow.ToString('o'); signing = 'personal build using the generated Android debug signing key'
     installedDevice = $null; installedAt = $null
-  }
-  if ($DeviceSerial) {
-    & adb -s $DeviceSerial install --user 0 -r $destination
-    if ($LASTEXITCODE -ne 0) { throw 'Phone installation failed. The previous app and sign-in were retained.' }
-    $manifest.installedDevice = $DeviceSerial
-    $manifest.installedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    installationStatus = 'not-attempted'
   }
   $manifestPath = [IO.Path]::ChangeExtension($destination, '.json')
+  $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+  if ($DeviceSerial) {
+    $manifest.installationStatus = 'pending'
+    $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+    & adb -s $DeviceSerial install --user 0 -r $destination
+    if ($LASTEXITCODE -ne 0) {
+      $manifest.installationStatus = 'failed'
+      $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+      throw 'Phone installation failed. The previous app and sign-in were retained.'
+    }
+    $manifest.installedDevice = $DeviceSerial
+    $manifest.installedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    $manifest.installationStatus = 'succeeded'
+  }
   $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding utf8
   Write-Output "APK: $destination"
   Write-Output "Manifest: $manifestPath"

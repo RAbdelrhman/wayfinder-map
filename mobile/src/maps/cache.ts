@@ -51,6 +51,23 @@ export async function readCache<T>(
   }
 }
 const writes = new Map<string, Promise<void>>();
+/** Serialize eviction after pending writes so denied data cannot be restored by an older write. */
+export async function removeCache(
+  storage: { removeItem(key: string): Promise<void> },
+  login: string,
+  resource: string,
+): Promise<void> {
+  const key = cacheKey(login, resource);
+  const removal = (writes.get(key) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(() => storage.removeItem(key));
+  writes.set(key, removal);
+  try {
+    await removal;
+  } finally {
+    if (writes.get(key) === removal) writes.delete(key);
+  }
+}
 export async function writeCache<T>(
   storage: Storage,
   login: string,
