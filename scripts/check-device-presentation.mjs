@@ -5,11 +5,12 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join, relative, resolve, sep } from 'node:path';
 import { build } from 'esbuild';
 import { chromium } from 'playwright-core';
+import { closeDevicePresentation } from './close-device-presentation.mjs';
 
 const root = process.cwd();
 const artifacts = join(root, '.shots/device-presentation');
@@ -157,11 +158,5 @@ try {
   assert.deepEqual(errors, []);
   console.log('Board, Present, sandboxed Wayfinder viewer, resize, focus and Escape passed. Layout evidence only; real devices Not Verified.');
 } finally {
-  await browser?.close();
-  if (server) {
-    server.closeAllConnections();
-    await new Promise(done => server.close(done));
-  }
-  // fixture is a mkdtemp-created absolute directory, never a computed repo path.
-  await rm(fixture, { recursive: true, force: true });
+  await closeDevicePresentation(browser, server, fixture);
 }
