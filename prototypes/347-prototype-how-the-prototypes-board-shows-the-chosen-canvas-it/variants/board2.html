@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>#347 · Prototypes board, Round 2</title>
+    <!-- PROTOTYPE (#347 Round 2): A2–D2 with eight real tickets, one per kind of choice. ?o=A|B|C|D, ?case=<ticket>. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="board.css" />
+    <link rel="stylesheet" href="board2.css" />
+  </head>
+  <body class="viz-root">
+    <header class="p-top">
+      <span class="p-crumb">wayfinder-map <span aria-hidden="true">/</span> <b>Prototypes</b> <span class="p2-sample">Sample: real tickets from maps #205, #217, #121 and #35</span></span>
+      <label class="p2-proto"><span>Prototype · show</span><select id="p2-case" aria-label="Prototype control: which cards to show"></select></label>
+      <nav class="segmented" aria-label="Map views">
+        <button type="button" class="seg" data-to="the map"><span data-icon="map" aria-hidden="true"></span>Map</button>
+        <button type="button" class="seg" data-to="the table"><span data-icon="table" aria-hidden="true"></span>Table</button>
+        <button type="button" class="seg is-on" aria-current="page"><span data-icon="beaker" aria-hidden="true"></span>Prototypes</button>
+      </nav>
+    </header>
+    <main class="sheet p-sheet">
+      <div class="wf-board-page"><div class="wf-board" id="board"></div></div>
+    </main>
+    <script src="../../canvas/kit/kit.js"></script>
+    <script src="board2-data.js"></script>
+    <script src="board2.js"></script>
+  </body>
+</html>
