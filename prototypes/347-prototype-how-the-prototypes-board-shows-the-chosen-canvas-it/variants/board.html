@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>#347 · Prototypes board</title>
+    <!-- PROTOTYPE (#347): the map's Prototypes board with real #225, #163 and #224 data. ?o=today|A|B|C|D, ?s= a state. -->
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="board.css" />
+  </head>
+  <body class="viz-root">
+    <header class="p-top">
+      <span class="p-crumb">wayfinder-map <span aria-hidden="true">/</span> <b>#205 A polished, smooth canvas built into Wayfinder</b></span>
+      <nav class="segmented" aria-label="Map views">
+        <button type="button" class="seg" data-to="the map"><span data-icon="map" aria-hidden="true"></span>Map</button>
+        <button type="button" class="seg" data-to="the table"><span data-icon="table" aria-hidden="true"></span>Table</button>
+        <button type="button" class="seg is-on" aria-current="page"><span data-icon="beaker" aria-hidden="true"></span>Prototypes</button>
+      </nav>
+    </header>
+    <main class="sheet p-sheet">
+      <div class="wf-board-page"><div class="wf-board" id="board"></div></div>
+    </main>
+    <script src="../../canvas/kit/kit.js"></script>
+    <script src="board-data.js"></script>
+    <script src="board.js"></script>
+  </body>
+</html>
