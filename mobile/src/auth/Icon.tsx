@@ -1,9 +1,36 @@
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 // The prototype's glyphs (24px grid, 2px round strokes), the same paths the desktop's icon set uses.
-export type IconName = 'compass' | 'github' | 'copy' | 'refresh' | 'back' | 'check' | 'external' | 'signout';
+export type IconName =
+  | 'compass'
+  | 'github'
+  | 'copy'
+  | 'refresh'
+  | 'back'
+  | 'check'
+  | 'external'
+  | 'signout'
+  | 'search'
+  | 'filter'
+  | 'down'
+  | 'chevron'
+  | 'lock'
+  | 'person'
+  | 'arrow'
+  | 'research'
+  | 'prototype'
+  | 'grilling'
+  | 'task';
 
-export function Icon({ name, color, size = 20 }: { name: IconName; color: string; size?: number }) {
+export function Icon({
+  name,
+  color,
+  size = 20,
+}: {
+  name: IconName;
+  color: string;
+  size?: number;
+}) {
   return (
     <Svg
       width={size}
@@ -23,6 +50,52 @@ export function Icon({ name, color, size = 20 }: { name: IconName; color: string
       )}
       {name === 'back' && <Path d="m15 18-6-6 6-6" />}
       {name === 'check' && <Path d="M20 6 9 17l-5-5" />}
+      {name === 'search' && (
+        <>
+          <Circle cx={10.5} cy={10.5} r={6.5} />
+          <Path d="m16 16 5 5" />
+        </>
+      )}
+      {name === 'filter' && (
+        <>
+          <Path d="M4 5h16M7 12h10M10 19h4" />
+        </>
+      )}
+      {name === 'down' && <Path d="m6 9 6 6 6-6" />}
+      {name === 'chevron' && <Path d="m9 6 6 6-6 6" />}
+      {name === 'lock' && (
+        <>
+          <Rect x={4} y={10} width={16} height={11} rx={2} />
+          <Path d="M8 10V7a4 4 0 0 1 8 0v3" />
+        </>
+      )}
+      {name === 'person' && (
+        <>
+          <Circle cx={12} cy={7} r={4} />
+          <Path d="M4 21v-2a8 8 0 0 1 16 0v2" />
+        </>
+      )}
+      {name === 'arrow' && <Path d="M4 12h16m-6-6 6 6-6 6" />}
+      {name === 'research' && (
+        <>
+          <Path d="M9 3h6m-5 0v6L4 19a1 1 0 0 0 1 2h14a1 1 0 0 0 1-2L14 9V3M8 14h8" />
+        </>
+      )}
+      {name === 'prototype' && (
+        <>
+          <Rect x={3} y={4} width={18} height={16} rx={2} />
+          <Path d="M3 9h18M8 9v11" />
+        </>
+      )}
+      {name === 'grilling' && (
+        <Path d="M21 11a8 8 0 0 1-8 8H7l-4 3V7a4 4 0 0 1 4-4h6a8 8 0 0 1 8 8Z" />
+      )}
+      {name === 'task' && (
+        <>
+          <Rect x={4} y={3} width={16} height={18} rx={2} />
+          <Path d="m8 12 3 3 5-6" />
+        </>
+      )}
       {name === 'external' && (
         <>
           <Path d="M15 3h6v6" />
