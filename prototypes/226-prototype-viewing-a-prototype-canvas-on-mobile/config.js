@@ -222,5 +222,75 @@ window.CANVAS = {
         },
       ],
     },
+    {
+      id: 'round-2',
+      title: 'A with Notes in More',
+      round: 2,
+      question:
+        'Does A read better with Notes moved from the bottom bar into the top bar’s More menu, and is everything else about A still right?',
+      sections: [
+        {
+          title: 'A · Notes in More',
+          note: 'Round 1’s A, with one change asked for in review: Notes leaves the bottom bar and becomes the first item in More (•••, top right). Everything else is A as in round 1. Waiting for review; nothing here is recorded as picked.',
+          items: [
+            {
+              id: 'R2A',
+              name: 'Notes in More',
+              src: 'variants/phone.html?d=A&r=2', ...PHONE,
+              note: {
+                idea: 'A, unchanged except for Notes. The bottom bar keeps the id strip and ‹ the option’s name › with Full screen; the Notes pill is gone. More (•••, top right) now starts with Notes, above Open on GitHub, Check for changes and the canvas theme. Choosing Notes closes the menu and raises the notes between the option and the bottom bar, as in round 1, with the option shrunk so it stays whole. While they are open the item is ticked and reads “Shown under the option”. The notes’ ×, Escape, or Notes in More again hides them. Notes now stay open while More or the page menu is over them, and ‹ › and the arrow keys keep them in step.',
+                pros: [
+                  'A calmer bottom bar: one row of ‹ name › and Full screen, with the name line 240 px wide instead of 151 px, so long names cut off less',
+                  'More already holds the other canvas tools (GitHub, Check for changes, theme), so Notes joins them rather than adding a new place',
+                  'Notes behave as in round 1 once open: under the option, never over it, and they follow ‹ ›',
+                ],
+                cons: [
+                  'Notes take two taps instead of one, and the • • • menu has to be found first',
+                  'No extra room for the option: the bottom bar keeps its height (145 px), so a phone-sized option still gets 583 px',
+                  'Further from #209’s desktop viewer, which keeps Notes in its toolbar',
+                ],
+                basedOn: 'A',
+              },
+            },
+            { id: 'R2A2', name: 'Open', src: 'variants/phone.html?d=A&r=2&screen=viewer', ...PHONE, note: { idea: 'After the download, as in A2. The bottom bar is now ‹ the option’s name › and Full screen; the name gets the room the Notes pill had.', basedOn: 'A' } },
+            { id: 'R2A3', name: 'More', src: 'variants/phone.html?d=A&r=2&screen=viewer&panel=menu', ...PHONE, note: { idea: '••• opens More with Notes first, then Open on GitHub, Check for changes and the canvas theme. It is a checkbox menu item: unticked while the notes are hidden.', basedOn: 'A' } },
+            { id: 'R2A4', name: 'Notes open', src: 'variants/phone.html?d=A&r=2&screen=viewer&opt=S-B&notes=1', ...PHONE, note: { idea: 'Notes rise from the bottom bar as in round 1’s A4. The option shrinks to fit above them (49% here), so nothing is covered. × hides them and returns focus to •••.', basedOn: 'A' } },
+            { id: 'R2A5', name: 'More over notes', src: 'variants/phone.html?d=A&r=2&screen=viewer&opt=S-B&notes=1&panel=menu', ...PHONE, note: { idea: 'With the notes open, More opens over them and Notes is ticked, reading “Shown under the option”. Choosing it hides them. Escape or a tap outside closes only the menu.', basedOn: 'A' } },
+            { id: 'R2A6', name: 'Desktop page with notes', src: 'variants/phone.html?d=A&r=2&screen=viewer&canvas=207&notes=1', ...PHONE, note: { idea: '#207’s 1440 px page with its notes open from More. It is already fitted to the phone’s width, so it stays at 27% above them. The zoom pill hides until the notes close, as in round 1.', basedOn: 'A' } },
+          ],
+        },
+        {
+          title: 'About this round',
+          items: [
+            {
+              id: 'review-r2',
+              kind: 'note',
+              name: 'Design review, round 2',
+              boardWidth: 380,
+              note: {
+                idea: 'Covers only what round 2 changes in A: the bottom bar without Notes, the Notes item in More, and opening and hiding the notes from there. Round 1’s Design review still stands for everything else and was not re-run. Same sources and tokens as round 1, with no new tokens or CSS: the item uses the menu’s existing menuitem, v-check and v-pop-main styles. Checked in headless Chrome (playwright-core, installed Chrome) under the canvas’s sandbox CSP, at 390 × 844 unless noted (+). Findings and what was not checked (−).',
+                pros: [
+                  'Flow, from ticket detail: Open canvas → download → viewer with no Notes control in the bottom bar → ••• → Notes → notes open → → steps to S-B and the notes follow → ••• over open notes shows Notes ticked → Escape closes the menu only → Escape hides the notes → page menu over open notes, choosing a page keeps them → Full screen hides them → Exit → Back to #223. With the checks below, 32 scripted checks, all passed.',
+                  'Keyboard and focus: Enter on ••• focuses Notes; ↑ ↓ move through the menu; Enter on Notes closes the menu and focuses the notes’ ×; ×, Escape, or Notes again hides them and puts focus on •••; Tab out of the menu closes it and leaves the notes open. The focused item shows the 2 px ring and stays on screen in both themes. Bottom bar Tab order is now strip → ‹ → › → Full screen.',
+                  'Semantics: Notes is role=menuitemcheckbox with aria-checked; ••• keeps aria-haspopup=menu and aria-expanded. Showing notes announces “Notes for S-A shown.” in the polite live region; hiding announces “Notes hidden.”',
+                  'Contrast on the menu surface: light, label 19.2:1, subtitle 5.3:1, icon and tick 7.7:1; dark, 17.4:1, 6.0:1 and 9.7:1. The item is 48 px tall.',
+                  'Responsive: at 360 × 780 and 430 × 932, the viewer, More over open notes, and #207 with notes all fit without sideways scrolling, and the menu stays inside the screen.',
+                  'Loading: ••• is disabled while the canvas downloads, so Notes is too, as the Notes pill was in round 1.',
+                  'Fixed while building: the subtitle “This option’s idea, pros and cons” wrapped to two lines and became “Idea, pros and cons”.',
+                ],
+                cons: [
+                  'Changed from round 1, beyond the move: notes now stay open under More and the page menu, choosing a page keeps them, and ← → step options while they are open. Round 1 closed them in those cases because only one panel could be open.',
+                  'With notes open on a desktop page, the hint still says “Pinch or use + to zoom” while the zoom pill is hidden. Round 1’s A does the same; left as it was.',
+                  'Round 1 frames were spot-checked, not re-reviewed: A still has its Notes pill and no Notes item in More.',
+                  'Not checked: round 1’s full focus-ring sweep over every state; only the new item and the states above were checked.',
+                  'Not checked: real phones, VoiceOver and TalkBack, large text, and touch hardware, as in round 1.',
+                  'Not checked: whether people find Notes in •••. That is for Ramon’s review.',
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    },
   ],
 };

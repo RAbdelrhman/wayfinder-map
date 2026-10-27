@@ -6,10 +6,13 @@
   ?canvas=223|207 ?page= ?opt= ?panel=notes|pages|menu|drawer|options ?zoom=fit|<scale>
   ?full=1 ?state=ready|loading|offline|failed|limited ?saved=1. Every tap is fake; nothing
   calls GitHub, and pinch is described, not simulated: zoom with the buttons.
+  Round 2: ?d=A&r=2 moves A's Notes from the bottom bar into the top bar's More menu.
+  Notes then stay open under menus (?notes=1 with ?panel=menu shows both).
 */
 (() => {
   const params = new URLSearchParams(location.search);
   const D = ['A', 'B', 'C'].includes(params.get('d')) ? params.get('d') : 'A';
+  const NOTES_IN_MORE = D === 'A' && params.get('r') === '2';
   const DATA = window.V226;
   const S = window.STATES;
   const esc = Kit.esc;
@@ -38,10 +41,14 @@
     theme: null,
     seen: new Set((params.get('seen') ?? '').split(',').filter(Boolean)),
     drawerTab: params.get('panel') === 'options' ? 'options' : 'notes',
+    // Round 2 keeps A's notes apart from ui.panel, so the More menu can open over them.
+    notes: NOTES_IN_MORE && (params.get('notes') === '1' || params.get('panel') === 'notes'),
     fit: 1,
     scale: 1,
   };
   if (ui.panel === 'options') ui.panel = 'drawer';
+  if (NOTES_IN_MORE && ui.panel === 'notes') ui.panel = null;
+  const notesOpen = () => (NOTES_IN_MORE ? ui.notes : ui.panel === 'notes');
   if (ui.state === 'offline') ui.saved = true;
 
   const first = params.get('screen') ?? 'ticket';
@@ -207,7 +214,10 @@
   }
   function moreMenu(where = 'is-right') {
     const c = cv();
-    return `<div class="v-scrim-clear" data-act="close-panel"></div><div class="v-pop ${where}" role="menu" id="v-menu" aria-label="Canvas">
+    const notesItem = NOTES_IN_MORE
+      ? `<button role="menuitemcheckbox" aria-checked="${ui.notes}" data-act="notes">${ic('notes')}<span class="v-pop-main">Notes<small>${ui.notes ? 'Shown under the option' : 'Idea, pros and cons'}</small></span><span class="v-check">${ui.notes ? ic('check') : ''}</span></button><hr />`
+      : '';
+    return `<div class="v-scrim-clear" data-act="close-panel"></div><div class="v-pop ${where}" role="menu" id="v-menu" aria-label="Canvas">${notesItem}
       <button role="menuitem" data-toast="Would open ${esc(c.branch)} on GitHub">${ic('external')}<span class="v-pop-main">Open on GitHub<small>The prototype branch</small></span></button>
       <button role="menuitem" data-act="check">${ic('refresh')}<span class="v-pop-main">Check for changes<small>Downloads only files that changed</small></span></button>
       <hr />${themeRow()}<hr /><p class="v-pop-info">Saved on this phone · ${c.mb} MB · ${c.files} files</p></div>`;
@@ -228,7 +238,7 @@
     const top = `${status()}${vbar(title, backBtn(`#${c.ticket}`), more)}${ui.state === 'offline' ? cached() : ''}`;
 
     const notes =
-      ui.panel === 'notes' && ok
+      notesOpen() && ok
         ? `<section class="v-notes" id="v-notes" aria-label="Notes for ${esc(o.id)}"><div class="v-notes-head"><span class="v-tag">${esc(o.id)}</span><b>${esc(o.name)}</b>
             <button class="m-icon-btn" data-act="notes" aria-label="Hide notes" style="color:var(--text-secondary)">${ic('close')}</button></div><div class="v-notes-body v-note">${noteBody(o)}</div></section>`
         : '';
@@ -243,10 +253,10 @@
       : `<div class="v-name"><div class="m-skel" style="width:70%"></div><div class="m-skel" style="width:45%;height:10px;margin-top:8px"></div></div>`;
     const ctrl = `<div class="v-ctrl"><button class="m-icon-btn" data-act="prev" aria-label="Previous option"${dis}>${ic('back')}</button>${name}
       <button class="m-icon-btn" data-act="next" aria-label="Next option"${dis}>${ic('chevron')}</button>
-      <button class="v-pill" data-act="notes" aria-pressed="${ui.panel === 'notes'}"${dis}>${ic('notes')}Notes</button>
+      ${NOTES_IN_MORE ? '' : `<button class="v-pill" data-act="notes" aria-pressed="${ui.panel === 'notes'}"${dis}>${ic('notes')}Notes</button>`}
       <button class="m-icon-btn" data-act="full" aria-label="Full screen"${dis}>${ic('expand')}</button></div>`;
 
-    const zoom = ok && !ui.full && ui.panel !== 'notes'
+    const zoom = ok && !ui.full && !notesOpen()
       ? `<div class="v-zoom" role="group" aria-label="Zoom"><button data-act="zoom-out" aria-label="Zoom out"${ui.zoom === 'fit' ? ' disabled' : ''}>${ic('minus')}</button>
           <button class="v-zoom-label" data-act="fit" aria-label="Fit to the screen" data-zoom-label>${pct(ui.scale)}</button><button data-act="zoom-in" aria-label="Zoom in">${ic('plus')}</button></div>`
       : '';
@@ -446,7 +456,7 @@
     const sh = stage.clientHeight - gap * 2;
     if (!sw || sh <= 0) return;
     // A's notes push the stage up; keep the option's layout and shrink it whole instead.
-    const pushed = D === 'A' && ui.panel === 'notes' ? ($('v-notes')?.offsetHeight ?? 0) : 0;
+    const pushed = D === 'A' && notesOpen() ? ($('v-notes')?.offsetHeight ?? 0) : 0;
     const layoutH = Math.round(Math.min(h, (sh + pushed) / (sw / w)));
     ui.fit = Math.min(sw / w, sh / layoutH);
     ui.scale = ui.zoom === 'fit' ? ui.fit : ui.zoom;
@@ -524,6 +534,7 @@
     ui.state = 'loading';
     ui.files = 2;
     ui.panel = null;
+    ui.notes = false;
     render();
     timer = setInterval(() => {
       ui.files = Math.min(cv().files, ui.files + 4);
@@ -568,6 +579,7 @@
   function back() {
     if (stack.length > 1) stack.pop();
     ui.panel = null;
+    ui.notes = false;
     ui.full = false;
     ui.zoom = 'fit';
     if (here() === 'ticket' && ui.state === 'loading') {
@@ -618,6 +630,17 @@
     ui.panel = null;
     render();
     focusLater(back);
+  }
+
+  // Round 2: Notes is a More menu item. Choosing it closes the menu; focus goes to the notes' ×,
+  // and hiding them returns focus to More, which is where they open from.
+  function toggleNotes() {
+    ui.notes = !ui.notes;
+    ui.panel = null;
+    opener = null;
+    render();
+    announce(ui.notes ? `Notes for ${current().id} shown.` : 'Notes hidden.');
+    focusLater(ui.notes ? '#v-notes .m-icon-btn' : '[data-act="menu"]');
   }
 
   let swiped = false;
@@ -696,9 +719,11 @@
         render();
         announce(`${roundTitle(pageOf())}. ${optsOf(pageOf()).length} options.`);
         return focusLater(D === 'A' ? '.v-title' : '.m-filter-btn');
+      case 'notes':
+        if (NOTES_IN_MORE) return toggleNotes();
+        return togglePanel(act, openerFor(act));
       case 'pages':
       case 'menu':
-      case 'notes':
       case 'drawer':
       case 'pagesheet':
         return togglePanel(act, openerFor(act));
@@ -713,6 +738,7 @@
       case 'full':
         ui.full = !ui.full;
         ui.panel = null;
+        ui.notes = false;
         render();
         announce(ui.full ? 'Full screen.' : 'Left full screen.');
         return focusLater(ui.full ? (D === 'C' ? '.v-mini' : '.v-exit') : D === 'C' ? '[data-act="drawer"]' : '[data-act="full"]');
@@ -805,6 +831,7 @@
     }
     if (e.key === 'Escape') {
       if (ui.panel) return closePanel();
+      if (NOTES_IN_MORE && ui.notes) return toggleNotes();
       if (ui.full) {
         ui.full = false;
         render();
