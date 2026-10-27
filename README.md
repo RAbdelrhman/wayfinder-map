@@ -199,6 +199,13 @@ in its own `prototypes/<task-id>/` directory. Ticket tasks use `<ticket>-<title-
 non-ticket tasks use a descriptive ID such as `onboarding-flow`. Existing boards,
 including the legacy `prototypes/canvas/`, retain their content and URLs.
 The options are described in `config.js`, and its `README.md` is the full reference.
+
+For multi-screen flow comparisons, start with an Overview comparing the options,
+then a separate named page per option containing its individual screens and
+states. Keep phone-shaped Present views where relevant. Single-screen studies,
+component sheets, palettes, and other non-flow canvases can keep a simpler
+layout. See [Comparing flow options](prototypes/canvas/README.md#comparing-flow-options).
+
 To add one, use the `design-canvas` skill:
 
 ```sh

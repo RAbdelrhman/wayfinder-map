@@ -215,7 +215,13 @@ When you capture the prototype, commit it to the branch {{prototypeBranch}}
 and push it. That exact name is how wayfinder-map finds it later, so do not
 pick another. When the question is visual or UX, build the prototype as a
 design canvas: a board showing the options side by side (pages, styles,
-components, palettes, moodboards) with a note on each. This ticket's canvas
+components, palettes, moodboards) with a note on each.
+For multi-screen flow comparisons, start with an Overview comparing every
+option, then give each option a separate named page with its individual
+screens and states in flow order. Keep phone-shaped Present views where
+relevant. Single-screen studies, component sheets, palettes, and other
+non-flow canvases can use a simpler layout. Follow the canvas README's
+"Comparing flow options" guidance when available. This ticket's canvas
 directory is {{canvasDirectory}}. Create a fresh canvas there; never append
 this ticket's options to an unrelated canvas, including prototypes/canvas.
 If the directory already exists, inspect its config.js and continue there only
