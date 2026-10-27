@@ -44,7 +44,11 @@ describe('canvas:create', () => {
       const index = await readFile(join(board, 'index.html'), 'utf8');
       expect(index).toContain('src="../canvas/canvas.js"');
       expect(index).toContain('href="../canvas/canvas.css"');
-      expect(await readFile(join(board, 'README.md'), 'utf8')).toContain('../../canvas/kit/kit.js');
+      const readme = await readFile(join(board, 'README.md'), 'utf8');
+      expect(readme).toContain('../../canvas/kit/kit.js');
+      expect(readme).toContain('## Comparing flow options');
+      expect(readme).toContain('Give each option a separate named canvas page');
+      expect(readme).toContain('not a required shape for every canvas');
     }
     await run(process.execPath, [join(first, 'tools/check.mjs')], { cwd: root });
     await run(process.execPath, [join(second, 'tools/check.mjs')], { cwd: root });
