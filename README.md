@@ -353,6 +353,10 @@ human-in-the-loop: grill the user one question at a time and decide nothing with
 them, and tells prototype agents which branch to push to and to build a design canvas (or a snapshot). It is empty for other types. An unknown one is left in the text rather than silently blanked,
 so a typo is visible.
 
+Grilling and prototype instructions are retained when a custom template omits
+`{{typeSteps}}`. Blank templates for those ticket types use the complete default
+prompt, including ticket and worktree context.
+
 ## Terminal options
 
 ```

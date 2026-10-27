@@ -290,8 +290,9 @@ export function renderTemplate(template: string, values: Readonly<Record<string,
 /** The prompt a click on a ticket hands to T3 Code. */
 export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInput): string {
   const defaultTemplate = map ? DEFAULT_TEMPLATE : DEFAULT_STANDALONE_TEMPLATE;
-  // A blank grilling template still needs the ticket question and worktree context.
-  const chosenTemplate = ticket.type === 'grilling' && !template?.trim()
+  const humanInTheLoop = ticket.type === 'grilling' || ticket.type === 'prototype';
+  // Blank human-in-the-loop templates still need ticket and worktree context.
+  const chosenTemplate = humanInTheLoop && !template?.trim()
     ? defaultTemplate
     : template ?? defaultTemplate;
   const blockedLine =
@@ -349,9 +350,9 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
     blockedLine,
   }).trim();
 
-  // Saved templates may predate typeSteps or omit it entirely. Grilling's
-  // human-decision contract must survive those templates, including empty ones.
-  if (ticket.type === 'grilling' && typeSteps && !chosenTemplate.includes('{{typeSteps}}')) {
+  // Saved templates may predate typeSteps or omit it entirely. Human-decision
+  // and prototype authoring instructions must survive those templates.
+  if (humanInTheLoop && typeSteps && !chosenTemplate.includes('{{typeSteps}}')) {
     return `${renderTemplate(typeSteps, prototypeValues)}\n\n${rendered}`.trim();
   }
   return rendered;
