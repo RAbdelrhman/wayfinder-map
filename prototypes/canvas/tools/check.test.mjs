@@ -198,13 +198,13 @@ test('prototype-local engine, kit and phone helper copies are rejected without b
       'copied/device.js: do not copy the shared phone presentation; load "../canvas/device.js" instead',
       'copied/kit/kit.js: do not copy the shared canvas kit; load "../../canvas/kit/kit.js" instead',
     ];
-    assert.deepEqual(checkSharedCanvasCopies(prototypesDir), copyErrors);
+    assert.deepEqual(checkSharedCanvasCopies(prototypesDir).sort(), [...copyErrors].sort());
 
     // Canonical paths stay forbidden even when someone edits their copied runtime.
     writeFileSync(join(prototypesDir, 'copied', 'canvas.js'), `${engine}\n// local edit`);
     writeFileSync(join(prototypesDir, 'copied', 'kit', 'kit.js'), `${kit}\n// local edit`);
     writeFileSync(join(prototypesDir, 'copied', 'device.js'), `${device}\n// local edit`);
-    assert.deepEqual(checkSharedCanvasCopies(prototypesDir), copyErrors);
+    assert.deepEqual(checkSharedCanvasCopies(prototypesDir).sort(), [...copyErrors].sort());
 
     mkdirSync(join(prototypesDir, 'copied', 'variants'), { recursive: true });
     writeFileSync(join(prototypesDir, 'copied', 'variants', 'renamed-engine.js'), engine);

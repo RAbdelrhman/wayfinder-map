@@ -69,8 +69,15 @@ try {
     const app = document.getElementById('app');
     const rect = app.getBoundingClientRect();
     const css = getComputedStyle(app);
+    const probe = document.createElement('span');
+    probe.style.position = 'absolute';
+    probe.style.visibility = 'hidden';
+    probe.style.backgroundColor = 'color-mix(in srgb, var(--plane) 88%, var(--text-primary))';
+    document.body.append(probe);
+    const expectedBackdrop = getComputedStyle(probe).backgroundColor;
+    probe.remove();
     return { x: rect.x, y: rect.y, w: rect.width, h: rect.height, width: innerWidth, height: innerHeight,
-      radius: css.borderRadius, transform: css.transform, backdrop: getComputedStyle(document.body).backgroundColor,
+      radius: css.borderRadius, transform: css.transform, backdrop: getComputedStyle(document.body).backgroundColor, expectedBackdrop,
       scrollW: document.documentElement.scrollWidth, scrollH: document.documentElement.scrollHeight,
       styles: document.head.querySelectorAll('style[data-canvas-device-style="phone"]').length };
   });
@@ -83,6 +90,7 @@ try {
       assert.ok(Math.abs(box.x + box.w / 2 - box.width / 2) < 1, JSON.stringify(box));
       assert.ok(Math.abs(box.y + box.h / 2 - box.height / 2) < 1, JSON.stringify(box));
       assert.equal(box.radius, '36px');
+      assert.equal(box.backdrop, box.expectedBackdrop, 'framed backdrop must match the chosen 88% plane / 12% text mix');
     } else {
       assert.equal(box.radius, '0px');
       assert.equal(box.transform, 'none');
