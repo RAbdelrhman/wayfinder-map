@@ -11,7 +11,7 @@
 */
 (() => {
   const params = new URLSearchParams(location.search);
-  const D = ['A', 'B', 'C'].includes(params.get('d')) ? params.get('d') : 'A';
+  const D = params.get('d') === 'B' ? 'B' : params.get('d') === 'C' ? 'C' : 'A';
   const NOTES_IN_MORE = D === 'A' && params.get('r') === '2';
   const DATA = window.V226;
   const S = window.STATES;
