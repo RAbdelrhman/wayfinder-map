@@ -10,16 +10,18 @@ deliverables. A closed prototype ticket does not mean its native screens shipped
 | --- | --- | --- | --- |
 | 1.0.0 / 1 | PR #351, source `30ad162`, merged as `63a598a` | Samsung SM-S936U, 2026-10-27. APK installation succeeded; compass launcher icon and GitHub sign-in as RAbdelrhman verified. | Sign-in and account settings. Maps was a placeholder. |
 | 1.1.0 / 2 | `fb3be672cce1d2acbbedfcaf6dacd5b9727ac082`, #229 implementation | Samsung SM-S936U, 2026-10-27 15:56 UTC. Install succeeded, existing sign-in retained; repository filtering, map tabs, ticket tabs and issue-link navigation exercised. | Approved #223 R-C2, M-C, and T-C with live GitHub data. |
+| 1.1.1 / 3 | `2455d99bc1034d14e8b24dd6d5116664e06687b3`, PR #352 review fixes | Samsung SM-S936U, 2026-10-27 16:30 UTC. Wireless `adb install -r` succeeded after USB disconnected; dumpsys confirms 1.1.1 / 3. Existing sign-in, live Maps, and #217 Path with 21 tickets verified. | Access-failure cache eviction, missing-link recovery, fresh environment bundling, unique APK archives and installation manifests. |
 
 Latest installed APK:
-`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.1.0-fb3be672-arm64.apk`.
+`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.1.1-2455d99b-645c3ad752224c4ebc3b142650b14b94-arm64.apk`.
 The adjacent `.json` manifest identifies the exact source, an empty working-tree
 change list, checksum and installation time. SHA-256:
-`91619200fa3e876984050c1da462cbe615083fc7e017562c920eca27dec58414`.
+`8a5d11f1f13f8418a2bdbc220d9d102a938694dd3412fbb2d5ea2d665383176e`.
 
 GitHub retains the same APK, `SHA256SUMS.txt`, and a public-safe build manifest in
-the draft prerelease `mobile-v1.1.0`. Find it with
-`gh release view mobile-v1.1.0 --repo RAbdelrhman/wayfinder-map`.
+the draft prerelease `mobile-v1.1.1`. Find it with
+`gh release view mobile-v1.1.1 --repo RAbdelrhman/wayfinder-map`.
+The preceding `mobile-v1.1.0` draft retains the earlier installed APK.
 The draft is visible to repository collaborators and stays unpublished while
 [PR #352](https://github.com/RAbdelrhman/wayfinder-map/pull/352) completes review
 and CI. Mobile tags use `mobile-v*` so they do not trigger the desktop `v*`
@@ -41,6 +43,21 @@ Android ARM64 native release build and release lint passed. Public-follow
 inclusion, private-map exclusion, pagination, fallback links/blockers, unknown
 blockers, API failures, corrupt cache handling, account separation and serialized
 cache writes have automated coverage.
+
+The 1.1.1 review pass passed root typecheck/lint/build and 1,819 tests across 136
+files; mobile typecheck, 98 tests across seven files and Android/iOS exports
+passed. Native ARM64 release build/lint passed in 6m 35s. An immediate unchanged
+`createBundleReleaseJsAndAssets` rerun bundled again, confirming stale Gradle
+outputs cannot bypass environment rebundling. Windows regression coverage
+exercises duplicate source/version archives and a failed mock installation.
+Mobile regressions cover 401/404 eviction and queued writes, transient recovery,
+missing body links in both loaders, and the positive child-count guard.
+
+After the 1.1.1 Maps/Path checks, wireless debugging timed out and the adb server
+became unresponsive. Repeating the remaining ticket/tab navigation on this patch
+build is Not Verified; the fuller navigation evidence above is from 1.1.0. The
+new denial/missing-link error cases have automated proof, not a simulated access
+revocation on Ramon's account. Do not revoke his OAuth access merely to test them.
 
 Not verified on the physical phone: airplane-mode recovery, a followed map from
 another author, screen-reader speech, light theme and iOS. There is no claim of
