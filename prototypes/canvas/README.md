@@ -32,6 +32,59 @@ Use it when a decision is **visual or UX**. Logic-only prototypes don't need it.
 4. Check it: `node <dir>/tools/check.mjs`. It exits 1 on errors.
 5. Inspect the preview, then provide the exact canvas link and visible preview before asking the user to choose. Commit the completed work.
 
+## Mobile presentation
+
+Create phone boards with `bun run canvas:create <task-id> --mobile`, optionally
+adding `--ticket <number>`. This generates a blank `variants/phone.html` with
+the shared presentation and a 390 by 844 page item, at board width 240. Author
+the screen and its tradeoffs before sharing. Load the helper after page styles
+and the kit, at the end of body:
+
+```html
+<link rel="stylesheet" href="../../../src/ui/styles.css">
+<body class="viz-root">
+  <main id="app" data-canvas-device="phone"><!-- Screen content --></main>
+  <script src="../../canvas/kit/kit.js"></script>
+  <script src="../../canvas/device.js"></script>
+</body>
+```
+
+The root must be a direct child of `body.viz-root`. The stylesheet provides
+theme tokens and full-window body sizing. The page owns its normal responsive
+layout, root background and overflow, internal scrolling and focus rings. The
+generated page includes those basics. Keep focus outlines inside clipped edges.
+Use one app root and one helper. Do not copy the helper into a board.
+
+This is the exact phone presentation authored for #226 at commit
+`9dd39abe74a767be04ad529cf8e74702376b9b69`: at widths of 520px or more, center
+the 390 by 844 app with 36px corners, a token-based border and shadow, and a
+backdrop mixing `--plane` with `--text-primary`. Scale by
+`min(1, (innerHeight - 24) / 844, (innerWidth - 24) / 390)` on load and resize.
+The 24px is total clearance, or 12px per side. Below 520px the helper adds no
+frame, so board thumbnails and narrow pages use the page's responsive layout.
+Wide, short windows, including landscape phone viewports, show the same scaled
+presentation as #226. This does not simulate landscape device behavior.
+The frame sizes the app root, not the browser's media-query viewport or
+`window.innerWidth`. Test responsive breakpoints at actual narrow browser
+viewport sizes separately; the desktop frame alone cannot verify them.
+
+The helper works inside the page, so Present, Wayfinder's sandboxed viewer and
+direct page testing share it. It adds no controls, focus targets, navigation or
+storage access. Both themes use the app tokens and the kit's `?theme=` support.
+It is opt-in: existing canvases and already authored frames are preserved.
+Never add it over another frame. Only `data-canvas-device="phone"` opts in;
+other values do nothing. Do not use it for desktop, tablet, watch or other
+device shapes. Add a separately chosen presentation when those are needed.
+
+Run `bun run test:device-presentation` with installed Chrome for the shared
+layout checks, also run by CI. Set `CHROME_PATH` for a different Chromium binary.
+Screenshots are saved in `.shots/device-presentation/` for inspection.
+For each authored screen also exercise focus, internal scroll,
+both themes, board, Present and Wayfinder viewer, direct page, narrow widths
+and short windows. These are browser layout checks, not real device tests.
+Report actual phone/emulator, OS keyboard, safe areas, touch and assistive
+technology evidence separately; mark unexercised layers Not Verified.
+
 ## Comparing flow options
 
 When comparing multi-screen flows, use the presentation pattern from

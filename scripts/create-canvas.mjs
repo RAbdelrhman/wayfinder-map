@@ -4,15 +4,19 @@ import { join, resolve } from 'node:path';
 
 // Each board owns its content and tools, but loads the shared runtime.
 const BOARD_FILES = ['README.md', 'tools'];
-const SHARED_FILES = ['index.html', 'canvas.js', 'canvas.css', 'kit/kit.js'];
+const SHARED_FILES = ['index.html', 'canvas.js', 'canvas.css', 'kit/kit.js', 'device.js'];
 
 try {
-  const [taskId, flag, rawTicket, ...extra] = process.argv.slice(2);
+  const [taskId, ...options] = process.argv.slice(2);
   if (!taskId || taskId.length > 80 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(taskId) || taskId === 'canvas') {
     throw new Error('Use a distinct task ID, such as onboarding-flow. The legacy canvas is reserved.');
   }
-  if (extra.length > 0 || (flag !== undefined && (flag !== '--ticket' || !/^[1-9]\d*$/.test(rawTicket ?? ''))) || (flag === undefined && rawTicket !== undefined)) {
-    throw new Error('Usage: bun run canvas:create <task-id> [--ticket <number>]');
+  let mobile = false;
+  let rawTicket;
+  for (let i = 0; i < options.length; i++) {
+    if (options[i] === '--mobile' && !mobile) mobile = true;
+    else if (options[i] === '--ticket' && rawTicket === undefined && /^[1-9]\d*$/.test(options[i + 1] ?? '')) rawTicket = options[++i];
+    else throw new Error('Usage: bun run canvas:create <task-id> [--ticket <number>] [--mobile]');
   }
   const ticket = rawTicket === undefined ? null : Number(rawTicket);
   if (ticket !== null && !Number.isSafeInteger(ticket)) throw new Error('Ticket must be a positive safe integer.');
@@ -32,13 +36,41 @@ try {
   writeFileSync(join(target, 'README.md'), readme);
   mkdirSync(join(target, 'variants'));
   mkdirSync(join(target, 'assets'));
+  if (mobile) {
+    writeFileSync(join(target, 'variants', 'phone.html'), `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Phone prototype</title>
+  <link rel="stylesheet" href="../../../src/ui/styles.css">
+  <style>
+    body.viz-root { overflow: hidden; }
+    #app { position: relative; height: 100vh; display: flex; flex-direction: column; overflow: hidden; background: var(--plane); }
+    #app :focus-visible { outline-offset: -3px; }
+  </style>
+</head>
+<body class="viz-root">
+  <main id="app" data-canvas-device="phone"><!-- Author this task's chosen screen options here. --></main>
+  <script src="../../canvas/kit/kit.js"></script>
+  <script src="../../canvas/device.js"></script>
+</body>
+</html>
+`);
+  }
   const title = taskId.replace(/-/g, ' ');
   writeFileSync(join(target, 'config.js'), `window.CANVAS = {
   title: '${title}',
   question: 'What should ${title} look like?',
 ${ticket === null ? '' : `  ticket: ${String(ticket)},\n`}  sections: [{
     title: 'Design options',
-    items: [{
+    items: [${mobile ? `{
+      id: 'A',
+      name: 'Phone screen',
+      src: 'variants/phone.html',
+      width: 390, height: 844, boardWidth: 240,
+      note: 'Not checked. Author the screen and its tradeoffs before sharing.',
+    }, ` : ''}{
       id: 'review',
       kind: 'note',
       name: 'Design review',

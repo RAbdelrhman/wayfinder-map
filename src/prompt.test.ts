@@ -150,6 +150,10 @@ describe('buildPrompt', () => {
     const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
     expect(prompt).toContain('design canvas');
     expect(prompt).toContain('design-canvas/scaffold.mjs');
+    expect(prompt).toContain('append --mobile');
+    expect(prompt).toContain('prototypes/AGENTS.md');
+    expect(prompt).toContain('never stack frames or force other devices into a phone preset');
+    expect(prompt).toContain('viewport checks are layout evidence, not real device tests');
     expect(buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'task' } })).not.toContain('design canvas');
   });
 

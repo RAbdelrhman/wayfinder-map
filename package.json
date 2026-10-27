@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:canvas": "node --test prototypes/canvas/tools/check.test.mjs",
+    "test:device-presentation": "node scripts/check-device-presentation.mjs",
     "test:tour-layout": "node --test scripts/check-tour-layout.mjs",
     "canvas:create": "node scripts/create-canvas.mjs",
     "canvas:poster": "node scripts/capture-canvas-poster.mjs",
