@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { Window } from 'happy-dom';
+import { setTrustedHtml } from './trustedHtml.js';
 
 import type { Prototype, Ticket, TicketState, TicketType, WayfinderMap } from '../types.js';
 import {
@@ -10,6 +12,7 @@ import {
   prototypeVariants,
   sortPrototypeCards,
 } from './prototypeBoard.js';
+import { canvasEntryRoute, readCanvasRoute } from './canvasViewer.js';
 
 function ticket(
   number: number,
@@ -181,6 +184,23 @@ describe('prototype variant metadata', () => {
     expect(html).toContain('src="/proto-shot/octo/wayfinder/45-A.jpg"');
     expect(html).toContain('AB · A + B, list in the topbar');
     expect(html).toContain('class="wf-var decision-variant is-dim"');
+  });
+
+  it('opens every canvas entry on a decided board in the viewer, screenshots included', () => {
+    const mapView = map([ticket(45, 'After hand-off', 'prototype', 'done')]);
+    const html = prototypeBoardHtml('octo/wayfinder', mapView, [prototype(45, {
+      verdict: '**Answer:** A',
+      variants: [
+        { id: 'A', title: 'Stays on the ticket', page: 'prototypes/canvas/variants/after-a.html', shot: '45-A.jpg' },
+        { id: 'B', title: 'Only a screenshot', page: null, shot: '45-B.jpg' },
+      ],
+    })]);
+    const browser = new Window();
+    setTrustedHtml(browser.document.body as unknown as HTMLElement, html);
+    const entries = [...browser.document.querySelectorAll('[data-canvas-url]')] as unknown as HTMLElement[];
+    expect(entries.map((entry) => entry.dataset['canvasUrl'])).toContain('/proto-shot/octo/wayfinder/45-B.jpg');
+    for (const entry of entries)
+      expect(readCanvasRoute(canvasEntryRoute(entry.dataset, entry.dataset['canvasUrl']), 'http://127.0.0.1:4479')?.url).toBe(entry.dataset['canvasUrl']);
   });
 });
 

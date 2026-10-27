@@ -117,6 +117,12 @@ describe('canvas notes comment', () => {
     expect(isCanvasNotesComment(comment)).toBe(true);
   });
 
+  it('names a default-branch screenshot by its file, with no empty branch label', () => {
+    const shot: CanvasNotesContext = { branch: '', sha: null, source: 'none', pages: ['45-B.jpg'], options: { '45-B.jpg': ['B'] } };
+    const comment = canvasNotesComment(shot, [{ page: '45-B.jpg', pageTitle: '45-B.jpg', option: 'B', optionName: 'B', type: 'note', note: 'Too tall.' }]);
+    expect(comment.split('\n')[1]).toBe('`45-B.jpg`');
+  });
+
   it('orders by page, whole page first, then the canvas’s option order, then as added', () => {
     expect(markOrder(marks, dom)).toEqual([1, 3, 0, 2, 4]);
   });

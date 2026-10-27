@@ -139,10 +139,11 @@ export function canvasNotesComment(context: CanvasNotesContext, marks: readonly 
   const pages = [...new Set(order.map((index) => marks[index]!.page))];
   const onePage = pages.length <= 1;
   const first = order.length ? marks[order[0]!]! : null;
-  const at = `${code(context.branch)}${context.sha ? ` @ ${code(context.sha.slice(0, 7))}` : ''}`;
+  // A screenshot on the default branch has no prototype branch: its file name on each note is the provenance.
+  const at = context.branch ? `${code(context.branch)}${context.sha ? ` @ ${code(context.sha.slice(0, 7))}` : ''}` : '';
   const pageLabel = (mark: CanvasMark): string =>
     context.source === 'page' || context.source === 'none' ? code(mark.page) : `page **${name(mark.pageTitle)}**`;
-  const head = context.source === 'page' ? `${at} · snapshot` : `${at}${onePage && first ? ` · ${pageLabel(first)}` : ''}`;
+  const head = [at, context.source === 'page' ? 'snapshot' : onePage && first ? pageLabel(first) : ''].filter(Boolean).join(' · ');
   const lines = order.map((index, k) => {
     const mark = marks[index]!;
     const scope = onePage ? `**${name(markScope(mark))}**` : `**${name(mark.pageTitle)} · ${name(markScope(mark))}**`;
