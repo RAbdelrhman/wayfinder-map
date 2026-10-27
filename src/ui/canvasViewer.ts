@@ -32,11 +32,12 @@ export function isCanvasClick(event: Pick<MouseEvent, 'button' | 'ctrlKey' | 'me
   return event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
 }
 /**
- * Every viewer frame retains the existing opaque-origin capabilities. A picture takes no pointer input:
- * focus inside it would swallow Escape, since no bridge passes keys back from a bare image.
+ * Every viewer frame retains the existing opaque-origin capabilities. A picture takes neither pointer nor
+ * keyboard focus: focus inside it would swallow Escape, since no bridge passes keys back from a bare image.
  */
 export function canvasFrameHtml(route: CanvasRoute): string {
-  return `<iframe class="vw-frame${isPictureUrl(route.url) ? ' is-picture' : ''}" sandbox="allow-scripts" title="Canvas: ${escapeHtml(route.title)}" src="${escapeHtml(route.url)}"></iframe>`;
+  const picture = isPictureUrl(route.url) ? ' is-picture" tabindex="-1' : '';
+  return `<iframe class="vw-frame${picture}" sandbox="allow-scripts" title="Canvas: ${escapeHtml(route.title)}" src="${escapeHtml(route.url)}"></iframe>`;
 }
 
 export function canvasOptionForFile(pages: readonly CanvasPage[], file: string | null): { page: string; option: string } | null {
@@ -880,7 +881,7 @@ export function mountCanvasViewer(
         event.preventDefault();
       }
       if (size === 'full' && event.key === 'Tab') {
-        const items = [...viewer.querySelectorAll<HTMLElement>('button, a[href], iframe, textarea, input, select, [tabindex="0"]')].filter((el) => !el.closest('[hidden]'));
+        const items = [...viewer.querySelectorAll<HTMLElement>('button, a[href], iframe:not(.is-picture), textarea, input, select, [tabindex="0"]')].filter((el) => !el.closest('[hidden]'));
         if (event.shiftKey && document.activeElement === items[0]) {
           items.at(-1)?.focus();
           event.preventDefault();

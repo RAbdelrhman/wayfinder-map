@@ -38,8 +38,9 @@ describe('desktop navigation boundary', () => {
 
   it('keeps the window off raw files and API responses, which it has no way back from', () => {
     const origin = 'http://127.0.0.1:4481';
-    for (const path of ['/', '/repos/owner/repo/maps/5?canvas=x', '/settings']) expect(isAppPageUrl(origin + path, origin)).toBe(true);
-    for (const path of ['/proto-shot/owner/repo/5-B.jpg', '/proto/owner/repo/prototype%2F5/index.html', '/api/maps'])
+    for (const path of ['/', '/new-map', '/settings', '/repos/owner/repo?view=archived', '/repos/owner/repo/maps/5?canvas=x', '/repos/owner/repo/prototypes'])
+      expect(isAppPageUrl(origin + path, origin)).toBe(true);
+    for (const path of ['/proto-shot/owner/repo/5-B.jpg', '/proto/owner/repo/prototype%2F5/index.html', '/api/maps', '/app.js', '/styles.css', '/index.html'])
       expect(isAppPageUrl(origin + path, origin)).toBe(false);
     expect(isAppPageUrl('https://example.com/', origin)).toBe(false);
   });

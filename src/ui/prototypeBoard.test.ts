@@ -200,7 +200,7 @@ describe('prototype variant metadata', () => {
     const entries = [...browser.document.querySelectorAll('[data-canvas-url]')] as unknown as HTMLElement[];
     expect(entries.map((entry) => entry.dataset['canvasUrl'])).toContain('/proto-shot/octo/wayfinder/45-B.jpg');
     for (const entry of entries)
-      expect(readCanvasRoute(canvasEntryRoute(entry.dataset, entry.dataset['canvasUrl']), 'http://127.0.0.1:4479'), entry.dataset['canvasUrl']).not.toBeNull();
+      expect(readCanvasRoute(canvasEntryRoute(entry.dataset, entry.dataset['canvasUrl']), 'http://127.0.0.1:4479')?.url).toBe(entry.dataset['canvasUrl']);
   });
 });
 
