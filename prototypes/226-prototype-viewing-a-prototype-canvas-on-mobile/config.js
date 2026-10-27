@@ -231,7 +231,7 @@ window.CANVAS = {
       sections: [
         {
           title: 'A · Notes in More',
-          note: 'Round 1’s A, with one change asked for in review: Notes leaves the bottom bar and becomes the first item in More (•••, top right). Everything else is A as in round 1. Waiting for review; nothing here is recorded as picked.',
+          note: 'Round 1’s A, with Notes moved from the bottom bar to More (•••, top right). Ramon approved this remix in the ticket thread.',
           items: [
             {
               id: 'R2A',
@@ -250,6 +250,8 @@ window.CANVAS = {
                   'Further from #209’s desktop viewer, which keeps Notes in its toolbar',
                 ],
                 basedOn: 'A',
+                disposition: 'keep',
+                feedback: 'Ramon liked A and asked to move Notes into the top-right menu. After reviewing this remix, he said: “looks good to me.”',
               },
             },
             { id: 'R2A2', name: 'Open', src: 'variants/phone.html?d=A&r=2&screen=viewer', ...PHONE, note: { idea: 'After the download, as in A2. The bottom bar is now ‹ the option’s name › and Full screen; the name gets the room the Notes pill had.', basedOn: 'A' } },
