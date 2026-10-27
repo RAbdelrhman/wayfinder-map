@@ -124,6 +124,12 @@ function idsIn(line: string, variantIds: readonly string[]): string[] {
  */
 export function pickedVariantIds(verdict: string, variantIds: readonly string[]): string[] {
   const lines = verdict.split(/\r?\n/).filter((line) => !REJECTED_LINE.test(line));
+  // A closeout can name the approved remix before explaining its source options.
+  // Restrict this match to the subject of the approval, not the rest of the paragraph.
+  for (const line of lines) {
+    const approved = /^\s*\**([A-Z]{1,2})\**\s*,\s*Round\s+\d+\s*,\s+is\s+approved\b/i.exec(line);
+    if (approved !== null && variantIds.includes(approved[1] ?? '')) return [approved[1] ?? ''];
+  }
   for (const line of lines) {
     if (!ANSWER_LINE.test(line)) continue;
     const answer = line.replace(ANSWER_LINE, '').split(/[.;]\s/)[0] ?? '';
@@ -191,8 +197,11 @@ function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string
   const ticket = map.tickets.find((candidate) => candidate.number === prototype.ticketNumber);
   const decision = prototypeCardState(map, prototype);
   const variants = boardVariants(repo, prototype);
+  const finalPicks = prototype.variants?.filter((variant) => variant.finalPick === true).map((variant) => variant.id) ?? [];
   const selected = decision.state !== 'decided'
     ? []
+    : finalPicks.length > 0
+      ? finalPicks
     : variants.length === 1
       ? [variants[0]?.id ?? '']
       : pickedVariantIds(prototype.verdict ?? '', variants.map((variant) => variant.id)).sort((a, b) => variants.findIndex((variant) => variant.id === a) - variants.findIndex((variant) => variant.id === b));

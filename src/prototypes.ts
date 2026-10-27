@@ -312,6 +312,30 @@ export interface CanvasVariantName {
   anyPage: string | null;
 }
 
+/** Explicit final approvals attached to individual canvas items, excluding their lineage. */
+export function canvasFinalPicks(source: string): Set<string> {
+  const picks = new Set<string>();
+  let id: string | null = null;
+  let disposition: string | null = null;
+  let feedback: string | null = null;
+  const flush = (): void => {
+    if (id === null || !VARIANT_ID.test(id) || disposition !== 'keep' || feedback === null) return;
+    const explicitApproval = new RegExp(`\\bapproved\\s+${id}\\b`, 'i');
+    if (/\bfinal pick\b/i.test(feedback) || explicitApproval.test(feedback)) picks.add(id);
+  };
+  for (const token of configTokens(source)) {
+    if (token.key === 'id') {
+      flush();
+      id = token.value;
+      disposition = null;
+      feedback = null;
+    } else if (token.key === 'disposition') disposition = token.value;
+    else if (token.key === 'feedback') feedback = token.value;
+  }
+  flush();
+  return picks;
+}
+
 /** A variant page on the branch for a letter the canvas names without a page, like `variants/nav-d.html`. */
 function pageForId(id: string, pages: readonly string[]): string | null {
   const suffix = new RegExp(`(?:^|[-_/])${id.toLowerCase()}\\.html?$`, 'i');
@@ -331,6 +355,7 @@ export function prototypeVariantInfo(
   branchPages: readonly string[],
 ): PrototypeVariantInfo[] {
   const names = configSource === null ? new Map<string, CanvasVariantName>() : canvasVariantNames(configSource);
+  const finalPicks = configSource === null ? new Set<string>() : canvasFinalPicks(configSource);
   const fromShots = shotVariants(ticketNumber, shots);
   const ids = fromShots.length > 0
     ? fromShots.map((entry) => entry.id)
@@ -344,6 +369,7 @@ export function prototypeVariantInfo(
     const shot = fromShots.find((entry) => entry.id === id)?.shot ?? null;
     return {
       id: lettered ? id : String.fromCharCode(65 + index),
+      ...(finalPicks.has(id) ? { finalPick: true } : {}),
       title: named?.title ?? (lettered ? `Variant ${id}` : sentenceCase(id)),
       page: canvasPage !== null ? `${canvasDir}${canvasPage}` : branchPage ?? (fallback === null ? null : `${canvasDir}${fallback}`),
       shot,

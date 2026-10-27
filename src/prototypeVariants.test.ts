@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { canvasVariantNames, parsePrototypeShotPath, prototypeShotUrl, prototypeVariantInfo, shotVariants, verdictComment } from './prototypes.js';
+import { canvasFinalPicks, canvasVariantNames, parsePrototypeShotPath, prototypeShotUrl, prototypeVariantInfo, shotVariants, verdictComment } from './prototypes.js';
 
 /* Shapes taken from real canvases: a lookup of directions, generated frames, explicit items, and a mix page. */
 const LOOKUP_CANVAS = `
@@ -47,6 +47,16 @@ window.CANVAS = { pages: [
 `;
 
 describe('canvasVariantNames', () => {
+  it('recognizes explicit final approvals without treating remix sources as picks', () => {
+    const source = `items: [
+      { id: 'F', name: 'Final', src: 'final.html', note: { disposition: 'keep', feedback: 'Final pick (user): looks good' } },
+      { id: 'AC', name: 'A + C', src: 'ac.html', note: { disposition: 'change', feedback: 'Earlier pick' } },
+      { id: 'D', name: 'Remix', src: 'd.html', note: { basedOn: ['A', 'B', 'C'], disposition: 'keep', feedback: 'Approval on #225: Approved D' } }
+    ]`;
+    expect([...canvasFinalPicks(source)]).toEqual(['F', 'D']);
+    expect(prototypeVariantInfo(163, ['163-F.jpg', '163-AC.jpg'], source, '', []))
+      .toContainEqual(expect.objectContaining({ id: 'F', finalPick: true }));
+  });
   it('reads names from a lookup object and prefers the most used name over a one-off frame', () => {
     const names = canvasVariantNames(LOOKUP_CANVAS);
 

@@ -191,6 +191,8 @@ export interface Prototype {
 export interface PrototypeVariant {
   id: string;
   title: string;
+  /** Canvas feedback explicitly identifies this option as the final approved pick. */
+  finalPick?: boolean;
   /** The variant's page on the prototype branch, with any query, or null. */
   page: string | null;
   /** Its screenshot's file name among the default branch's prototype shots, or null. */

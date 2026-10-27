@@ -167,6 +167,11 @@ describe('prototype variant metadata', () => {
     expect(pickedVariantIds('The user picked C1 and B2. The answer is **direction D**: C’s tree with B’s switcher.', ['A', 'B', 'C', 'D'])).toEqual(['D']);
   });
 
+  it('picks the approved remix without picking its source options', () => {
+    const verdict = 'Completed through PR #345. Chosen design and confirmed behavior.\n\nD, Round 2, is approved with only the redundant inbox summary removed. D combines A, B and C.';
+    expect(pickedVariantIds(verdict, ['A', 'B', 'C', 'D'])).toEqual(['D']);
+  });
+
   it('uses the canvas variants the server read, with their screenshots and pages', () => {
     const mapView = map([ticket(45, 'After hand-off', 'prototype', 'done')]);
     const html = prototypeBoardHtml('octo/wayfinder', mapView, [prototype(45, {
@@ -181,6 +186,20 @@ describe('prototype variant metadata', () => {
     expect(html).toContain('src="/proto-shot/octo/wayfinder/45-A.jpg"');
     expect(html).toContain('AB · A + B, list in the topbar');
     expect(html).toContain('class="wf-var decision-variant is-dim"');
+  });
+
+  it('prefers an explicit final canvas pick over earlier options mentioned in the verdict', () => {
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(163, 'Start next', 'prototype', 'done')]), [prototype(163, {
+      verdict: '## Answer\n\nThe canvas opens on Round 5. The menu opens option A’s dialog.',
+      variants: [
+        { id: 'A', title: 'Earlier', page: null, shot: null },
+        { id: 'AC', title: 'A + C', page: null, shot: null },
+        { id: 'F', title: 'Final round', page: null, shot: null, finalPick: true },
+      ],
+    })]);
+    expect(html).toContain('Picked F');
+    expect(html).toContain('Open variant F: Final round (picked)');
+    expect(html).not.toContain('Open variant A: Earlier (picked)');
   });
 });
 
