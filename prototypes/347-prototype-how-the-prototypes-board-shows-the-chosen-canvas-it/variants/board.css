@@ -1,5 +1,7 @@
 /* #347 prototype only. Everything else comes from src/ui/styles.css (.wf-board, .wf-proto, .wf-var, .wf-frame, .chip). */
 html, body { margin: 0; background: var(--plane); color: var(--text-primary); font-family: var(--font, system-ui, sans-serif); }
+/* The app's styles.css locks body (overflow: hidden) because the app scrolls inside .page; these pages have no .page, so the document itself scrolls. */
+body { height: auto; overflow: visible; }
 .i { width: 14px; height: 14px; flex: none; }
 
 .p-top {

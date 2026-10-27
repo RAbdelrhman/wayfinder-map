@@ -236,5 +236,49 @@ window.CANVAS = {
         },
       ],
     },
+    {
+      title: 'A2 + C2 remix',
+      id: 'round-3',
+      round: 3,
+      sections: [
+        {
+          title: 'Round 3 · AC3, the choice first, then how it got there',
+          note: 'Ramon, in this ticket’s thread (27 Oct): “I think a mix of A2 and C2. I like the idea of seeing how we got there with the rounds but I like A2 showing as the first. Also remove the text at the bottom causing weird centering. Also as a side note I cant scroll on any option.” This is a remix for review, not a pick. A2 and C2 stay on Round 2, unchanged. Every frame on every page now scrolls.',
+          items: [
+            {
+              id: 'AC3',
+              name: 'AC3 · A2 + C2 remix',
+              src: 'variants/board3.html?o=R', ...BOARD2,
+              note: {
+                idea: 'A decided card opens exactly like A2: the chosen item large, why it was chosen, Built from, Open, and the pieces that are part of the choice. The “Same IDs elsewhere” line under the thumbnails is gone. Under the choice, a “How it got here” row lists every round in order (Round 1 › Round 2 › Round 3 ✓, with item counts). Click a round to see its items in a strip under the choice, C2-style: each item shows what became of it (Combined into D, Kept into G-confirm, Not chosen), items that led to the pick keep a dashed outline and the rest dim; a page switch appears when the round has several pages (#225 Round 1: Options · Dark), and “+N more” past four. Click the round again or Hide to fold it. The Built from links open their round with that item lit. Undecided cards show the latest round’s strip and the same round row to switch rounds in place; #44 switches pages. #223 keeps A2’s question switch, and the round row follows the question.',
+                basedOn: ['A2', 'C2'],
+                pros: ['The choice is still the first and largest thing on a decided card.', 'Every round and page is one click away, and you can see which earlier items led to the pick.', 'Folded, a decided card is A2’s height plus one row.'],
+                cons: ['Opening a round makes the card taller (about one strip).', 'Only one round shows at a time, so a combine across two earlier rounds (#163) takes two clicks to follow.'],
+              },
+            },
+            {
+              id: 'AC3-open',
+              name: 'Rounds opened at the source',
+              src: 'variants/board3.html?o=R&s=open', ...BOARD2,
+              note: {
+                idea: 'The same board with each decided card’s history opened on the round its pick was built from: #225 on Round 1 (A, B and C, Combined into D), #316 on Round 2 (F, Changed into G-a), #314 on its Baseline (B and A combined into D and E, C not chosen), #163 on Round 4 (M, changed into F). #223 records no source for its picks, so it opens on the pick’s own round. Everything stays clickable.',
+                basedOn: 'AC3',
+              },
+            },
+          ],
+        },
+        {
+          title: 'Review',
+          items: [
+            {
+              id: 'review-3',
+              kind: 'note',
+              name: 'Design review, Round 3',
+              text: 'AC3 uses Round 2’s eight cards and data (variants/board2-data.js) and the A2 and C2 code in variants/board2.js; A2–D2 draw exactly as before. Removed from AC3 only: the “Same IDs elsewhere” line and A2’s “Show the other N items” fold, which the round row replaces.\n\nScrolling: every option page loads the app’s src/ui/styles.css, which sets body { overflow: hidden } because the app scrolls inside its .page element. These pages have no .page, so nothing could scroll in Present view or in Wayfinder’s viewer. variants/board.css now lets the document scroll. The cause was this canvas’s CSS, not the Wayfinder viewer.',
+            },
+          ],
+        },
+      ],
+    },
   ],
 };

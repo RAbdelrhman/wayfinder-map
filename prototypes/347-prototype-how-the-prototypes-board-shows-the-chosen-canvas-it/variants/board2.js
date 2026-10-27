@@ -108,9 +108,9 @@
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
   /* ---------- A2 · Chosen first ---------- */
-  function optionA(card) {
+  function optionA(card, remix) {
     const ps = picks(card);
-    if (!ps.length) return undecidedA(card);
+    if (!ps.length) return remix ? undecidedR(card) : undecidedA(card);
     const qName = card.questions ? S.q[card.ticket] || ps[0].q : null;
     const pick = qName ? ps.find((p) => p.q === qName) : ps[0];
     const heroKey = S.hero[card.ticket] && get(card, S.hero[card.ticket]) ? S.hero[card.ticket] : pick.key;
@@ -143,11 +143,11 @@
           ${fromLine}
           <div class="pa-actions"><button type="button" class="primary" data-to="${esc(where(card, hero))}"><span data-icon="play" aria-hidden="true"></span>Open ${esc(hero.id)}</button>
           ${heroIsPick ? '' : btn('hero', card, `Back to ${esc(pick.id)}`, { arg: pick.key })}
-          ${notChosenCount ? btn('earlier', card, `<span data-icon="${open ? 'chev' : 'right'}" aria-hidden="true"></span>${open ? 'Hide' : 'Show'} the other ${plural(notChosenCount, 'item')}`, { extra: `aria-expanded="${open}"` }) : ''}</div>
+          ${notChosenCount && !remix ? btn('earlier', card, `<span data-icon="${open ? 'chev' : 'right'}" aria-hidden="true"></span>${open ? 'Hide' : 'Show'} the other ${plural(notChosenCount, 'item')}`, { extra: `aria-expanded="${open}"` }) : ''}</div>
           ${thumbs ? `<div class="pa-alsos"><span class="p-mutedline">${alsoLabel}</span><div class="pa-alsorow p2-alsorow">${thumbs}</div></div>` : ''}
-          ${card.repeats ? `<p class="p-mutedline p2-repeat">Same IDs elsewhere: ${esc(card.repeats)}</p>` : ''}
+          ${card.repeats && !remix ? `<p class="p-mutedline p2-repeat">Same IDs elsewhere: ${esc(card.repeats)}</p>` : ''}
         </div>
-      </div>${open ? earlierA(card, earlierRounds) : ''}`;
+      </div>${remix ? historyR(card, pick, qName) : open ? earlierA(card, earlierRounds) : ''}`;
     return section(card, head(card, canvasButton(card, 'All rounds')) + body);
   }
   function upstream(card, pick) {
@@ -173,6 +173,67 @@
     const earlierBtn = older.length ? btn('earlier', card, `<span data-icon="${open ? 'chev' : 'right'}" aria-hidden="true"></span>${plural(older.length, 'earlier round')} · ${plural(countItems(older), 'option')}`, { extra: `aria-expanded="${open}"` }) : '';
     const unknown = card.state === 'unrecorded' ? `<p class="p-mutedline p2-unknown">${pages.replace(/^ on /, 'On ')} · ${plural(items.length, 'item')}${items.some((i) => !i.shot) ? `, ${items.filter((i) => !i.shot).length} without a picture` : ''}. The board does not guess a pick from the closing comment.</p>` : '';
     return section(card, `${head(card, canvasButton(card))}<p class="gist">${esc(lead)}</p>${unknown}${strip}${earlierBtn ? `<div class="pa-actions p2-under">${earlierBtn}</div>` : ''}${open ? earlierA(card, older) : ''}`);
+  }
+
+  /* ---------- Round 3 · A2 + C2 remix: the choice first, then the rounds that led to it ---------- */
+  // The rounds a card's history shows: on a question canvas, only that question's items.
+  const roundsFor = (card, qName) => card.rounds
+    .map((r, ri) => ({ r, ri, pages: r.pages.map((p) => ({ ...p, items: p.items.filter((i) => !qName || i.q === qName) })).filter((p) => p.items.length) }))
+    .filter((x) => x.pages.length);
+  // Everything the choice came from or became, including the pieces kept with it.
+  function choiceLineage(card, pick) {
+    const set = lineage(card, pick.key);
+    if (!card.questions) card.also.forEach((a) => lineage(card, a.key).forEach((k) => set.add(k)));
+    return set;
+  }
+  function roundBar(card, rounds, ri, pick, qName) {
+    const tabs = rounds.map(({ r, ri: xi, pages }) => {
+      const has = card.picks.some((pk) => roundOfKey(card, pk.key) === xi && (!qName || pk.q === qName));
+      const n = pages.reduce((m, p) => m + p.items.length, 0);
+      return `<button type="button" role="tab" class="seg${xi === ri ? ' is-on' : ''}" aria-selected="${xi === ri}" data-act="rround" data-card="${card.ticket}" data-arg="${xi}" data-fkey="${card.ticket}:rround:${xi}">${esc(roundText(r.round) || pages.map((p) => p.title).join(' · '))}${has ? ' <span data-icon="check" aria-hidden="true"></span>' : ''}<span class="p2-count">· ${n}</span></button>`;
+    }).join('<span class="pr-sep" aria-hidden="true" data-icon="right"></span>');
+    return `<div class="pr-bar"><span class="eyebrow">${pick ? 'How it got here' : 'Rounds'}</span><div class="pr-path" role="tablist" aria-label="Rounds for #${card.ticket}">${tabs}</div></div>`;
+  }
+  function roundStrip(card, ri, pick, qName) {
+    const decided = !!pick;
+    const r = card.rounds[ri];
+    const pages = r.pages.map((p) => ({ ...p, items: p.items.filter((i) => !qName || i.q === qName) })).filter((p) => p.items.length);
+    const pi = Math.min(S.page[card.ticket] ?? 0, pages.length - 1);
+    const p = pages[pi];
+    const items = p.items.map((i) => ({ ...i, round: r.round, ri, pageTitle: p.title }));
+    const more = !!S.more[card.ticket];
+    const shown = more ? items : items.slice(0, 4);
+    const led = decided ? choiceLineage(card, pick) : new Set();
+    const flash = S.flash && S.flash.card === card.ticket ? S.flash.key : null;
+    const strip = shown.map((i) => {
+      const chosen = isPicked(card, i.key);
+      const cls = `${chosen ? ' is-picked' : decided && led.has(i.key) ? ' is-led' : decided ? ' is-dim' : ''}${flash === i.key ? ' is-flash' : ''}`;
+      const o = outcome(card, i);
+      return varLink(card, i, ` decision-variant${cls}`, `${i.id} · ${i.name}`, `<span class="p-disp ${o.cls}">${esc(o.text)}</span>`);
+    }).join('');
+    const pTabs = pages.length > 1 ? `<div class="segmented pc-rounds p2-pages" role="tablist" aria-label="Pages in ${esc(roundText(r.round) || 'this canvas')}">${pages.map((x, xi) => `<button type="button" role="tab" class="seg${xi === pi ? ' is-on' : ''}" aria-selected="${xi === pi}" data-act="page" data-card="${card.ticket}" data-arg="${xi}" data-fkey="${card.ticket}:page:${xi}">${esc(x.title)}</button>`).join('')}</div>` : '';
+    const moreBtn = items.length > 4 ? btn('more', card, more ? 'Show 4' : `+${items.length - 4} more on this page`, { extra: `aria-expanded="${more}"`, cls: 'ghost p2-small' }) : '';
+    const closeBtn = decided ? btn('rclose', card, 'Hide', { cls: 'ghost p2-small' }) : '';
+    const legend = !decided ? '' : ri === pick.ri ? 'the pick and what was drawn beside it' : shown.some((i) => led.has(i.key)) ? 'outlined items led to the pick' : 'none of these led to the pick';
+    return `<div class="pr-round"><div class="pc-bar"><span class="p-mutedline">${esc([roundText(r.round), p.title].filter(Boolean).join(' · '))} · ${plural(items.length, 'item')}${legend ? ` · ${legend}` : ''}</span>${pTabs}${moreBtn}${closeBtn}</div><div class="wf-strip" role="list">${strip}</div></div>`;
+  }
+  function historyR(card, pick, qName) {
+    const rounds = roundsFor(card, qName);
+    const ri = S.round[card.ticket];
+    const open = ri != null && rounds.some((x) => x.ri === ri);
+    return `<div class="pr-history">${roundBar(card, rounds, open ? ri : null, pick, qName)}${open ? roundStrip(card, ri, pick, qName) : ''}</div>`;
+  }
+  function undecidedR(card) {
+    const ri = S.round[card.ticket] ?? card.rounds.length - 1;
+    const r = card.rounds[ri];
+    const items = roundItems(r);
+    const pages = r.pages.length > 1 ? ` on ${r.pages.length} pages (${r.pages.map((p) => p.title).join(', ')})` : ` · ${r.pages[0].title}`;
+    const lead = card.state === 'unrecorded'
+      ? card.why
+      : `${roundText(latestRound(card).round)} · ${plural(roundItems(latestRound(card)).length, 'option')}, none chosen yet.`;
+    const unknown = card.state === 'unrecorded' ? `<p class="p-mutedline p2-unknown">${pages.replace(/^ on /, 'On ')} · ${plural(items.length, 'item')}${items.some((i) => !i.shot) ? `, ${items.filter((i) => !i.shot).length} without a picture` : ''}. The board does not guess a pick from the closing comment.</p>` : '';
+    const bar = card.rounds.length > 1 ? roundBar(card, roundsFor(card, null), ri, null, null) : '';
+    return section(card, `${head(card, canvasButton(card))}<p class="gist">${esc(lead)}</p>${unknown}<div class="pr-history pr-undecided">${bar}${roundStrip(card, ri, null, null)}</div>`);
   }
 
   /* ---------- B2 · Round rail ---------- */
@@ -281,7 +342,7 @@
   }
 
   /* ---------- Render, events, focus ---------- */
-  const RENDER = { A: optionA, B: optionB, C: optionC, D: optionD };
+  const RENDER = { A: (c) => optionA(c), B: optionB, C: optionC, D: optionD, R: (c) => optionA(c, true) };
   const board = document.getElementById('board');
   function render() {
     const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.fkey : null;
@@ -311,7 +372,9 @@
       case 'hero': S.hero[t] = arg; break;
       case 'q': S.q[t] = arg; S.hero[t] = null; S.flash = null; break;
       case 'earlier': S.earlier[t] = !S.earlier[t]; break;
-      case 'reveal': S.earlier[t] = true; S.flash = { card: t, key: arg }; break;
+      case 'reveal': S.earlier[t] = true; S.flash = { card: t, key: arg }; if (option === 'R') { S.round[t] = roundOfKey(card, arg); S.page[t] = card.rounds[S.round[t]].pages.findIndex((p) => p.items.some((i) => i.key === arg)); S.more[t] = true; } break;
+      case 'rround': S.round[t] = S.round[t] === Number(arg) && picks(card).length ? undefined : Number(arg); S.page[t] = undefined; S.more[t] = false; break;
+      case 'rclose': S.round[t] = undefined; break;
       case 'also': S.withAlso[t] = !S.withAlso[t]; break;
       case 'cq': S.q[t] = arg; S.round[t] = undefined; S.page[t] = undefined; S.more[t] = false; break;
       case 'round': S.round[t] = Number(arg); S.page[t] = undefined; S.more[t] = false; break;
@@ -359,6 +422,11 @@
   pick.value = S.show;
   pick.addEventListener('change', () => { S.show = pick.value; render(); });
 
+  // ?s=open starts each decided card on the round its pick was built from.
+  if (option === 'R' && q.get('s') === 'open') cards.forEach((c) => {
+    const p = picks(c)[0];
+    if (p) S.round[c.ticket] = p.from && p.from.length ? roundOfKey(c, p.from[0]) : p.ri;
+  });
   document.body.classList.add(`opt-${option}`, 'p2');
   render();
 })();

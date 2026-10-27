@@ -1,0 +1,20 @@
+/* #347 Round 3 only (the A2 + C2 remix), on top of board.css and board2.css. */
+
+/* The rounds sit under the choice, separated from it, and never push the large frame off centre. */
+.pa-body { align-items: start; }
+.pr-history { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--hairline); display: grid; gap: 10px; }
+.pr-undecided { margin-top: 12px; padding-top: 0; border-top: 0; }
+.pr-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.pr-path { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.pr-path .seg { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border: 1px solid var(--hairline); border-radius: 7px; font-size: 12px; }
+.pr-path .seg .i { width: 12px; height: 12px; color: var(--state-frontier); }
+.pr-path .seg.is-on { border-color: var(--state-claimed); }
+.pr-sep { display: inline-flex; color: var(--text-muted); }
+.pr-sep .i { width: 12px; height: 12px; }
+.pr-round .pc-bar { margin-top: 0; }
+.pr-round .pc-bar + .wf-strip { margin-top: 8px; }
+
+/* In an earlier round, what led to the pick keeps full strength and a dashed outline; the rest dims. */
+.wf-var.is-led .wf-frame { outline: 2px dashed var(--state-frontier); outline-offset: 2px; }
+/* Room for the outlines, which the strip would otherwise clip at its edges. */
+.pr-round .wf-strip { padding: 4px; margin-left: -4px; margin-right: -4px; }
