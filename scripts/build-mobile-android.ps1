@@ -32,11 +32,20 @@ try {
   $buildId = [Guid]::NewGuid().ToString('N')
   $destination = Join-Path $OutputDirectory "Wayfinder-$($config.expo.version)-$label-$buildId-arm64.apk"
   [IO.File]::Copy($apk, $destination, $false)
+  # Hash through .NET so both PowerShell hosts work without module auto-loading.
+  $apkStream = [IO.File]::OpenRead($destination)
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    $sha256 = [BitConverter]::ToString($hasher.ComputeHash($apkStream)).Replace('-', '').ToLowerInvariant()
+  } finally {
+    $hasher.Dispose()
+    $apkStream.Dispose()
+  }
   $manifest = [ordered]@{
     app = 'Wayfinder'; package = $config.expo.android.package; version = $config.expo.version
     versionCode = $config.expo.android.versionCode; architecture = 'arm64-v8a'
     sourceCommit = $commit; workingTreeChanges = $changes; buildId = $buildId
-    apk = $destination; sha256 = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+    apk = $destination; sha256 = $sha256
     packagedAt = [DateTimeOffset]::UtcNow.ToString('o'); signing = 'personal build using the generated Android debug signing key'
     installedDevice = $null; installedAt = $null
     installationStatus = 'not-attempted'

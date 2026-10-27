@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   mkdtempSync,
   mkdirSync,
@@ -59,6 +60,8 @@ it.skipIf(process.platform !== 'win32')(
         testScript,
         `
 $ErrorActionPreference = 'Stop'
+# Reproduce an unavailable Get-FileHash command, as seen in Windows CI.
+function global:Get-FileHash { throw 'Get-FileHash is unavailable in this test host' }
 $archive = Join-Path $PSScriptRoot 'archive'
 & (Join-Path $PSScriptRoot 'scripts/build-mobile-android.ps1') -SkipBuild -OutputDirectory $archive
 function global:adb { $global:LASTEXITCODE = 1 }
@@ -87,6 +90,7 @@ try {
               buildId: string;
               installationStatus: string;
               installedAt: string | null;
+              sha256: string;
             },
         );
       expect(
@@ -103,6 +107,9 @@ try {
           'test APK, never installed',
         );
         expect(manifest.installedAt).toBeNull();
+        expect(manifest.sha256).toBe(
+          createHash('sha256').update(readFileSync(manifest.apk)).digest('hex'),
+        );
       }
     } finally {
       // mkdtemp creates this exact isolated child of the OS temp directory.
