@@ -185,7 +185,7 @@ function variantFrame(variant: BoardVariant, phone: { width: number; height: num
   const livePage = (hidden: boolean): string =>
     variant.page === null
       ? ''
-      : `${phone ? `<span class="chosen-phone" style="aspect-ratio:${String(phone.width)}/${String(phone.height)}">` : ''}<iframe class="decision-variant-page" src="${escapeHtml(variant.page)}" sandbox="allow-scripts" loading="lazy" tabindex="-1" aria-hidden="true" title="" width="${phone?.width ?? 1280}" height="${phone?.height ?? 800}"${phone ? ` style="width:${String(phone.width)}px;height:${String(phone.height)}px"` : ''}${hidden ? ' hidden' : ''}></iframe>${phone ? '</span>' : ''}`;
+      : `${phone ? `<span class="chosen-phone" style="aspect-ratio:${String(phone.width)}/${String(phone.height)}">` : ''}<iframe class="decision-variant-page" name="wayfinder-preview" src="${escapeHtml(variant.page)}" sandbox="allow-scripts" loading="lazy" tabindex="-1" aria-hidden="true" title="" width="${phone?.width ?? 1280}" height="${phone?.height ?? 800}"${phone ? ` style="width:${String(phone.width)}px;height:${String(phone.height)}px"` : ''}${hidden ? ' hidden' : ''}></iframe>${phone ? '</span>' : ''}`;
   const picture = variant.image !== null
     ? `<img class="decision-variant-image" src="${escapeHtml(variant.image)}" alt="" loading="lazy" />${livePage(true)}<span class="decision-variant-fallback" hidden>Preview image unavailable</span>`
     : variant.page !== null

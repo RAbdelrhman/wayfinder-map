@@ -1,12 +1,30 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
-import { CANVAS_BRIDGE_SCRIPT, viewerPrototypeBytes } from './canvasBridge.js';
+import { CANVAS_BRIDGE_SCRIPT, PREVIEW_FOCUS_GUARD, viewerPrototypeBytes } from './canvasBridge.js';
 import { readCanvasMessage } from './ui/canvasViewer.js';
 import ts from 'typescript';
 import { Window } from 'happy-dom';
 
 describe('sandboxed canvas bridge', () => {
+  it('blocks script focus in previews before prototype scripts run, but leaves viewer focus intact', () => {
+    const html = viewerPrototypeBytes('index.html', Buffer.from('<html><head><script>example()</script></head><body></body></html>')).toString();
+    expect(html.indexOf(PREVIEW_FOCUS_GUARD)).toBeLessThan(html.indexOf('example()'));
+    expect(viewerPrototypeBytes('index.html', Buffer.from('<!doctype html><script>example()</script>')).toString())
+      .toContain(`<!doctype html><script>${PREVIEW_FOCUS_GUARD}</script>`);
+    const focus = vi.fn();
+    const element = { prototype: { focus } };
+    const preview = { name: 'wayfinder-preview', focus: vi.fn() };
+    runInNewContext(PREVIEW_FOCUS_GUARD, { window: preview, HTMLElement: element });
+    element.prototype.focus();
+    preview.focus();
+    expect(focus).not.toHaveBeenCalled();
+    const viewerFocus = vi.fn();
+    const viewerElement = { prototype: { focus: viewerFocus } };
+    runInNewContext(PREVIEW_FOCUS_GUARD, { window: { name: '' }, HTMLElement: viewerElement });
+    viewerElement.prototype.focus();
+    expect(viewerFocus).toHaveBeenCalledOnce();
+  });
   it('gives saved tools priority over the real engine listener, preserving text entry and unassigned engine keys', () => {
     const browser = new Window({ url: 'http://localhost/proto/o/r/prototype%2F318/index.html' });
     const parent = { postMessage: vi.fn() };

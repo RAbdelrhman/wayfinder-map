@@ -422,6 +422,9 @@ function canvasBridge(normalize: typeof normalizeShortcut, fromEvent: typeof sho
 
 export const CANVAS_BRIDGE_SCRIPT = `;(${canvasBridge.toString()})(${normalizeShortcut.toString()}, ${shortcutFromEvent.toString()});`;
 
+/** Tiles are pictures, not interactive documents. Their scripts must not move keyboard focus. */
+export const PREVIEW_FOCUS_GUARD = `if (window.name === 'wayfinder-preview') { HTMLElement.prototype.focus = function () {}; window.focus = function () {}; }`;
+
 /**
  * Runs in the engine's own document, in place of its `stage.style.zoom = …`. CSS zoom lays out every embedded
  * option again on each step; a scale transform only repaints them. The transform leaves the layout box at full
@@ -472,6 +475,10 @@ export function viewerPrototypeBytes(file: string, bytes: Buffer): Buffer {
   }
   if (!/\.html?$/i.test(file)) return bytes;
   const script = `<script>${CANVAS_BRIDGE_SCRIPT}</script>`;
-  const html = bytes.toString('utf8');
+  const original = bytes.toString('utf8');
+  const guard = `<script>${PREVIEW_FOCUS_GUARD}</script>`;
+  const html = /<head\b[^>]*>/i.test(original)
+    ? original.replace(/<head([^>]*)>/i, `<head$1>${guard}`)
+    : original.replace(/^(\s*<!doctype[^>]*>)?/i, `$&${guard}`);
   return Buffer.from(/<\/body>/i.test(html) ? html.replace(/<\/body>/i, script + '</body>') : html + script);
 }
