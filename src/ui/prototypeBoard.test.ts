@@ -250,6 +250,7 @@ describe('prototype decision board states', () => {
     })]);
 
     expect(html).toContain('class="decision-variant-page"');
+    expect(html).toContain('name="wayfinder-preview"');
     expect(html).toContain('src="/proto/octo/wayfinder/prototype%2F43-design/prototypes/canvas/variants/a.html"');
   });
 

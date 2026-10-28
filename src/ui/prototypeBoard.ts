@@ -178,7 +178,7 @@ function variantFrame(variant: BoardVariant): string {
   const livePage = (hidden: boolean): string =>
     variant.page === null
       ? ''
-      : `<iframe class="decision-variant-page" src="${escapeHtml(variant.page)}" sandbox="allow-scripts" loading="lazy" tabindex="-1" aria-hidden="true" title="" width="1280" height="800"${hidden ? ' hidden' : ''}></iframe>`;
+      : `<iframe class="decision-variant-page" name="wayfinder-preview" src="${escapeHtml(variant.page)}" sandbox="allow-scripts" loading="lazy" tabindex="-1" aria-hidden="true" title="" width="1280" height="800"${hidden ? ' hidden' : ''}></iframe>`;
   const picture = variant.image !== null
     ? `<img class="decision-variant-image" src="${escapeHtml(variant.image)}" alt="" loading="lazy" />${livePage(true)}<span class="decision-variant-fallback" hidden>Preview image unavailable</span>`
     : variant.page !== null
