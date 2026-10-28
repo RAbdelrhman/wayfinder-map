@@ -243,7 +243,7 @@ window.CANVAS = {
       sections: [
         {
           title: 'Round 3 · AC3, the choice first, then how it got there',
-          note: 'Ramon, in this ticket’s thread (27 Oct): “I think a mix of A2 and C2. I like the idea of seeing how we got there with the rounds but I like A2 showing as the first. Also remove the text at the bottom causing weird centering. Also as a side note I cant scroll on any option.” This is a remix for review, not a pick. A2 and C2 stay on Round 2, unchanged. Every frame on every page now scrolls.',
+          note: 'Ramon, in this ticket’s thread (27 Oct): “I think a mix of A2 and C2. I like the idea of seeing how we got there with the rounds but I like A2 showing as the first. Also remove the text at the bottom causing weird centering. Also as a side note I cant scroll on any option.” A2 and C2 stay on Round 2, unchanged. Every frame on every page now scrolls.\n\nChosen: AC3. Ramon, in this ticket’s thread (27 Oct): “I like it just round the corners on the mobile version besides that looks good and you can mark AC3 as my choice”. The mobile previews (the phone captures in every frame and strip) now have rounded corners; nothing else changed. This is a canvas choice, not the shipped board.',
           items: [
             {
               id: 'AC3',
@@ -252,6 +252,8 @@ window.CANVAS = {
               note: {
                 idea: 'A decided card opens exactly like A2: the chosen item large, why it was chosen, Built from, Open, and the pieces that are part of the choice. The “Same IDs elsewhere” line under the thumbnails is gone. Under the choice, a “How it got here” row lists every round in order (Round 1 › Round 2 › Round 3 ✓, with item counts). Click a round to see its items in a strip under the choice, C2-style: each item shows what became of it (Combined into D, Kept into G-confirm, Not chosen), items that led to the pick keep a dashed outline and the rest dim; a page switch appears when the round has several pages (#225 Round 1: Options · Dark), and “+N more” past four. Click the round again or Hide to fold it. The Built from links open their round with that item lit. Undecided cards show the latest round’s strip and the same round row to switch rounds in place; #44 switches pages. #223 keeps A2’s question switch, and the round row follows the question.',
                 basedOn: ['A2', 'C2'],
+                disposition: 'keep',
+                feedback: 'I like it just round the corners on the mobile version besides that looks good and you can mark AC3 as my choice',
                 pros: ['The choice is still the first and largest thing on a decided card.', 'Every round and page is one click away, and you can see which earlier items led to the pick.', 'Folded, a decided card is A2’s height plus one row.'],
                 cons: ['Opening a round makes the card taller (about one strip).', 'Only one round shows at a time, so a combine across two earlier rounds (#163) takes two clicks to follow.'],
               },
@@ -274,7 +276,7 @@ window.CANVAS = {
               id: 'review-3',
               kind: 'note',
               name: 'Design review, Round 3',
-              text: 'AC3 uses Round 2’s eight cards and data (variants/board2-data.js) and the A2 and C2 code in variants/board2.js; A2–D2 draw exactly as before. Removed from AC3 only: the “Same IDs elsewhere” line and A2’s “Show the other N items” fold, which the round row replaces.\n\nScrolling: every option page loads the app’s src/ui/styles.css, which sets body { overflow: hidden } because the app scrolls inside its .page element. These pages have no .page, so nothing could scroll in Present view or in Wayfinder’s viewer. variants/board.css now lets the document scroll. The cause was this canvas’s CSS, not the Wayfinder viewer.',
+              text: 'AC3 uses Round 2’s eight cards and data (variants/board2-data.js) and the A2 and C2 code in variants/board2.js; A2–D2 draw exactly as before. Removed from AC3 only: the “Same IDs elsewhere” line and A2’s “Show the other N items” fold, which the round row replaces.\n\nScrolling: every option page loads the app’s src/ui/styles.css, which sets body { overflow: hidden } because the app scrolls inside its .page element. These pages have no .page, so nothing could scroll in Present view or in Wayfinder’s viewer. variants/board.css now lets the document scroll. The cause was this canvas’s CSS, not the Wayfinder viewer.\n\nAfter the pick: phone captures on this page (variants/board3.css only) are sized to their own 390 × 844 shape, centred with a small inset, with corners rounded at about 12% of the phone’s width and a hairline edge so the rounding shows against the light frame. Desktop captures and Rounds 1 and 2 are unchanged.',
             },
           ],
         },

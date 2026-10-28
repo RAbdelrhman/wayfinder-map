@@ -18,3 +18,13 @@
 .wf-var.is-led .wf-frame { outline: 2px dashed var(--state-frontier); outline-offset: 2px; }
 /* Room for the outlines, which the strip would otherwise clip at its edges. */
 .pr-round .wf-strip { padding: 4px; margin-left: -4px; margin-right: -4px; }
+
+/* Ramon's AC3 approval: round the corners of the mobile previews. The phone capture is sized to its own
+   390 × 844 shape (centred, full frame height) so the rounding lands on the screen, not on the empty frame.
+   12% / 5.5% is one circular radius at about 12% of the phone's width, so it scales from the large frame to the thumbnails.
+   A small inset and a hairline edge keep the corners visible, since the captures' light background matches the frame. */
+.p-shot.is-phone .decision-variant-image {
+  top: 4%; bottom: auto; left: 50%; right: auto; width: auto; max-width: 100%; height: 92%; aspect-ratio: 390 / 844;
+  transform: translateX(-50%); object-fit: cover; object-position: center top;
+  border-radius: 12% / 5.5%; box-shadow: 0 0 0 1px var(--hairline);
+}
