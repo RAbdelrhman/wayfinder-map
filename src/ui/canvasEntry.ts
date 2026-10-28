@@ -14,12 +14,12 @@ export function canvasEntryAttrs(
   title: string,
   file?: string | null,
   imageUrl?: string | null,
-  notes: { pick?: number | null; variant?: string | null; variants?: readonly { id: string; name: string }[] } = {},
+  notes: { pick?: number | null; variant?: string | null; page?: string | null; variants?: readonly { id: string; name: string }[] } = {},
 ): string {
   if (prototype.preview === null && !imageUrl) return 'target="_blank" rel="noreferrer"';
   const url = imageUrl ?? prototypeFileUrl(repo, prototype.branch, prototype.preview!, prototype.sha);
   const variants = notes.variants ?? (prototype.variants ?? []).map((variant) => ({ id: variant.id, name: variant.title }));
   const posterFile = file || imageUrl || prototype.preview === null ? null : canvasPosterFile(prototype.files, prototype.preview);
   const poster = posterFile === null ? '' : ` data-canvas-poster="${escapeHtml(prototypeFileUrl(repo, prototype.branch, posterFile, prototype.sha))}"`;
-  return `data-canvas-url="${escapeHtml(url)}"${poster} data-canvas-title="${escapeHtml(`#${String(prototype.ticketNumber)} ${title}`)}" data-canvas-github="${escapeHtml(prototype.url)}"${file ? ` data-canvas-file="${escapeHtml(file)}"` : ''} data-canvas-ticket="${String(prototype.ticketNumber)}"${notes.pick ? ` data-canvas-pick="${String(notes.pick)}"` : ''}${variants.length ? ` data-canvas-variants="${escapeHtml(JSON.stringify(variants))}"` : ''}${notes.variant ? ` data-canvas-variant="${escapeHtml(notes.variant)}"` : ''}`;
+  return `data-canvas-url="${escapeHtml(url)}"${poster} data-canvas-title="${escapeHtml(`#${String(prototype.ticketNumber)} ${title}`)}" data-canvas-github="${escapeHtml(prototype.url)}"${file ? ` data-canvas-file="${escapeHtml(file)}"` : ''} data-canvas-ticket="${String(prototype.ticketNumber)}"${notes.pick ? ` data-canvas-pick="${String(notes.pick)}"` : ''}${variants.length ? ` data-canvas-variants="${escapeHtml(JSON.stringify(variants))}"` : ''}${notes.variant ? ` data-canvas-variant="${escapeHtml(notes.variant)}"` : ''}${notes.page ? ` data-canvas-page="${escapeHtml(notes.page)}"` : ''}`;
 }

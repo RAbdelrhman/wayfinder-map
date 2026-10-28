@@ -102,7 +102,10 @@ export function fitPrototypeThumbs(root: ParentNode): void {
   const thumbs = [...root.querySelectorAll<HTMLElement>('.proto-thumb:not(.is-empty)')];
   if (thumbs.length === 0) return;
   const fit = (thumb: HTMLElement): void => {
-    thumb.style.setProperty('--thumb-scale', String(thumb.clientWidth / PREVIEW_WIDTH));
+    const phoneWidth = Number(thumb.dataset['phoneWidth']);
+    const phoneHeight = Number(thumb.dataset['phoneHeight']);
+    const scale = phoneWidth > 0 && phoneHeight > 0 ? Math.min(thumb.clientWidth / phoneWidth, thumb.clientHeight * 0.92 / phoneHeight) : thumb.clientWidth / PREVIEW_WIDTH;
+    thumb.style.setProperty('--thumb-scale', String(scale));
   };
   const observer = new ResizeObserver((entries) => {
     for (const entry of entries) fit(entry.target as HTMLElement);
