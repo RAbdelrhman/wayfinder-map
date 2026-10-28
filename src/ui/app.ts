@@ -44,7 +44,7 @@ import { bindPan } from './pan.js';
 import { nextTabIndex, tabAttrs, tabPanelAttrs } from './tabs.js';
 import { rememberControlFocus } from './controlFocus.js';
 import type { NavigationController, NavigationView } from './navigation.js';
-import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml } from './prototypeBoard.js';
+import { prototypeBoardErrorHtml, prototypeBoardHtml, prototypeBoardLoadingHtml, revealPrototypeSource, selectPrototypeHero, selectPrototypePage, togglePrototypeMore, togglePrototypeRound } from './prototypeBoard.js';
 import { mountCanvasViewer } from './canvasViewer.js';
 import { recordMapOpened } from './homeRecency.js';
 import {
@@ -1706,6 +1706,31 @@ els.nodes.addEventListener('focusout', () => setHovered(null));
 
 els.protoWrap.addEventListener('click', (event) => {
   const target = event.target as HTMLElement;
+  const round = target.closest<HTMLButtonElement>('[data-proto-round]');
+  if (round !== null) {
+    togglePrototypeRound(round);
+    return;
+  }
+  const page = target.closest<HTMLButtonElement>('[data-proto-page]');
+  if (page !== null) {
+    selectPrototypePage(page);
+    return;
+  }
+  const hero = target.closest<HTMLButtonElement>('[data-proto-hero]');
+  if (hero !== null) {
+    selectPrototypeHero(hero);
+    return;
+  }
+  const source = target.closest<HTMLButtonElement>('[data-proto-source]');
+  if (source !== null) {
+    revealPrototypeSource(source);
+    return;
+  }
+  const more = target.closest<HTMLButtonElement>('[data-proto-more]');
+  if (more !== null) {
+    togglePrototypeMore(more);
+    return;
+  }
   const retry = target.closest<HTMLButtonElement>('[data-prototype-retry]');
   if (retry !== null) {
     const map = currentMap();

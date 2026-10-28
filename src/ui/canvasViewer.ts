@@ -22,11 +22,16 @@ export interface CanvasRoute {
   /** The prototype's variants, for snapshots and canvases that never answer, and the one opened. */
   variants?: { id: string; name: string }[];
   variant?: string;
+  page?: string;
 }
 export interface CanvasPage {
   id: string;
   title: string;
   options: { id: string; name: string; file: string | null }[];
+}
+export function canvasOptionForAddress(pages: readonly CanvasPage[], pageId: string, optionId: string): { page: string; option: string } | null {
+  const page = pages.find((candidate) => candidate.id === pageId);
+  return page?.options.some((option) => option.id === optionId) ? { page: pageId, option: optionId } : null;
 }
 export function isCanvasClick(event: Pick<MouseEvent, 'button' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'>): boolean {
   return event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
@@ -49,6 +54,15 @@ export function canvasOptionForFile(pages: readonly CanvasPage[], file: string |
   // Older config parsers retain the variant's path but not its runtime query.
   const match = exact ?? candidates.find((candidate) => candidate.option.file?.split(/[?#]/)[0] === file.split(/[?#]/)[0]);
   return match ? { page: match.page, option: match.option.id } : null;
+}
+/** Resolve an explicit address first; only fall back to a file when it identifies one item. */
+export function canvasOptionForAddressOrFile(pages: readonly CanvasPage[], pageId: string, optionId: string, file: string | null): { page: string; option: string } | null {
+  const address = canvasOptionForAddress(pages, pageId, optionId);
+  if (address || !file) return address;
+  const candidates = pages.flatMap((page) => page.options.filter((option) => option.file !== null).map((option) => ({ page: page.id, option })));
+  const exact = candidates.filter((candidate) => candidate.option.file === file);
+  const matches = exact.length ? exact : candidates.filter((candidate) => candidate.option.file?.split(/[?#]/)[0] === file.split(/[?#]/)[0]);
+  return matches.length === 1 ? { page: matches[0]!.page, option: matches[0]!.option.id } : null;
 }
 export type CanvasMessage =
   | { wf: 1; type: 'ready'; source: 'dom' | 'engine' | 'page'; pages: CanvasPage[] }
@@ -167,6 +181,7 @@ export function canvasEntryRoute(data: DOMStringMap, url: string | undefined): R
     pick: Number(data['canvasPick']),
     variants,
     variant: data['canvasVariant'],
+    page: data['canvasPage'],
   };
 }
 
@@ -191,7 +206,7 @@ export function readCanvasRoute(value: unknown, origin: string): CanvasRoute | n
       return null;
     const ticket = value['ticket'],
       pick = value['pick'],
-      variant = value['variant'];
+      variant = value['variant'], page = value['page'];
     const positive = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n > 0;
     const variants = Array.isArray(value['variants'])
       ? value['variants']
@@ -208,6 +223,7 @@ export function readCanvasRoute(value: unknown, origin: string): CanvasRoute | n
       ...(positive(pick) ? { pick } : {}),
       ...(variants.length ? { variants } : {}),
       ...(typeof variant === 'string' && variant ? { variant } : {}),
+      ...(typeof page === 'string' && page ? { page } : {}),
     };
   } catch {
     return null;
@@ -371,6 +387,7 @@ export function mountCanvasViewer(
   let timer: ReturnType<typeof setTimeout> | undefined,
     settleTimer: ReturnType<typeof setTimeout> | undefined;
   let pendingFile: string | null = null;
+  let pendingAddress: { page: string; option: string } | null = null;
   let documentIds: string[] = [], documentIndex = -1;
   let stripScroll = 0,
     stripPage: string | null = null,
@@ -563,6 +580,7 @@ export function mountCanvasViewer(
   };
   const openFrame = (route: CanvasRoute): void => {
     pendingFile = route.file;
+    pendingAddress = route.page && route.variant ? { page: route.page, option: route.variant } : null;
     if (mountedUrl !== route.url) {
       mountFrame(route, origin);
       return;
@@ -584,6 +602,15 @@ export function mountCanvasViewer(
   };
   const chooseFile = (): void => {
     if (!pages.length) return;
+    if (pendingAddress) {
+      const address = pendingAddress;
+      pendingAddress = null;
+      const match = canvasOptionForAddressOrFile(pages, address.page, address.option, pendingFile);
+      pendingFile = null;
+      if (match) send(match.page, match.option);
+      else send(pages[0]!.id, null);
+      return;
+    }
     const match = canvasOptionForFile(pages, pendingFile);
     if (match) {
       send(match.page, match.option);

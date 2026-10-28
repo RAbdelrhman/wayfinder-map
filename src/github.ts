@@ -7,6 +7,7 @@ import { ticketStateOf } from './ticketState.js';
 export { ticketStateOf } from './ticketState.js';
 import { parseBlockedByLine, parseChildNumbers, parseMapBody } from './mapBody.js';
 import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SHOTS_DIR, PROTOTYPE_SNAPSHOT_FILE, canvasEntries, isHtml, isSelfContained, pickPreview, prototypeTicketNumber, prototypeVariantInfo, unlistedCanvasBoards, verdictComment } from './prototypes.js';
+import { canvasCatalog } from './canvasCatalog.js';
 import { idleCutoff, isIdleCandidate, settlementOf } from './settling.js';
 import { isMapShown, mapVisibility } from './visibility.js';
 import type { Viewer } from './visibility.js';
@@ -998,6 +999,15 @@ interface RawRef {
   object?: { sha?: string };
 }
 
+/** Leave decisions unmarked if the branch could not be confirmed at the revision read. */
+export function reconcilePrototypeRefs(prototypes: readonly Prototype[], refs: readonly RawRef[] | null): Prototype[] {
+  const current = refs === null ? null : new Map(refs.map((ref) => [ref.ref, ref.object?.sha]));
+  return prototypes.map((prototype) => {
+    if (prototype.sha && current?.get(`refs/heads/${prototype.branch}`) === prototype.sha) return prototype;
+    return { ...prototype, verdict: null, canvasPages: [] };
+  });
+}
+
 interface RawCompare {
   files?: Array<{ filename: string }>;
   commits?: Array<{ commit: { committer?: { date?: string } | null } }>;
@@ -1096,6 +1106,7 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[], r
         : await ghJson<RawCommit>(['api', `repos/${repo}/commits/${encodeURIComponent(branch)}`]).catch(() => null);
     const { updatedAt, files } = branchFacts(compare, tip);
     const preview = await previewOf(repo, revision, files, readFile);
+    const metadata = await variantsOf(repo, revision, ticketNumber, files, preview, shots, readFile);
     return {
       branch,
       ...(sha ? { sha } : {}),
@@ -1106,11 +1117,15 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[], r
       files,
       ...preview,
       verdict: verdictComment(comments.map((comment) => comment.body)),
-      variants: await variantsOf(repo, revision, ticketNumber, files, preview, shots, readFile),
+      variants: metadata.variants,
+      canvasPages: metadata.pages,
     };
   });
 
-  return sortPrototypes(prototypes);
+  // A verdict and a branch snapshot are fetched separately. If the branch moved while
+  // loading, do not present the old canvas metadata as the current decision.
+  const checkedRefs = await ghJson<RawRef[]>(['api', `repos/${repo}/git/matching-refs/heads/${PROTOTYPE_BRANCH_PREFIX}`]).catch(() => null);
+  return sortPrototypes(reconcilePrototypeRefs(prototypes, checkedRefs));
 }
 
 /** The variant screenshots a repository keeps on its default branch (#81), or none. */
@@ -1132,14 +1147,14 @@ async function variantsOf(
   preview: { openable: string[]; preview: string | null },
   shots: readonly string[],
   readFile: typeof fetchBranchFile,
-): Promise<PrototypeVariant[]> {
+): Promise<{ variants: PrototypeVariant[]; pages: ReturnType<typeof canvasCatalog> }> {
   const configFile = preview.preview !== null && /(?:^|\/)index\.html$/i.test(preview.preview)
     ? preview.preview.replace(/index\.html$/i, 'config.js') : null;
   const configSource = configFile === null ? null : await readFile(repo, branch, configFile).then((bytes) => bytes.toString('utf8'), () => null);
   const canvasDir = configFile === null ? '' : configFile.replace(/config\.js$/, '');
   const pages = [...new Set([...preview.openable, ...files.filter(isHtml)])]
     .filter((file) => canvasDir === '' || file.startsWith(canvasDir));
-  return prototypeVariantInfo(ticketNumber, shots, configSource, canvasDir, pages);
+  return { variants: prototypeVariantInfo(ticketNumber, shots, configSource, canvasDir, pages), pages: configSource === null ? [] : canvasCatalog(configSource) };
 }
 
 /** One file off the default branch, as raw bytes. */
