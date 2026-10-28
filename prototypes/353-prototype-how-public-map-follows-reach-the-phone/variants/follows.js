@@ -5,6 +5,10 @@
   ?o=C  Mirror the desktop's follows      ?s=maps|pcoff|unpaired|hidden|account
   ?o=AB Round 2: A, plus B's share from GitHub landing on A's Public maps
         ?s=maps|find|repo|followed|share|shared|shared-private|shared-following|shared-offline|offline|hidden|account
+  ?o=AB&v=card|row|screen  Round 3: one Follow / Unfollow per shared map (no v = round 2 as selected)
+        card: the checked card keeps the action; the map's row leaves the list below while the card shows
+        row: no action on the card; the map's own row is highlighted and scrolled to
+        screen: the share opens its own Shared map screen; Public maps stays A's list
   The Maps screen is #223's approved R-C2 list; only the rows and the footer named in each option change.
 */
 (() => {
@@ -13,6 +17,7 @@
   const isA = O === 'A' || O === 'AB';
   const SCREENS = { A: ['maps', 'find', 'repo', 'followed', 'offline', 'hidden', 'account'], AB: ['maps', 'find', 'repo', 'followed', 'share', 'shared', 'shared-private', 'shared-following', 'shared-offline', 'offline', 'hidden', 'account'], B: ['maps', 'add', 'preview', 'private', 'share', 'offline', 'hidden', 'account'], C: ['maps', 'pcoff', 'unpaired', 'hidden', 'account'] };
   const S0 = SCREENS[O].includes(params.get('s')) ? params.get('s') : 'maps';
+  const V = O === 'AB' && ['card', 'row', 'screen'].includes(params.get('v')) ? params.get('v') : '';
   const D = window.F;
   const esc = Kit.esc;
   const ic = Kit.icon;
@@ -34,6 +39,7 @@
     sharing: S0 === 'share',
     toast: S0 === 'followed' ? 'Following #198 Linux desktop build. It is on your maps now.' : '',
   };
+  if (V === 'screen' && S0.startsWith('shared')) ui.screen = 'sharedmap';
   if (S0 === 'followed') ui.follows.add('RAbdelrhman/wayfinder-map#198');
   if (S0 === 'hidden') {
     ui.follows.add('RAbdelrhman/wayfinder-map#198');
@@ -110,8 +116,9 @@
     return `<span class="f-act"><button class="f-follow${on ? '' : ' is-add'}" data-act="${on ? 'unfollow' : 'follow'}" data-k="${esc(key(m))}" ${off ? 'disabled aria-disabled="true"' : ''} aria-label="${on ? 'Unfollow' : 'Follow'} map #${m.number}: ${esc(m.title)}">${on ? 'Unfollow' : 'Follow'}</button></span>`;
   }
   function publicRow(m) {
-    return `<div class="m-row f-prow"><span class="m-row-main"><span class="m-row-title">${esc(m.title)}</span>
-      <span class="m-row-sub">#${m.number} · @${esc(m.author)} · ${m.counts.done}/${total(m.counts)} done</span><span style="display:block;margin-top:8px">${progress(m.counts)}</span></span>${followBtn(m)}</div>`;
+    const lit = V === 'row' && sharedOk() === m;
+    return `<div class="m-row f-prow${lit ? ' is-shared' : ''}"><span class="m-row-main"><span class="m-row-title">${esc(m.title)}</span>
+      <span class="m-row-sub">${lit ? '<b class="f-tag">Shared</b>' : ''}#${m.number} · @${esc(m.author)} · ${m.counts.done}/${total(m.counts)} done</span><span style="display:block;margin-top:8px">${progress(m.counts)}</span></span>${followBtn(m)}</div>`;
   }
   function hiddenRow(m) {
     return `<div class="m-row f-prow"><span class="f-hid">${ic('eyeoff')}</span><span class="m-row-main"><span class="m-row-title">${esc(m.title)}</span>
@@ -128,21 +135,50 @@
     const repos = q ? [q] : ['rabdelrhman/wayfinder-map', 'rabdelrhman/recipes-app', 'mona/octo-notes'];
     const groups = repos
       .map((r) => {
-        const list = D.others.filter((m) => m.repo.toLowerCase() === r && m.public);
+        const all = D.others.filter((m) => m.repo.toLowerCase() === r && m.public);
+        // Round 3 card: the shared map's only control is on its card, so its row leaves this list.
+        const list = V === 'card' ? all.filter((m) => m !== sharedOk()) : all;
+        const moved = list.length < all.length ? `<p class="f-none f-moved">#${sharedOk().number} is above, under Shared from GitHub.</p>` : '';
         const why = r.startsWith('rabdelrhman/') ? 'Has your maps' : q ? 'Searched' : 'You follow a map here';
         const name = D.others.find((m) => m.repo.toLowerCase() === r)?.repo ?? D.own.find((m) => m.repo.toLowerCase() === r)?.repo ?? r;
         return `<div class="m-section-title">${esc(short(name))}<span class="f-why">${why}</span></div>${
-          list.length ? `<div class="m-group">${list.map(publicRow).join('')}</div>` : `<p class="f-none">No public maps from other people.</p>`
-        }`;
+          list.length ? `<div class="m-group">${list.map(publicRow).join('')}</div>` : moved ? '' : `<p class="f-none">No public maps from other people.</p>`
+        }${moved}`;
       })
       .join('');
     return `${status()}${bar('Public maps', backBtn('Maps'))}${offlineBanner('Finding maps needs GitHub. Unfollow still works.')}${accountBanner()}<div class="m-scroll">
       <label class="m-search">${ic('search')}<input data-act="query" value="${esc(ui.query)}" aria-label="Look in a repository" placeholder="Look in a repository: owner/repo" ${ui.offline ? 'disabled' : ''}></label>
-      ${O === 'AB' && ui.paste ? `<div class="m-section-title">Shared from GitHub</div>${preview()}` : ''}
+      ${O === 'AB' && ui.paste && V !== 'screen' ? `<div class="m-section-title">Shared from GitHub</div>${V === 'row' && sharedOk() ? pointer() : preview()}` : ''}
       ${hidden.length ? `<div class="m-section-title">Followed, not public now</div><div class="m-group">${hidden.map(hiddenRow).join('')}</div>` : ''}
       ${groups}
       ${q ? '<p class="m-fine f-fine">Private maps are never listed.</p>' : ''}
       <p class="m-fine f-fine">Only maps their authors marked public. Follows are saved on this phone for @${esc(ui.login)}; your desktop keeps its own list.</p></div>${ui.toast ? `<div class="f-toast" role="status">${esc(ui.toast)}</div>` : ''}`;
+  }
+
+  /* ---------- Round 3: one control per shared map ---------- */
+  // The shared map when the check passes (public, someone else's, online); null for every message card.
+  function sharedOk() {
+    if (O !== 'AB' || !ui.paste || ui.offline) return null;
+    const m = lookup(ui.paste);
+    return m && !m.missing && m.author && m.public ? m : null;
+  }
+  // Row: the top of the screen says what was shared and where its row is; it has no button of its own.
+  function pointer() {
+    const m = sharedOk();
+    const on = ui.follows.has(key(m));
+    return `<div class="f-card" role="status">${ic('check')}<div><b>#${m.number} ${esc(m.title)} is public</b><span>${on ? "You follow it. It's" : "It's"} highlighted below in ${esc(short(m.repo))}${on ? '.' : '. Follow it there.'}</span></div></div>`;
+  }
+  // Screen: the share opens a screen of its own with B's checked card; A's Public maps is untouched.
+  function sharedScreen() {
+    return `${status()}${bar('Shared map', backBtn('Maps'))}${offlineBanner('Following needs GitHub. Unfollow still works.')}${accountBanner()}<div class="m-scroll">
+      <div class="m-section-title">Shared from GitHub</div>${preview()}
+      <p class="m-fine f-fine">Back goes to Maps. More public maps are on Maps › Find public maps. Follows are saved on this phone for @${esc(ui.login)}.</p></div>${ui.toast ? `<div class="f-toast" role="status">${esc(ui.toast)}</div>` : ''}`;
+  }
+  function revealShared() {
+    const row = app.querySelector('.is-shared');
+    const box = app.querySelector('.m-scroll');
+    if (!row || !box) return;
+    box.scrollTop += row.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight / 3;
   }
 
   /* ---------- B: Followed maps + paste ---------- */
@@ -187,15 +223,21 @@
       <div class="m-scrim"></div><section class="m-sheet f-share" role="dialog" aria-label="Share">
       <div class="m-grab" aria-hidden="true"></div><h2 class="m-sheet-title">Share from GitHub</h2>
       <div class="f-targets"><button data-toast="Would copy the link">${ic('link')}<span>Copy link</span></button><button class="is-us" data-act="from-share">${ic('plus')}<span>Wayfinder</span></button><button data-toast="Would open Mail">${ic('share')}<span>Mail</span></button></div>
-      <p class="m-fine">Wayfinder opens ${O === 'AB' ? 'Public maps' : 'Followed maps'} with the link already checked.</p></section>`;
+      <p class="m-fine">Wayfinder opens ${V === 'screen' ? 'the shared map' : O === 'AB' ? 'Public maps' : 'Followed maps'} with the link already checked.</p></section>`;
   }
 
   /* ---------- render + events ---------- */
   const app = document.getElementById('app');
+  let shown = '';
   function render() {
     const s = ui.sharing ? 'share' : ui.screen;
-    app.innerHTML = s === 'share' ? share() : s === 'find' ? find() : s === 'add' ? add() : maps();
-    document.title = `${O} · ${s}`;
+    // A tap that stays on the same screen keeps its scroll position.
+    const top = s === shown ? app.querySelector('.m-scroll')?.scrollTop ?? 0 : 0;
+    app.innerHTML = s === 'share' ? share() : s === 'sharedmap' ? sharedScreen() : s === 'find' ? find() : s === 'add' ? add() : maps();
+    document.title = `${O}${V ? `-${V}` : ''} · ${s}`;
+    const box = app.querySelector('.m-scroll');
+    if (box) box.scrollTop = top;
+    shown = s;
   }
   function flash(text) {
     ui.toast = '';
@@ -232,10 +274,11 @@
     }
     if (act === 'from-share') {
       ui.sharing = false;
-      ui.screen = O === 'AB' ? 'find' : 'add';
+      ui.screen = V === 'screen' ? 'sharedmap' : O === 'AB' ? 'find' : 'add';
       ui.stack = ['maps'];
       ui.paste = 'https://github.com/RAbdelrhman/wayfinder-map/issues/198';
-      return render();
+      render();
+      return revealShared();
     }
   });
   app.addEventListener('change', (e) => {
@@ -245,4 +288,5 @@
     render();
   });
   render();
+  revealShared();
 })();

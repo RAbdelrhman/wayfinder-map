@@ -5,6 +5,8 @@
   Keeps #143's rules: maps are private unless the author adds `Visibility: public`, only public maps can be
   followed, follows are per GitHub login, and Wayfinder never writes to GitHub.
   Ramon selected round 2's A + B-share page as shown at 6c3d07f (#353 comment 6457376978); round 1's options stay for lineage.
+  Round 3 asks one narrower question: round 2 shows a shared map's Follow / Unfollow twice on Public maps (on the checked
+  card and on its repository row). It offers three minimal ways to show it once. Nothing in round 3 is chosen.
   Check with: node prototypes/353-prototype-how-public-map-follows-reach-the-phone/tools/check.mjs
 */
 
@@ -208,6 +210,132 @@ window.CANVAS = {
               name: 'Design review',
               text: 'Same fixture and styles as round 1 (variants/follows.js with ?o=AB); round 1 pages are unchanged apart from recording your notes. Checked in Chrome at 390 × 844 in light and dark: every round 2 frame renders; Wayfinder in the share sheet opens Public maps with the checked card; Follow and Unfollow on the card and the rows stay in step; Back returns to Maps; offline disables Follow and keeps Unfollow. Not checked: screen readers, real devices, safe areas, large text, landscape, the OS share sheet (drawn, not native).',
             },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'round-3',
+      title: 'One Follow per map',
+      round: 3,
+      question: 'Round 2 (your pick) shows a shared map\'s Follow / Unfollow twice on Public maps: on the "Shared from GitHub" card and on the map\'s row in its repository. Which one place should hold it? The rest of A + B-share stays as you picked it.',
+      sections: [
+        {
+          title: 'The same moment in each: #12 shared from GitHub, already followed',
+          note: 'Round 2\'s R2-shared-following, then three alternatives. Each changes only where the shared map\'s button sits. Maps, Find public maps, Look in another repository, the share sheet and the other A + B-share states stay as they are.',
+          items: [
+            { id: 'R3-now', name: 'Round 2 as picked: two Unfollow buttons', src: 'variants/phone.html?o=AB&s=shared-following', ...PHONE, note: { idea: 'Unchanged, for reference: the card shows Unfollow for #12, and #12\'s row in octo-notes, further down, has Unfollow too. Both buttons do the same thing.', basedOn: 'R2-shared-following' } },
+            {
+              id: 'R3-card',
+              name: '1 · The card holds it',
+              src: 'variants/phone.html?o=AB&v=card&s=shared-following', ...PHONE,
+              note: {
+                idea: 'The checked card keeps Follow map / Unfollow. While the card is showing, the map\'s row leaves its repository list, and one line says the map is above.',
+                basedOn: ['R2-shared', 'R2-shared-following'],
+                pros: ['The button is where the share lands', 'Closest to round 2: only the duplicate row goes'],
+                cons: ['The repository list is one map short while the card shows', 'Two kinds of Follow on one screen: a large button on the card, row buttons below'],
+              },
+            },
+            {
+              id: 'R3-row',
+              name: '2 · The row holds it',
+              src: 'variants/phone.html?o=AB&v=row&s=shared-following', ...PHONE,
+              note: {
+                idea: 'The card reports the check (the map is public, and whether you follow it) but has no button. The map\'s own row is marked Shared, highlighted and scrolled into view, and its Follow / Unfollow is the only one.',
+                basedOn: ['R2-shared', 'A-find'],
+                pros: ['Every map on Public maps has the same kind of button, as on the desktop', 'The list stays complete'],
+                cons: ['The button can be lower on the screen, so the screen scrolls to it', 'A map from a repository that isn\'t listed adds that repository as a group'],
+              },
+            },
+            {
+              id: 'R3-screen',
+              name: '3 · Its own screen',
+              src: 'variants/phone.html?o=AB&v=screen&s=shared-following', ...PHONE,
+              note: {
+                idea: 'Choosing Wayfinder in the share sheet opens a small Shared map screen with B\'s checked card and its one button. Public maps is A\'s list with no shared card. Back goes to Maps.',
+                basedOn: ['B-preview', 'R2-shared'],
+                pros: ['No screen shows a map twice', 'Public maps stays exactly as A drew it'],
+                cons: ['One more screen to build', 'The other maps in the shared map\'s repository are a step away (Maps › Find public maps)'],
+              },
+            },
+            {
+              id: 'R3-open',
+              kind: 'note',
+              name: 'Why this round',
+              text: 'Verifying round 2 found the shared map\'s Follow / Unfollow on both the card and its row on one screen, and #353 asks to avoid duplicate controls. Round 2 is still your pick, and nothing here is chosen or built. In Canvas notes in Wayfinder, choose 1, 2 or 3, or keep round 2 as it is. Each option\'s page shows the share, follow, already-followed, not-public and offline states.',
+            },
+            {
+              id: 'R3-review',
+              kind: 'note',
+              name: 'Design review',
+              text: 'Same fixture as rounds 1 and 2 (variants/follows.js, ?o=AB&v=card|row|screen). Without v it draws round 2 unchanged. Checked in Chrome at 390 × 844, light and dark: every round 3 screen has one Follow / Unfollow per map; Wayfinder in the share sheet lands where each option says; Follow and Unfollow update the card, the row and Maps; Back returns to Maps; offline disables Follow and keeps Unfollow. The row highlight adds an accent edge and a "Shared" tag, so it does not rely on colour alone. Not checked: screen readers, real devices, safe areas, large text, landscape, the OS share sheet (drawn, not native).',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'round-3-card',
+      title: '1 · The card holds it',
+      round: 3,
+      sections: [
+        {
+          title: 'Share and follow',
+          items: [
+            { id: 'R3-card-share', name: 'Share sheet over GitHub', src: 'variants/phone.html?o=AB&v=card&s=share', ...PHONE, note: { idea: 'R2-share unchanged: Share › Wayfinder. Tap Wayfinder.', basedOn: 'R2-share' } },
+            { id: 'R3-card-shared', name: 'Shared map, checked', src: 'variants/phone.html?o=AB&v=card&s=shared', ...PHONE, note: { idea: 'Public maps opens with the checked card for #198 and Follow map. #198 is not in the wayfinder-map list below, and a line says it is above. Follow, then Back to see it on Maps.', basedOn: 'R2-shared' } },
+            { id: 'R3-card-shared-following', name: 'Shared map you already follow', src: 'variants/phone.html?o=AB&v=card&s=shared-following', ...PHONE, note: { idea: 'The card shows Unfollow for #12. octo-notes lists only #15, with a line saying #12 is above.', basedOn: 'R2-shared-following' } },
+          ],
+        },
+        {
+          title: 'States',
+          items: [
+            { id: 'R3-card-shared-private', name: 'Shared map isn\'t public, and other checks', src: 'variants/phone.html?o=AB&v=card&s=shared-private', ...PHONE, note: { idea: 'As in round 2: a message card with no button, so nothing repeats. The rows below are A\'s.', basedOn: 'R2-shared-private' } },
+            { id: 'R3-card-shared-offline', name: 'Shared while offline', src: 'variants/phone.html?o=AB&v=card&s=shared-offline', ...PHONE, note: { idea: 'As in round 2: the card waits for GitHub and has no button. The rows keep their own Follow (disabled) and Unfollow.', basedOn: 'R2-shared-offline' } },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'round-3-row',
+      title: '2 · The row holds it',
+      round: 3,
+      sections: [
+        {
+          title: 'Share and follow',
+          items: [
+            { id: 'R3-row-share', name: 'Share sheet over GitHub', src: 'variants/phone.html?o=AB&v=row&s=share', ...PHONE, note: { idea: 'R2-share unchanged.', basedOn: 'R2-share' } },
+            { id: 'R3-row-shared', name: 'Shared map, checked', src: 'variants/phone.html?o=AB&v=row&s=shared', ...PHONE, note: { idea: 'The card says #198 is public and points to its row. The #198 row in wayfinder-map is marked Shared and highlighted, and its Follow is the only one.', basedOn: 'R2-shared' } },
+            { id: 'R3-row-shared-following', name: 'Shared map you already follow', src: 'variants/phone.html?o=AB&v=row&s=shared-following', ...PHONE, note: { idea: 'The card says you follow #12. The screen scrolls to octo-notes, where #12\'s row is highlighted with its one Unfollow.', basedOn: 'R2-shared-following' } },
+          ],
+        },
+        {
+          title: 'States',
+          items: [
+            { id: 'R3-row-shared-private', name: 'Shared map isn\'t public, and other checks', src: 'variants/phone.html?o=AB&v=row&s=shared-private', ...PHONE, note: { idea: 'As in round 2: a message card with no button. Nothing is highlighted.', basedOn: 'R2-shared-private' } },
+            { id: 'R3-row-shared-offline', name: 'Shared while offline', src: 'variants/phone.html?o=AB&v=row&s=shared-offline', ...PHONE, note: { idea: 'As in round 2: the card waits for GitHub. Nothing is highlighted until the check passes.', basedOn: 'R2-shared-offline' } },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'round-3-screen',
+      title: '3 · Its own screen',
+      round: 3,
+      sections: [
+        {
+          title: 'Share and follow',
+          items: [
+            { id: 'R3-screen-share', name: 'Share sheet over GitHub', src: 'variants/phone.html?o=AB&v=screen&s=share', ...PHONE, note: { idea: 'R2-share, except the line under it says Wayfinder opens the shared map.', basedOn: 'R2-share' } },
+            { id: 'R3-screen-shared', name: 'Shared map screen', src: 'variants/phone.html?o=AB&v=screen&s=shared', ...PHONE, note: { idea: 'A Shared map screen with the checked card for #198 and Follow map. Back goes to Maps, where #198 shows after Follow.', basedOn: ['R2-shared', 'B-preview'] } },
+            { id: 'R3-screen-shared-following', name: 'Shared map you already follow', src: 'variants/phone.html?o=AB&v=screen&s=shared-following', ...PHONE, note: { idea: 'The same screen with Unfollow for #12. There is no list on it, so nothing repeats.', basedOn: 'R2-shared-following' } },
+          ],
+        },
+        {
+          title: 'States',
+          items: [
+            { id: 'R3-screen-shared-private', name: 'Shared map isn\'t public, and other checks', src: 'variants/phone.html?o=AB&v=screen&s=shared-private', ...PHONE, note: { idea: 'Round 2\'s message card, on the Shared map screen.', basedOn: 'R2-shared-private' } },
+            { id: 'R3-screen-shared-offline', name: 'Shared while offline', src: 'variants/phone.html?o=AB&v=screen&s=shared-offline', ...PHONE, note: { idea: 'The Shared map screen with the offline card. Unfollow on Public maps still works offline.', basedOn: 'R2-shared-offline' } },
           ],
         },
       ],

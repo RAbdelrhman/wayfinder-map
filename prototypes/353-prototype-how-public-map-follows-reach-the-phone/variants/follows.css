@@ -139,3 +139,8 @@
   color: var(--text-primary);
 }
 .f-targets .is-us .i { background: var(--accent-fill); color: var(--on-accent); }
+
+/* Round 3 row: the shared map's own row is the one control, marked and scrolled to. */
+.f-prow.is-shared { background: var(--wash); box-shadow: inset 3px 0 0 var(--accent-fill); }
+.f-tag { margin-right: 6px; padding: 1px 6px; border-radius: 6px; background: var(--accent-fill); color: var(--on-accent); font-size: 11px; font-weight: 600; }
+.f-moved { margin-top: 4px; font-size: 13px; }
