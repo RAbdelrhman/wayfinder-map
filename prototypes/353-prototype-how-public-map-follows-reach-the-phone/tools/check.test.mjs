@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { checkCanvas, checkPageHtml, checkSharedCanvasCopies, loadConfig } from './check.mjs';
 import { THUMBNAIL_SOURCES, VIEWPORT } from './capture-thumbnails.mjs';
 
-const CANVAS_DIR = resolve(fileURLToPath(new URL('..', import.meta.url)));
+// These engine and thumbnail fixtures belong to the shared canvas, not this board.
+const CANVAS_DIR = resolve(fileURLToPath(new URL('../../canvas/', import.meta.url)));
 
 const files = { 'variants/a.html': '<html><script src="../kit/kit.js"></script></html>', 'assets/x.png': '' };
 const disk = { exists: (p) => p in files, read: (p) => files[p] };

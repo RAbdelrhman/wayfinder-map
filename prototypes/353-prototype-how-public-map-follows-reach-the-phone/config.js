@@ -4,7 +4,8 @@
   Built on #223's approved R-C2 Maps screen (styles copied from the #223/#316 boards into variants/mobile.css).
   Keeps #143's rules: maps are private unless the author adds `Visibility: public`, only public maps can be
   followed, follows are per GitHub login, and Wayfinder never writes to GitHub.
-  No option is chosen here. Check with: node prototypes/353-prototype-how-public-map-follows-reach-the-phone/tools/check.mjs
+  Ramon selected round 2's A + B-share page as shown at 6c3d07f (#353 comment 6457376978); round 1's options stay for lineage.
+  Check with: node prototypes/353-prototype-how-public-map-follows-reach-the-phone/tools/check.mjs
 */
 
 // Every frame is the whole clickable phone at one step; src stays a literal so Wayfinder can read each option's page.
@@ -42,7 +43,7 @@ window.CANVAS = {
                 pros: ['Same idea and buttons as the desktop\'s Public maps list (#148)', 'Works with the PC off; no pairing, no new service, nothing written to GitHub', 'You can find maps you didn\'t know about in your own repositories'],
                 cons: ['The phone\'s follows and the desktop\'s are separate lists', 'Finding a map in a repo you have never touched needs you to type owner/repo', 'Listing public maps costs a GitHub search per repository'],
                 disposition: 'combine',
-                feedback: 'Canvas notes on 8c01667, whole A page: "I like this overall". Combined with B-share in round 2; not a final pick.',
+                feedback: 'Canvas notes on 8c01667, whole A page: "I like this overall". Combined with B-share in round 2, which Ramon selected.',
               },
             },
             {
@@ -116,7 +117,7 @@ window.CANVAS = {
             { id: 'B-maps', name: 'Maps, with Add a public map', src: 'variants/phone.html?o=B&s=maps', ...PHONE, note: { idea: 'The approved Maps list with a quiet button and one line at the end.' } },
             { id: 'B-add', name: 'Followed maps', src: 'variants/phone.html?o=B&s=add', ...PHONE, note: { idea: 'A link field with Paste on top, the maps you follow below, each with Unfollow.' } },
             { id: 'B-preview', name: 'Pasted link, checked', src: 'variants/phone.html?o=B&s=preview', ...PHONE, note: { idea: 'Wayfinder reads the issue from GitHub and shows the map, its author and progress, and that it is public, before Follow.' } },
-            { id: 'B-share', name: 'Optional: share from GitHub', src: 'variants/phone.html?o=B&s=share', ...PHONE, note: { idea: 'Wayfinder as a share target from GitHub\'s app or the browser, opening the checked preview. Drawn, not the real OS sheet. Can be left out.', disposition: 'combine', feedback: 'Canvas notes on 8c01667: "I like this share option". Combined with A in round 2; not a final pick.' } },
+            { id: 'B-share', name: 'Optional: share from GitHub', src: 'variants/phone.html?o=B&s=share', ...PHONE, note: { idea: 'Wayfinder as a share target from GitHub\'s app or the browser, opening the checked preview. Drawn, not the real OS sheet. Can be left out.', disposition: 'combine', feedback: 'Canvas notes on 8c01667: "I like this share option". Combined with A in round 2, which Ramon selected.' } },
           ],
         },
         {
@@ -162,7 +163,17 @@ window.CANVAS = {
           title: 'Browse and follow: A, unchanged',
           note: 'The same screens as A · Browse on the phone. B\'s paste field and Followed maps screen are not added.',
           items: [
-            { id: 'R2-maps', name: 'Maps, with Find public maps', src: 'variants/phone.html?o=AB&s=maps', ...PHONE, note: { idea: 'A-maps unchanged: #223\'s R-C2 list with Find public maps at the end.', basedOn: 'A-maps' } },
+            {
+              id: 'R2-maps',
+              name: 'Maps, with Find public maps',
+              src: 'variants/phone.html?o=AB&s=maps', ...PHONE,
+              note: {
+                idea: 'A-maps unchanged: #223\'s R-C2 list with Find public maps at the end.',
+                basedOn: 'A-maps',
+                disposition: 'keep',
+                feedback: 'Ramon selected this whole A + B-share page as shown at 6c3d07f: "looks good that was my choice" (#353 comment 6457376978), with the Canvas note "Looks good" on the page.',
+              },
+            },
             { id: 'R2-find', name: 'Public maps', src: 'variants/phone.html?o=AB&s=find', ...PHONE, note: { idea: 'A-find unchanged: other people\'s public maps by repository, each with Follow or Unfollow.', basedOn: 'A-find' } },
             { id: 'R2-repo', name: 'Look in another repository', src: 'variants/phone.html?o=AB&s=repo', ...PHONE, note: { idea: 'A-repo unchanged.', basedOn: 'A-repo' } },
             { id: 'R2-followed', name: 'Followed, back on Maps', src: 'variants/phone.html?o=AB&s=followed', ...PHONE, note: { idea: 'A-followed unchanged: the desktop\'s toast copy, and the map in Latest with its author.', basedOn: 'A-followed' } },
@@ -189,7 +200,7 @@ window.CANVAS = {
               id: 'R2-open',
               kind: 'note',
               name: 'What this round assumes',
-              text: 'Taken from your notes: all of A, and B-share. Left out because your notes didn\'t mention them: B\'s paste field, its Followed maps screen and its Add a public map button. Assumed here and open to change: a shared link lands on Public maps with the check on top, and the share entry stays optional native work that A works without. Nothing on this page is recorded as a pick.',
+              text: 'Taken from your notes: all of A, and B-share. Left out because your notes didn\'t mention them: B\'s paste field, its Followed maps screen and its Add a public map button. Assumed here and open to change: a shared link lands on Public maps with the check on top, and the share entry stays optional native work that A works without. Ramon selected this page as shown at 6c3d07f; the pick is recorded on R2-maps, and round 1\'s pages stay for comparison.',
             },
             {
               id: 'R2-review',
