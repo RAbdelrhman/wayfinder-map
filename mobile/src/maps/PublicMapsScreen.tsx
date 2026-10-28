@@ -312,6 +312,8 @@ export function PublicMapsScreen() {
         .filter(
           (ref) =>
             following.has(mapKey(ref)) &&
+            !known.has(mapKey(ref)) &&
+            !savedKeys.has(mapKey(ref)) &&
             (!sharedMap || mapKey(sharedMap) !== mapKey(ref)),
         )
         .map((ref) => [mapKey(ref), ref]),
