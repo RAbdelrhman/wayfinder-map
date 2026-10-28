@@ -71,7 +71,7 @@ window.CANVAS = {
               id: 'states',
               kind: 'note',
               name: 'States on each option\'s page',
-              text: 'In order: Maps with the notice; can\'t read, not a map now and confirmed private side by side; offline with no saved details; a link to an unreadable follow shared from GitHub (R3 option 1\'s card holds the one Unfollow, and the list it left says "#21 is above, under Shared from GitHub." when other rows remain); after Unfollow; recovery when GitHub answers again; another GitHub account. Wording never says private unless GitHub returned the map without Visibility: public. Nothing is chosen; options can be kept, changed or combined.',
+              text: 'In order: Maps with the notice; can\'t read, not a map now and confirmed private side by side; offline with no saved details; a link to an unreadable follow shared from GitHub (R3 option 1\'s card holds the one Unfollow, and the list it left says "#21 is above, under Shared from GitHub." when other rows remain); after Unfollow; recovery when GitHub answers again; another GitHub account. Wording never says private unless GitHub returned the map without Visibility: public. Ramon confirmed Keep A; B and C have no disposition.',
             },
             {
               id: 'review',
