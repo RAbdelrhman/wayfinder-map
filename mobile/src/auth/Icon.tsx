@@ -11,6 +11,8 @@ export type IconName =
   | 'external'
   | 'signout'
   | 'search'
+  | 'plus'
+  | 'eyeoff'
   | 'filter'
   | 'down'
   | 'chevron'
@@ -50,6 +52,12 @@ export function Icon({
       )}
       {name === 'back' && <Path d="m15 18-6-6 6-6" />}
       {name === 'check' && <Path d="M20 6 9 17l-5-5" />}
+      {name === 'plus' && <Path d="M12 5v14M5 12h14" />}
+      {name === 'eyeoff' && (
+        <>
+          <Path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 4.2A11 11 0 0 1 12 4c5 0 8.7 3.1 10 8a12.8 12.8 0 0 1-3 4.2M6.3 6.3A13 13 0 0 0 2 12c1.3 4.9 5 8 10 8 1.4 0 2.8-.3 4-.8" />
+        </>
+      )}
       {name === 'search' && (
         <>
           <Circle cx={10.5} cy={10.5} r={6.5} />

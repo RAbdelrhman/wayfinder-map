@@ -36,11 +36,13 @@ export function isTicket(x: unknown): x is Ticket {
 }
 export function isMapList(
   x: unknown,
-): x is { maps: MapSummary[]; warnings: string[] } {
+): x is { maps: MapSummary[]; warnings: string[]; hidden?: MapSummary[] } {
   return (
     record(x) &&
     Array.isArray(x.maps) &&
     x.maps.every(isSummary) &&
+    (x.hidden === undefined ||
+      (Array.isArray(x.hidden) && x.hidden.every(isSummary))) &&
     Array.isArray(x.warnings) &&
     x.warnings.every((s: unknown) => typeof s === 'string')
   );

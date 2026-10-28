@@ -12,6 +12,7 @@ import {
 import type { MapSections, Ticket } from '../shared';
 
 export type MapRef = { repo: string; number: number };
+export type MapViewer = { login: string; follows: readonly MapRef[] };
 export type MapSummary = MapRef & {
   title: string;
   body: string;
@@ -66,6 +67,24 @@ export class GithubError extends Error {
 }
 export function mapKey(ref: MapRef): string {
   return `${ref.repo.toLowerCase()}#${ref.number}`;
+}
+export function mayViewMap(
+  map: Pick<MapSummary, 'repo' | 'number' | 'author' | 'body'>,
+  viewer: MapViewer,
+): boolean {
+  return isMapShown(
+    {
+      number: map.number,
+      author: map.author,
+      visibility: mapVisibility(map.body),
+    },
+    {
+      login: viewer.login,
+      follows: viewer.follows
+        .filter((ref) => ref.repo.toLowerCase() === map.repo.toLowerCase())
+        .map((ref) => ref.number),
+    },
+  );
 }
 const object = (value: unknown): Record<string, unknown> => {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
@@ -163,6 +182,7 @@ export function validRef(value: unknown): value is MapRef {
   return (
     typeof ref.repo === 'string' &&
     /^[\w.-]+\/[\w.-]+$/.test(ref.repo) &&
+    ref.repo.split('/').every((part) => part !== '.' && part !== '..') &&
     Number.isSafeInteger(ref.number) &&
     Number(ref.number) > 0
   );
@@ -246,11 +266,64 @@ export class MobileGithub {
       if (value.length < 100) return all;
     }
   }
+  /** Discover only maps their authors have explicitly made public. */
+  async publicMaps(
+    repo: string,
+    login: string,
+    signal?: AbortSignal,
+  ): Promise<MapSummary[]> {
+    if (!validRef({ repo, number: 1 }))
+      throw new Error('Enter a repository as owner/repo.');
+    const values = await this.list(
+      `/repos/${repo}/issues?labels=wayfinder%3Amap&state=all`,
+      signal,
+    );
+    return values
+      .map(issue)
+      .filter(
+        (item) =>
+          !item.pull_request &&
+          item.labels.includes('wayfinder:map') &&
+          !!item.user?.login &&
+          item.user.login.toLowerCase() !== login.toLowerCase() &&
+          mapVisibility(item.body) === 'public',
+      )
+      .map((item) => summary(item, repo));
+  }
+
+  async sharedMap(
+    ref: MapRef,
+    signal?: AbortSignal,
+  ): Promise<MapSummary | null> {
+    if (!validRef(ref)) return null;
+    const raw = issue(
+      await this.get(`/repos/${ref.repo}/issues/${ref.number}`, signal),
+    );
+    if (raw.pull_request || !raw.labels.includes('wayfinder:map')) return null;
+    return summary(raw, ref.repo);
+  }
+  async assertMapAccess(
+    ref: MapRef,
+    viewer: MapViewer,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const map = await this.sharedMap(ref, signal);
+    if (!map || !mayViewMap(map, viewer))
+      throw new GithubError(
+        404,
+        'This issue or repository is no longer available to your GitHub account.',
+      );
+  }
   async maps(
     login: string,
     followed: readonly MapRef[] = [],
     signal?: AbortSignal,
-  ): Promise<{ maps: MapSummary[]; warnings: string[] }> {
+  ): Promise<{
+    maps: MapSummary[];
+    warnings: string[];
+    unavailable: MapRef[];
+    hidden: MapSummary[];
+  }> {
     const found = new Map<string, MapSummary>();
     for (let page = 1; ; page++) {
       const raw = object(
@@ -289,6 +362,8 @@ export class MobileGithub {
         break;
     }
     const warnings: string[] = [];
+    const unavailable: MapRef[] = [];
+    const hidden: MapSummary[] = [];
     await pool(
       [
         ...new Map(
@@ -314,9 +389,17 @@ export class MobileGithub {
             )
           )
             found.set(mapKey(ref), summary(raw, ref.repo));
+          else if (
+            raw.labels.includes('wayfinder:map') &&
+            !raw.pull_request &&
+            mapVisibility(raw.body) !== 'public' &&
+            raw.user?.login?.toLowerCase() !== login.toLowerCase()
+          )
+            hidden.push(summary(raw, ref.repo));
         } catch (error) {
           if (!(error instanceof GithubError) || error.status !== 404)
             throw error;
+          unavailable.push(ref);
           warnings.push(
             `Followed map ${ref.repo}#${ref.number} is unavailable.`,
           );
@@ -328,6 +411,8 @@ export class MobileGithub {
         (a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.number - a.number,
       ),
       warnings,
+      unavailable,
+      hidden,
     };
   }
   private async blockers(
@@ -371,12 +456,21 @@ export class MobileGithub {
       }
     });
   }
-  async map(ref: MapRef, signal?: AbortSignal): Promise<MapDetail> {
+  async map(
+    ref: MapRef,
+    signal?: AbortSignal,
+    viewer?: MapViewer,
+  ): Promise<MapDetail> {
     const raw = issue(
       await this.get(`/repos/${ref.repo}/issues/${ref.number}`, signal),
     );
     if (!raw.labels.includes('wayfinder:map'))
       throw new Error('This issue is not a Wayfinder map.');
+    if (viewer && !mayViewMap(summary(raw, ref.repo), viewer))
+      throw new GithubError(
+        404,
+        'This issue or repository is no longer available to your GitHub account.',
+      );
     const warnings: string[] = [];
     const bodyIssues = async (numbers: number[]): Promise<Issue[]> =>
       (

@@ -1,8 +1,11 @@
 import { useCallback, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Icon } from '../auth/Icon';
-import { useBrowse, useResource } from './BrowseProvider';
+import { followedMaps, useBrowse, useResource } from './BrowseProvider';
+import { GithubError, mayViewMap } from './github';
+import { readCache, removeMapContents } from './cache';
 import {
   Card,
   Header,
@@ -19,7 +22,7 @@ import {
 } from './components';
 import { routeRef } from './MapScreen';
 import { Markdown } from './Markdown';
-import { isTicketDetail } from './validate';
+import { isMapDetail, isTicketDetail } from './validate';
 
 export function TicketScreen() {
   const params = useLocalSearchParams<{
@@ -28,18 +31,62 @@ export function TicketScreen() {
     mapNumber?: string;
   }>();
   const ref = routeRef(params);
-  const { api } = useBrowse();
+  const { api, session } = useBrowse();
+  const mapNumber = params.mapNumber ? Number(params.mapNumber) : null;
+  const parentKey =
+    mapNumber && Number.isSafeInteger(mapNumber) && mapNumber > 0
+      ? `${ref.repo.toLowerCase()}#${mapNumber}`
+      : null;
   const t = useTheme();
   const [tab, setTab] = useState<'overview' | 'links' | 'activity'>('overview');
   const load = useCallback(
-    (signal: AbortSignal) =>
-      api.ticket({ repo: ref.repo, number: ref.number }, signal),
-    [api, ref.repo, ref.number],
+    async (signal: AbortSignal) => {
+      if (parentKey && mapNumber) {
+        try {
+          await api.assertMapAccess(
+            { repo: ref.repo, number: mapNumber },
+            {
+              login: session.login,
+              follows: await followedMaps(session.login),
+            },
+            signal,
+          );
+        } catch (error) {
+          if (error instanceof GithubError && [401, 404].includes(error.status))
+            await removeMapContents(AsyncStorage, session.login, {
+              repo: ref.repo,
+              number: mapNumber,
+            });
+          throw error;
+        }
+      }
+      return api.ticket({ repo: ref.repo, number: ref.number }, signal);
+    },
+    [api, ref.repo, ref.number, parentKey, mapNumber, session.login],
   );
+  const canUseCached = useCallback(async () => {
+    if (!parentKey) return true;
+    const parent = await readCache(
+      AsyncStorage,
+      session.login,
+      `map:${parentKey}`,
+      isMapDetail,
+    );
+    return (
+      !!parent &&
+      mayViewMap(parent.data, {
+        login: session.login,
+        follows: await followedMaps(session.login),
+      })
+    );
+  }, [parentKey, session.login]);
   const resource = useResource(
-    `ticket:${ref.repo.toLowerCase()}#${ref.number}`,
+    parentKey
+      ? `ticket-map:${parentKey}:${ref.number}`
+      : `ticket:${ref.repo.toLowerCase()}#${ref.number}`,
     load,
     isTicketDetail,
+    canUseCached,
   );
   const detail = resource.data;
   const ticket = detail?.ticket;

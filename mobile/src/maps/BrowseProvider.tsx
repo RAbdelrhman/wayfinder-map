@@ -10,11 +10,24 @@ import {
 import type { ReactNode } from 'react';
 
 import type { Session } from '../auth/deviceFlow';
-import { MobileGithub } from './github';
-import { parseFollows, readCache, writeCache } from './cache';
+import { GithubError, MobileGithub } from './github';
+import {
+  readFollows,
+  readCache,
+  removeFollowSnapshots,
+  removeMapContents,
+  writeCache,
+  updateFollow,
+} from './cache';
+import type { MapRef } from './github';
 import { resourceFailure } from './resourceFailure';
 
-type Browse = { api: MobileGithub; session: Session };
+type Browse = {
+  api: MobileGithub;
+  session: Session;
+  followRevision: number;
+  setFollow: (ref: MapRef, follow: boolean) => Promise<void>;
+};
 const Context = createContext<Browse | null>(null);
 export function BrowseProvider({
   session,
@@ -23,9 +36,28 @@ export function BrowseProvider({
   session: Session;
   children: ReactNode;
 }) {
+  const [followRevision, setFollowRevision] = useState(0);
+  const api = useMemo(() => new MobileGithub(session.token), [session.token]);
+  const setFollow = useCallback(
+    async (ref: MapRef, follow: boolean) => {
+      await updateFollow(
+        AsyncStorage,
+        session.login,
+        ref,
+        follow,
+        process.env.EXPO_PUBLIC_FOLLOWED_MAPS ?? null,
+      );
+      try {
+        if (!follow) await removeMapContents(AsyncStorage, session.login, ref);
+      } finally {
+        setFollowRevision((value) => value + 1);
+      }
+    },
+    [session.login],
+  );
   const value = useMemo(
-    () => ({ session, api: new MobileGithub(session.token) }),
-    [session],
+    () => ({ session, api, followRevision, setFollow }),
+    [session, api, followRevision, setFollow],
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
@@ -35,19 +67,49 @@ export function useBrowse(): Browse {
   return context;
 }
 export async function followedMaps(login: string) {
-  const local = await AsyncStorage.getItem('wayfinder.follows.v1').catch(
-    () => null,
+  return readFollows(
+    AsyncStorage,
+    login,
+    process.env.EXPO_PUBLIC_FOLLOWED_MAPS ?? null,
   );
-  return [
-    ...parseFollows(process.env.EXPO_PUBLIC_FOLLOWED_MAPS ?? null, login),
-    ...parseFollows(local, login),
-  ];
+}
+/** Evict saved public-map summaries when GitHub confirms access was lost. */
+export async function loadMaps(
+  api: MobileGithub,
+  login: string,
+  signal: AbortSignal,
+) {
+  let follows: MapRef[];
+  let followError: string | null = null;
+  try {
+    follows = await followedMaps(login);
+  } catch (error) {
+    follows = [];
+    followError =
+      error instanceof Error
+        ? error.message
+        : 'Couldn’t load this from GitHub. Try again.';
+  }
+  const evict = (refs: MapRef[]) =>
+    removeFollowSnapshots(AsyncStorage, login, refs);
+  try {
+    const result = await api.maps(login, follows, signal);
+    if (followError) result.warnings.push(followError);
+    await evict(result.unavailable);
+    return result;
+  } catch (error) {
+    if (error instanceof GithubError && error.status === 401)
+      await evict(follows);
+    throw error;
+  }
 }
 export type Resource<T> = {
   data: T | null;
   loading: boolean;
   refreshing: boolean;
   error: string | null;
+  accessDenied: boolean;
+  offline: boolean;
   savedAt: number | null;
   refresh: () => void;
 };
@@ -56,8 +118,9 @@ export function useResource<T>(
   key: string,
   load: (signal: AbortSignal) => Promise<T>,
   validate: (value: unknown) => value is T,
+  canUseCached?: (value: T) => Promise<boolean>,
 ): Resource<T> {
-  const { session } = useBrowse();
+  const { session, followRevision } = useBrowse();
   const [revision, setRevision] = useState(0);
   const scope = `${session.login.toLowerCase()}:${key}`;
   const empty = {
@@ -65,6 +128,8 @@ export function useResource<T>(
     loading: true,
     refreshing: false,
     error: null,
+    accessDenied: false,
+    offline: false,
     savedAt: null,
   };
   const [state, setState] = useState<
@@ -77,9 +142,12 @@ export function useResource<T>(
       current.scope === scope
         ? {
             ...current,
-            loading: current.data === null,
-            refreshing: current.data !== null,
+            data: canUseCached ? null : current.data,
+            loading: !!canUseCached || current.data === null,
+            refreshing: !canUseCached && current.data !== null,
             error: null,
+            accessDenied: false,
+            offline: false,
           }
         : { ...empty, scope },
     );
@@ -91,7 +159,11 @@ export function useResource<T>(
         validate,
       );
       if (!active) return;
-      if (cached)
+      const permitted =
+        cached &&
+        (!canUseCached || (await canUseCached(cached.data).catch(() => false)));
+      if (!active) return;
+      if (cached && permitted)
         setState((current) =>
           current.scope === scope &&
           current.savedAt !== null &&
@@ -103,6 +175,8 @@ export function useResource<T>(
                 loading: false,
                 refreshing: true,
                 error: null,
+                accessDenied: false,
+                offline: false,
               },
         );
       try {
@@ -122,6 +196,8 @@ export function useResource<T>(
             loading: false,
             refreshing: false,
             error: null,
+            accessDenied: false,
+            offline: false,
           });
       } catch (error) {
         if (!active) return;
@@ -142,7 +218,16 @@ export function useResource<T>(
       active = false;
       controller.abort();
     };
-  }, [key, session.login, load, validate, revision, scope]);
+  }, [
+    key,
+    session.login,
+    load,
+    validate,
+    revision,
+    scope,
+    followRevision,
+    canUseCached,
+  ]);
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
   return { ...(state.scope === scope ? state : empty), refresh };
 }
