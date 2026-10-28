@@ -9,18 +9,22 @@
         header on each section, larger row names, no count beside Paired phones. &c= places the count:
         nav (Settings › Phones in the categories), lead (the page's first line), desk (RAMON‑PC's row),
         none (left out, for frames about something else). Behaves like A otherwise.
+  ?o=A4 Round 4: A3-nav, Ramon's pick, plus a second count at the right end of Paired phones' header,
+        where his pin sits. Both counts read the same list, so they always agree. Behaves like A3 otherwise.
   ?s=closed|empty|prereq|list|code|ending|expired|paired|confirm|removed|removed-offline opens that state.
   Frames load still: the code's countdown only runs after you show a code yourself. Nothing leaves the page.
 */
 (() => {
   const q = new URLSearchParams(location.search);
-  const R3 = q.get('o') === 'A3';
+  const R4 = q.get('o') === 'A4';
+  const R3 = q.get('o') === 'A3' || R4;
   const R2 = q.get('o') === 'A2' || R3;
   const O = R2 ? 'A' : ['A', 'B', 'C'].includes(q.get('o')) ? q.get('o') : 'A';
   // Round 3's open question: where the count of paired phones shows. One place per frame, never two.
-  const COUNT = R3 ? (['nav', 'lead', 'desk'].includes(q.get('c')) ? q.get('c') : 'none') : null;
+  const COUNT = R4 ? 'nav' : R3 ? (['nav', 'lead', 'desk'].includes(q.get('c')) ? q.get('c') : 'none') : null;
   document.body.classList.toggle('p335-r2', R2);
   document.body.classList.toggle('p335-r3', R3);
+  document.body.classList.toggle('p335-r4', R4);
   const STATES = ['closed', 'empty', 'prereq', 'list', 'code', 'ending', 'expired', 'paired', 'confirm', 'removed', 'removed-offline'];
   const START = STATES.includes(q.get('s')) ? q.get('s') : 'list';
   const P = window.P335;
@@ -198,7 +202,7 @@
   }
 
   /** A section's heading: Round 3 sets it in its own lined header. */
-  const sectionHead = (id, text) => (R3 ? `<div class="p335-sec-head"><h3 id="${id}">${text}</h3></div>` : `<h3 id="${id}">${text}</h3>`);
+  const sectionHead = (id, text, side = '') => (R3 ? `<div class="p335-sec-head"><h3 id="${id}">${text}</h3>${side}</div>` : `<h3 id="${id}">${text}</h3>`);
 
   function desktopRow() {
     if (!ready()) return tailscaleOff();
@@ -231,7 +235,9 @@
     const list = count
       ? `<ul class="p335-list" aria-label="Paired phones">${st.phones.map(row).join('')}</ul>`
       : `<p class="p335-empty">${ic('phone')}<span>No phones paired yet. Pair one to start tickets from it and watch them run.</span></p>`;
-    const head = R3 ? sectionHead('phones-title', 'Paired phones') : `<h3 id="phones-title">Paired phones <span class="badge">${count}</span></h3>`;
+    // Round 4: the second count, at the header's right end. Outside the h3, so the heading still reads "Paired phones".
+    const side = R4 && count ? `<span class="p335-head-count">${pairedCount()}</span>` : '';
+    const head = R3 ? sectionHead('phones-title', 'Paired phones', side) : `<h3 id="phones-title">Paired phones <span class="badge">${count}</span></h3>`;
     return `<section class="settings-section" aria-labelledby="phones-title">${head}${pair}${list}</section>`;
   }
 

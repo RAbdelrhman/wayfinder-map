@@ -209,7 +209,87 @@ function round3() {
       items: section.items.filter((item) => !shown.has(item.id)),
     }))
     .filter((section) => section.items.length);
-  return remix({ ...base, sections: [{ ...base.sections[0], items: [...base.sections[0].items, ROUND3_REVIEW] }, places, edges, ...rest] }, 'A2');
+  const page = remix({ ...base, sections: [{ ...base.sections[0], items: [...base.sections[0].items, ROUND3_REVIEW] }, places, edges, ...rest] }, 'A2');
+  // Ramon picked the Settings categories place on 5ca95b2; the other two places have no disposition.
+  const record = (item) => (item.id === 'A3-nav' ? { ...item, note: { ...item.note, disposition: 'keep', feedback: A3_FEEDBACK } } : item);
+  return { ...page, sections: page.sections.map((section) => ({ ...section, items: section.items.map(record) })) };
+}
+
+// Ramon's Wayfinder canvas notes on A3 at 5ca95b2 (#335 comment 6481838489), verbatim.
+const A3_FEEDBACK =
+  '“Phones3, 3 phones paired” (the count in the Settings categories): “Have this a my pin”. Pin on “Paired phones” (x 0.856, y 0.461): “Where I want a second phone count placement.”';
+
+const a4 = (s) => `variants/desktop.html?o=A4&s=${s}`;
+
+const ROUND4_INTRO = {
+  title: 'What changed from A3-nav',
+  note: 'Only what Ramon’s notes on A3 asked for. Flow, copy, dialogs and data are A3’s. A, B, C, A2 and A3 (all three count places) are unchanged on their pages.',
+  items: [
+    {
+      id: 'A4-changes',
+      kind: 'note',
+      name: 'Round 4 changes',
+      boardWidth: 360,
+      text: `From Ramon’s notes on A3 (comment 6481838489). A3 · In the Settings categories is marked Keep, with the notes recorded on that frame.
+
+1. The count in the Settings categories: “Have this a my pin”. Read as “my pick”: kept as it was in A3-nav. Phones ends in a small badge; screen readers hear “Phones, 3 phones paired”.
+2. Pin on Paired phones: “Where I want a second phone count placement.” Added: “3 phones paired” at the right end of Paired phones’ header line, right-aligned with the rows’ Pair a phone and Remove buttons below it. It is 12 px secondary text, the same as A3-desk’s count, and sits outside the heading, so the heading still reads “Paired phones”.
+
+Both counts follow the same rule as in A3: they read the list, so they always agree and change together when a phone pairs or is removed, and both hide when no phone is paired, because the list says “No phones paired yet”.
+
+The pin’s point (x 0.856, y 0.461) is on the right of the page, at Paired phones’ header in Wayfinder’s viewer. In a 1280 × 800 frame that point lands about 30 px above the header, so the count goes on the header line the note names.`,
+    },
+  ],
+};
+
+const ROUND4_REVIEW = {
+  id: 'A4-review',
+  kind: 'note',
+  name: 'Design review, Round 4',
+  boardWidth: 360,
+  text: `Checked on 2026-10-28 in installed Chrome (Playwright) against this board’s own sandboxed server.
+
+Source: ?o=A4 runs A3’s script with the count fixed in the Settings categories, plus the header count. desktop.js adds one span outside the Paired phones heading; desktop.css adds two rules under .p335-r4. No new colours: the count uses the secondary text token, as A3-desk’s did.
+
+Checked:
+• Sweep: all ten states × 1280×800, 1280×560, 700×760 and 480×800 × light and dark: 80 frames, no page errors, no sideways overflow.
+• The two counts agree: in every frame the badge and “N phones paired” equal the rows in the list, and both are absent at no phones (No phones, Tailscale not running).
+• Live updates, clicking through: 3 → Phone uses this code → 4 and 4 → Remove Pixel 9, Escape → still 4 → Remove phone → 3 and 3 → down to “1 phone paired”, then none.
+• Placement at 1280×800: the count’s right edge is at 1217 px, the same as Pair a phone and Remove; it starts at 1131 px (x 0.884) and sits on the heading’s line, 12 px. At 480 it stays at the header’s right end.
+• Contrast: header count 7.73:1 light, 9.72:1 dark. Nav badge unchanged from A3 (5.87 and 8.16:1).
+• Semantics, from the accessibility tree: the heading still reads “Paired phones”; the nav link reads “Phones, 3 phones paired”; the header count is plain text after the heading.
+• Focus: Done → Pair a phone; Escape → Remove Pixel 9; Remove phone → the notice; Dismiss → Pair a phone. The count is not focusable.
+• A, B, C, A2 and A3 still render on their pages.
+
+Not checked:
+• A screen reader, Windows High Contrast and 200% zoom.
+• The Electron window and Wayfinder’s own viewer. The pin’s exact point was not replayed in the viewer; at 1280×800 it lands about 30 px above the header.
+• Whether a count change is announced: it isn’t on its own. The existing pairing and removal messages are.
+• Real QR scanning, clipboard writes, Tailscale and phones, as in Round 1.`,
+};
+
+/** Round 4's page: A3-nav with both counts, in every state. */
+function round4() {
+  const base = option('A4', 'A4 · A3-nav with a second count', 4, ROUND4_INTRO);
+  const counts = {
+    title: 'The two counts as phones change',
+    note: 'The same page from no phones to three and back to two. Both counts show the same number in every frame, and neither shows at no phones.',
+    items: [
+      { id: 'A4-count-empty', name: 'No phones: no counts', src: a4('empty'), ...DESK, note: { idea: 'Nothing paired. Neither count shows; the list says “No phones paired yet”.' } },
+      { id: 'A4-count-two', name: 'Two phones: 2 and 2', src: a4('code'), ...DESK, note: { idea: 'Before Pixel 9 pairs: the badge reads 2 and the header “2 phones paired”, behind the open code.' } },
+      { id: 'A4-count-paired', name: 'Pixel 9 pairs: 3 and 3', src: a4('paired'), ...DESK, note: { idea: 'Pixel 9 used the code: both counts read 3 as it joins the list, marked New.' } },
+      { id: 'A4-count-removed', name: 'Pixel 9 removed: 2 and 2', src: a4('removed'), ...DESK, note: { idea: 'After Remove phone, both counts drop to 2 with the row.' } },
+    ],
+  };
+  const top = base.sections[0];
+  const list = { id: 'A4-list', name: 'Three phones', src: a4('list'), ...DESK, note: { idea: 'Ramon’s pick, A3-nav, with the second count he pinned: the badge on Phones and “3 phones paired” at the right of Paired phones’ header.' } };
+  // Three phones moves up beside the changes; the rest of A's flow follows in order.
+  const rest = base.sections
+    .slice(1)
+    .map((section) => ({ ...section, items: section.items.filter((item) => item.id !== 'A4-list') }))
+    .filter((section) => section.items.length);
+  const page = { ...base, sections: [{ ...top, items: [...top.items, list, ROUND4_REVIEW] }, counts, ...rest] };
+  return remix(page, 'A3-nav');
 }
 
 /** A2's page, with Ramon's notes on its Three phones frame recorded there. */
@@ -318,5 +398,6 @@ Not checked in Round 2: everything listed under Not checked above. RAMON‑PC’
     option('C', 'C · Top-bar Phones popover'),
     round2(),
     round3(),
+    round4(),
   ],
 };

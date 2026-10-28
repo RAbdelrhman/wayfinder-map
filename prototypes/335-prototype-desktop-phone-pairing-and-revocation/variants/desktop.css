@@ -190,3 +190,8 @@ html, body.p335 { height: 100%; margin: 0; }
 @media (max-width: 720px) {
   .p335-r3 .settings-categories .p335-nav-count { margin-left: 6px; }
 }
+
+/* ---------- Round 4 (?o=A4): A3-nav plus a second count where Ramon pinned it ---------- */
+/* "Where I want a second phone count placement": the right end of Paired phones' header, in line with the rows' buttons. */
+.p335-r4 .settings-page .p335-sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.p335-r4 .p335-head-count { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
