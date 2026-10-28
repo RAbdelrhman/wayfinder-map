@@ -16,6 +16,10 @@ const NOTES = {
     idea: 'A new Settings › Phones category. "This desktop" says whether Tailscale is ready; "Paired phones" lists every phone with Pair a phone above it. Pair a phone opens a dialog with the QR code, the typeable address and code, and its time left. Remove opens a confirm dialog.',
     pros: ['Sits with the other settings, under one stable URL a phone can name (“Settings › Phones”)', 'The dialog keeps the code front and centre while you hold the phone', 'Dialogs are the app’s existing pattern for a focused step (the models dialog)'],
     cons: ['Adds an eighth Settings category', 'The dialog hides the list, so you see the new phone only after Done', 'Two modal steps to remove a phone'],
+    disposition: 'change',
+    // Ramon's Wayfinder canvas notes on e62821c (#335 comment 6478544815), verbatim.
+    feedback:
+      "Overview · A: “I like A the best.” A · Three phones: “Paired phones” (Pixel 9’s details): “Center.” “Remove Ramon’s iPhone”: “Center.” “Paired phones” (the old iPhone’s details): “Allow this to be longer so it doesn't wrap as it cause it to look bad.” “This desktop section” (RAMON‑PC’s row, noted twice): “center.” “This desktop” heading: “Add a line between the div's.”",
   },
   B: {
     idea: 'The same Settings › Phones category, but nothing opens over the page. "Show pairing code" expands the Pair a phone section in place; Stop pairing collapses it. Remove turns that phone’s row into an inline confirm with Keep and Remove phone.',
@@ -29,11 +33,12 @@ const NOTES = {
   },
 };
 
-const option = (o, title) => ({
+const option = (o, title, round = 1, intro) => ({
   id: `option-${o.toLowerCase()}`,
   title,
-  round: 1,
+  round,
   sections: [
+    ...(intro ? [intro] : []),
     {
       title: 'Before pairing',
       note: o === 'C' ? 'Where you start, with no phones and with Tailscale not running.' : 'With no phones, and with Tailscale not running on the desktop.',
@@ -69,6 +74,35 @@ const option = (o, title) => ({
     },
   ],
 });
+
+/** A later round's page: every frame names the option it was remixed from. */
+const remix = (page, from) => ({
+  ...page,
+  sections: page.sections.map((section) => ({
+    ...section,
+    items: section.items.map((item) => (item.kind === 'note' ? item : { ...item, note: { ...item.note, basedOn: from } })),
+  })),
+});
+
+const ROUND2_INTRO = {
+  title: 'What changed from A',
+  note: 'Only what Ramon’s notes on A’s Three phones frame asked for. Flow, copy, dialogs and data are A’s, in every state.',
+  items: [
+    {
+      id: 'A2-changes',
+      kind: 'note',
+      name: 'Round 2 changes',
+      boardWidth: 360,
+      text: `From Ramon’s notes on A · Three phones:
+
+1. “Center.” Every row in This desktop and Paired phones is centred vertically: the icon, the text, Remove, Pair a phone and Ready to pair.
+2. “Allow this to be longer so it doesn't wrap.” A phone’s two lines now use the row’s full width, so “Not registered for pushes · Expo reported its push token gone on Oct 3” fits on one line at 1280 px.
+3. “Add a line between the div's.” A hairline now sits under the This desktop heading, above RAMON‑PC (or above the Tailscale problem).
+
+B and C are unchanged and still on their pages.`,
+    },
+  ],
+};
 
 window.CANVAS = {
   ticket: 335,
@@ -147,7 +181,18 @@ Not checked:
 • Clipboard writes in the sandbox. Copy shows a toast either way.
 • Tailscale and phone behaviour. Nothing here talks to a phone.
 
-Known: in B, Escape does not stop pairing, because the code sits on the page and nothing is open over it. Stop pairing ends it.`,
+Known: in B, Escape does not stop pairing, because the code sits on the page and nothing is open over it. Stop pairing ends it.
+
+Round 2 (A with your notes), checked 2026-10-28 the same way:
+Source: three CSS rules under .p335-r2 in desktop.css; ?o=A2 runs A’s own script, so flow, copy, dialogs and focus are A’s. No new colours: the line is the hairline token.
+Checked:
+• All ten A2 states, light and dark, at 1280×800, 1280×560, 700×760 and 480×800 (80 frames, no page errors, no sideways overflow).
+• Centring: every row’s button or Ready to pair sits within 1 px of the row’s middle.
+• Wrapping: at 1280 and 700 wide no phone line wraps; the old iPhone’s push line is one line, not two. At 480 a line still wraps, because the window is narrower than the text.
+• The line under This desktop shows in every state, also above Tailscale isn’t running.
+• Contrast: text in the rows of Three phones and Removed is at least 5.26:1 in both themes (text colours unchanged).
+• Keyboard: Tab reaches Remove Pixel 9 with a 2 px ring; Enter opens the alertdialog on Cancel; Escape returns to Remove; Remove phone moves focus to the notice; Pair a phone’s dialog closes on Escape back to Pair a phone.
+Not checked in Round 2: everything listed under Not checked above. RAMON‑PC’s and Pair a phone’s own descriptions still wrap at 360 px; the notes asked only about phone lines.`,
             },
           ],
         },
@@ -156,5 +201,6 @@ Known: in B, Escape does not stop pairing, because the code sits on the page and
     option('A', 'A · Settings page, dialogs'),
     option('B', 'B · Settings page, in place'),
     option('C', 'C · Top-bar Phones popover'),
+    remix(option('A2', 'A2 · A with your notes', 2, ROUND2_INTRO), 'A'),
   ],
 };

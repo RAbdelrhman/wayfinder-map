@@ -160,3 +160,12 @@ html, body.p335 { height: 100%; margin: 0; }
 }
 .p335-dialog h2:focus { outline: none; }
 .p335-pop-body .p335-prereq > div { flex-basis: calc(100% - 28px); }
+
+/* ---------- Round 2 (?o=A2): A with Ramon's notes on A's Three phones frame ---------- */
+/* "Center." on the phone rows, their Remove buttons and This desktop's row. */
+.p335-r2 .settings-page .p335-row { align-items: center; }
+.p335-r2 .settings-page .p335-row > :is(.primary, .ghost), .p335-r2 .p335-status { margin-top: 0; }
+/* "Allow this to be longer so it doesn't wrap": phone lines take the row's full width. */
+.p335-r2 .settings-page .p335-phone .hint { max-width: none; }
+/* "Add a line between the div's": a hairline under the This desktop heading. */
+.p335-r2 .settings-page #desk-title + * { border-top: 1px solid var(--hairline); }

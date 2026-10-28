@@ -3,12 +3,16 @@
   ?o=A  Settings › Phones, pairing and removal in dialogs.
   ?o=B  Settings › Phones, pairing and removal in place on the page.
   ?o=C  A Phones button in the top bar; everything happens in its popover.
+  ?o=A2 Round 2: A with Ramon's notes on the Three phones frame (centred rows, unwrapped phone lines,
+        a line under "This desktop"). Behaves exactly like A; only desktop.css's .p335-r2 rules differ.
   ?s=closed|empty|prereq|list|code|ending|expired|paired|confirm|removed|removed-offline opens that state.
   Frames load still: the code's countdown only runs after you show a code yourself. Nothing leaves the page.
 */
 (() => {
   const q = new URLSearchParams(location.search);
-  const O = ['A', 'B', 'C'].includes(q.get('o')) ? q.get('o') : 'A';
+  const R2 = q.get('o') === 'A2';
+  const O = R2 ? 'A' : ['A', 'B', 'C'].includes(q.get('o')) ? q.get('o') : 'A';
+  document.body.classList.toggle('p335-r2', R2);
   const STATES = ['closed', 'empty', 'prereq', 'list', 'code', 'ending', 'expired', 'paired', 'confirm', 'removed', 'removed-offline'];
   const START = STATES.includes(q.get('s')) ? q.get('s') : 'list';
   const P = window.P335;
