@@ -999,6 +999,15 @@ interface RawRef {
   object?: { sha?: string };
 }
 
+/** Leave decisions unmarked if the branch could not be confirmed at the revision read. */
+export function reconcilePrototypeRefs(prototypes: readonly Prototype[], refs: readonly RawRef[] | null): Prototype[] {
+  const current = refs === null ? null : new Map(refs.map((ref) => [ref.ref, ref.object?.sha]));
+  return prototypes.map((prototype) => {
+    if (prototype.sha && current?.get(`refs/heads/${prototype.branch}`) === prototype.sha) return prototype;
+    return { ...prototype, verdict: null, canvasPages: [] };
+  });
+}
+
 interface RawCompare {
   files?: Array<{ filename: string }>;
   commits?: Array<{ commit: { committer?: { date?: string } | null } }>;
@@ -1113,7 +1122,10 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[], r
     };
   });
 
-  return sortPrototypes(prototypes);
+  // A verdict and a branch snapshot are fetched separately. If the branch moved while
+  // loading, do not present the old canvas metadata as the current decision.
+  const checkedRefs = await ghJson<RawRef[]>(['api', `repos/${repo}/git/matching-refs/heads/${PROTOTYPE_BRANCH_PREFIX}`]).catch(() => null);
+  return sortPrototypes(reconcilePrototypeRefs(prototypes, checkedRefs));
 }
 
 /** The variant screenshots a repository keeps on its default branch (#81), or none. */

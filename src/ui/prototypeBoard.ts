@@ -123,17 +123,16 @@ function idsIn(line: string, variantIds: readonly string[]): string[] {
  */
 export function pickedVariantIds(verdict: string, variantIds: readonly string[]): string[] {
   const lines = verdict.split(/\r?\n/).filter((line) => !REJECTED_LINE.test(line));
-  // A closeout can name the approved remix before explaining its source options.
-  // Restrict this match to the subject of the approval, not the rest of the paragraph.
-  for (const line of lines) {
-    const approved = /^\s*\**([A-Z]{1,2})\**\s*,\s*Round\s+\d+\s*,\s+is\s+approved\b/i.exec(line);
-    if (approved !== null && variantIds.includes(approved[1] ?? '')) return [approved[1] ?? ''];
-  }
   for (const line of lines) {
     if (!ANSWER_LINE.test(line)) continue;
     const answer = line.replace(ANSWER_LINE, '').split(/[.;]\s/)[0] ?? '';
     const ids = idsIn(answer, variantIds);
     if (ids.length > 0) return ids;
+  }
+  // A later round approval supersedes an earlier one; its source options do not count as picks.
+  for (const line of [...lines].reverse()) {
+    const approved = /^\s*\**([A-Z]{1,2})\**\s*,\s*Round\s+\d+\s*,\s+is\s+approved\b/i.exec(line);
+    if (approved !== null && variantIds.includes(approved[1] ?? '')) return [approved[1] ?? ''];
   }
   for (const line of lines) {
     const named = [...line.matchAll(/\b(?:answer|decision|winner)\s+(?:is\s+)?\**(?:direction|variant|option)\s+\**([A-Z]{1,2})\b/gi)].map((match) => match[1] ?? '');
@@ -196,17 +195,19 @@ function variantFrame(variant: BoardVariant, phone: { width: number; height: num
 
 /** Explicitly approved items on the most recent round with a recorded final choice. */
 function catalogPicks(prototype: Prototype): Array<{ page: NonNullable<Prototype['canvasPages']>[number]; item: NonNullable<Prototype['canvasPages']>[number]['items'][number] }> {
-  const named = [...(prototype.verdict ?? '').matchAll(/^\s*-\s+\*\*[^:\n]+:\s*([A-Z][A-Z0-9-]*)\b[^\n]*\bKeep\b/gm)]
+  const named = [...(prototype.verdict ?? '').matchAll(/^\s*-\s+\*\*[^:\n]+:\s*([A-Za-z][A-Za-z0-9-]*)\b[^\n]*\bKeep\b/gm)]
     .flatMap((match) => {
       const found = (prototype.canvasPages ?? []).flatMap((page) => page.items.filter((item) => item.id === match[1] && item.disposition === 'keep').map((item) => ({ page, item })));
       return found.length === 1 ? found : [];
     });
   if (named.length > 0) return named;
   const candidates = (prototype.canvasPages ?? []).flatMap((page) => page.items.flatMap((item) => {
-    const approved = item.disposition === 'keep' && item.feedback !== null && !/\bnot\s+approved\b/i.test(item.feedback) &&
-      (/^\s*final pick\b/i.test(item.feedback) || new RegExp(`\\bapproved\\s+${item.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(item.feedback));
-    return approved ? [{ page, item }] : [];
+    const approved = item.disposition === 'keep' && item.feedback !== null && !/\b(?:not\s+(?:approved|chosen|picked|the\s+final\s+pick)|rejected|no\s+longer\s+(?:approved|chosen|the\s+final\s+pick))\b/i.test(item.feedback) &&
+      (/^\s*final pick\b/i.test(item.feedback) || new RegExp(`(?:\\bapproved\\s+|^\\s*keep\\s+)${item.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(item.feedback));
+    return approved && page.items.filter((candidate) => candidate.id === item.id).length === 1 ? [{ page, item }] : [];
   }));
+  const verdictIds = pickedVariantIds(prototype.verdict ?? '', [...new Set((prototype.canvasPages ?? []).flatMap((page) => page.items.map((item) => item.id)))]);
+  if (candidates.length > 0 && verdictIds.length > 0 && verdictIds.some((id) => !candidates.some(({ item }) => item.id === id))) return [];
   if (candidates.length === 0) {
     // A ticket can name the exact round and item even when the canvas uses older feedback wording.
     // Match only a unique page/item pair; repeated IDs within a round remain unknown.

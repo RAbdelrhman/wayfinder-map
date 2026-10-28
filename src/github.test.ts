@@ -31,6 +31,7 @@ import {
   mapPrototypeBranches,
   parseGhApiResponse,
   plainGhOutput,
+  reconcilePrototypeRefs,
   sortPrototypes,
   ticketStateOf,
   toOutsideTicket,
@@ -39,6 +40,18 @@ import {
 import type { Prototype } from './types.js';
 
 const mapBody = '- [ ] #12\n- [ ] #15';
+
+describe('prototype branch reconciliation', () => {
+  it('hides a decision when the branch moved or the check failed', () => {
+    const prototype: Prototype = { branch: 'prototype/10', sha: 'a'.repeat(40), ticketNumber: 10, mapNumber: 1,
+      url: 'https://github.com/octo/repo/tree/prototype/10', updatedAt: null, files: [], openable: [], preview: null,
+      verdict: 'Answer: A', variants: [{ id: 'A', title: 'A', page: null, shot: null }] };
+    expect(reconcilePrototypeRefs([prototype], [{ ref: 'refs/heads/prototype/10', object: { sha: 'a'.repeat(40) } }])[0]?.verdict).toBe('Answer: A');
+    expect(reconcilePrototypeRefs([prototype], [{ ref: 'refs/heads/prototype/10', object: { sha: 'b'.repeat(40) } }])[0]?.verdict).toBeNull();
+    expect(reconcilePrototypeRefs([prototype], null)[0]?.verdict).toBeNull();
+    expect(reconcilePrototypeRefs([prototype], null)[0]?.variants).toEqual(prototype.variants);
+  });
+});
 
 function issue(number: number) {
   return { number, title: `Ticket ${String(number)}`, state: 'open' };

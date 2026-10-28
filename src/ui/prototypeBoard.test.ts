@@ -180,6 +180,8 @@ describe('prototype variant metadata', () => {
   it('picks the approved remix without picking its source options', () => {
     const verdict = 'Completed through PR #345. Chosen design and confirmed behavior.\n\nD, Round 2, is approved with only the redundant inbox summary removed. D combines A, B and C.';
     expect(pickedVariantIds(verdict, ['A', 'B', 'C', 'D'])).toEqual(['D']);
+    expect(pickedVariantIds('A, Round 1, is approved.\nD, Round 2, is approved.', ['A', 'D'])).toEqual(['D']);
+    expect(pickedVariantIds('A, Round 1, is approved.\n**Answer:** D, the remix.', ['A', 'D'])).toEqual(['D']);
   });
 
   it('uses the canvas variants the server read, with their screenshots and pages', () => {
@@ -269,6 +271,18 @@ describe('prototype variant metadata', () => {
     expect(html).toContain('data-canvas-page="round-2"');
   });
 
+  it('recognizes an explicit keep without treating a negated approval as a pick', () => {
+    const page = { id: 'round-2', title: 'Remix', round: 2, items: [{ id: 'D', name: 'Direction', src: 'd.html', disposition: 'keep', feedback: 'Keep D', basedOn: [] }] };
+    const mapView = map([ticket(10, 'Example', 'prototype', 'done')]);
+    expect(prototypeBoardHtml('octo/wayfinder', mapView, [prototype(10, { canvasPages: [page] })])).toContain('Chosen · Round 2 · Remix');
+    const negated = { ...page, items: [{ ...page.items[0]!, feedback: 'Not approved D' }] };
+    expect(prototypeBoardHtml('octo/wayfinder', mapView, [prototype(10, { canvasPages: [negated] })])).not.toContain('Chosen · Round 2 · Remix');
+    const rejected = { ...page, items: [{ ...page.items[0]!, feedback: 'Final pick was rejected' }] };
+    expect(prototypeBoardHtml('octo/wayfinder', mapView, [prototype(10, { canvasPages: [rejected] })])).not.toContain('Chosen · Round 2 · Remix');
+    const conflicting = { ...page, items: [...page.items, { id: 'A', name: 'A', src: 'a.html', disposition: null, feedback: null, basedOn: [] }] };
+    expect(prototypeBoardHtml('octo/wayfinder', mapView, [prototype(10, { canvasPages: [conflicting], verdict: '**Answer:** A.' })])).not.toContain('Chosen · Round 2 · Remix');
+  });
+
   it('keeps separate confirmed choices from different rounds and lets the user switch between them', () => {
     const card = prototype(223, {
       verdict: '## Answer\n- **Sign-in: S-A, button (Keep).**\n- **Repos: R-C2, round 2 (Keep).**',
@@ -286,6 +300,15 @@ describe('prototype variant metadata', () => {
     selectPrototypeHero(buttons[1]!);
     expect(panels.map((panel) => panel.hidden)).toEqual([true, false]);
     expect(buttons[1]?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('recognizes a mixed-case item ID named in a recorded choice', () => {
+    const card = prototype(316, { verdict: '- **Account: G-a, preferences (Keep).**', canvasPages: [
+      { id: 'round-3', title: 'Names', round: 3, items: [{ id: 'G-a', name: 'Preferences', src: 'phone.html', disposition: 'keep', feedback: null, basedOn: [] }] },
+    ] });
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(316, 'Account', 'prototype', 'done')]), [card]);
+    expect(html).toContain('Chosen · Round 3 · Names');
+    expect(html).toContain('data-canvas-variant="G-a"');
   });
 
   it('opens and highlights an unambiguous source on its round', () => {
