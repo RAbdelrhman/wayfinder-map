@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pair a phone · Wayfinder concept (#335)</title>
+    <link rel="stylesheet" href="../../../src/ui/styles.css" />
+    <link rel="stylesheet" href="desktop.css" />
+  </head>
+  <body class="viz-root p335">
+    <!-- The desktop app: a demo sidebar and topbar around the real Settings classes from src/ui/settings.ts. -->
+    <div class="p335-shell">
+      <aside class="p335-sidebar" aria-label="Wayfinder navigation">
+        <a class="p335-brand" href="#" data-to="Home"><span data-icon="compass"></span>Wayfinder</a>
+        <button class="primary" type="button" data-to="Start a new map"><span data-icon="plus"></span>New map</button>
+        <a href="#" data-to="Home" id="nav-home"><span data-icon="home"></span>Home</a>
+        <span class="eyebrow">Repositories</span>
+        <a href="#" data-to="wayfinder-map"><span data-icon="repo"></span>wayfinder-map</a>
+        <div class="p335-footer"><span class="p335-avatar" aria-hidden="true">R</span><span>RAbdelrhman</span><a href="#" data-to="Settings" id="nav-settings"><span data-icon="gear"></span>Settings</a></div>
+      </aside>
+      <div class="main p335-main">
+        <header class="topbar" id="topbar"></header>
+        <main class="settings-page" id="main"></main>
+      </div>
+    </div>
+    <div id="layer"></div>
+    <div class="settings-live" id="live" role="status" aria-live="polite"></div>
+
+    <script src="../../canvas/kit/kit.js"></script>
+    <script src="data.js"></script>
+    <script src="desktop.js"></script>
+  </body>
+</html>
