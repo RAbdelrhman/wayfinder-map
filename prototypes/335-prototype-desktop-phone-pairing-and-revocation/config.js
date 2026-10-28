@@ -282,7 +282,7 @@ function round4() {
     ],
   };
   const top = base.sections[0];
-  const list = { id: 'A4-list', name: 'Three phones', src: a4('list'), ...DESK, note: { idea: 'Ramon’s pick, A3-nav, with the second count he pinned: the badge on Phones and “3 phones paired” at the right of Paired phones’ header.' } };
+  const list = { id: 'A4-list', name: 'Three phones', src: a4('list'), ...DESK, note: { idea: 'Ramon’s pick, A3-nav, with the second count he pinned: the badge on Phones and “3 phones paired” at the right of Paired phones’ header.', disposition: 'keep', feedback: 'Whole page: Perfect. See issue comment 6482052479.' } };
   // Three phones moves up beside the changes; the rest of A's flow follows in order.
   const rest = base.sections
     .slice(1)
