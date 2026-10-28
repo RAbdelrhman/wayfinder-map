@@ -58,19 +58,18 @@
         : `It hasn’t reached ${D.name} since ${p.seen}, so it finds out the next time it tries.`,
     ].join(' '),
   });
-  ({
-    closed() { st.open = false; },
-    empty() { st.phones = []; },
-    prereq() { st.phones = []; st.tailscale = 'off'; },
-    list() {},
-    code() { st.phones = [byId('iphone'), byId('old')]; st.pair = codeOf(P.code, 292); st.view = 'code'; },
-    ending() { st.phones = [byId('iphone'), byId('old')]; st.pair = codeOf(P.code, 38); st.view = 'code'; },
-    expired() { st.phones = [byId('iphone'), byId('old')]; st.pair = { ...codeOf(P.code, 0), phase: 'expired' }; st.view = 'code'; },
-    paired() { st.pair = { ...codeOf(P.code, 0), phase: 'used', by: 'pixel' }; st.fresh = 'pixel'; st.view = 'code'; },
-    confirm() { st.confirm = 'pixel'; st.view = 'confirm'; },
-    removed() { st.phones = [byId('iphone'), byId('old')]; st.notice = removedNotice(byId('pixel')); },
-    'removed-offline'() { st.phones = [byId('iphone'), byId('pixel')]; st.notice = removedNotice(byId('old')); },
-  })[START]();
+  switch (START) {
+    case 'closed': st.open = false; break;
+    case 'empty': st.phones = []; break;
+    case 'prereq': st.phones = []; st.tailscale = 'off'; break;
+    case 'code': st.phones = [byId('iphone'), byId('old')]; st.pair = codeOf(P.code, 292); st.view = 'code'; break;
+    case 'ending': st.phones = [byId('iphone'), byId('old')]; st.pair = codeOf(P.code, 38); st.view = 'code'; break;
+    case 'expired': st.phones = [byId('iphone'), byId('old')]; st.pair = { ...codeOf(P.code, 0), phase: 'expired' }; st.view = 'code'; break;
+    case 'paired': st.pair = { ...codeOf(P.code, 0), phase: 'used', by: 'pixel' }; st.fresh = 'pixel'; st.view = 'code'; break;
+    case 'confirm': st.confirm = 'pixel'; st.view = 'confirm'; break;
+    case 'removed': st.phones = [byId('iphone'), byId('old')]; st.notice = removedNotice(byId('pixel')); break;
+    case 'removed-offline': st.phones = [byId('iphone'), byId('pixel')]; st.notice = removedNotice(byId('old')); break;
+  }
   if (O !== 'C') st.open = true;
 
   /* ---------- announcements ---------- */
