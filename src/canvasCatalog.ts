@@ -1,23 +1,6 @@
 import { parse } from 'acorn';
 import type { ArrayExpression, Expression, ObjectExpression, Property } from 'estree';
-
-export interface CanvasCatalogItem {
-  id: string;
-  name: string;
-  src: string | null;
-  disposition: string | null;
-  feedback: string | null;
-  basedOn: string[];
-  width?: number;
-  height?: number;
-}
-
-export interface CanvasCatalogPage {
-  id: string;
-  title: string;
-  round: number | string | null;
-  items: CanvasCatalogItem[];
-}
+import type { CanvasCatalogPage } from './types.js';
 
 function property(object: ObjectExpression, key: string): Expression | null {
   const found = object.properties.find((entry): entry is Property => entry.type === 'Property' && !entry.computed &&

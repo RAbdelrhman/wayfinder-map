@@ -186,7 +186,25 @@ export interface Prototype {
   /** The variants its canvas lays out side by side, named as the canvas names them. */
   variants?: PrototypeVariant[];
   /** Pages and items read from the canvas without executing its code. */
-  canvasPages?: import('./canvasCatalog.js').CanvasCatalogPage[];
+  canvasPages?: CanvasCatalogPage[];
+}
+
+export interface CanvasCatalogItem {
+  id: string;
+  name: string;
+  src: string | null;
+  disposition: string | null;
+  feedback: string | null;
+  basedOn: string[];
+  width?: number;
+  height?: number;
+}
+
+export interface CanvasCatalogPage {
+  id: string;
+  title: string;
+  round: number | string | null;
+  items: CanvasCatalogItem[];
 }
 
 /** One variant of a prototype: its letter, its name, and what to show and open for it. */
