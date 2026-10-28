@@ -5,14 +5,22 @@
   ?o=C  A Phones button in the top bar; everything happens in its popover.
   ?o=A2 Round 2: A with Ramon's notes on the Three phones frame (centred rows, unwrapped phone lines,
         a line under "This desktop"). Behaves exactly like A; only desktop.css's .p335-r2 rules differ.
+  ?o=A3 Round 3: A2 with Ramon's notes on A2's Three phones frame. No Phones page heading, a lined
+        header on each section, larger row names, no count beside Paired phones. &c= places the count:
+        nav (Settings › Phones in the categories), lead (the page's first line), desk (RAMON‑PC's row),
+        none (left out, for frames about something else). Behaves like A otherwise.
   ?s=closed|empty|prereq|list|code|ending|expired|paired|confirm|removed|removed-offline opens that state.
   Frames load still: the code's countdown only runs after you show a code yourself. Nothing leaves the page.
 */
 (() => {
   const q = new URLSearchParams(location.search);
-  const R2 = q.get('o') === 'A2';
+  const R3 = q.get('o') === 'A3';
+  const R2 = q.get('o') === 'A2' || R3;
   const O = R2 ? 'A' : ['A', 'B', 'C'].includes(q.get('o')) ? q.get('o') : 'A';
+  // Round 3's open question: where the count of paired phones shows. One place per frame, never two.
+  const COUNT = R3 ? (['nav', 'lead', 'desk'].includes(q.get('c')) ? q.get('c') : 'none') : null;
   document.body.classList.toggle('p335-r2', R2);
+  document.body.classList.toggle('p335-r3', R3);
   const STATES = ['closed', 'empty', 'prereq', 'list', 'code', 'ending', 'expired', 'paired', 'confirm', 'removed', 'removed-offline'];
   const START = STATES.includes(q.get('s')) ? q.get('s') : 'list';
   const P = window.P335;
@@ -165,18 +173,40 @@
     ['account', 'Account', 'person'],
     ['help', 'Help', 'help'],
   ];
+  /** Round 3: "3 phones paired". At zero the count hides wherever it sits; the list says "No phones paired yet". */
+  const pairedCount = () => (st.phones.length === 1 ? '1 phone paired' : `${st.phones.length} phones paired`);
+  const navCount = (id) =>
+    COUNT === 'nav' && id === 'phones' && st.phones.length
+      ? `<span class="badge p335-nav-count"><span aria-hidden="true">${st.phones.length}</span><span class="p335-sr">, ${pairedCount()}</span></span>`
+      : '';
   const nav = (current) =>
-    CATEGORIES.map(([id, name, icon]) => `<a href="#" ${id === current ? 'aria-current="location"' : `data-to="Settings › ${name}"`}>${ic(icon)}${name}</a>`).join('');
+    CATEGORIES.map(([id, name, icon]) => `<a href="#" ${id === current ? 'aria-current="location"' : `data-to="Settings › ${name}"`}>${ic(icon)}${name}${navCount(id)}</a>`).join('');
+
+  function categoryHeading() {
+    const lead = `Phones paired with ${esc(D.name)} start tickets here and watch them run.`;
+    if (!R3) return `<header class="settings-category-heading"><h2 id="cat-title">Phones</h2><p>${lead}</p></header>`;
+    // Round 3: "Phones" is gone; the line under it stays as the page's lead.
+    if (COUNT === 'lead' && st.phones.length)
+      return `<p class="p335-lead-line"><b class="p335-lead-count">${pairedCount()}</b> with ${esc(D.name)}. They start tickets here and watch them run.</p>`;
+    return `<p class="p335-lead-line">${lead}</p>`;
+  }
 
   function settingsShell(body) {
     return `<header class="settings-page-heading"><div><h1>Settings</h1><p>Make Wayfinder work your way.</p></div><span class="settings-save-note">${ic('check')}Changes save automatically</span></header>
       <div class="settings-page-layout"><nav class="settings-categories" aria-label="Settings categories">${nav('phones')}</nav>
-      <div><header class="settings-category-heading"><h2 id="cat-title">Phones</h2><p>Phones paired with ${esc(D.name)} start tickets here and watch them run.</p></header>${noticeHtml()}${body}</div></div>`;
+      <div>${categoryHeading()}${noticeHtml()}${body}</div></div>`;
   }
+
+  /** A section's heading: Round 3 sets it in its own lined header. */
+  const sectionHead = (id, text) => (R3 ? `<div class="p335-sec-head"><h3 id="${id}">${text}</h3></div>` : `<h3 id="${id}">${text}</h3>`);
 
   function desktopRow() {
     if (!ready()) return tailscaleOff();
-    return `<div class="settings-row p335-row"><span class="p335-tile" aria-hidden="true">${ic('desktop')}</span><span class="grow">${esc(D.name)}<span class="hint">Phones reach it at <code>${esc(D.host)}</code> through Tailscale.</span></span><span class="p335-status"><span class="p335-dot" aria-hidden="true"></span>Ready to pair</span></div>`;
+    return `<div class="settings-row p335-row"><span class="p335-tile" aria-hidden="true">${ic('desktop')}</span><span class="grow">${esc(D.name)}<span class="hint">Phones reach it at <code>${esc(D.host)}</code> through Tailscale.</span></span>${
+      COUNT === 'desk' && st.phones.length
+        ? `<span class="p335-desk-side"><span class="p335-status"><span class="p335-dot" aria-hidden="true"></span>Ready to pair</span><span class="p335-desk-count">${pairedCount()}</span></span>`
+        : `<span class="p335-status"><span class="p335-dot" aria-hidden="true"></span>Ready to pair</span>`
+    }</div>`;
   }
 
   function phoneRowA(p) {
@@ -201,11 +231,12 @@
     const list = count
       ? `<ul class="p335-list" aria-label="Paired phones">${st.phones.map(row).join('')}</ul>`
       : `<p class="p335-empty">${ic('phone')}<span>No phones paired yet. Pair one to start tickets from it and watch them run.</span></p>`;
-    return `<section class="settings-section" aria-labelledby="phones-title"><h3 id="phones-title">Paired phones <span class="badge">${count}</span></h3>${pair}${list}</section>`;
+    const head = R3 ? sectionHead('phones-title', 'Paired phones') : `<h3 id="phones-title">Paired phones <span class="badge">${count}</span></h3>`;
+    return `<section class="settings-section" aria-labelledby="phones-title">${head}${pair}${list}</section>`;
   }
 
   function mainA() {
-    return settingsShell(`<section class="settings-section" aria-labelledby="desk-title"><h3 id="desk-title">This desktop</h3>${desktopRow()}</section>${phonesSection(phoneRowA, true)}`);
+    return settingsShell(`<section class="settings-section" aria-labelledby="desk-title">${sectionHead('desk-title', 'This desktop')}${desktopRow()}</section>${phonesSection(phoneRowA, true)}`);
   }
 
   function mainB() {
@@ -420,7 +451,7 @@
       }
       case 'dismiss':
         st.notice = null;
-        pendingFocus = O === 'C' ? '#pop-title' : '#cat-title';
+        pendingFocus = O === 'C' ? '#pop-title' : R3 ? '[data-act="pair"]' : '#cat-title';
         return paint();
       case 'recheck':
         st.tailscale = 'ok';

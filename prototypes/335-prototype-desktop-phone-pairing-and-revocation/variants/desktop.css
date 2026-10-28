@@ -169,3 +169,24 @@ html, body.p335 { height: 100%; margin: 0; }
 .p335-r2 .settings-page .p335-phone .hint { max-width: none; }
 /* "Add a line between the div's": a hairline under the This desktop heading. */
 .p335-r2 .settings-page #desk-title + * { border-top: 1px solid var(--hairline); }
+
+/* ---------- Round 3 (?o=A3): A2 with Ramon's notes on A2's Three phones frame ---------- */
+/* "Make this longer so it doesn't start a new line": every row's description, not only phones'. */
+.p335-r3 .settings-page .p335-row .hint { max-width: none; }
+/* "Add more bottom padding. Or … in Div" and "a line here … padding consistent": one lined header per section. */
+.p335-r3 .settings-page .p335-sec-head { padding: 14px 0 14px; border-bottom: 1px solid var(--hairline); }
+.p335-r3 .settings-page .p335-sec-head h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.p335-r3 .settings-page #desk-title + * { border-top: 0; }
+.p335-r3 .settings-page .p335-sec-head + .settings-row { border-top: 0; }
+/* "Can make the heading bigger": each row's name, above its two smaller lines. */
+.p335-r3 .settings-page .p335-row > .grow { font-size: 14px; font-weight: 600; }
+/* "Phones" (the category heading) is removed; its line stays as the page's lead. */
+.p335-r3 .p335-lead-line { margin: 0 0 18px; font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+.p335-r3 .p335-lead-count { color: var(--text-primary); font-weight: 600; }
+/* The count's three places, one per frame. */
+.p335-r3 .settings-categories .p335-nav-count { margin-left: auto; }
+.p335-r3 .p335-desk-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; }
+.p335-r3 .p335-desk-count { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+@media (max-width: 720px) {
+  .p335-r3 .settings-categories .p335-nav-count { margin-left: 6px; }
+}

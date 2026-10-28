@@ -104,6 +104,121 @@ B and C are unchanged and still on their pages.`,
   ],
 };
 
+// Ramon's Wayfinder canvas notes on A2 · Three phones at caf3a61 (#335 comment 6478969468), verbatim.
+const A2_FEEDBACK =
+  '“This desktop section” (RAMON‑PC’s row): “Make this longer so it doesn\'t start a new line.” “This desktop” heading: “Add more bottom padding. Or i think it needs to be in Div.” “Paired phones 3”: “Same thing as Element 1. I want there to be a line here and make sure the padding is consistent. Actually I think you can remove this and add something that shows the amount of phones connected somewhere else.” “Phones” (the category heading): “You can remove this.” “Registered for pushes” (Ramon’s iPhone): “Can make the heading bigger.”';
+
+const a3 = (c, s) => `variants/desktop.html?o=A3&c=${c}&s=${s}`;
+
+/** Round 3: the notes' changes in every frame, and three places for the phone count, one per frame. */
+const COUNT_PLACES = [
+  {
+    c: 'nav',
+    name: 'In the Settings categories',
+    idea: 'A small 3 sits at the end of Phones in the Settings categories. Screen readers hear “Phones, 3 phones paired”.',
+    pros: ['Visible from the categories, without reading the page', 'Takes no room in the page itself', 'Stays with Phones if the categories are reordered'],
+    cons: ['No other category carries a count, so it is the only one', 'Below 720 px the categories become a row of links and the badge is small there', 'Could be read as unread items rather than phones'],
+  },
+  {
+    c: 'lead',
+    name: 'In the page’s first line',
+    idea: 'The line that was under the removed “Phones” heading now opens with the count: “3 phones paired with RAMON‑PC. They start tickets here and watch them run.”',
+    pros: ['Says what the number is in words, with no badge to decode', 'Uses a line that is already there, so nothing is added', 'Read first, before either section'],
+    cons: ['Plain text, so it is the easiest of the three to skip', 'Sits away from the list it counts', 'At no phones the line drops the count and keeps only its description'],
+  },
+  {
+    c: 'desk',
+    name: 'In This desktop’s row',
+    idea: 'Under Ready to pair on RAMON‑PC’s row: “3 phones paired”. The desktop’s state and how many phones reach it sit together.',
+    pros: ['Answers “how many phones use this desktop” where the desktop is described', 'Right-aligned under Ready to pair, so it reads as status, not as a heading', 'Stays above the list, however long the list gets'],
+    cons: ['Hidden while Tailscale isn’t running, because that row becomes the problem notice', 'Puts a phone fact in the desktop’s section', 'The right side of the row becomes two lines'],
+  },
+];
+
+const ROUND3_INTRO = {
+  title: 'What changed from A2',
+  note: 'Only what Ramon’s notes on A2’s Three phones frame asked for. Flow, copy, dialogs and data are A2’s. B and C are unchanged on their pages.',
+  items: [
+    {
+      id: 'A3-changes',
+      kind: 'note',
+      name: 'Round 3 changes',
+      boardWidth: 360,
+      text: `From Ramon’s notes on A2 · Three phones (comment 6478969468). A2 is marked Change, with the notes recorded on its Three phones frame.
+
+1. RAMON‑PC’s row: “Make this longer so it doesn't start a new line.” Changed: “Phones reach it at … through Tailscale.” is one line. Pair a phone’s description is one line too, reading note 3’s “Same thing as Element 1” as the same request.
+2. This desktop: “Add more bottom padding. Or i think it needs to be in Div.” Changed: the heading sits in its own header, 14 px above and below, and the line runs under that header.
+3. Paired phones 3: “I want there to be a line here and make sure the padding is consistent. Actually I think you can remove this and add something that shows the amount of phones connected somewhere else.” Changed: Paired phones gets the same lined header as This desktop and loses its 3. Where the count goes is open; “Where the count goes” shows three places, one per frame. None is picked.
+4. Phones: “You can remove this.” Changed: the category heading is gone. Its line (“Phones paired with RAMON‑PC …”) stays as the page’s first line.
+5. Registered for pushes: “Can make the heading bigger.” Changed, read as that row’s heading, the phone’s name: every row’s name is 14 px semibold (was 13 px medium). Section headings went to 15 px so they stay above row names.
+
+Frames after “The count with no phones” leave the count out, so they lean towards no place.`,
+    },
+  ],
+};
+
+const ROUND3_REVIEW = {
+  id: 'A3-review',
+  kind: 'note',
+  name: 'Design review, Round 3',
+  boardWidth: 360,
+  text: `Checked on 2026-10-28 in installed Chrome (Playwright) against this board’s own sandboxed server, before any pick.
+
+Source: ?o=A3 runs A’s script, so flow, copy, dialogs and focus are A’s. desktop.js adds only the lined section headers, no Phones heading, and &c= for the count’s place. desktop.css adds rules under .p335-r3. No new colours: the line is the hairline token and the count uses the app’s badge and text tokens.
+
+Checked:
+• Sweep: all ten states × the four count settings (three places and none) × 1280×800, 1280×560, 700×760 and 480×800 × light and dark: 320 frames, no page errors, no sideways overflow, no Phones heading, no count beside Paired phones.
+• One count per frame: the count shows exactly once, in its own place, whenever phones are paired; never with no phones; never in the none frames; and not in This desktop’s row while Tailscale is off.
+• Wrapping: at 1280 every row’s lines are one line, RAMON‑PC’s and Pair a phone’s included. At 700 and 480 some still wrap; the window is narrower than the text.
+• Headers: This desktop and Paired phones both 14 px above and below, one 1 px line under each, no second line under it. Headings 15 px; row names 14 px semibold; row lines 12 px.
+• Centring kept from A2: every row’s button or status is within 0.5 px of the row’s middle.
+• Contrast, both themes: lead line 7.20 and 10.85:1, lead count 17.86 and 19.44:1, desk count 7.73 and 9.72:1, nav badge 5.87 and 8.16:1, row lines 5.28 and 6.04:1.
+• Interactions, in each place: Pair a phone → Phone uses this code → Done reads 4 phones paired; Remove Pixel 9 → Escape returns to its Remove; Remove phone → focus on the notice, 3 phones paired; Dismiss → focus on Pair a phone (the Phones heading it used to go to is gone).
+• Screen reader text, from the accessibility tree: the nav link reads “Phones, 3 phones paired”.
+• A, A2, B and C still render with their own heading and count.
+
+Not checked:
+• A screen reader, Windows High Contrast and 200% zoom.
+• The Electron window. Wayfinder’s viewer was not opened; the board was inspected on this server.
+• Note 5 is read as the row’s name. If “the heading” meant the push line or the section headings only, this is the wrong change.
+• Real QR scanning, clipboard writes, Tailscale and phones, as in Round 1.`,
+};
+
+/** Round 3's page: A3's flow with the count left out, plus each place the count could go. */
+function round3() {
+  const base = option('A3', 'A3 · A2 with your notes', 3, ROUND3_INTRO);
+  const places = {
+    title: 'Where the count goes',
+    note: 'The notes ask for the number of phones “somewhere else” and leave the place open. Three places; each frame shows the count once, and nothing else differs.',
+    items: COUNT_PLACES.map((p) => ({ id: `A3-${p.c}`, name: p.name, src: a3(p.c, 'list'), ...DESK, note: { idea: p.idea, pros: p.pros, cons: p.cons } })),
+  };
+  const edges = {
+    title: 'The count with no phones, and after a removal',
+    note: 'With no phones the count hides in every place, because the list already says “No phones paired yet”. After Pixel 9 is removed each place reads 2.',
+    items: COUNT_PLACES.flatMap((p) => [
+      { id: `A3-${p.c}-empty`, name: `${p.name}: no phones`, src: a3(p.c, 'empty'), ...DESK, note: { idea: 'Nothing paired, so no count shows.' } },
+      { id: `A3-${p.c}-removed`, name: `${p.name}: removed`, src: a3(p.c, 'removed'), ...DESK, note: { idea: 'Pixel 9 removed: the count reads 2 phones paired.' } },
+    ]),
+  };
+  const shown = new Set(['A3-list', 'A3-empty', 'A3-removed']);
+  const rest = base.sections
+    .slice(1)
+    .map((section) => ({
+      ...section,
+      note: `${section.note ? `${section.note} ` : ''}The count is left out of these frames.`,
+      items: section.items.filter((item) => !shown.has(item.id)),
+    }))
+    .filter((section) => section.items.length);
+  return remix({ ...base, sections: [{ ...base.sections[0], items: [...base.sections[0].items, ROUND3_REVIEW] }, places, edges, ...rest] }, 'A2');
+}
+
+/** A2's page, with Ramon's notes on its Three phones frame recorded there. */
+function round2() {
+  const page = remix(option('A2', 'A2 · A with your notes', 2, ROUND2_INTRO), 'A');
+  const record = (item) => (item.id === 'A2-list' ? { ...item, note: { ...item.note, disposition: 'change', feedback: A2_FEEDBACK } } : item);
+  return { ...page, sections: page.sections.map((section) => ({ ...section, items: section.items.map(record) })) };
+}
+
 window.CANVAS = {
   ticket: 335,
   title: 'Desktop phone pairing and removal',
@@ -201,6 +316,7 @@ Not checked in Round 2: everything listed under Not checked above. RAMON‑PC’
     option('A', 'A · Settings page, dialogs'),
     option('B', 'B · Settings page, in place'),
     option('C', 'C · Top-bar Phones popover'),
-    remix(option('A2', 'A2 · A with your notes', 2, ROUND2_INTRO), 'A'),
+    round2(),
+    round3(),
   ],
 };
