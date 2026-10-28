@@ -61,6 +61,7 @@ export class GithubError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    public readonly rateLimited = false,
   ) {
     super(message);
   }
@@ -228,18 +229,22 @@ export class MobileGithub {
         signal: controller.signal,
       });
       if (!response.ok) {
+        const rateLimited =
+          response.status === 429 ||
+          (response.status === 403 &&
+            (response.headers.get('x-ratelimit-remaining') === '0' ||
+              response.headers.has('retry-after')));
         const message =
           response.status === 401
             ? 'Your GitHub sign-in is no longer valid. Sign out in Settings and sign in again.'
             : response.status === 403 || response.status === 429
-              ? response.headers.get('x-ratelimit-remaining') === '0' ||
-                response.status === 429
+              ? rateLimited
                 ? 'GitHub’s rate limit was reached. Try again in a few minutes.'
                 : 'GitHub did not allow access. Check the account and organization permissions.'
               : response.status === 404
                 ? 'This issue or repository is no longer available to your GitHub account.'
                 : 'Couldn’t reach GitHub. Try again.';
-        throw new GithubError(response.status, message);
+        throw new GithubError(response.status, message, rateLimited);
       }
       return (await response.json()) as unknown;
     } catch (error) {
@@ -273,7 +278,7 @@ export class MobileGithub {
     signal?: AbortSignal,
   ): Promise<MapSummary[]> {
     if (!validRef({ repo, number: 1 }))
-      throw new Error('Enter a repository as owner/repo.');
+      throw new GithubError(422, 'Look in a repository: owner/repo');
     const values = await this.list(
       `/repos/${repo}/issues?labels=wayfinder%3Amap&state=all`,
       signal,
@@ -396,8 +401,18 @@ export class MobileGithub {
             raw.user?.login?.toLowerCase() !== login.toLowerCase()
           )
             hidden.push(summary(raw, ref.repo));
+          else {
+            unavailable.push(ref);
+            warnings.push(
+              `Followed map ${ref.repo}#${ref.number} is unavailable.`,
+            );
+          }
         } catch (error) {
-          if (!(error instanceof GithubError) || error.status !== 404)
+          if (
+            !(error instanceof GithubError) ||
+            ![403, 404, 410].includes(error.status) ||
+            error.rateLimited
+          )
             throw error;
           unavailable.push(ref);
           warnings.push(

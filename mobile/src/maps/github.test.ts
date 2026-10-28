@@ -38,6 +38,41 @@ function setup(
   };
 }
 describe('mobile GitHub maps', () => {
+  it.each([403, 404, 410])(
+    'keeps other maps when a followed issue returns %s',
+    async (status) => {
+      const { api } = setup((path) =>
+        path === '/search/issues'
+          ? { total_count: 1, items: [raw(1, { labels: ['wayfinder:map'] })] }
+          : new Response('', { status }),
+      );
+      const ref = { repo: 'author/repo', number: 12 };
+      const result = await api.maps('me', [ref]);
+      expect(result.maps.map((map) => map.number)).toEqual([1]);
+      expect(result.unavailable).toEqual([ref]);
+    },
+  );
+  it('preserves follows when 403 is a GitHub rate limit', async () => {
+    const { api } = setup((path) =>
+      path === '/search/issues'
+        ? { total_count: 0, items: [] }
+        : new Response('', {
+            status: 403,
+            headers: { 'x-ratelimit-remaining': '0' },
+          }),
+    );
+    await expect(
+      api.maps('me', [{ repo: 'author/repo', number: 12 }]),
+    ).rejects.toMatchObject({ status: 403, rateLimited: true });
+  });
+  it('marks an issue that lost its map label as unavailable', async () => {
+    const { api } = setup((path) =>
+      path === '/search/issues' ? { total_count: 0, items: [] } : raw(12),
+    );
+    expect(
+      (await api.maps('me', [{ repo: 'author/repo', number: 12 }])).unavailable,
+    ).toEqual([{ repo: 'author/repo', number: 12 }]);
+  });
   it('denies map and parent-ticket access after a followed map becomes private', async () => {
     const { api } = setup(() =>
       raw(12, {

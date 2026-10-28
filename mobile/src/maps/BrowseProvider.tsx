@@ -96,6 +96,23 @@ export async function loadMaps(
     const result = await api.maps(login, follows, signal);
     if (followError) result.warnings.push(followError);
     await evict(result.unavailable);
+    const followedKeys = new Set(
+      follows.map((ref) => `${ref.repo.toLowerCase()}#${ref.number}`),
+    );
+    await Promise.all(
+      result.maps
+        .filter((map) =>
+          followedKeys.has(`${map.repo.toLowerCase()}#${map.number}`),
+        )
+        .map((map) =>
+          writeCache(
+            AsyncStorage,
+            login,
+            `followed:${map.repo.toLowerCase()}#${map.number}`,
+            map,
+          ).catch(() => undefined),
+        ),
+    );
     return result;
   } catch (error) {
     if (error instanceof GithubError && error.status === 401)

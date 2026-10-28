@@ -3,6 +3,23 @@ import { discoverPublicMaps } from './discovery';
 import { GithubError } from './github';
 
 describe('public map discovery', () => {
+  it('does not treat an invalid repository as offline', async () => {
+    const result = await discoverPublicMaps(
+      {
+        publicMaps: async () => {
+          throw new GithubError(422, 'Look in a repository: owner/repo');
+        },
+      },
+      'me',
+      'not a repo',
+      [],
+      { maps: [], hidden: [], unavailable: [], warnings: [] },
+      new AbortController().signal,
+      async () => undefined,
+    );
+    expect(result.offline).toBe(false);
+    expect(result.warnings).toContain('Look in a repository: owner/repo');
+  });
   it('keeps accessible repositories and a removable reference when one repository is gone', async () => {
     const lost = { repo: 'lost/repo', number: 2 };
     const kept = { repo: 'good/repo', number: 3 };

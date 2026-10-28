@@ -47,7 +47,11 @@ export async function discoverPublicMaps(
           await evict(follows);
           throw error;
         }
-        if (error instanceof GithubError && error.status === 404) {
+        if (
+          error instanceof GithubError &&
+          [403, 404, 410].includes(error.status) &&
+          !error.rateLimited
+        ) {
           const refs = follows.filter(
             (ref) => ref.repo.toLowerCase() === name.toLowerCase(),
           );

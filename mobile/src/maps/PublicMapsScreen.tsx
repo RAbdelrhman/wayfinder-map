@@ -492,85 +492,91 @@ export function PublicMapsScreen() {
             <Card>{hiddenRows.map((map) => row(map, true))}</Card>
           </>
         ) : null}
-        {unavailableRows.length ? (
-          <>
-            <Section>Followed, not public now</Section>
-            <Card>
-              {unavailableRows.map((ref) => (
-                <View
-                  key={mapKey(ref)}
-                  style={{
-                    padding: 14,
-                    flexDirection: 'row',
-                    gap: 10,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text
-                    style={{ color: t.textSecondary, flex: 1 }}
-                  >{`Followed map ${ref.repo}#${ref.number} is unavailable.`}</Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Unfollow map ${ref.repo}#${ref.number}`}
-                    disabled={busy}
-                    onPress={() =>
-                      void (async () => {
-                        setBusy(true);
-                        try {
-                          await setFollow(ref, false);
-                          setFollows(await followedMaps(session.login));
-                        } catch (error) {
-                          setActionError(
-                            error instanceof Error
-                              ? error.message
-                              : 'Could not update follows.',
-                          );
-                        } finally {
-                          setBusy(false);
-                        }
-                      })()
-                    }
-                    style={{
-                      minHeight: 44,
-                      paddingHorizontal: 12,
-                      justifyContent: 'center',
-                      borderWidth: 1,
-                      borderColor: t.hairline,
-                      borderRadius: 9,
-                    }}
-                  >
-                    <Text style={{ color: t.textSecondary, fontWeight: '600' }}>
-                      Unfollow
-                    </Text>
-                  </Pressable>
-                </View>
-              ))}
-            </Card>
-          </>
-        ) : null}
-        {[...new Set(offlineRows.map((map) => map.repo))].map((name) => (
-          <View key={name}>
-            <Section>{name}</Section>
-            <Card>
-              {offlineRows
-                .filter((map) => map.repo === name)
-                .map((map) => row(map))}
-            </Card>
-          </View>
-        ))}
-        {resource.data?.groups.map((group) => {
-          const maps = group.maps.filter(
+        {[
+          ...new Set([
+            ...(resource.data?.groups.map((group) => group.repo) ?? []),
+            ...offlineRows.map((map) => map.repo),
+            ...unavailableRows.map((ref) => ref.repo),
+          ]),
+        ].map((name) => {
+          const group = resource.data?.groups.find(
+            (item) => item.repo === name,
+          );
+          const maps = (group?.maps ?? []).filter(
             (map) => !sharedMap || mapKey(map) !== mapKey(sharedMap),
           );
+          const saved = offlineRows.filter((map) => map.repo === name);
+          const missing = unavailableRows.filter((ref) => ref.repo === name);
           return (
-            <View key={group.repo}>
-              <Section>{group.repo}</Section>
-              {maps.length ? (
-                <Card>{maps.map((map) => row(map))}</Card>
+            <View key={name}>
+              <Section>{name}</Section>
+              {maps.length || saved.length || missing.length ? (
+                <Card>
+                  {maps.map((map) => row(map))}
+                  {saved.map((map) => row(map))}
+                  {missing.map((ref) => (
+                    <View
+                      key={mapKey(ref)}
+                      style={{
+                        padding: 14,
+                        borderTopWidth: 1,
+                        borderColor: t.gridline,
+                        flexDirection: 'row',
+                        gap: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.rowTitle,
+                          { color: t.textPrimary, flex: 1 },
+                        ]}
+                      >
+                        #{ref.number}
+                      </Text>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Unfollow map ${ref.repo}#${ref.number}`}
+                        disabled={busy}
+                        onPress={() =>
+                          void (async () => {
+                            setBusy(true);
+                            try {
+                              await setFollow(ref, false);
+                              setFollows(await followedMaps(session.login));
+                            } catch (error) {
+                              setActionError(
+                                error instanceof Error
+                                  ? error.message
+                                  : 'Could not update follows.',
+                              );
+                            } finally {
+                              setBusy(false);
+                            }
+                          })()
+                        }
+                        style={{
+                          minHeight: 44,
+                          paddingHorizontal: 12,
+                          justifyContent: 'center',
+                          borderWidth: 1,
+                          borderColor: t.hairline,
+                          borderRadius: 9,
+                        }}
+                      >
+                        <Text
+                          style={{ color: t.textSecondary, fontWeight: '600' }}
+                        >
+                          Unfollow
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                </Card>
               ) : (
                 <Text style={{ color: t.textMuted }}>
                   {sharedMap &&
-                  group.maps.some((map) => mapKey(map) === mapKey(sharedMap))
+                  group?.maps.some((map) => mapKey(map) === mapKey(sharedMap))
                     ? `#${sharedMap.number} is above, under Shared from GitHub.`
                     : 'No public maps from other people.'}
                 </Text>
