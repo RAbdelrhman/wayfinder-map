@@ -199,6 +199,13 @@ in its own `prototypes/<task-id>/` directory. Ticket tasks use `<ticket>-<title-
 non-ticket tasks use a descriptive ID such as `onboarding-flow`. Existing boards,
 including the legacy `prototypes/canvas/`, retain their content and URLs.
 The options are described in `config.js`, and its `README.md` is the full reference.
+
+For multi-screen flow comparisons, start with an Overview comparing the options,
+then a separate named page per option containing its individual screens and
+states. Keep phone-shaped Present views where relevant. Single-screen studies,
+component sheets, palettes, and other non-flow canvases can keep a simpler
+layout. See [Comparing flow options](prototypes/canvas/README.md#comparing-flow-options).
+
 To add one, use the `design-canvas` skill:
 
 ```sh
@@ -346,6 +353,10 @@ human-in-the-loop: grill the user one question at a time and decide nothing with
 them, and tells prototype agents which branch to push to and to build a design canvas (or a snapshot). It is empty for other types. An unknown one is left in the text rather than silently blanked,
 so a typo is visible.
 
+Grilling and prototype instructions are retained when a custom template omits
+`{{typeSteps}}`. Blank templates for those ticket types use the complete default
+prompt, including ticket and worktree context.
+
 ## Terminal options
 
 ```
@@ -379,6 +390,17 @@ monogram. Anything else shows as untyped and still works.
 Repos without sub-issues or issue dependencies still render. The tool reads children
 from a task list or issue links in the map body, and blockers from a
 `Blocked by: #4, #7` line, then says in the header bar that it did so.
+
+## Phone app
+
+The native Expo app lives in `mobile/`. Android personal build 1.1.0 includes
+GitHub sign-in, live map browsing with a repository filter, Path / Tickets / Brief,
+and ticket Overview / Links / Activity. Canvas viewing, live T3 sessions and push
+notifications have separate implementation tickets.
+
+See [mobile builds and installation](docs/mobile-builds.md) for the installed-build
+history, exact APK/source/checksum records, verification, and the Android build
+script. That record distinguishes the native app from the approved HTML prototypes.
 
 ## How it is put together
 

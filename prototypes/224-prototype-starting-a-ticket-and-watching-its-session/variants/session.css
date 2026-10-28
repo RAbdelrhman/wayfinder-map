@@ -1,0 +1,1262 @@
+/*
+  #224: starting, waiting and watching, on #223's phone parts (mobile.css), #316's Settings parts
+  (account.css) and the desktop tokens (src/ui/styles.css). A run's status reuses the desktop's
+  .handoff-pill and .handoff-spinner with its hand-off hues; nothing here adds a token.
+*/
+
+/* ---------- bars: #316 G-a's centred bar on every pushed screen ---------- */
+.m-bar.ac-bar3 > :last-child {
+  justify-self: end;
+}
+
+/* The icon button's drawn face (inset 5px) lines up with the 16px content edge, as Back does. */
+.ac-bar3 .m-icon-btn {
+  margin-right: -5px;
+}
+
+/* ---------- status words ---------- */
+.handoff-pill.st-pill {
+  gap: 6px;
+  min-height: 26px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+}
+
+.handoff-pill.st-pill.is-compact {
+  min-height: 22px;
+  padding: 1px 8px;
+  font-size: 11.5px;
+}
+
+.st-pill .i {
+  width: 14px;
+  height: 14px;
+}
+
+.st-pill.is-compact .i {
+  width: 12px;
+  height: 12px;
+}
+
+/* The phone's own state: a start it holds until the desktop can take it. */
+.handoff-pill.is-waiting {
+  border-color: color-mix(in srgb, var(--text-muted) 40%, var(--hairline));
+  color: var(--text-secondary);
+}
+
+.st-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.st-dot.is-online {
+  background: var(--state-frontier);
+}
+
+.st-dot.is-offline {
+  background: var(--state-blocked);
+}
+
+/* ---------- the start dock in the ticket's action bar ---------- */
+.m-actionbar.st-dock {
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.m-actionbar.st-dock > * {
+  flex: none;
+}
+
+.st-conn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.st-conn b,
+.st-runmeta b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.st-why {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.st-dock-row {
+  display: flex;
+  gap: 10px;
+}
+
+.st-dock-row > * {
+  flex: 1;
+}
+
+.st-runline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.st-runmeta {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.st-sentline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.st-sentline .i {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--handoff-pr-ready);
+}
+
+.st-dock .m-banner {
+  margin: 0;
+}
+
+.m-actionbar.st-watchbar {
+  padding: 10px 16px 30px;
+}
+
+.st-watchonly {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.st-watchonly .i {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* ---------- rows and lists ---------- */
+/* #223's .m-row-sub is an inline span, so its own ellipsis never applied: at 320px wide a long line ran into
+   the group's clipped edge mid-word. The line box belongs to .m-row-main, so the ellipsis goes there. */
+:where(.m-row-main) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.m-row-sub.st-subrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  white-space: normal;
+}
+
+.st-left {
+  margin: 8px 4px 0;
+  text-align: left;
+}
+
+.st-center {
+  max-width: 300px;
+  margin-top: 4px;
+  text-align: center;
+  line-height: 1.45;
+}
+
+.m-row-sub.st-wrap {
+  display: block;
+  white-space: normal;
+}
+
+.m-row-sub.st-wrap code {
+  overflow-wrap: anywhere;
+}
+
+.m-row.st-qrow {
+  gap: 8px;
+  padding-right: 8px;
+}
+
+.st-qmain .m-row-main,
+.st-qmain .m-row-sub {
+  display: block;
+}
+
+.st-qmain {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+/* A neutral .ghost face drawn at 34px inside a 44px hit area, like the bar's Back. */
+.st-qbtn {
+  flex: none;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 5px solid transparent;
+  border-right-width: 0;
+  border-left-width: 0;
+  border-radius: 14px;
+  background: none;
+  background-clip: padding-box;
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.st-qbtn:active {
+  background-color: var(--wash);
+}
+
+.st-qbtn:disabled {
+  opacity: 0.5;
+}
+
+.st-tabdot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--state-frontier);
+  vertical-align: 2px;
+}
+
+/* ---------- B: the banner on Maps ---------- */
+.m-banner.st-mbanner {
+  width: 100%;
+  min-height: 56px;
+  align-items: center;
+  margin: 12px 0 0;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+}
+
+.st-mbanner b {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.st-mbanner-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.m-banner.st-mbanner > .i:last-child {
+  color: var(--text-muted);
+}
+
+/* ---------- C: "On RAMON-PC" above the maps ---------- */
+.m-section-title.st-stitle > span:first-child {
+  flex: 1;
+}
+
+.st-sconn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-secondary);
+}
+
+.st-try {
+  min-height: 44px;
+  margin: -12px -8px -12px 4px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ---------- watching: status, history, outcome ---------- */
+.st-stick {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: 0 -16px;
+  padding: 6px 16px 0;
+  border-bottom: 1px solid var(--gridline);
+  background: var(--plane);
+}
+
+.st-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.st-stick .m-cached.st-cached {
+  margin: 0 0 10px;
+}
+
+.st-elapsed {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.st-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.st-live::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--state-frontier);
+  animation: st-pulse 1.6s ease-out infinite;
+}
+
+.st-live.is-off::before,
+.st-live.is-caught::before,
+.st-live.is-ended::before {
+  display: none;
+}
+
+.st-live.is-off {
+  color: var(--handoff-needs-you);
+}
+
+.st-live.is-caught {
+  color: var(--handoff-pr-ready);
+}
+
+.st-live.is-ended {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.st-live .i {
+  width: 14px;
+  height: 14px;
+}
+
+@keyframes st-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--state-frontier) 55%, transparent);
+  }
+
+  100% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+
+.st-report {
+  margin: 10px 0 0;
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+
+.st-report span {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.m-cached.st-cached {
+  flex-wrap: wrap;
+  margin: 10px 0 0;
+  line-height: 1.4;
+}
+
+.m-cached.st-cached span {
+  flex: 1;
+  min-width: 180px;
+}
+
+.m-cached .st-try {
+  margin: -10px -6px -10px auto;
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.st-caughtline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 2px 0;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.st-caughtline .i {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--handoff-pr-ready);
+}
+
+.st-tl {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-tl > li + li {
+  margin-top: 6px;
+}
+
+.st-tl > li.st-div {
+  margin-top: 14px;
+}
+
+.st-div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.st-div::before,
+.st-div::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--gridline);
+}
+
+.st-div.is-new {
+  color: var(--accent-text);
+}
+
+.st-div.is-new::before,
+.st-div.is-new::after {
+  background: color-mix(in srgb, var(--accent-text) 45%, transparent);
+}
+
+.st-tool,
+.st-flag {
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-1);
+}
+
+.st-tool > summary,
+div.st-tool,
+.st-flag {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 10px;
+}
+
+.st-tool > summary {
+  list-style: none;
+  cursor: pointer;
+  border-radius: 12px;
+}
+
+.st-tool > summary::-webkit-details-marker {
+  display: none;
+}
+
+.st-tool > summary:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+
+.st-tool > summary > .i:last-child {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+}
+
+.st-tool[open] > summary > .i:last-child {
+  transform: rotate(180deg);
+}
+
+.st-tool-ic {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--wash);
+  color: var(--text-secondary);
+}
+
+.st-tool-ic .i {
+  width: 16px;
+  height: 16px;
+}
+
+.st-ev-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.st-tool-line {
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.st-tool-line b {
+  font-weight: 600;
+}
+
+/* The desktop's code face, without its chip: these sit in rows that are boxes already. */
+.st-tool-line code,
+.st-file code,
+.m-row-sub code,
+.ac-login code,
+.st-tool-detail code {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font: 13px/1.35 ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.st-ev-sub {
+  margin-top: 1px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.st-time {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.st-tool-detail {
+  margin: 0;
+  padding: 0 12px 12px 48px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.st-flag {
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-1));
+}
+
+.st-flag .st-tool-ic {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.st-flag .st-tool-line {
+  white-space: normal;
+}
+
+.st-flag .st-ev-sub {
+  color: var(--text-secondary);
+}
+
+.st-msg {
+  padding: 6px 2px;
+}
+
+.st-msg-meta {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.st-msg-text {
+  margin: 4px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.st-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 2px;
+  background: var(--accent-text);
+  vertical-align: text-bottom;
+  animation: st-blink 1s steps(2, start) infinite;
+}
+
+@keyframes st-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.st-card {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--accent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-1));
+}
+
+.st-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.st-card-title {
+  margin: 2px 0 0;
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.st-card-sub {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.st-card .m-btn {
+  min-height: 46px;
+  margin-top: 6px;
+}
+
+.st-card.st-head {
+  margin-top: 4px;
+}
+
+.st-jump {
+  position: absolute;
+  left: 50%;
+  z-index: 6;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  transform: translateX(-50%);
+}
+
+/* ---------- B: Summary, Transcript, Tools ---------- */
+.st-tabs {
+  margin-top: 14px;
+}
+
+.st-panel {
+  margin-top: 6px;
+}
+
+/* A solid count, as the desktop's .map-inbox-count: a tinted pill fell under 4.5:1 in both themes. */
+.st-new {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-text);
+  color: var(--surface-1);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.m-card.st-latest {
+  padding: 10px 14px;
+}
+
+/* #223's .m-card p is secondary 14px; a message keeps the transcript's face. */
+.m-card .st-msg-meta {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.m-card .st-msg-text {
+  margin: 4px 0 0;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.m-card .st-ev-sub {
+  margin: 1px 0 0;
+}
+
+.st-latest .st-flag {
+  margin: 4px -4px;
+}
+
+.m-steps.st-plan,
+.m-steps.st-steps {
+  margin: 0;
+}
+
+.st-plan li.is-now.is-needs .m-step-mark {
+  border-color: var(--handoff-needs-you);
+  color: var(--handoff-needs-you);
+}
+
+.st-plan li.is-now.is-failed .m-step-mark {
+  border-color: var(--state-failed);
+  color: var(--state-failed);
+}
+
+.st-plan .m-step-mark .handoff-spinner {
+  width: 12px;
+  height: 12px;
+}
+
+.m-row.st-file {
+  min-height: 48px;
+}
+
+.st-diff {
+  flex: none;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- C: Live, newest first ---------- */
+.st-now {
+  padding: 4px 0 2px;
+}
+
+.st-now-ticket {
+  display: -webkit-box;
+  margin: 10px 0 0;
+  overflow: hidden;
+  font-size: 14px;
+  color: var(--text-secondary);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.st-kicker {
+  margin: 14px 0 2px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.st-now-line {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.st-now-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.st-now-meta .i {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.st-now + .m-banner,
+.st-now ~ .st-card {
+  margin-top: 14px;
+}
+
+.st-feed > li.is-new:not(.st-div) {
+  position: relative;
+  padding-left: 11px;
+}
+
+.st-feed > li.is-new:not(.st-div)::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent-text);
+}
+
+/* ---------- Settings → Desktop ---------- */
+.ac-notice.st-notice {
+  margin: 8px 0 4px;
+}
+
+.ac-notice.st-notice:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.ac-notice.st-notice.is-warn > .i {
+  color: var(--handoff-needs-you);
+}
+
+.st-tile {
+  width: 64px;
+  height: 64px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--surface-1);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--text-secondary);
+}
+
+.st-tile .i {
+  width: 32px;
+  height: 32px;
+}
+
+.st-tile.is-muted {
+  color: var(--text-muted);
+}
+
+.st-connrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.m-link.st-trylink {
+  margin-top: -4px;
+}
+
+.m-card.st-howto {
+  padding: 2px 16px;
+}
+
+.st-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 16px;
+}
+
+/* ---------- pairing ---------- */
+.m-foot.st-foot {
+  padding-top: 12px;
+}
+
+.m-logo.st-ok {
+  background: var(--state-frontier);
+  color: #fff;
+}
+
+.ac-copy.st-lead {
+  margin: 12px 4px 4px;
+}
+
+.st-label {
+  display: block;
+  margin: 14px 4px 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.m-search.st-field {
+  min-height: 48px;
+  margin: 0;
+}
+
+.m-search.st-field input {
+  align-self: stretch;
+  min-height: 46px;
+  font-size: 16px;
+}
+
+.m-search.st-field input.st-mono {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+  letter-spacing: 0.06em;
+}
+
+.m-search.st-field input::placeholder {
+  color: var(--text-muted);
+}
+
+/* B: the start sheet. The grabber keeps #223's 28px look inside a 44px hit area. */
+.st-sheet .m-grab {
+  min-height: 44px;
+  margin: -8px 0;
+}
+
+.st-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 0 16px 34px;
+  overflow-y: auto;
+}
+
+.st-sheet .m-sheet-title {
+  margin: 0 4px;
+}
+
+.st-sheet-ticket {
+  display: -webkit-box;
+  margin: -6px 4px 2px;
+  overflow: hidden;
+  font-size: 14px;
+  color: var(--text-secondary);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.st-sheet .ac-copy {
+  margin: 0 4px;
+}
+
+.st-sheet .m-row-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.st-sheet .m-fine {
+  margin: 0 4px;
+  text-align: left;
+}
+
+/* The camera, always dark, whatever the theme. */
+.st-scan {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: #0b0b0b;
+  color: #fff;
+}
+
+.st-scan-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 52px;
+  padding: 0 16px;
+}
+
+.st-scan-bar h1 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.st-scan-close {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  justify-self: start;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.st-scan-close .i {
+  width: 20px;
+  height: 20px;
+}
+
+.st-scan :focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+.st-scan-ctx {
+  margin: 4px 24px 0;
+  font-size: 14.5px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.st-cam {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 0 24px;
+  background: radial-gradient(ellipse at 50% 42%, #2b2e34 0%, #141518 58%, #0b0b0b 100%);
+}
+
+.st-finder {
+  position: relative;
+  width: 256px;
+  height: 256px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.st-screen {
+  width: 188px;
+  height: 188px;
+  display: block;
+  border-radius: 8px;
+  box-shadow: 0 22px 40px rgba(0, 0, 0, 0.55);
+  transform: perspective(700px) rotateX(9deg) rotateZ(-3deg);
+}
+
+.st-screen svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+}
+
+.st-finder.is-busy .st-screen {
+  opacity: 0.3;
+}
+
+.st-corner {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  border: 0 solid #fff;
+}
+
+.st-corner.is-tl {
+  top: 0;
+  left: 0;
+  border-width: 4px 0 0 4px;
+  border-top-left-radius: 26px;
+}
+
+.st-corner.is-tr {
+  top: 0;
+  right: 0;
+  border-width: 4px 4px 0 0;
+  border-top-right-radius: 26px;
+}
+
+.st-corner.is-bl {
+  bottom: 0;
+  left: 0;
+  border-width: 0 0 4px 4px;
+  border-bottom-left-radius: 26px;
+}
+
+.st-corner.is-br {
+  right: 0;
+  bottom: 0;
+  border-width: 0 4px 4px 0;
+  border-bottom-right-radius: 26px;
+}
+
+.st-finder-done {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.st-finder-done > .i {
+  width: 64px;
+  height: 64px;
+  padding: 14px;
+  border-radius: 50%;
+  background: var(--state-frontier);
+  color: #fff;
+}
+
+.st-finder-done .m-spinner {
+  width: 40px;
+  height: 40px;
+  border-width: 3px;
+  border-color: rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+}
+
+.st-scan-cap {
+  max-width: 290px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.st-proto {
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.st-scan-foot {
+  padding: 16px 20px 40px;
+}
+
+.st-scan-alt {
+  width: 100%;
+  min-height: 50px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.st-scan-alt:disabled {
+  opacity: 0.4;
+}
+
+/* C: Undo, just above the bottom bar */
+.st-snack {
+  position: absolute;
+  right: 12px;
+  left: 12px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 4px 6px 4px 16px;
+  border-radius: 14px;
+  background: var(--text-primary);
+  box-shadow: var(--shadow);
+  color: var(--plane);
+  font-size: 14.5px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.st-snack button {
+  flex: none;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--plane) 16%, transparent);
+  color: var(--plane);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.st-snack button:focus-visible {
+  outline: 2px solid var(--plane);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-live::before,
+  .st-caret {
+    animation: none;
+  }
+
+  .st-tool > summary > .i:last-child {
+    transition: none;
+  }
+}
+/* Match #226's centered phone frame when presenting in a wide window. */
+@media (min-width: 520px) {
+  body.viz-root {
+    display: grid;
+    place-items: center;
+    place-content: center;
+    background: color-mix(in srgb, var(--plane) 88%, var(--text-primary));
+  }
+
+  #app.m-app {
+    flex: none;
+    width: 390px;
+    height: 844px;
+    border-radius: 36px;
+    box-shadow: 0 0 0 1px var(--hairline), var(--shadow);
+    transform: scale(var(--device-fit, 1));
+  }
+}

@@ -1,0 +1,146 @@
+/* #353 additions on top of the #223 phone styles. Tokens come from src/ui/styles.css. Touch targets stay 44px or more. */
+
+.m-scroll { position: relative; }
+.f-gap { margin-top: 16px; }
+.f-fine { margin-top: 10px; padding: 0 8px; line-height: 1.4; }
+.f-why { margin-left: auto; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.f-none { margin: 0 4px; font-size: 14px; color: var(--text-muted); }
+.f-hint { margin: 6px 4px 0; font-size: 13px; line-height: 1.4; color: var(--text-muted); }
+.f-wrap { white-space: normal; }
+
+/* The desktop's Follow / Unfollow look (.ghost): secondary text, hairline, 9px radius, drawn at 34px in a 44px target. */
+.f-act { flex: none; display: flex; align-items: center; min-height: 44px; }
+.f-follow {
+  min-height: 34px;
+  min-width: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  position: relative;
+}
+.f-follow::before { content: ''; position: absolute; inset: -5px 0; }
+.f-follow.is-add { color: var(--accent-text); }
+.f-follow:disabled { opacity: 0.45; }
+.f-prow { align-items: flex-start; flex-wrap: nowrap; cursor: default; }
+.f-hid { flex: none; width: 32px; height: 32px; display: grid; place-items: center; color: var(--text-muted); }
+.f-hid .i { width: 20px; height: 20px; }
+
+.f-notice {
+  width: 100%;
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--surface-1);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.f-notice .m-row-main span { display: block; font-size: 13px; color: var(--text-muted); }
+.f-notice > .i:first-child { width: 20px; height: 20px; color: var(--text-muted); flex: none; }
+.f-notice > .i:last-child { width: 18px; height: 18px; color: var(--text-muted); }
+
+.f-desk, .f-card {
+  margin-top: 12px;
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--surface-1);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.f-desk > .i, .f-card > .i { flex: none; width: 20px; height: 20px; margin-top: 1px; color: var(--text-secondary); }
+.f-desk b, .f-card b { display: block; margin-bottom: 2px; }
+.f-desk span, .f-card span { color: var(--text-secondary); }
+.f-desk .m-link { padding: 0; margin-top: 2px; }
+.f-desk.is-warn > .i, .f-card.is-warn > .i { color: var(--state-blocked); }
+.f-card code { font-size: 13px; }
+
+.f-field { display: flex; gap: 8px; align-items: center; }
+.f-field input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 11px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 15px;
+}
+.f-field .f-follow { min-height: 44px; }
+
+.f-preview {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--surface-1);
+}
+.f-preview h2 { margin: 4px 0 10px; font-size: 17px; }
+.f-preview .m-btn { margin-top: 12px; }
+.f-ok { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; font-size: 13px; color: var(--text-secondary); }
+.f-ok .i { width: 16px; height: 16px; color: var(--state-done); }
+.f-list { margin: 0; padding: 0 4px 0 22px; font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+
+.f-toast {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 28px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--text-primary);
+  color: var(--plane);
+  font-size: 14px;
+  box-shadow: var(--shadow);
+}
+
+/* B: the system share sheet over GitHub's issue page. */
+.f-ghpage { padding: 8px 20px; color: var(--text-secondary); }
+.f-ghbar { display: flex; gap: 8px; align-items: center; font-size: 13px; margin-bottom: 18px; }
+.f-ghbar .i { width: 18px; height: 18px; }
+.f-ghpage h2 { margin: 0; font-size: 20px; color: var(--text-primary); }
+.f-ghpage h2 span { color: var(--text-muted); font-weight: 400; }
+.f-ghpage p { margin: 6px 0 18px; font-size: 13px; }
+.f-share { padding: 0 16px 28px; }
+.f-targets { display: flex; gap: 12px; justify-content: space-around; margin: 8px 0 14px; }
+.f-targets button {
+  min-width: 72px;
+  min-height: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+}
+.f-targets button .i {
+  width: 52px;
+  height: 52px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--wash);
+  color: var(--text-primary);
+}
+.f-targets .is-us .i { background: var(--accent-fill); color: var(--on-accent); }
+
+/* Round 3 row: the shared map's own row is the one control, marked and scrolled to. */
+.f-prow.is-shared { background: var(--wash); box-shadow: inset 3px 0 0 var(--accent-fill); }
+.f-tag { margin-right: 6px; padding: 1px 6px; border-radius: 6px; background: var(--accent-fill); color: var(--on-accent); font-size: 11px; font-weight: 600; }
+.f-moved { margin-top: 4px; font-size: 13px; }

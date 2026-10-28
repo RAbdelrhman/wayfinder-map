@@ -1,5 +1,24 @@
 This is an Expo/React Native mobile application. Prioritize mobile-first patterns, performance, and cross-platform compatibility.
 
+## Existing builds
+
+Read `../docs/mobile-builds.md` before reporting mobile availability or installing
+an APK. It records actual native builds, installation evidence, artifact paths,
+known limitations, and the repeatable archive/build script. Keep its build history
+current when delivering a new phone build. Never confuse an approved HTML canvas
+with implemented native screens or claim that the older sign-in-only APK is the
+latest build without checking this record.
+
+## Prototype presentation and test evidence
+
+For HTML phone prototypes and browser screen-layout testing, follow
+`../prototypes/AGENTS.md` and the Mobile presentation section in
+`../prototypes/canvas/README.md`. Use `canvas:create --mobile` for new phone
+boards. Preserve existing authored frames and keep other device types explicit.
+A framed browser viewport is layout evidence only. Native app, device/emulator,
+OS keyboard, safe-area, touch and accessibility claims require those actual
+flows; mark anything not exercised Not Verified.
+
 ## Expo has changed — do not trust your training data
 
 Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:

@@ -6,6 +6,13 @@ The sign-in screens are the direction picked in #223 (S-A: welcome, code, waitin
 
 ## One-time setup: the GitHub OAuth app
 
+For Ramon's existing personal build, reuse [Wayfinder Map Mobile](https://github.com/settings/applications/3956110)
+under the RAbdelrhman account. Device Flow was verified enabled on 2026-10-27,
+and sign-in was exercised on the installed Android app. Read its public client ID
+there and configure `mobile/.env.local`; do not create another registration just
+because a fresh checkout lacks that ignored local file. Existing build and install
+records are in [mobile-builds.md](mobile-builds.md).
+
 You do this once, in your own GitHub account. The app needs only the client ID.
 
 1. Open <https://github.com/settings/developers> and choose **OAuth Apps → New OAuth App**.
@@ -46,5 +53,6 @@ Avatar on Maps → **Settings** → **Sign out** → the alert "Sign out? Wayfin
 - `mobile/src/auth/deviceFlow.ts`: the state machine (`authReducer`) and the polling loop (`runDeviceFlow`), with fetch, clock and sleep injected.
 - `mobile/src/auth/sessionStore.ts` and `secureStorage.ts`: the session's key and shape, and the SecureStore adapter.
 - `mobile/src/auth/AuthProvider.tsx`: React wiring (`useAuth()` gives `state`, `signIn`, `cancel`, `signOut`). Later screens read the token from `state.session.token` when `state.phase` is `signedIn`.
-- `mobile/src/auth/SignInScreen.tsx`: the S-A screens. `MapsScreen.tsx` (only the top bar until #229), `SettingsScreen.tsx` and `SignedIn.tsx` (the switch between them) are the signed-in side.
+- `mobile/src/auth/SignInScreen.tsx`: the S-A screens; `SettingsScreen.tsx` contains account settings.
+- `mobile/src/app/_layout.tsx`: Expo Router authentication guards and the signed-in browse provider. Routes in `mobile/src/app/` open the native screens in `mobile/src/maps/`, including `MapsScreen.tsx`, `MapScreen.tsx` and `TicketScreen.tsx`.
 - Tests: `bun run test` in `mobile/`.

@@ -215,7 +215,13 @@ When you capture the prototype, commit it to the branch {{prototypeBranch}}
 and push it. That exact name is how wayfinder-map finds it later, so do not
 pick another. When the question is visual or UX, build the prototype as a
 design canvas: a board showing the options side by side (pages, styles,
-components, palettes, moodboards) with a note on each. This ticket's canvas
+components, palettes, moodboards) with a note on each.
+For multi-screen flow comparisons, start with an Overview comparing every
+option, then give each option a separate named page with its individual
+screens and states in flow order. Keep phone-shaped Present views where
+relevant. Single-screen studies, component sheets, palettes, and other
+non-flow canvases can use a simpler layout. Follow the canvas README's
+"Comparing flow options" guidance when available. This ticket's canvas
 directory is {{canvasDirectory}}. Create a fresh canvas there; never append
 this ticket's options to an unrelated canvas, including prototypes/canvas.
 If the directory already exists, inspect its config.js and continue there only
@@ -224,6 +230,12 @@ If the repo provides canvas:create, run bun run canvas:create {{ticketSlug}}
 --ticket {{ticketNumber}}. Otherwise, use the design-canvas skill with an
 explicit directory: node ~/.claude/skills/design-canvas/scaffold.mjs
 {{canvasDirectory}}. Set config.js ticket to {{ticketNumber}}.
+For phone prototypes when the repo provides prototypes/canvas/device.js,
+append --mobile to canvas:create. Read
+prototypes/AGENTS.md and prototypes/canvas/README.md for the shared phone
+presentation and layout-test workflow. Preserve existing authored frames;
+never stack frames or force other devices into a phone preset. Browser
+viewport checks are layout evidence, not real device tests.
 Follow {{canvasDirectory}}/README.md, and make node
 {{canvasDirectory}}/tools/check.mjs pass before you show the user.
 Inspect the running canvas yourself, then push {{prototypeBranch}} and
@@ -284,8 +296,9 @@ export function renderTemplate(template: string, values: Readonly<Record<string,
 /** The prompt a click on a ticket hands to T3 Code. */
 export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInput): string {
   const defaultTemplate = map ? DEFAULT_TEMPLATE : DEFAULT_STANDALONE_TEMPLATE;
-  // A blank grilling template still needs the ticket question and worktree context.
-  const chosenTemplate = ticket.type === 'grilling' && !template?.trim()
+  const humanInTheLoop = ticket.type === 'grilling' || ticket.type === 'prototype';
+  // Blank human-in-the-loop templates still need ticket and worktree context.
+  const chosenTemplate = humanInTheLoop && !template?.trim()
     ? defaultTemplate
     : template ?? defaultTemplate;
   const blockedLine =
@@ -343,9 +356,9 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
     blockedLine,
   }).trim();
 
-  // Saved templates may predate typeSteps or omit it entirely. Grilling's
-  // human-decision contract must survive those templates, including empty ones.
-  if (ticket.type === 'grilling' && typeSteps && !chosenTemplate.includes('{{typeSteps}}')) {
+  // Saved templates may predate typeSteps or omit it entirely. Human-decision
+  // and prototype authoring instructions must survive those templates.
+  if (humanInTheLoop && typeSteps && !chosenTemplate.includes('{{typeSteps}}')) {
     return `${renderTemplate(typeSteps, prototypeValues)}\n\n${rendered}`.trim();
   }
   return rendered;

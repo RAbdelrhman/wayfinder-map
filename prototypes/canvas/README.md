@@ -32,6 +32,98 @@ Use it when a decision is **visual or UX**. Logic-only prototypes don't need it.
 4. Check it: `node <dir>/tools/check.mjs`. It exits 1 on errors.
 5. Inspect the preview, then provide the exact canvas link and visible preview before asking the user to choose. Commit the completed work.
 
+## Mobile presentation
+
+Create phone boards with `bun run canvas:create <task-id> --mobile`, optionally
+adding `--ticket <number>`. This generates a blank `variants/phone.html` with
+the shared presentation and a 390 by 844 page item, at board width 240. Author
+the screen and its tradeoffs before sharing. Load the helper after page styles
+and the kit, at the end of body:
+
+```html
+<link rel="stylesheet" href="../../../src/ui/styles.css">
+<body class="viz-root">
+  <main id="app" data-canvas-device="phone"><!-- Screen content --></main>
+  <script src="../../canvas/kit/kit.js"></script>
+  <script src="../../canvas/device.js"></script>
+</body>
+```
+
+The root must be a direct child of `body.viz-root`. The stylesheet provides
+theme tokens and full-window body sizing. The page owns its normal responsive
+layout, root background and overflow, internal scrolling and focus rings. The
+generated page includes those basics. Keep focus outlines inside clipped edges.
+Use one app root and one helper. Do not copy the helper into a board.
+
+This is the exact phone presentation authored for #226 at commit
+`9dd39abe74a767be04ad529cf8e74702376b9b69`: at widths of 520px or more, center
+the 390 by 844 app with 36px corners, a token-based border and shadow, and a
+backdrop mixing `--plane` with `--text-primary`. Scale by
+`min(1, (innerHeight - 24) / 844, (innerWidth - 24) / 390)` on load and resize.
+The 24px is total clearance, or 12px per side. Below 520px the helper adds no
+frame, so board thumbnails and narrow pages use the page's responsive layout.
+Wide, short windows, including landscape phone viewports, show the same scaled
+presentation as #226. This does not simulate landscape device behavior.
+The frame sizes the app root, not the browser's media-query viewport or
+`window.innerWidth`. Test responsive breakpoints at actual narrow browser
+viewport sizes separately; the desktop frame alone cannot verify them.
+
+The helper works inside the page, so Present, Wayfinder's sandboxed viewer and
+direct page testing share it. It adds no controls, focus targets, navigation or
+storage access. Both themes use the app tokens and the kit's `?theme=` support.
+It is opt-in: existing canvases and already authored frames are preserved.
+Never add it over another frame. Only `data-canvas-device="phone"` opts in;
+other values do nothing. Do not use it for desktop, tablet, watch or other
+device shapes. Add a separately chosen presentation when those are needed.
+
+Run `bun run test:device-presentation` with installed Chrome for the shared
+layout checks, also run by CI. Set `CHROME_PATH` for a different Chromium binary.
+Screenshots are saved in `.shots/device-presentation/` for inspection.
+For each authored screen also exercise focus, internal scroll,
+both themes, board, Present and Wayfinder viewer, direct page, narrow widths
+and short windows. These are browser layout checks, not real device tests.
+Report actual phone/emulator, OS keyboard, safe areas, touch and assistive
+technology evidence separately; mark unexercised layers Not Verified.
+
+## Comparing flow options
+
+When comparing multi-screen flows, use the presentation pattern from
+[Wayfinder #224](https://github.com/RAbdelrhman/wayfinder-map/tree/prototype/224-prototype-starting-a-ticket-and-watching-its-session/prototypes/224-prototype-starting-a-ticket-and-watching-its-session):
+
+1. Start with an **Overview** page comparing every option at the same meaningful
+   moment, with its name, idea, and trade-offs. Use comparable sample data.
+2. Give each option a separate named canvas page, such as **A · On the ticket**.
+   Put that option's individual screens and states on its page, grouped into
+   sections in flow order. Each screen/state is a presentable item, rather than
+   one long image of the whole flow. Include relevant loading, empty, error,
+   offline, and recovery states.
+3. Keep shared screens in a clearly labelled section on the Overview or a shared
+   page. Say which options use them instead of duplicating them without context.
+
+Use existing `pages`, `sections`, and `kind: 'page'` items. For example, an
+Overview item `A` can show `variants/phone.html?o=A&s=live`; page `option-a`
+can contain `A-start` and `A-live` items pointing at the same fixture's start
+and live states. Give pages stable explicit IDs and items clear option/state IDs
+so feedback and deep links identify the exact screen. #224's pages are Overview,
+A · On the ticket, B · Session page, and C · Desktop on Maps.
+
+For phone flows, keep phone-sized screen items and the phone-shaped **Present**
+view where relevant. #224 uses 390 × 844 items with `boardWidth: 300`.
+Check both the board comparison and individual screens in Present; organising
+the board into pages must not turn the presented phone into a desktop layout.
+Use the repository's shared phone presentation helper when available, rather
+than copying #224's CSS into new boards.
+
+This is a default for comparing flows, not a required shape for every canvas.
+Single-screen comparisons, component sheets, palettes, typography, moodboards,
+and other non-flow work can use top-level `sections` or another suitable layout.
+Keep iteration pages and round labels separate from option identity; preserve
+earlier options and `note.basedOn` lineage when adding a round.
+
+The presentation pattern does not select an option. Leave `disposition` and
+`feedback` unset until the user makes that decision. Referencing #224 does not
+approve its product behaviour or authorise changes to that canvas.
+
 ## Rules (the sandbox)
 
 The canvas has to work when served as sandboxed files at an opaque origin, as prototype viewers (Wayfinder, for one) serve them. So:

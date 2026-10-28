@@ -8,7 +8,7 @@ import { startWayfinder } from '../runtime.js';
 import type { WayfinderRuntime } from '../runtime.js';
 import { startServer } from '../server.js';
 import { AUTO_UPDATE_ENABLED } from '../version.js';
-import { DESKTOP_PORT, DesktopLifecycle, isInternalUrl, isSafeExternalUrl, startOnStablePort } from './lifecycle.js';
+import { DESKTOP_PORT, DesktopLifecycle, isAppPageUrl, isInternalUrl, isSafeExternalUrl, startOnStablePort } from './lifecycle.js';
 import { startAutoUpdates } from './updater.js';
 import type { DesktopUpdaterHandle } from './updater.js';
 import { shouldEnableUpdates } from './updaterPolicy.js';
@@ -121,9 +121,10 @@ function installNavigationBoundary(window: BrowserWindow): void {
       void startRuntime();
       return;
     }
-    if (isInternalUrl(target, runtimeOrigin)) return;
+    if (isAppPageUrl(target, runtimeOrigin)) return;
     event.preventDefault();
-    if (isSafeExternalUrl(target)) void shell.openExternal(target);
+    // A raw file opened in the window strands it: there is no menu, Back or Escape to leave.
+    if (!isInternalUrl(target, runtimeOrigin) && isSafeExternalUrl(target)) void shell.openExternal(target);
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (!isInternalUrl(url, runtimeOrigin) && isSafeExternalUrl(url)) void shell.openExternal(url);

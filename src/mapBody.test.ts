@@ -24,6 +24,9 @@ Read CONTEXT.md for the vocabulary.
 `;
 
 describe('parseMapBody', () => {
+  it('reads the first heading when a GitHub body starts with a byte-order mark', () => {
+    expect(parseMapBody(`\uFEFF${MAP_BODY}`).destination).toBe('A teammate can give a file to another teammate.');
+  });
   it('splits a map body into its named sections', () => {
     const sections = parseMapBody(MAP_BODY);
     expect(sections.destination).toBe('A teammate can give a file to another teammate.');

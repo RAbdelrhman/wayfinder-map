@@ -21,6 +21,32 @@ afterEach(async () => {
 });
 
 describe('canvas:create', () => {
+  it('rejects duplicate and unsupported mobile options before creating a board', async () => {
+    const root = await fixture();
+    for (const options of [['--mobile', '--mobile'], ['--ticket', '1', '--ticket', '2'], ['--mobile', 'tablet']]) {
+      await expect(run(process.execPath, [script, 'phone', ...options], { cwd: root })).rejects.toThrow('Usage:');
+    }
+    expect(await readdir(join(root, 'prototypes'))).toEqual(['canvas']);
+  }, 15000);
+
+  it.each([['--mobile', '--ticket', '42'], ['--ticket', '42', '--mobile']])('creates a phone board with the shared frame using %j', async (...options) => {
+    const root = await fixture();
+    await mkdir(join(root, 'src/ui'), { recursive: true });
+    await cp(resolve('src/ui/styles.css'), join(root, 'src/ui/styles.css'));
+    await run(process.execPath, [script, '42-phone', ...options], { cwd: root });
+    const board = join(root, 'prototypes/42-phone');
+    const config = await readFile(join(board, 'config.js'), 'utf8');
+    expect(config).toContain('ticket: 42');
+    expect(config).toContain('width: 390, height: 844, boardWidth: 240');
+    const phone = await readFile(join(board, 'variants/phone.html'), 'utf8');
+    expect(phone).toContain('data-canvas-device="phone"');
+    expect(phone).toContain('src="../../canvas/kit/kit.js"');
+    expect(phone).toContain('src="../../canvas/device.js"');
+    expect(phone.indexOf('kit/kit.js')).toBeLessThan(phone.indexOf('canvas/device.js'));
+    expect(await readdir(board)).not.toContain('device.js');
+    await run(process.execPath, [join(board, 'tools/check.mjs')], { cwd: root });
+  }, 30000);
+
   it('creates separate boards without copying or changing legacy content', async () => {
     const root = await fixture();
     const legacy = join(root, 'prototypes/canvas/config.js');
@@ -44,7 +70,11 @@ describe('canvas:create', () => {
       const index = await readFile(join(board, 'index.html'), 'utf8');
       expect(index).toContain('src="../canvas/canvas.js"');
       expect(index).toContain('href="../canvas/canvas.css"');
-      expect(await readFile(join(board, 'README.md'), 'utf8')).toContain('../../canvas/kit/kit.js');
+      const readme = await readFile(join(board, 'README.md'), 'utf8');
+      expect(readme).toContain('../../canvas/kit/kit.js');
+      expect(readme).toContain('## Comparing flow options');
+      expect(readme).toContain('Give each option a separate named canvas page');
+      expect(readme).toContain('not a required shape for every canvas');
     }
     await run(process.execPath, [join(first, 'tools/check.mjs')], { cwd: root });
     await run(process.execPath, [join(second, 'tools/check.mjs')], { cwd: root });

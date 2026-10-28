@@ -1,0 +1,1280 @@
+/*
+  The #226 phone viewer. Loaded after mobile.css (#223's picked phone parts: .m-bar, .m-back,
+  .m-icon-btn, .m-row, .m-group, .m-sheet, .m-seg, .m-filter, .m-cached, .m-btn) and the
+  desktop tokens in src/ui/styles.css. Only the new pieces live here: the Prototype card,
+  the stage around one option, and each direction's controls. Touch targets are 44px or more.
+*/
+
+.v-viewer {
+  --v-stage: color-mix(in srgb, var(--plane) 90%, var(--text-primary));
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--plane);
+  overflow: hidden;
+}
+
+/* #316 G-a's top bar: the title in the true centre, Back on the 16px content edge. */
+.m-bar.v-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  padding: 0 16px;
+}
+
+.v-bar > :first-child {
+  justify-self: start;
+}
+
+.v-bar > :last-child {
+  justify-self: end;
+}
+
+.v-bar h1 {
+  max-width: 200px;
+}
+
+.v-bar .m-icon-btn {
+  margin-right: -5px;
+}
+
+/* ---------- the Prototype card on ticket detail ---------- */
+.v-proto {
+  margin: 14px 0 6px;
+  padding: 14px 14px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  background: var(--surface-1);
+}
+
+.v-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.v-eyebrow .i {
+  width: 15px;
+  height: 15px;
+}
+
+.v-proto h3 {
+  margin: 6px 0 2px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.v-meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.v-proto .m-btn {
+  margin-top: 12px;
+  min-height: 46px;
+  font-size: 15.5px;
+}
+
+.v-proto .v-fine {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.v-proto .v-open-row {
+  margin: 10px -14px -14px;
+  width: calc(100% + 28px);
+  border-top: 1px solid var(--gridline);
+  border-radius: 0 0 16px 16px;
+}
+
+.v-proto .v-open-row .m-row-title {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.v-proto.is-quiet p:not(.v-eyebrow) {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.v-proto code {
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- stage: one option at a time ---------- */
+.v-top,
+.v-bottom {
+  flex: none;
+  position: relative;
+  z-index: 3;
+}
+
+.v-top {
+  background: var(--plane);
+}
+
+.v-bottom {
+  background: var(--surface-1);
+  border-top: 1px solid var(--hairline);
+  padding-bottom: 34px;
+}
+
+.v-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.v-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  overflow: auto;
+  background: var(--v-stage);
+  scrollbar-width: thin;
+}
+
+.v-canvas {
+  position: relative;
+  flex: none;
+  margin: auto;
+  background: var(--plane);
+  box-shadow: 0 0 0 1px var(--hairline), 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.v-canvas iframe {
+  display: block;
+  border: 0;
+  transform-origin: 0 0;
+}
+
+.v-canvas.is-waiting iframe {
+  visibility: hidden;
+}
+
+.v-over {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.v-over > * {
+  pointer-events: auto;
+}
+
+.v-viewer.is-full .v-top,
+.v-viewer.is-full .v-bottom {
+  display: none;
+}
+
+.v-viewer.is-full.d-C .v-bottom {
+  display: block;
+}
+
+/*
+  Full screen keeps one way out on screen. After a moment its backing thins so more of the option
+  shows through; the label keeps full strength (a faded label fell to 4.4:1 over a light option).
+*/
+.v-exit {
+  position: absolute;
+  left: 50%;
+  bottom: 40px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-1) 90%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: var(--text-primary);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  font-weight: 600;
+  animation: v-settle 0.4s ease 3s forwards;
+}
+
+.v-exit .i {
+  width: 18px;
+  height: 18px;
+}
+
+.v-exit:hover,
+.v-exit:focus-visible {
+  animation: none;
+}
+
+@keyframes v-settle {
+  to {
+    background-color: color-mix(in srgb, var(--surface-1) 70%, transparent);
+    border-color: transparent;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v-exit {
+    animation-duration: 0s;
+  }
+}
+
+/* ---------- zoom ---------- */
+.v-zoom {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-preview);
+}
+
+.v-zoom button {
+  min-width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.v-zoom button .i {
+  width: 18px;
+  height: 18px;
+}
+
+.v-zoom .v-zoom-label {
+  min-width: 60px;
+  color: var(--text-primary);
+}
+
+.v-zoom button:disabled {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.v-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 74px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-segment);
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.v-zchip {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-preview);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.v-zchip span {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* ---------- option ids and names ---------- */
+.v-tag {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--wash);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.v-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.25;
+}
+
+.v-name b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.v-name b span:last-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.v-name small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---------- A: option strip and controls ---------- */
+.v-title {
+  min-width: 0;
+  max-width: 220px;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.v-title-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.v-title-main span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.v-title-main .i {
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+}
+
+.v-title-sub {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.v-title:active {
+  background: var(--wash);
+}
+
+.v-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 6px 12px 4px;
+  scrollbar-width: none;
+}
+
+.v-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.v-strip .v-chip {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.v-strip .v-chip[aria-current='true'] {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--plane);
+}
+
+.v-strip .v-sep {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  background: var(--gridline);
+}
+
+.v-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 56px;
+  padding: 0 6px;
+}
+
+.v-ctrl .m-icon-btn {
+  color: var(--text-secondary);
+}
+
+.v-pill {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.v-pill .i {
+  width: 17px;
+  height: 17px;
+}
+
+.v-pill[aria-pressed='true'],
+.v-pill[aria-expanded='true'] {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--plane);
+}
+
+/* A's notes push the stage up instead of covering it, so the option stays whole. */
+.v-notes {
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--gridline);
+}
+
+.v-notes-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 0 16px;
+}
+
+.v-notes-head b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.v-notes-body {
+  overflow-y: auto;
+  padding: 0 16px 14px;
+}
+
+/* ---------- note text, shared ---------- */
+.v-note {
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+.v-note p {
+  margin: 8px 0 0;
+}
+
+.v-note .v-ask {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.v-note .v-ask b,
+.v-note .v-kick {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.v-note ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.v-note li {
+  position: relative;
+  margin-top: 4px;
+  padding-left: 22px;
+}
+
+.v-note li::before {
+  position: absolute;
+  left: 2px;
+  top: 0;
+  width: 16px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.v-note li.pro::before {
+  content: '+';
+  color: var(--state-frontier);
+}
+
+.v-note li.con::before {
+  content: '−';
+  color: var(--state-failed);
+}
+
+.v-note .v-src {
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+.v-note .v-rec {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--wash);
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+/* ---------- menus ---------- */
+.v-scrim-clear {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+}
+
+.v-pop {
+  position: absolute;
+  z-index: 9;
+  min-width: 240px;
+  max-width: calc(100% - 24px);
+  padding: 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+}
+
+.v-pop.is-center {
+  top: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+}
+
+.v-pop.is-right {
+  top: 92px;
+  right: 12px;
+  width: 270px;
+}
+
+.v-pop.is-up {
+  bottom: 100px;
+  right: 12px;
+  width: 270px;
+}
+
+.v-pop > [role^='menuitem'] {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+}
+
+.v-pop > [role^='menuitem']:active,
+.v-pop > [role^='menuitem']:focus-visible {
+  background: var(--wash);
+}
+
+.v-pop > [role^='menuitem'] .i {
+  width: 18px;
+  height: 18px;
+  color: var(--text-secondary);
+}
+
+.v-pop .v-pop-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.v-pop .v-pop-main small {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.v-count {
+  min-width: 26px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--wash);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.v-check {
+  width: 18px;
+  flex: none;
+  color: var(--accent-text);
+}
+
+.v-pop hr {
+  margin: 6px 4px;
+  border: 0;
+  border-top: 1px solid var(--gridline);
+}
+
+.v-pop .v-pop-info {
+  padding: 6px 10px 4px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.v-pop .v-theme {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px 4px 10px;
+  font-size: 15px;
+}
+
+.v-pop .v-theme-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.v-pop .v-theme-label .i {
+  width: 18px;
+  height: 18px;
+  color: var(--text-secondary);
+}
+
+.v-pop .v-theme .m-seg {
+  margin-left: auto;
+}
+
+.v-pop .v-theme .m-seg button,
+.v-drawer-tools .m-seg button {
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+/* ---------- loading, saved copy and errors ---------- */
+.v-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(320px, calc(100% - 40px));
+  padding: 20px 18px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-preview);
+  text-align: center;
+}
+
+.v-card .v-card-mark {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 10px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--wash);
+  color: var(--text-secondary);
+}
+
+.v-card .v-card-mark .i {
+  width: 22px;
+  height: 22px;
+}
+
+.v-card h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.v-card p {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.v-card .v-meta {
+  margin-top: 8px;
+}
+
+.v-card .m-btn {
+  margin-top: 14px;
+  min-height: 46px;
+  font-size: 15.5px;
+}
+
+.v-card .m-link {
+  margin-top: 4px;
+}
+
+.v-bar-progress {
+  height: 6px;
+  margin-top: 12px;
+  border-radius: 99px;
+  background: var(--wash);
+  overflow: hidden;
+}
+
+.v-bar-progress span {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--accent-fill);
+}
+
+.v-line-progress {
+  height: 3px;
+  background: var(--wash);
+}
+
+.v-line-progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent-fill);
+}
+
+.v-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.v-status-line .i {
+  width: 16px;
+  height: 16px;
+}
+
+.v-skel-chip {
+  flex: none;
+  width: 52px;
+  height: 40px;
+  border-radius: 999px;
+  background: var(--wash);
+}
+
+/* ---------- B: the options list ---------- */
+.v-list-head h2 {
+  margin: 6px 0 2px;
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.28;
+}
+
+.v-ask-card {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--surface-1);
+}
+
+.v-ask-card p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.v-kick {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.v-orow {
+  align-items: flex-start;
+}
+
+.v-orow .v-tag {
+  margin-top: 1px;
+}
+
+.v-orow .m-row-title {
+  -webkit-line-clamp: 1;
+}
+
+.v-idea {
+  display: -webkit-box;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.4;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.v-seen {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.v-seen .i {
+  width: 13px;
+  height: 13px;
+}
+
+.v-orow > .i:last-child {
+  align-self: center;
+}
+
+/* B's note strip: the note's first line, always under the option, never over it. */
+.v-notestrip {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 16px;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+}
+
+.v-notestrip .v-ns-text {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.35;
+}
+
+.v-notestrip .i {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.v-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px 0 16px;
+}
+
+.v-sheet-head b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.v-next {
+  margin-top: 14px;
+}
+
+/* ---------- C: one bar you swipe ---------- */
+.v-cbar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-height: 64px;
+  padding: 0 4px;
+}
+
+.v-cbar .m-icon-btn {
+  color: var(--text-secondary);
+}
+
+.v-swipe {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: center;
+  touch-action: pan-y;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.v-swipe:active {
+  background: var(--wash);
+}
+
+.v-swipe .v-kick {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.v-swipe b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-top: 1px;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.v-swipe b > span:last-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.v-dots {
+  display: flex;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.v-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--baseline);
+}
+
+.v-dots i.is-on {
+  background: var(--text-primary);
+}
+
+/* C's download progress: a thin line along the bottom of the bar's title, as a browser shows it. */
+.v-swipe .v-fill {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 4px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--wash);
+  overflow: hidden;
+}
+
+.v-swipe .v-fill span {
+  display: block;
+  height: 100%;
+  background: var(--accent-fill);
+}
+
+.v-swipe.is-error .v-kick {
+  color: var(--state-failed);
+}
+
+.v-mini {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.v-mini .i {
+  width: 16px;
+  height: 16px;
+}
+
+.v-viewer.is-full.d-C .v-bottom {
+  padding-bottom: 20px;
+}
+
+.v-drawer .m-seg {
+  margin: 4px 16px 0;
+}
+
+.v-drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 16px 12px;
+}
+
+.v-drawer-tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 30px;
+  border-top: 1px solid var(--gridline);
+}
+
+.v-drawer-tools .m-seg {
+  margin: 0;
+}
+
+.v-drawer-tools .m-icon-btn {
+  color: var(--text-secondary);
+}
+
+.v-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.v-grid button {
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+}
+
+.v-grid button b {
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.v-grid button span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.v-grid button[aria-current='true'] {
+  border-color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--text-primary);
+}
+
+.v-grid-title {
+  margin: 14px 2px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.v-grid-title:first-child {
+  margin-top: 4px;
+}
+
+.v-grid-page {
+  margin: 18px 2px 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.v-grid-page:first-child {
+  margin-top: 0;
+}
+
+.v-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 32px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.v-placeholder .v-kick {
+  margin-bottom: 6px;
+}
+
+/* The placeholder sits on the grey stage, where --text-muted is under 4.5:1 in light. */
+.v-placeholder .v-kick,
+.v-placeholder .v-meta {
+  color: var(--text-secondary);
+}
+
+/* Segmented toggles that are not tabs: the same look as #223's selected tab, on aria-pressed or aria-checked. */
+.m-seg button[aria-pressed='true'],
+.m-seg button[aria-checked='true'] {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-segment);
+  font-weight: 600;
+}
+
+/* C keeps a heading for screen readers while full screen hides the status bar. */
+.v-viewer.is-full.d-C .v-top {
+  display: block;
+}
+
+.v-viewer button:disabled,
+.m-bar button:disabled {
+  opacity: 0.4;
+}
+
+.v-name b,
+.v-name small {
+  max-width: 100%;
+}
+
+.v-drawer-tools .m-seg button {
+  white-space: nowrap;
+}
+
+/* C's drawer tabs are new controls on #223's segmented track, so they get the full 44px. */
+.v-drawer .m-seg button {
+  min-height: 44px;
+}
+
+/*
+  Rows sit in #223's rounded groups, which clip, and full-width controls meet the screen edge:
+  draw their focus ring inside.
+*/
+.m-group > .m-row:focus-visible,
+.v-proto .v-open-row:focus-visible,
+.m-grab:focus-visible,
+.v-notestrip:focus-visible,
+.v-mini:focus-visible,
+.v-drawer-body:focus-visible {
+  outline-offset: -3px;
+}
+
+/* Keyboard scrolling in the drawer leaves room for the ring of the tile it brings into view. */
+.v-drawer-body {
+  scroll-padding: 8px 0;
+}
+
+/*
+  Presenting a frame full size (the canvas's Present, or Wayfinder's viewer) gives this page the
+  whole window. Keep the phone at 390 × 844 in the middle, scaled down only to fit (viewer.js sets
+  --device-fit). Board thumbnails are 390 px wide, so they never hit this.
+*/
+@media (min-width: 520px) {
+  body.viz-root {
+    display: grid;
+    place-items: center;
+    place-content: center;
+    background: color-mix(in srgb, var(--plane) 88%, var(--text-primary));
+  }
+
+  #app.m-app {
+    flex: none;
+    width: 390px;
+    height: 844px;
+    border-radius: 36px;
+    box-shadow: 0 0 0 1px var(--hairline), var(--shadow);
+    transform: scale(var(--device-fit, 1));
+  }
+}

@@ -2,7 +2,7 @@
 /*
   Validate the canvas before sharing it: config shape, pages, ids, styles, and every file it
   points at. Also flags pages that won't run when served sandboxed (opaque origin), and
-  prototype-local copies of the shared engine and kit.
+  prototype-local copies of the shared engine, kit and phone presentation.
   Usage: node <canvas>/tools/check.mjs   (exits 1 on errors)
 */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -15,6 +15,7 @@ const LAYERS = ['image', 'text', 'rect', 'html'];
 const SHARED_FILES = [
   { label: 'canvas engine', path: 'canvas.js' },
   { label: 'canvas kit', path: 'kit/kit.js' },
+  { label: 'phone presentation', path: 'device.js' },
 ];
 
 function displayPath(path) {

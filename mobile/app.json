@@ -2,7 +2,8 @@
   "expo": {
     "name": "Wayfinder",
     "slug": "wayfinder",
-    "version": "1.0.0",
+    "version": "1.1.1",
+    "scheme": "wayfinder",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -11,8 +12,9 @@
       "bundleIdentifier": "com.abdelrhr.wayfinder"
     },
     "android": {
+      "versionCode": 3,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0d1117",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -24,7 +26,9 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-router",
+      "./plugins/withSharedSources"
     ]
   }
 }

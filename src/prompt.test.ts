@@ -150,7 +150,52 @@ describe('buildPrompt', () => {
     const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
     expect(prompt).toContain('design canvas');
     expect(prompt).toContain('design-canvas/scaffold.mjs');
+    expect(prompt).toContain('append --mobile');
+    expect(prompt).toContain('prototypes/AGENTS.md');
+    expect(prompt).toContain('never stack frames or force other devices into a phone preset');
+    expect(prompt).toContain('viewport checks are layout evidence, not real device tests');
     expect(buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'task' } })).not.toContain('design canvas');
+  });
+
+  it('guides prototype flow comparisons without imposing that layout on other canvases or ticket types', () => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type: 'prototype' } });
+    expect(prompt).toContain('start with an Overview comparing every\noption');
+    expect(prompt).toContain('each option a separate named page with its individual\nscreens and states in flow order');
+    expect(prompt).toContain('Keep phone-shaped Present views');
+    expect(prompt).toContain('non-flow canvases can use a simpler layout');
+    expect(prompt).toContain('"Comparing flow options" guidance');
+    expect(prompt).toContain('was not picked: give it no disposition');
+    for (const type of ['task', 'research', 'grilling', null] as const) {
+      const other = buildPrompt({ repo: 'owner/repo', map, ticket: { ...ticket, type } });
+      expect(other).not.toContain('start with an Overview');
+    }
+  });
+
+  describe.each([['mapped', map], ['standalone', undefined]] as const)('prototype template fallback for %s tickets', (_context, parentMap) => {
+    it.each([
+      ['default', undefined],
+      ['custom with type steps', '{{typeSteps}}\nTicket {{ticketNumber}}'],
+      ['legacy custom', 'Ticket {{ticketNumber}}'],
+      ['empty custom', ''],
+      ['whitespace custom', ' \n\t '],
+    ])('keeps the flow and decision guidance exactly once with a %s template', (_label, template) => {
+      const prompt = buildPrompt({
+        repo: 'owner/repo', map: parentMap, ticket: { ...ticket, type: 'prototype' }, template,
+      });
+      expect(prompt.split('start with an Overview')).toHaveLength(2);
+      expect(prompt).toContain('each option a separate named page');
+      expect(prompt).toContain('Keep phone-shaped Present views');
+      expect(prompt).toContain('non-flow canvases can use a simpler layout');
+      expect(prompt).toContain('was not picked: give it no disposition');
+      expect(prompt).toContain('prototypes/11-retire-api-agents-once-nothing-needs-it');
+      expect(prompt).not.toContain('{{typeSteps}}');
+      expect(prompt).not.toContain('{{canvasDirectory}}');
+      if (template?.trim()) expect(prompt).toContain('Ticket 11');
+      else {
+        expect(prompt).toContain('Delete the route and its call sites.');
+        expect(prompt).toContain('dedicated');
+      }
+    });
   });
 
   it('gives each ticket its own canvas and shares a preview before asking for a choice', () => {

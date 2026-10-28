@@ -1,0 +1,289 @@
+/* A desktop Wayfinder window at 1440 × 900, drawn with src/ui/styles.css tokens. Text is real size. */
+body.viz-root {
+  overflow: hidden;
+}
+
+.d-win {
+  position: relative;
+  width: 1440px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--plane);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.d-browser {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 46px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.d-url {
+  flex: 1;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--wash);
+  font-variant-numeric: tabular-nums;
+}
+
+.d-top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 52px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-1);
+}
+
+.d-top b {
+  font-size: 15px;
+}
+
+.d-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.d-chip.is-on {
+  background: var(--text-primary);
+  border-color: transparent;
+  color: var(--plane);
+}
+
+.d-spacer {
+  flex: 1;
+}
+
+.d-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.d-rail {
+  flex: none;
+  width: 60px;
+  border-right: 1px solid var(--hairline);
+  background: var(--surface-1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding-top: 16px;
+}
+
+.d-rail span {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--wash);
+}
+
+.d-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 22px 26px;
+  overflow: hidden;
+}
+
+.d-main h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+}
+
+.d-main p {
+  margin: 0 0 18px;
+  color: var(--text-secondary);
+  max-width: 720px;
+}
+
+.d-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.d-card {
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-1);
+  overflow: hidden;
+}
+
+.d-card .pic {
+  height: 170px;
+  background: linear-gradient(135deg, var(--wash), transparent), var(--plane);
+  border-bottom: 1px solid var(--hairline);
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.d-card .txt {
+  padding: 12px 14px;
+}
+
+.d-card .txt b {
+  display: block;
+  font-size: 14.5px;
+}
+
+.d-card .txt span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* The viewer, as each #207 direction places it. */
+.d-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.d-viewer {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  background: var(--plane);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.d-viewer.is-full {
+  inset: 0;
+}
+
+.d-viewer.is-route {
+  inset: 0;
+  box-shadow: none;
+}
+
+.d-viewer.is-pane {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 60%;
+  border-left: 1px solid var(--hairline);
+}
+
+.d-viewer.is-float {
+  right: 24px;
+  bottom: 24px;
+  width: 560px;
+  height: 380px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+}
+
+.d-vbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-1);
+  flex-wrap: wrap;
+}
+
+.d-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--wash);
+}
+
+.d-seg span {
+  min-width: 34px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.d-seg span.is-on {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-segment);
+  font-weight: 600;
+}
+
+.d-board {
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.d-frame {
+  flex: 1;
+  min-width: 0;
+}
+
+.d-frame .head {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.d-frame .shot {
+  height: 300px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface-1);
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.d-map {
+  position: absolute;
+  inset: 0;
+}
+
+.d-node {
+  position: absolute;
+  width: 200px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-left: 4px solid var(--accent);
+  border-radius: 10px;
+  background: var(--surface-1);
+  font-size: 13px;
+}
+
+.d-node b {
+  display: block;
+  font-size: 13.5px;
+}

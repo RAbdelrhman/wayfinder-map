@@ -1,5 +1,9 @@
 # Wayfinder map
 
+## Subagent effort
+
+- Use medium effort for subagents and delegated tasks by default. Never use effort above medium without asking Ramon and receiving explicit approval for that task. Set the effort explicitly in the tool options; do not inherit a higher effort.
+
 Tool output truncates at about 42 KB, and `src/ui/app.ts`, `src/server.ts`, `src/handOffTracking.ts` and `src/github.ts` exceed it: find symbols with `rg -n`, then read line ranges.
 
 ## Where each concern lives
@@ -13,6 +17,13 @@ Tool output truncates at about 42 KB, and `src/ui/app.ts`, `src/server.ts`, `src
 - **Desktop and updater**: `src/desktop/main.ts` (Electron window, tray, folder picker); `src/desktop/updater.ts` and `src/desktop/updaterPolicy.ts`. Releases: `docs/release-windows.md`.
 - **Canvas prototypes**: `src/prototypes.ts` owns branch, route and variant rules; `src/server.ts` serves `/proto/` files via `parsePrototypeFilePath`; `src/canvasBridge.ts` runs inside the sandboxed frame; `src/ui/canvasViewer.ts` is the in-app viewer; `src/ui/prototypeBoard.ts` draws the board. Authoring a canvas: `prototypes/AGENTS.md`.
 - **Pages**: map page `src/ui/app.ts`, Home `src/ui/home.ts`, Settings `src/ui/settingsPage.ts`. Phone app: `mobile/AGENTS.md`.
+
+## Canvas authoring
+
+For prototype flow comparisons, follow `prototypes/AGENTS.md` and the
+`prototypes/canvas/README.md` section "Comparing flow options": an overview,
+a named page per option, and individual screens/states on that page. Keep the
+phone-shaped Present view where relevant; non-flow canvases stay flexible.
 
 ## Grilling tickets
 

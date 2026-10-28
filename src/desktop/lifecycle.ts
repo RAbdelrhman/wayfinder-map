@@ -1,3 +1,5 @@
+import { parseRepoPagePath } from '../repoRoutes.js';
+
 export class DesktopLifecycle {
   private quitPromise: Promise<void> | null = null;
 
@@ -25,6 +27,16 @@ export function isInternalUrl(target: string, expectedOrigin: string | null): bo
   } catch {
     return false;
   }
+}
+
+/**
+ * An app page the main window may show: the routes the server answers with a page, as `server.ts` maps them.
+ * Anything else is a raw file, asset or API response, and the window has no menu or Back to leave one.
+ */
+export function isAppPageUrl(target: string, expectedOrigin: string | null): boolean {
+  if (!isInternalUrl(target, expectedOrigin)) return false;
+  const { pathname } = new URL(target);
+  return ['/', '/new-map', '/settings'].includes(pathname) || parseRepoPagePath(pathname) !== null;
 }
 
 export function isSafeExternalUrl(target: string): boolean {

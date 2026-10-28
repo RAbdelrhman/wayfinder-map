@@ -87,6 +87,22 @@ describe('canvas routing', () => {
     }
     expect(readCanvasRoute({ ...route, github: 'javascript:alert(1)' }, origin)).toBeNull();
   });
+  it('opens a decided variant screenshot in the viewer, not as a page the window cannot leave', () => {
+    const url = '/proto-shot/octo/repo/207-B.jpg';
+    expect(readCanvasRoute({ ...route, url }, origin)?.url).toBe(url);
+    for (const bad of ['/proto-shot/octo/repo/207-B.html', '/proto-shot/octo/repo/a/207-B.jpg']) expect(readCanvasRoute({ ...route, url: bad }, origin)).toBeNull();
+  });
+  it('keeps focus out of a bare picture, so Escape still reaches the viewer', () => {
+    expect(canvasFrameHtml({ ...route, url: '/proto-shot/octo/repo/207-B.jpg' })).toContain('class="vw-frame is-picture" tabindex="-1"');
+    expect(canvasFrameHtml({ ...route, url: '/proto/octo/repo/prototype%2F207/shots/b.PNG?v=1' })).toContain('is-picture');
+    expect(canvasFrameHtml(route)).toContain('class="vw-frame"');
+    expect(canvasFrameHtml(route)).not.toContain('tabindex');
+  });
+  it('styles a picture frame so it never takes a click', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const css = await readFile(`${process.cwd()}/src/ui/styles.css`, 'utf8');
+    expect(/\.vw-frame\.is-picture \{[^}]*pointer-events: none/.exec(css)).not.toBeNull();
+  });
 });
 
 describe('approved ACF4 shell', () => {
