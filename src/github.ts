@@ -497,17 +497,28 @@ interface Fallbacks {
   maps: number[];
   rateLimited: boolean;
   unattachedTickets: Array<{ mapNumber: number; ticketNumbers: number[] }>;
+  foreignTickets: Map<number, Set<number>>;
+}
+
+/** Missing ownership supports legacy body lists; unreadable ownership never proves completion. */
+function bodyTicketScope(repo: string, mapNumber: number, issue: RawIssue): 'eligible' | 'foreign' | 'unknown' {
+  if (!issue.parent_issue_url) return 'eligible';
+  try {
+    const path = new URL(issue.parent_issue_url).pathname.toLowerCase();
+    if (!/^\/repos\/[^/]+\/[^/]+\/issues\/[1-9]\d*$/.test(path)) return 'unknown';
+    return path === `/repos/${repo}/issues/${String(mapNumber)}`.toLowerCase() ? 'eligible' : 'foreign';
+  } catch {
+    return 'unknown';
+  }
 }
 
 async function fetchChildren(repo: string, map: { number: number; body?: string | null }, fallbacks: Fallbacks): Promise<RawIssue[]> {
   const numbers = parseChildNumbers(map.body ?? '', repo).filter((number) => number !== map.number);
-  const belongsElsewhere = (issue: RawIssue): boolean => {
-    if (!issue.parent_issue_url) return false;
-    try {
-      return new URL(issue.parent_issue_url).pathname.toLowerCase() !== `/repos/${repo}/issues/${String(map.number)}`.toLowerCase();
-    } catch {
-      return true;
-    }
+  const eligibleBodyIssues = (fetched: readonly (RawIssue | null)[]): RawIssue[] => {
+    fallbacks.foreignTickets.set(map.number, new Set(fetched
+      .filter((issue): issue is RawIssue => issue !== null && bodyTicketScope(repo, map.number, issue) === 'foreign')
+      .map((issue) => issue.number)));
+    return fetched.filter((issue): issue is RawIssue => issue !== null && bodyTicketScope(repo, map.number, issue) === 'eligible');
   };
   let subIssues: RawIssue[];
   subIssueWatcher.resetBodyIssues(repo, map.number);
@@ -520,18 +531,19 @@ async function fetchChildren(repo: string, map: { number: number; body?: string 
       if (ghProblem(error) === RATE_LIMIT_WARNING) fallbacks.rateLimited = true;
     }
     const fetched = await pool(numbers, 8, (number) => subIssueWatcher.fetchBodyIssue(repo, map.number, number));
-    return fetched.filter((issue): issue is RawIssue => issue !== null && !belongsElsewhere(issue));
+    return eligibleBodyIssues(fetched);
   }
 
   const attached = new Set(subIssues.map((issue) => issue.number));
   const unattachedNumbers = numbers.filter((number) => !attached.has(number));
   const fetched = await pool(unattachedNumbers, 8, (number) => subIssueWatcher.fetchBodyIssue(repo, map.number, number));
-  const foreign = new Set(fetched.filter((issue): issue is RawIssue => issue !== null && belongsElsewhere(issue)).map((issue) => issue.number));
+  const eligible = eligibleBodyIssues(fetched);
+  const foreign = fallbacks.foreignTickets.get(map.number) ?? new Set<number>();
   const unattached = unattachedNumbers.filter((number) => !foreign.has(number));
   if (unattached.length > 0) {
     fallbacks.unattachedTickets.push({ mapNumber: map.number, ticketNumbers: unattached });
   }
-  return [...subIssues, ...fetched.filter((issue): issue is RawIssue => issue !== null && !foreign.has(issue.number))];
+  return [...subIssues, ...eligible];
 }
 
 export interface FetchResult {
@@ -693,10 +705,15 @@ async function checkFinished(repo: string, issue: MapIssue): Promise<{ state: Fi
   const attached = new Set(subIssues.map((subIssue) => subIssue.number));
   const loose = listed.filter((number) => !attached.has(number));
   const fetched = await pool(loose, 8, (number) => fetchIssue(repo, number));
-  const extra = fetched.filter((raw): raw is RawIssue => raw !== null);
+  const foreign = new Set(fetched.filter((raw): raw is RawIssue => raw !== null && bodyTicketScope(repo, issue.number, raw) === 'foreign').map((raw) => raw.number));
+  const extra = fetched.filter((raw): raw is RawIssue => raw !== null && bodyTicketScope(repo, issue.number, raw) === 'eligible');
   const read = [...subIssues, ...extra].map((raw) => ({ number: raw.number, open: isOpenState(raw.state) }));
-  const unattached = Object.fromEntries(loose.map((number, index) => [number, fetched[index] === null || fetched[index] === undefined ? null : isOpenState(fetched[index].state)]));
-  return { state: finishedState(read, listed), unattached };
+  const extraByNumber = new Map(extra.map((raw) => [raw.number, raw]));
+  const unattached = Object.fromEntries(loose.filter((number) => !foreign.has(number)).map((number) => {
+    const raw = extraByNumber.get(number);
+    return [number, raw === undefined ? null : isOpenState(raw.state)];
+  }));
+  return { state: finishedState(read, listed.filter((number) => !foreign.has(number))), unattached };
 }
 
 /**
@@ -737,7 +754,7 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
   const choices = options.choices ?? {};
   const expand = new Set(options.expand ?? []);
   const warnings: string[] = [];
-  const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [] };
+  const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [], foreignTickets: new Map() };
 
   const labeled = await listMapIssues(repo, mapLabel);
 
@@ -807,7 +824,8 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     const canFinish = (settled === null || settled.reason === 'idle') && mayFinish(mapIssue);
     // When the sub-issues couldn't be read the tickets are the body's alone, so all of them done proves nothing.
     const incomplete = fallbacks.maps.includes(mapIssue.number);
-    const judged = canFinish ? finishedState(loaded.tickets, listedTickets(repo, mapIssue)) : 'active';
+    const listed = listedTickets(repo, mapIssue).filter((number) => !fallbacks.foreignTickets.get(mapIssue.number)?.has(number));
+    const judged = canFinish ? finishedState(loaded.tickets, listed) : 'active';
     const state = judged === 'finished' && incomplete ? 'unknown' : judged;
     const unattached = fallbacks.unattachedTickets.find((entry) => entry.mapNumber === mapIssue.number)?.ticketNumbers ?? [];
     // Still watched while active when only body-only tickets could hold it there: an edit to the body can finish it.
@@ -862,7 +880,7 @@ function fallbackWarnings(fallbacks: Fallbacks): string[] {
 
 /** Read the tickets of maps that were listed settled, keeping their settlement. */
 export async function fetchMapDetails(options: FetchOptions, maps: readonly WayfinderMap[]): Promise<FetchResult> {
-  const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [] };
+  const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [], foreignTickets: new Map() };
   const loaded = await pool(maps, options.concurrency ?? 6, async (map) => ({
     ...(await loadMap(options, { number: map.number, title: map.title, url: map.url, body: map.body, state: map.open ? 'open' : 'closed', author: map.author }, fallbacks)),
     settled: map.settled,

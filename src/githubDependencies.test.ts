@@ -113,4 +113,41 @@ describe('native dependency reads', () => {
     expect(result.maps[0]?.tickets.map((ticket) => ticket.number)).toEqual(fallback ? [] : [42]);
     expect(result.warnings.join(' ')).not.toContain('also showing');
   });
+
+  it.each([0, 1])('ignores foreign body tickets when checking completed maps, summary completed=%i', async (completed) => {
+    runGh.mockImplementation(async (_file, args) => {
+      const path = args.at(-1) ?? '';
+      let value: unknown;
+      if (path.endsWith('/dependencies/blocked_by')) value = [];
+      else if (path.endsWith('/sub_issues')) value = [{ ...raw, body: '', state: 'closed' }];
+      else if (path.endsWith('/issues/7')) value = { number: 7, title: 'Foreign open ticket', state: 'open', parent_issue_url: 'https://api.github.com/repos/o/r/issues/99' };
+      else if (args.includes('--slurp')) return response([[{ number: 10, title: 'Map', body: '- [ ] #7', state: 'open', updated_at: new Date().toISOString(), sub_issues_summary: { total: 1, completed } }]]);
+      else throw new Error(`Unexpected route ${path}`);
+      return args.includes('--include')
+        ? { stdout: Buffer.from(`HTTP/2.0 200 OK\r\nETag: "map"\r\n\r\n${JSON.stringify(value)}`), stderr: Buffer.alloc(0) }
+        : response(value);
+    });
+    const result = await fetchMaps({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' });
+    expect(result.maps[0]?.settled?.reason).toBe('finished');
+    expect(result.finishedWatch?.[10]?.unattached).not.toHaveProperty('7');
+  });
+
+  it.each([0, 1])('does not treat unreadable body-ticket ownership as evidence of completion, summary completed=%i', async (completed) => {
+    runGh.mockImplementation(async (_file, args) => {
+      const path = args.at(-1) ?? '';
+      let value: unknown;
+      if (path.endsWith('/dependencies/blocked_by')) value = [];
+      else if (path.endsWith('/sub_issues')) value = [{ ...raw, body: '', state: 'closed' }];
+      else if (path.endsWith('/issues/7')) value = { number: 7, title: 'Unknown ownership', state: 'open', parent_issue_url: 'not a URL' };
+      else if (args.includes('--slurp')) return response([[{ number: 10, title: 'Map', body: '- [ ] #7', state: 'open', updated_at: new Date().toISOString(), sub_issues_summary: { total: 1, completed } }]]);
+      else throw new Error(`Unexpected route ${path}`);
+      return args.includes('--include')
+        ? { stdout: Buffer.from(`HTTP/2.0 200 OK\r\nETag: "map"\r\n\r\n${JSON.stringify(value)}`), stderr: Buffer.alloc(0) }
+        : response(value);
+    });
+    const result = await fetchMaps({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' });
+    expect(result.maps[0]?.settled).toBeNull();
+    expect(result.maps[0]?.tickets.map(({ number }) => number)).toEqual([42]);
+    expect(result.finishedWatch?.[10]?.unattached).toEqual({ 7: null });
+  });
 });

@@ -25,8 +25,6 @@ export const STATE_STYLE = STATE_LOOKS;
 
 export const STATE_ORDER: TicketState[] = ['frontier', 'claimed', 'blocked', 'done'];
 
-/** The Key's fog entry: issues linked to the map by a dependency but not among its sub-issues, drawn under a haze. */
-
 /** Progress reads left to right: finished, in hand, ready, waiting. */
 export const PROGRESS_ORDER: TicketState[] = ['done', 'claimed', 'frontier', 'blocked'];
 
