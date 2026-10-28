@@ -19,7 +19,7 @@
 }
 
 .m-seg.mo-seg button {
-  min-height: 36px;
+  min-height: 44px;
 }
 
 .m-seg.mo-seg button[aria-pressed='true'] {

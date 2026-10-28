@@ -1,23 +1,5 @@
 # Design canvas
 
-## Prototype variant thumbnails
-
-The decision-board fixture uses source screenshots for every prototype variant it
-shows. When a prototype variant changes, fetch the prototype refs and refresh the
-board images from the repo root with:
-
-```sh
-git fetch origin
-bun run capture:prototype-thumbnails
-```
-
-The capture tool archives each source prototype branch, then uses Playwright's
-Chromium browser at 1280 × 720 to refresh the matching image in
-`assets/protos/`. Install the browser once with `npx playwright install chromium`
-if Playwright reports that Chromium is missing. Run `bun run test:canvas` to check
-that every board variant has an image and that a missing image falls back to its
-variant sketch.
-
 An in-repo board for design decisions. It lays out options side by side: full pages, style directions, component sheets, palettes, type, and layered compositions. The user compares them, opens any one full size, and picks.
 
 It knows nothing about any project. Everything project-specific lives in `config.js`, `variants/` and `assets/`. The engine (`index.html`, `canvas.js`, `canvas.css`, `kit/`, `tools/`) stays the same everywhere.
@@ -175,4 +157,4 @@ Do not report a check as passed just because the code or config passed a source-
 |---|---|
 | `node <dir>/tools/serve.mjs [port]` | Serves the repo root with a sandbox CSP (default port 4390) and prints the canvas URL |
 | `node <dir>/tools/check.mjs` | Validates config.js: pages and round labels, kinds, ids, feedback metadata, styles, files, and sandbox safety |
-| `node --test <dir>/tools/check.test.mjs` | Tests for the checker |
+| `bun run test:canvas` | Tests for the checker |
