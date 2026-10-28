@@ -3,12 +3,15 @@
   ?o=A  Browse public maps on the phone   ?s=maps|find|repo|followed|offline|hidden|account
   ?o=B  Add a map by its link             ?s=maps|add|preview|private|share|offline|hidden|account
   ?o=C  Mirror the desktop's follows      ?s=maps|pcoff|unpaired|hidden|account
+  ?o=AB Round 2: A, plus B's share from GitHub landing on A's Public maps
+        ?s=maps|find|repo|followed|share|shared|shared-private|shared-following|shared-offline|offline|hidden|account
   The Maps screen is #223's approved R-C2 list; only the rows and the footer named in each option change.
 */
 (() => {
   const params = new URLSearchParams(location.search);
-  const O = ['A', 'B', 'C'].includes(params.get('o')) ? params.get('o') : 'A';
-  const SCREENS = { A: ['maps', 'find', 'repo', 'followed', 'offline', 'hidden', 'account'], B: ['maps', 'add', 'preview', 'private', 'share', 'offline', 'hidden', 'account'], C: ['maps', 'pcoff', 'unpaired', 'hidden', 'account'] };
+  const O = ['A', 'B', 'C', 'AB'].includes(params.get('o')) ? params.get('o') : 'A';
+  const isA = O === 'A' || O === 'AB';
+  const SCREENS = { A: ['maps', 'find', 'repo', 'followed', 'offline', 'hidden', 'account'], AB: ['maps', 'find', 'repo', 'followed', 'share', 'shared', 'shared-private', 'shared-following', 'shared-offline', 'offline', 'hidden', 'account'], B: ['maps', 'add', 'preview', 'private', 'share', 'offline', 'hidden', 'account'], C: ['maps', 'pcoff', 'unpaired', 'hidden', 'account'] };
   const S0 = SCREENS[O].includes(params.get('s')) ? params.get('s') : 'maps';
   const D = window.F;
   const esc = Kit.esc;
@@ -19,13 +22,15 @@
 
   /* ---------- state per starting screen ---------- */
   const ui = {
-    screen: { followed: 'maps', offline: O === 'A' ? 'find' : 'add', hidden: O === 'C' ? 'maps' : O === 'A' ? 'find' : 'add', account: O === 'C' ? 'maps' : O === 'A' ? 'find' : 'add', repo: 'find', private: 'add', preview: 'add', pcoff: 'maps', unpaired: 'maps' }[S0] ?? S0,
-    stack: [],
+    screen: { followed: 'maps', offline: isA ? 'find' : 'add', hidden: O === 'C' ? 'maps' : isA ? 'find' : 'add', account: O === 'C' ? 'maps' : isA ? 'find' : 'add', repo: 'find', private: 'add', preview: 'add', pcoff: 'maps', unpaired: 'maps', shared: 'find', 'shared-private': 'find', 'shared-following': 'find', 'shared-offline': 'find' }[S0] ?? S0,
+    stack: S0.startsWith('shared') ? ['maps'] : [],
     follows: new Set(['mona/octo-notes#12']),
-    offline: S0 === 'offline',
+    offline: S0 === 'offline' || S0 === 'shared-offline',
     login: S0 === 'account' && O !== 'C' ? D.otherLogin : D.user.login,
     query: S0 === 'repo' ? 'mona/octo-notes' : '',
-    paste: { preview: 'https://github.com/RAbdelrhman/wayfinder-map/issues/198', private: 'mona/octo-notes#9', offline: 'https://github.com/RAbdelrhman/wayfinder-map/issues/198', share: '' }[S0] ?? '',
+    paste: (O === 'AB'
+      ? { shared: 'https://github.com/RAbdelrhman/wayfinder-map/issues/198', 'shared-private': 'https://github.com/mona/octo-notes/issues/9', 'shared-following': 'https://github.com/mona/octo-notes/issues/12', 'shared-offline': 'https://github.com/RAbdelrhman/wayfinder-map/issues/198' }
+      : { preview: 'https://github.com/RAbdelrhman/wayfinder-map/issues/198', private: 'mona/octo-notes#9', offline: 'https://github.com/RAbdelrhman/wayfinder-map/issues/198', share: '' })[S0] ?? '',
     sharing: S0 === 'share',
     toast: S0 === 'followed' ? 'Following #198 Linux desktop build. It is on your maps now.' : '',
   };
@@ -71,12 +76,12 @@
     const rows = [...own, ...followedList().filter((m) => m.public)].sort((a, b) => minutes(a.updated) - minutes(b.updated));
     const hidden = hiddenFollows();
     let foot = '';
-    if (O === 'A') foot = `<button class="m-btn is-quiet f-gap" data-act="go" data-to="find">${ic('search')}Find public maps</button><p class="m-fine f-fine">Other people's maps show here after you follow them.</p>`;
+    if (isA) foot = `<button class="m-btn is-quiet f-gap" data-act="go" data-to="find">${ic('search')}Find public maps</button><p class="m-fine f-fine">Other people's maps show here after you follow them.</p>`;
     if (O === 'B') foot = `<button class="m-btn is-quiet f-gap" data-act="go" data-to="add">${ic('link')}Add a public map</button><p class="m-fine f-fine">Paste a map's GitHub link to follow it.</p>`;
     if (O === 'C') foot = desktopNote();
     const hiddenNote =
       hidden.length && O !== 'C'
-        ? `<button class="f-notice" data-act="go" data-to="${O === 'A' ? 'find' : 'add'}">${ic('eyeoff')}<span class="m-row-main"><b>1 followed map is hidden</b><span>#${hidden[0].number} is no longer public.</span></span>${ic('chevron')}</button>`
+        ? `<button class="f-notice" data-act="go" data-to="${isA ? 'find' : 'add'}">${ic('eyeoff')}<span class="m-row-main"><b>1 followed map is hidden</b><span>#${hidden[0].number} is no longer public.</span></span>${ic('chevron')}</button>`
         : '';
     return `${status()}${largeBar('Maps', avatar())}<div class="m-scroll">
       <div class="m-search">${ic('search')}<input aria-label="Search maps" placeholder="Search maps and repos"></div>
@@ -133,6 +138,7 @@
       .join('');
     return `${status()}${bar('Public maps', backBtn('Maps'))}${offlineBanner('Finding maps needs GitHub. Unfollow still works.')}${accountBanner()}<div class="m-scroll">
       <label class="m-search">${ic('search')}<input data-act="query" value="${esc(ui.query)}" aria-label="Look in a repository" placeholder="Look in a repository: owner/repo" ${ui.offline ? 'disabled' : ''}></label>
+      ${O === 'AB' && ui.paste ? `<div class="m-section-title">Shared from GitHub</div>${preview()}` : ''}
       ${hidden.length ? `<div class="m-section-title">Followed, not public now</div><div class="m-group">${hidden.map(hiddenRow).join('')}</div>` : ''}
       ${groups}
       ${q ? '<p class="m-fine f-fine">Private maps are never listed.</p>' : ''}
@@ -181,7 +187,7 @@
       <div class="m-scrim"></div><section class="m-sheet f-share" role="dialog" aria-label="Share">
       <div class="m-grab" aria-hidden="true"></div><h2 class="m-sheet-title">Share from GitHub</h2>
       <div class="f-targets"><button data-toast="Would copy the link">${ic('link')}<span>Copy link</span></button><button class="is-us" data-act="from-share">${ic('plus')}<span>Wayfinder</span></button><button data-toast="Would open Mail">${ic('share')}<span>Mail</span></button></div>
-      <p class="m-fine">Wayfinder opens Followed maps with the link already checked.</p></section>`;
+      <p class="m-fine">Wayfinder opens ${O === 'AB' ? 'Public maps' : 'Followed maps'} with the link already checked.</p></section>`;
   }
 
   /* ---------- render + events ---------- */
@@ -226,7 +232,7 @@
     }
     if (act === 'from-share') {
       ui.sharing = false;
-      ui.screen = 'add';
+      ui.screen = O === 'AB' ? 'find' : 'add';
       ui.stack = ['maps'];
       ui.paste = 'https://github.com/RAbdelrhman/wayfinder-map/issues/198';
       return render();

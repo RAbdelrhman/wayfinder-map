@@ -41,6 +41,8 @@ window.CANVAS = {
                 idea: 'A "Find public maps" button under the Maps list opens Public maps: other people\'s public maps, grouped by the repositories where you have maps or already follow one, each with the desktop\'s Follow / Unfollow button. A field looks in any other owner/repo. Follows are saved on this phone, per GitHub login, and read straight from GitHub, so the PC can be off.',
                 pros: ['Same idea and buttons as the desktop\'s Public maps list (#148)', 'Works with the PC off; no pairing, no new service, nothing written to GitHub', 'You can find maps you didn\'t know about in your own repositories'],
                 cons: ['The phone\'s follows and the desktop\'s are separate lists', 'Finding a map in a repo you have never touched needs you to type owner/repo', 'Listing public maps costs a GitHub search per repository'],
+                disposition: 'combine',
+                feedback: 'Canvas notes on 8c01667, whole A page: "I like this overall". Combined with B-share in round 2; not a final pick.',
               },
             },
             {
@@ -114,7 +116,7 @@ window.CANVAS = {
             { id: 'B-maps', name: 'Maps, with Add a public map', src: 'variants/phone.html?o=B&s=maps', ...PHONE, note: { idea: 'The approved Maps list with a quiet button and one line at the end.' } },
             { id: 'B-add', name: 'Followed maps', src: 'variants/phone.html?o=B&s=add', ...PHONE, note: { idea: 'A link field with Paste on top, the maps you follow below, each with Unfollow.' } },
             { id: 'B-preview', name: 'Pasted link, checked', src: 'variants/phone.html?o=B&s=preview', ...PHONE, note: { idea: 'Wayfinder reads the issue from GitHub and shows the map, its author and progress, and that it is public, before Follow.' } },
-            { id: 'B-share', name: 'Optional: share from GitHub', src: 'variants/phone.html?o=B&s=share', ...PHONE, note: { idea: 'Wayfinder as a share target from GitHub\'s app or the browser, opening the checked preview. Drawn, not the real OS sheet. Can be left out.' } },
+            { id: 'B-share', name: 'Optional: share from GitHub', src: 'variants/phone.html?o=B&s=share', ...PHONE, note: { idea: 'Wayfinder as a share target from GitHub\'s app or the browser, opening the checked preview. Drawn, not the real OS sheet. Can be left out.', disposition: 'combine', feedback: 'Canvas notes on 8c01667: "I like this share option". Combined with A in round 2; not a final pick.' } },
           ],
         },
         {
@@ -146,6 +148,55 @@ window.CANVAS = {
             { id: 'C-unpaired', name: 'Not paired', src: 'variants/phone.html?o=C&s=unpaired', ...PHONE, note: { idea: 'No followed maps until the phone is paired; the note points to Settings › Desktop, whose pairing flow #224 owns.' } },
             { id: 'C-hidden', name: 'A followed map stopped being public', src: 'variants/phone.html?o=C&s=hidden', ...PHONE, note: { idea: 'Off Maps; a note names it and says to unfollow on the desktop.' } },
             { id: 'C-account', name: 'Desktop on another account', src: 'variants/phone.html?o=C&s=account', ...PHONE, note: { idea: 'The desktop\'s follows belong to its login, so they aren\'t shown when the phone uses a different account.' } },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'round-2',
+      title: 'A + B-share',
+      round: 2,
+      question: 'Round 2 from your notes on 8c01667: A as it was, plus B\'s share from GitHub. Does the combination work, and does a shared link land in the right place?',
+      sections: [
+        {
+          title: 'Browse and follow: A, unchanged',
+          note: 'The same screens as A · Browse on the phone. B\'s paste field and Followed maps screen are not added.',
+          items: [
+            { id: 'R2-maps', name: 'Maps, with Find public maps', src: 'variants/phone.html?o=AB&s=maps', ...PHONE, note: { idea: 'A-maps unchanged: #223\'s R-C2 list with Find public maps at the end.', basedOn: 'A-maps' } },
+            { id: 'R2-find', name: 'Public maps', src: 'variants/phone.html?o=AB&s=find', ...PHONE, note: { idea: 'A-find unchanged: other people\'s public maps by repository, each with Follow or Unfollow.', basedOn: 'A-find' } },
+            { id: 'R2-repo', name: 'Look in another repository', src: 'variants/phone.html?o=AB&s=repo', ...PHONE, note: { idea: 'A-repo unchanged.', basedOn: 'A-repo' } },
+            { id: 'R2-followed', name: 'Followed, back on Maps', src: 'variants/phone.html?o=AB&s=followed', ...PHONE, note: { idea: 'A-followed unchanged: the desktop\'s toast copy, and the map in Latest with its author.', basedOn: 'A-followed' } },
+          ],
+        },
+        {
+          title: 'Share from GitHub: B-share, landing in A',
+          note: 'B-share\'s share target, drawn, not the real OS sheet. A has no Followed maps screen, so the shared link opens A\'s Public maps with B\'s checked preview on top. That landing spot is this round\'s assumption.',
+          items: [
+            { id: 'R2-share', name: 'Share sheet over GitHub', src: 'variants/phone.html?o=AB&s=share', ...PHONE, note: { idea: 'In GitHub\'s app or the browser, Share › Wayfinder. Tap Wayfinder to continue.', basedOn: 'B-share', pros: ['Follow straight from a map someone sent you'], cons: ['Native work: an Android intent filter and an iOS share extension'] } },
+            { id: 'R2-shared', name: 'Shared map, checked', src: 'variants/phone.html?o=AB&s=shared', ...PHONE, note: { idea: 'Public maps opens with "Shared from GitHub" on top: B\'s preview of #198 with its author and progress, confirmed public, and Follow map. A\'s list continues underneath. Back returns to Maps.', basedOn: ['A-find', 'B-preview'] } },
+            { id: 'R2-shared-following', name: 'Shared map you already follow', src: 'variants/phone.html?o=AB&s=shared-following', ...PHONE, note: { idea: 'Sharing #12, already followed: the card shows Unfollow, the same action as its row below.', basedOn: ['A-find', 'B-preview'] } },
+          ],
+        },
+        {
+          title: 'States',
+          items: [
+            { id: 'R2-shared-private', name: 'Shared map isn\'t public, and other checks', src: 'variants/phone.html?o=AB&s=shared-private', ...PHONE, note: { idea: 'B-private\'s check inside A\'s screen: a private map can\'t be followed, and the card says what its author would need to do. The same card covers your own map, a link that isn\'t a map, and an issue Wayfinder can\'t read.', basedOn: 'B-private' } },
+            { id: 'R2-shared-offline', name: 'Shared while offline', src: 'variants/phone.html?o=AB&s=shared-offline', ...PHONE, note: { idea: 'B-offline\'s rule: the shared link waits until GitHub can confirm the map is public. A\'s offline banner and disabled Follow stay; Unfollow still works. The PC never matters.', basedOn: ['A-offline', 'B-offline'] } },
+            { id: 'R2-offline', name: 'Offline', src: 'variants/phone.html?o=AB&s=offline', ...PHONE, note: { idea: 'A-offline unchanged.', basedOn: 'A-offline' } },
+            { id: 'R2-hidden', name: 'A followed map stopped being public', src: 'variants/phone.html?o=AB&s=hidden', ...PHONE, note: { idea: 'A-hidden unchanged: off Maps, kept under "Followed, not public now" with Unfollow.', basedOn: 'A-hidden' } },
+            { id: 'R2-account', name: 'Another GitHub account', src: 'variants/phone.html?o=AB&s=account', ...PHONE, note: { idea: 'A-account unchanged: follows belong to a login on this phone; the desktop keeps its own list.', basedOn: 'A-account' } },
+            {
+              id: 'R2-open',
+              kind: 'note',
+              name: 'What this round assumes',
+              text: 'Taken from your notes: all of A, and B-share. Left out because your notes didn\'t mention them: B\'s paste field, its Followed maps screen and its Add a public map button. Assumed here and open to change: a shared link lands on Public maps with the check on top, and the share entry stays optional native work that A works without. Nothing on this page is recorded as a pick.',
+            },
+            {
+              id: 'R2-review',
+              kind: 'note',
+              name: 'Design review',
+              text: 'Same fixture and styles as round 1 (variants/follows.js with ?o=AB); round 1 pages are unchanged apart from recording your notes. Checked in Chrome at 390 × 844 in light and dark: every round 2 frame renders; Wayfinder in the share sheet opens Public maps with the checked card; Follow and Unfollow on the card and the rows stay in step; Back returns to Maps; offline disables Follow and keeps Unfollow. Not checked: screen readers, real devices, safe areas, large text, landscape, the OS share sheet (drawn, not native).',
+            },
           ],
         },
       ],
