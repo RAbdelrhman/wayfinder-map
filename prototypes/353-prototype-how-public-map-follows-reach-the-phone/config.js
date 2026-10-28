@@ -6,7 +6,9 @@
   followed, follows are per GitHub login, and Wayfinder never writes to GitHub.
   Ramon selected round 2's A + B-share page as shown at 6c3d07f (#353 comment 6457376978); round 1's options stay for lineage.
   Round 3 asks one narrower question: round 2 shows a shared map's Follow / Unfollow twice on Public maps (on the checked
-  card and on its repository row). It offers three minimal ways to show it once. Nothing in round 3 is chosen.
+  card and on its repository row). It offers three minimal ways to show it once. Ramon called the duplicate redundant and
+  delegated the pick ("Yes thats redundant choose one"); option 1, The card holds it, was chosen at 1957b79 and recorded
+  in #353 comment 6457851959. Round 2 and the other round 3 options stay for lineage.
   Check with: node prototypes/353-prototype-how-public-map-follows-reach-the-phone/tools/check.mjs
 */
 
@@ -234,6 +236,8 @@ window.CANVAS = {
                 basedOn: ['R2-shared', 'R2-shared-following'],
                 pros: ['The button is where the share lands', 'Closest to round 2: only the duplicate row goes'],
                 cons: ['The repository list is one map short while the card shows', 'Two kinds of Follow on one screen: a large button on the card, row buttons below'],
+                disposition: 'keep',
+                feedback: 'Chosen at 1957b79 on Ramon\'s delegation in the #229 hand-off conversation: "Yes thats redundant choose one". The card has the shared map\'s only Follow / Unfollow; its repository row is hidden while the card shows. Recorded in #353 comment 6457851959. Not Ramon\'s own pick among the three.',
               },
             },
             {
@@ -262,7 +266,7 @@ window.CANVAS = {
               id: 'R3-open',
               kind: 'note',
               name: 'Why this round',
-              text: 'Verifying round 2 found the shared map\'s Follow / Unfollow on both the card and its row on one screen, and #353 asks to avoid duplicate controls. Round 2 is still your pick, and nothing here is chosen or built. In Canvas notes in Wayfinder, choose 1, 2 or 3, or keep round 2 as it is. Each option\'s page shows the share, follow, already-followed, not-public and offline states.',
+              text: 'Verifying round 2 found the shared map\'s Follow / Unfollow on both the card and its row on one screen, and #353 asks to avoid duplicate controls. You called the duplicate redundant and left the pick to us ("Yes thats redundant choose one"), so 1 · The card holds it is chosen (#353 comment 6457851959): A + B-share as you picked it, with one Follow per shared map. Options 2 and 3 and round 2 stay for comparison. Nothing is built. Each option\'s page shows the share, follow, already-followed, not-public and offline states.',
             },
             {
               id: 'R3-review',
