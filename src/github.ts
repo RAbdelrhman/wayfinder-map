@@ -424,28 +424,33 @@ async function fetchIssue(repo: string, number: number): Promise<RawIssue | null
 }
 
 /**
- * Blockers for one ticket: GitHub's native dependencies first, the body line as fallback.
+ * Blockers for one ticket: GitHub's native dependencies, or the body line when unsupported.
  * Asked for unconditionally, because the summary counts only OPEN blockers and a closed
  * one still draws the edge that shows how the map was sequenced.
  */
 async function fetchBlockers(repo: string, raw: RawIssue): Promise<Blocker[]> {
   try {
     const blockers = await ghJson<RawIssue[]>(['api', `repos/${repo}/issues/${raw.number}/dependencies/blocked_by`]);
-    if (blockers.length > 0) {
-      return blockers.map((blocker) => ({ number: blocker.number, open: isOpenState(blocker.state), raw: blocker }));
-    }
-  } catch {
+    return blockers.map((blocker) => ({ number: blocker.number, open: isOpenState(blocker.state), raw: blocker }));
+  } catch (error) {
+    if (!dependenciesUnsupported(error)) throw error;
     // Dependencies unavailable on this repo. Fall through to the body line.
   }
   // The body line names numbers only, so the state comes from the map's own tickets.
   return parseBlockedByLine(raw.body ?? '').map((number) => ({ number, open: null }));
 }
 
-/** Issues `number` blocks. Empty when dependencies are unavailable. */
+/** Only an unsupported endpoint permits the legacy body fallback. Failed reads remain failed. */
+function dependenciesUnsupported(error: unknown): boolean {
+  return error instanceof GhError && /\bHTTP (?:404|410)\b/.test(error.message);
+}
+
+/** Issues `number` blocks. Empty only when the dependency endpoint is unsupported. */
 async function fetchBlocking(repo: string, number: number): Promise<RawIssue[]> {
   try {
     return await ghJson<RawIssue[]>(['api', `repos/${repo}/issues/${number}/dependencies/blocking`]);
-  } catch {
+  } catch (error) {
+    if (!dependenciesUnsupported(error)) throw error;
     return [];
   }
 }

@@ -94,7 +94,7 @@ describe('mobile GitHub maps', () => {
       'Couldn’t load this map',
     );
   });
-  it('merges body-linked tickets with native children and respects body blockers when native dependencies are empty', async () => {
+  it('merges body-linked tickets with native children without reviving body blockers after an empty native read', async () => {
     const { api } = setup((path) => {
       if (path.endsWith('/issues/1'))
         return raw(1, {
@@ -108,9 +108,35 @@ describe('mobile GitHub maps', () => {
     });
     const result = await api.map({ repo: 'me/project', number: 1 });
     expect(result.tickets.map((item) => item.number)).toEqual([2, 3]);
-    expect(result.tickets[1]?.state).toBe('blocked');
-    expect(result.tickets[1]?.blockedBy).toEqual([2]);
+    expect(result.tickets[1]?.state).toBe('frontier');
+    expect(result.tickets[1]?.blockedBy).toEqual([]);
   });
+  it.each([401, 403, 422, 429, 503])(
+    'does not return a ready ticket after a dependency read fails with HTTP %i',
+    async (status) => {
+      const { api } = setup((path) => {
+        if (path.endsWith('/issues/42')) return raw(42);
+        if (path.endsWith('/dependencies/blocked_by'))
+          return new Response('', { status });
+        return [];
+      });
+      await expect(api.ticket({ repo: 'me/project', number: 42 }))
+        .rejects.toMatchObject({ status });
+    },
+  );
+  it.each([403, 422, 429, 503])(
+    'does not erase Unlocks after a blocking read fails with HTTP %i',
+    async (status) => {
+      const { api } = setup((path) => {
+        if (path.endsWith('/issues/42')) return raw(42);
+        if (path.endsWith('/dependencies/blocking'))
+          return new Response('', { status });
+        return [];
+      });
+      await expect(api.ticket({ repo: 'me/project', number: 42 }))
+        .rejects.toMatchObject({ status });
+    },
+  );
   it('paginates owned maps across repositories, includes followed public maps, and excludes private maps by other authors', async () => {
     const first = Array.from({ length: 100 }, (_, index) =>
       raw(index + 1, { labels: ['wayfinder:map'] }),

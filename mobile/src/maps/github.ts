@@ -345,11 +345,11 @@ export class MobileGithub {
       )
         .map(issue)
         .map((b) => ({ number: b.number, open: b.state === 'open' }));
-      if (native.length > 0) return native;
+      return native;
     } catch (error) {
       if (
         !(error instanceof GithubError) ||
-        ![404, 410, 422].includes(error.status)
+        ![404, 410].includes(error.status)
       )
         throw error;
       warnings.push(
@@ -511,7 +511,7 @@ export class MobileGithub {
     } catch (error) {
       if (
         !(error instanceof GithubError) ||
-        ![404, 410, 422].includes(error.status)
+        ![404, 410].includes(error.status)
       )
         throw error;
       warnings.push('GitHub could not list tickets this issue unblocks.');

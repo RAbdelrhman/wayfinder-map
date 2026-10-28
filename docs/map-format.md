@@ -62,7 +62,10 @@ can read the issue.
   Wayfinder also picks up tickets the map body lists, either as a task list
   (`- [ ] #12`) or as full issue links, and warns you that they aren't attached.
 - **Waiting on other tickets:** use GitHub's native "blocked by" issue
-  relationship. If you can't, put a `Blocked by: #4, #7` line in the ticket body.
+  relationship. When the dependency endpoint is unsupported, put a
+  `Blocked by: #4, #7` line in the ticket body. A successful native response,
+  including an empty list, takes precedence over that line. Other read failures
+  stay errors and preserve the last successful snapshot.
 - **Body:** usually a `## Question` (or `## What to build`) and a `## Done when`.
   Wayfinder shows the body as written.
 
