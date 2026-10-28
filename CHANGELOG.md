@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.2.23](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.22...v0.2.23) (2026-10-28)
+
+
+### Highlights
+
+* design canvases open inside Wayfinder, with pinned notes and no browser ([#341](https://github.com/RAbdelrhman/wayfinder-map/issues/341)) ([356f27d](https://github.com/RAbdelrhman/wayfinder-map/commit/356f27d25c1fad94715bbf4b9321c85e1e50dc58))
+
+
+### Features
+
+* add canvas keyboard shortcut settings ([#338](https://github.com/RAbdelrhman/wayfinder-map/issues/338)) ([95fa54d](https://github.com/RAbdelrhman/wayfinder-map/commit/95fa54da0819623779f8d2e9593c0777906b3ad9))
+* add model selection options to ticket 224 canvas ([39a7aab](https://github.com/RAbdelrhman/wayfinder-map/commit/39a7aab644f7ee52256f5c456136016fbe1ffdba))
+* add ticket 224 mobile start and session design canvas ([047caf4](https://github.com/RAbdelrhman/wayfinder-map/commit/047caf4a5adb304bd0b18342d55679b269408766))
+* build approved mobile map browsing and ticket detail ([#352](https://github.com/RAbdelrhman/wayfinder-map/issues/352)) ([cca768d](https://github.com/RAbdelrhman/wayfinder-map/commit/cca768d85e01dbe2b91b719005576373f2f43d69))
+* confirm posted canvas notes and send them to the T3 Code thread ([#343](https://github.com/RAbdelrhman/wayfinder-map/issues/343)) ([1efb42a](https://github.com/RAbdelrhman/wayfinder-map/commit/1efb42ad47ac7c08bf98b1f873c9b3f9db894fd2))
+* prototype how public map follows reach the phone ([#353](https://github.com/RAbdelrhman/wayfinder-map/issues/353)) ([#354](https://github.com/RAbdelrhman/wayfinder-map/issues/354)) ([ebda6a1](https://github.com/RAbdelrhman/wayfinder-map/commit/ebda6a1a4a9ad483d3fd039f8addffa745ecc8bb))
+* prototype mobile canvas viewing options ([#226](https://github.com/RAbdelrhman/wayfinder-map/issues/226)) ([#342](https://github.com/RAbdelrhman/wayfinder-map/issues/342)) ([4f43918](https://github.com/RAbdelrhman/wayfinder-map/commit/4f4391872e7e58507a9148d3889cf84220fbc457))
+* prototype mobile notifications inbox and settings ([#345](https://github.com/RAbdelrhman/wayfinder-map/issues/345)) ([0eb0c0e](https://github.com/RAbdelrhman/wayfinder-map/commit/0eb0c0e41139e0d7478471301d2ebf39c9e0a5b4))
+* prototype mobile ticket start and session watching ([2c6359a](https://github.com/RAbdelrhman/wayfinder-map/commit/2c6359a79cfd3a171953fe84a67bdc914082adf8))
+* reuse phone presentation in mobile prototype scaffolds ([#349](https://github.com/RAbdelrhman/wayfinder-map/issues/349)) ([7022ca2](https://github.com/RAbdelrhman/wayfinder-map/commit/7022ca242bea8a361efe03b2d8ec0dea60a0e31c))
+
+
+### Bug Fixes
+
+* address mobile canvas review findings ([7b185d0](https://github.com/RAbdelrhman/wayfinder-map/commit/7b185d0510ec4c0983a409e22f1ac11ae7efbacc))
+* hide legacy prototype presentation notes ([#339](https://github.com/RAbdelrhman/wayfinder-map/issues/339)) ([274d24d](https://github.com/RAbdelrhman/wayfinder-map/commit/274d24de6d83ccfa5973d052c410190d401630bb))
+* open variant screenshots in the canvas viewer instead of stranding the window ([#348](https://github.com/RAbdelrhman/wayfinder-map/issues/348)) ([b000ec8](https://github.com/RAbdelrhman/wayfinder-map/commit/b000ec81d162ab1b5a9a1fb6fb5f77fe7e45aa6c))
+* present ticket 224 options in phone frame ([422227b](https://github.com/RAbdelrhman/wayfinder-map/commit/422227b6fc2d1f36b47f674c3e77b7c273a1a2e6))
+* prevent live preview scripts from taking focus ([#361](https://github.com/RAbdelrhman/wayfinder-map/issues/361)) ([a32d50c](https://github.com/RAbdelrhman/wayfinder-map/commit/a32d50c825d9ed547ec9bc1eff53be5d01eb8df0))
+* show chosen canvas items by round and page ([#346](https://github.com/RAbdelrhman/wayfinder-map/issues/346)) ([c11d785](https://github.com/RAbdelrhman/wayfinder-map/commit/c11d7851744ad57eafe0d8cfc50f54cb71878b87))
+* use Wayfinder branding for mobile app icons ([#351](https://github.com/RAbdelrhman/wayfinder-map/issues/351)) ([63a598a](https://github.com/RAbdelrhman/wayfinder-map/commit/63a598a27e3cd9db101a0f01de85bc926f20174e))
+
 ## [0.2.22](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.21...v0.2.22) (2026-10-23)
 
 
