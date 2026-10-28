@@ -187,7 +187,7 @@
 
   function categoryHeading() {
     const lead = `Phones paired with ${esc(D.name)} start tickets here and watch them run.`;
-    if (!R3) return `<header class="settings-category-heading"><h2 id="cat-title">Phones</h2><p>${lead}</p></header>`;
+    if (!R3) return `<header class="settings-category-heading"><h2 id="cat-title" tabindex="-1">Phones</h2><p>${lead}</p></header>`;
     // Round 3: "Phones" is gone; the line under it stays as the page's lead.
     if (COUNT === 'lead' && st.phones.length)
       return `<p class="p335-lead-line"><b class="p335-lead-count">${pairedCount()}</b> with ${esc(D.name)}. They start tickets here and watch them run.</p>`;
@@ -434,6 +434,7 @@
         pendingFocus = O === 'C' ? '#pop-title' : '[data-act="remove-no"][data-focus-first]';
         return paint();
       case 'remove-no':
+        if (st.removing) return;
         st.confirm = null;
         st.view = 'list';
         pendingFocus = returnTo;

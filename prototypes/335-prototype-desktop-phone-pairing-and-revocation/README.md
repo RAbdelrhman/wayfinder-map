@@ -267,4 +267,4 @@ Do not report a check as passed just because the code or config passed a source-
 |---|---|
 | `node <dir>/tools/serve.mjs [port]` | Serves the repo root with a sandbox CSP (default port 4390) and prints the canvas URL |
 | `node <dir>/tools/check.mjs` | Validates config.js: pages and round labels, kinds, ids, feedback metadata, styles, files, and sandbox safety |
-| `node --test <dir>/tools/check.test.mjs` | Tests for the checker |
+| `bun run test:canvas` | Tests for the shared canvas checker |

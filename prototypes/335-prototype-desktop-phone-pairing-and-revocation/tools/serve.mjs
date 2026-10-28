@@ -37,7 +37,13 @@ const MIME = {
 };
 
 createServer(async (request, response) => {
-  const path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
+  let path;
+  try {
+    path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
+  } catch {
+    response.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end('Bad request');
+    return;
+  }
   const file = resolve(join(ROOT, path));
   if (file !== ROOT && !file.startsWith(ROOT + sep)) {
     response.writeHead(403).end('Forbidden');
