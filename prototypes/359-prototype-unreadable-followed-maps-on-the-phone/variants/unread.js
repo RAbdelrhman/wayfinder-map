@@ -4,6 +4,7 @@
   ?o=B  Its own section       Public maps gains "Followed, can't show now" under "Followed, not public now"
   ?o=C  A sheet from Maps     the Maps notice opens a sheet; Public maps stays as #353 drew it
   ?s=maps|unknown|offline|shared|unfollowed|recovered|account   (&at=moved scrolls to the shared card's group line)
+  &r=2  Round 2 of A: only the edits Ramon pinned on A's Overview frame (#359 viewer notes at 44d0be5), keyed by map, not position.
   A follow Wayfinder can't read shows only the reference the user saved (owner/repo#number) and why.
   Only a readable map without `Visibility: public` is called private; every other failure stays unknown.
   Every map keeps one Follow / Unfollow per screen. Unfollow only changes this phone; nothing is written to GitHub.
@@ -13,6 +14,11 @@
   const O = ['A', 'B', 'C'].includes(params.get('o')) ? params.get('o') : 'A';
   const STATES_LIST = ['maps', 'unknown', 'offline', 'shared', 'unfollowed', 'recovered', 'account'];
   const S0 = STATES_LIST.includes(params.get('s')) ? params.get('s') : 'maps';
+  const R2 = O === 'A' && params.get('r') === '2';
+  // Round 2 pins: center #15's Follow; remove two group labels, Public maps' fine print and #3's reason line.
+  const R2_CENTER = R2 ? 'mona/octo-notes#15' : '';
+  const R2_NO_WHY = R2 ? ['RAbdelrhman/recipes-app', 'mona/octo-notes'] : [];
+  const R2_NO_REASON = R2 ? 'kai-r/trailhead#3' : '';
   const D = window.F;
   const esc = Kit.esc;
   const ic = Kit.icon;
@@ -97,7 +103,7 @@
   function followBtn(m) {
     const on = follows.has(key(m));
     const off = ui.offline && !on;
-    return `<span class="f-act"><button class="f-follow${on ? '' : ' is-add'}" data-act="${on ? 'unfollow' : 'follow'}" data-k="${esc(key(m))}" ${off ? 'disabled aria-disabled="true"' : ''} aria-label="${on ? 'Unfollow' : 'Follow'} map #${m.number}: ${esc(m.title)}">${on ? 'Unfollow' : 'Follow'}</button></span>`;
+    return `<span class="f-act${key(m) === R2_CENTER ? ' u-center' : ''}"><button class="f-follow${on ? '' : ' is-add'}" data-act="${on ? 'unfollow' : 'follow'}" data-k="${esc(key(m))}" ${off ? 'disabled aria-disabled="true"' : ''} aria-label="${on ? 'Unfollow' : 'Follow'} map #${m.number}: ${esc(m.title)}">${on ? 'Unfollow' : 'Follow'}</button></span>`;
   }
   // Unfollow on a reference changes only this phone, so it works offline and without GitHub.
   const refBtn = (r) => `<span class="f-act"><button class="f-follow" data-act="unfollow" data-k="${esc(key(r))}" aria-label="Unfollow map ${esc(key(r))}">Unfollow</button></span>`;
@@ -115,7 +121,7 @@
     const w = WHY[r.why];
     const name = inRepo ? `#${r.number}` : key(r);
     return `<div class="m-row f-prow u-ref"><span class="f-hid u-why-${r.why}">${ic(w.icon)}</span><span class="m-row-main"><span class="m-row-title u-name">${esc(name)}</span>
-      <span class="m-row-sub f-wrap"><b class="u-head">${esc(w.head)}.</b> ${esc(w.text)}</span></span>${refBtn(r)}</div>`;
+      ${key(r) === R2_NO_REASON ? '' : `<span class="m-row-sub f-wrap"><b class="u-head">${esc(w.head)}.</b> ${esc(w.text)}</span>`}</span>${refBtn(r)}</div>`;
   }
   const movedLine = (r) => `<p class="f-none f-moved">#${r.number} is above, under Shared from GitHub.</p>`;
 
@@ -180,7 +186,8 @@
         const rows = readable.map(publicRow).join('') + mine.map((r) => refRow(r, true)).join('');
         if (!rows && !moved && !D.own.some((m) => m.repo === name)) return '';
         const why = D.own.some((m) => m.repo === name) ? 'Has your maps' : 'You follow a map here';
-        return `<div class="m-section-title">${esc(short(name))}<span class="f-why">${why}</span></div>${rows ? `<div class="m-group">${rows}</div>` : moved ? '' : '<p class="f-none">No public maps from other people.</p>'}${moved}`;
+        const label = R2_NO_WHY.includes(name) ? '' : `<span class="f-why">${why}</span>`;
+        return `<div class="m-section-title">${esc(short(name))}${label}</div>${rows ? `<div class="m-group">${rows}</div>` : moved ? '' : '<p class="f-none">No public maps from other people.</p>'}${moved}`;
       })
       .join('');
     const own = O === 'B' && (listed.length || sharedRef)
@@ -190,7 +197,7 @@
       <label class="m-search">${ic('search')}<input aria-label="Look in a repository" placeholder="Look in a repository: owner/repo" ${ui.offline ? 'disabled' : ''}></label>
       ${ui.shared ? `<div class="m-section-title">Shared from GitHub</div>${sharedCard()}` : ''}
       ${priv.length ? `<div class="m-section-title">Followed, not public now</div><div class="m-group">${priv.map(hiddenRow).join('')}</div>` : ''}
-      ${own}${groups}${fine()}</div>${toastEl()}`;
+      ${own}${groups}${R2 ? '' : fine()}</div>${toastEl()}`;
   }
 
   /* ---------- render + events ---------- */
@@ -201,7 +208,7 @@
     const box0 = app.querySelector(ui.sheet ? '.u-sheet-body' : '.m-scroll');
     const top = s === shown ? box0?.scrollTop ?? 0 : 0;
     app.innerHTML = s === 'find' ? find() : maps();
-    document.title = `${O} · ${S0} · ${s}${ui.sheet ? ' · sheet' : ''}`;
+    document.title = `${O}${R2 ? ' R2' : ''} · ${S0} · ${s}${ui.sheet ? ' · sheet' : ''}`;
     const box = app.querySelector(ui.sheet ? '.u-sheet-body' : '.m-scroll');
     if (box) box.scrollTop = top;
     shown = s;

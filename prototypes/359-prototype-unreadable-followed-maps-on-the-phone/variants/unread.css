@@ -21,3 +21,6 @@
 .u-close .i { width: 20px; height: 20px; }
 .u-sheet-body { overflow: auto; padding: 0 16px 28px; }
 .u-sheet-body .m-section-title:first-child { margin-top: 8px; }
+
+/* Round 2 of A: #15's Follow sits centered in its row instead of at the top. */
+.f-prow > .f-act.u-center { align-self: center; }
