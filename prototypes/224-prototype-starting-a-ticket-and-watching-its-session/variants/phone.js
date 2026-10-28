@@ -853,6 +853,31 @@
       open(...ticketPath(230), { screen: 'pair' }, { screen: 'pairconfirm' });
     },
     paired: () => open(...ticketPath(230), { screen: 'pair' }, { screen: 'paired' }),
+    // The chosen path: Wayfinder was closed at 10:26 and opened again at 10:36, still out of reach.
+    // The waiting starts are the ones saved before it closed; nothing on screen is new.
+    'reopened-ticket'() {
+      phoneOffline();
+      st.clock = '10:36';
+      st.queue = twoChosen();
+      open(...ticketPath(226));
+    },
+    reopened() {
+      phoneOffline();
+      st.clock = '10:36';
+      st.queue = twoChosen();
+      open(...desktopPath());
+    },
+    // Pairing that starts in Settings → Desktop: the shared Desktop page, then B's check and Paired.
+    'settings-unpaired'() {
+      st.pairing = null;
+      open({ screen: 'maps' }, { screen: 'settings' });
+    },
+    'desktop-pairconfirm'() {
+      st.pairing = null;
+      st.found = P.desktop;
+      open(...desktopPath(), { screen: 'pairconfirm' });
+    },
+    'desktop-paired': () => open(...desktopPath(), { screen: 'paired' }),
   };
 
   /* ---------- watching: the parts every option uses ---------- */
@@ -1430,7 +1455,8 @@
       const run = st.runs[230];
       if (run && run.link === 'reconnecting') {
         Object.assign(run, run230('caughtup'));
-        st.clock = '10:24';
+        // Never turn the clock back: a start reopened at 10:36 keeps 10:36.
+        if (toMin(st.clock) < toMin('10:24')) st.clock = '10:24';
         Kit.toast(`Caught up with ${desk()}: ${plural(awayCount(run), 'update')} while you were away.`);
       }
       const waiting = [...st.queue];

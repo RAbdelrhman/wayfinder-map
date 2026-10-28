@@ -396,5 +396,79 @@ window.CANVAS = {
         },
       ],
     },
+    {
+      title: 'Your pick, end to end',
+      round: 'Chosen path',
+      question: 'Does the combination you picked (A overall, B’s pairing pages, M2’s model page) hold together from start to finish, including a restart while RAMON‑PC is out of reach and pairing from Settings?',
+      sections: [
+        {
+          title: 'What this page is',
+          note: 'Not a new option. Every frame is a screen already on this canvas, run with A, B’s pairing and M2 together.',
+          items: [
+            {
+              id: 'pick-brief',
+              kind: 'note',
+              name: 'Your pick',
+              boardWidth: 340,
+              text: "Recorded in #224 (comment 6451277279): round 1, “Overall though I choose A. How every I like B pairing page.” Round 2, “m2 is amazing i love it.”\n\nThis page lines up that combination in order: start with M2’s model page, watch on A’s Session tab, wait while RAMON‑PC is out of reach, close and reopen Wayfinder, get back in reach, and pair, both from a ticket and from Settings → Desktop. There are no new controls, copy or behaviour. The two reopened frames are A’s waiting-start screens at a later time; what makes them different is the note under each.\n\nThe last note on this page lists what your pick doesn’t settle yet.",
+            },
+          ],
+        },
+        {
+          title: 'Start and watch',
+          note: 'A’s Start alert with M2’s Model row; Change opens the Model page; Start opens A’s Session tab.',
+          items: [
+            { id: 'pick-confirm', name: 'Start alert, Model row', src: 'variants/phone.html?m=M2&s=confirm', ...PHONE, note: { idea: 'The same frame as M2’s.', basedOn: ['M2-confirm', 'A-confirm'] } },
+            { id: 'pick-picker', name: 'Model page', src: 'variants/phone.html?m=M2&s=picker', ...PHONE, note: { idea: 'The same frame as M2’s, laid out like B’s pairing page.', basedOn: ['M2-picker', 'B-pair'] } },
+            { id: 'pick-live', name: 'Session, with its model', src: 'variants/phone.html?m=M2&s=live', ...PHONE, note: { idea: 'A’s Session tab. Round 2 showed it with M1; here it runs with M2.', basedOn: ['R2-live', 'A-live'] } },
+          ],
+        },
+        {
+          title: 'Out of reach, through a restart',
+          note: '#222: waiting starts stay on the phone across app restarts, with no expiry, until they are sent, cancelled or turned down. They send by themselves the next time Wayfinder is open and reaches RAMON‑PC. Here Wayfinder is closed at 10:26 and opened again at 10:36; RAMON‑PC is still out of reach.',
+          items: [
+            { id: 'pick-offline', name: 'Start while out of reach', src: 'variants/phone.html?m=M2&s=offline', ...PHONE, note: { idea: '10:24. A’s Send later alert with M2’s Model row. Send later saves the start on the phone.', basedOn: ['M2-offline', 'A-offline'] } },
+            { id: 'pick-pending', name: 'Waiting, before closing', src: 'variants/phone.html?m=M2&s=pending', ...PHONE, note: { idea: '10:25. Settings → Desktop lists both waiting starts, each with its exact model. The fine print already says they stay even if Wayfinder closes.', basedOn: ['M2-pending', 'A-pending'] } },
+            { id: 'pick-reopened-ticket', name: 'Reopened: still waiting on #226', src: 'variants/phone.html?m=M2&s=reopened-ticket', ...PHONE, note: { idea: '10:36, after Wayfinder was closed and opened again. #226’s action bar still holds its waiting start, with the model it was saved with, and Cancel start. The screen is A’s waiting frame; nothing marks the restart.', basedOn: ['M2-pending', 'A-queued'] } },
+            { id: 'pick-reopened', name: 'Reopened: all waiting starts', src: 'variants/phone.html?m=M2&s=reopened', ...PHONE, note: { idea: '10:36. Settings → Desktop lists the same two starts, at their original times (10:20, 10:24) and models. Try now checks RAMON‑PC straight away.', basedOn: ['M2-pending', 'A-pending'] } },
+            { id: 'pick-back', name: 'Back in reach', src: 'variants/phone.html?m=M2&s=sent', ...PHONE, note: { idea: '10:41. Reaching RAMON‑PC sends both by themselves. RAMON‑PC rechecks each: #233 had already been started on the desktop, and #226’s GPT‑6.1 is no longer offered, so under M2 nothing starts and Choose model asks again.', basedOn: ['M2-rejected', 'A-rejected'] } },
+          ],
+        },
+        {
+          title: 'Pairing from a ticket',
+          note: 'A’s action bar; Pair a desktop opens B’s pages. Round 2 showed this with M1; here it runs with M2.',
+          items: [
+            { id: 'pick-unpaired', name: 'Not paired', src: 'variants/phone.html?m=M2&s=unpaired', ...PHONE, note: { idea: '“Pair a desktop” replaces Start.', basedOn: ['R2-unpaired', 'A-unpaired'] } },
+            { id: 'pick-pair', name: 'Pair a desktop', src: 'variants/phone.html?m=M2&s=pair', ...PHONE, note: { idea: 'B’s page, unchanged.', basedOn: ['B-pair'] } },
+            { id: 'pick-pairconfirm', name: 'Pair with RAMON‑PC?', src: 'variants/phone.html?m=M2&s=pairconfirm', ...PHONE, note: { idea: 'B’s check after the scan, unchanged.', basedOn: ['B-pairconfirm'] } },
+            { id: 'pick-paired', name: 'Paired', src: 'variants/phone.html?m=M2&s=paired', ...PHONE, note: { idea: 'Done returns to #230, now with Start and M2’s alert.', basedOn: ['B-paired'] } },
+          ],
+        },
+        {
+          title: 'Pairing from Settings → Desktop',
+          note: 'In round 1, Settings → Desktop’s “Not paired” page was the same in A, B and C, and B opened its own Pair a desktop page only from a ticket. So this path is the shared Desktop page, the scanner, then B’s check and Paired. Done returns to Settings → Desktop.',
+          items: [
+            { id: 'pick-settings', name: 'Settings, not paired', src: 'variants/phone.html?m=M2&s=settings-unpaired', ...PHONE, note: { idea: '#316’s Settings page; the Desktop row says “Not paired”.', basedOn: ['settings'] } },
+            { id: 'pick-desktop-none', name: 'Desktop, not paired', src: 'variants/phone.html?m=M2&s=desktop-unpaired', ...PHONE, note: { idea: 'The shared page from round 1: the three steps, Scan pairing code and Enter code instead. Its steps are the same as on B’s Pair a desktop page.', basedOn: ['desktop-none'] } },
+            { id: 'pick-scan', name: 'Scan pairing code', src: 'variants/phone.html?m=M2&s=scan', ...PHONE, note: { idea: 'The shared scanner. Tap the code to scan it; it goes on to B’s check, not straight to Paired as in A.', basedOn: ['scan'] } },
+            { id: 'pick-desktop-pairconfirm', name: 'Pair with RAMON‑PC?', src: 'variants/phone.html?m=M2&s=desktop-pairconfirm', ...PHONE, note: { idea: 'B’s check, reached from Settings. Cancel returns to the Desktop page.', basedOn: ['B-pairconfirm'] } },
+            { id: 'pick-desktop-paired', name: 'Paired', src: 'variants/phone.html?m=M2&s=desktop-paired', ...PHONE, note: { idea: 'B’s Paired. Done returns to Settings → Desktop, now showing RAMON‑PC.', basedOn: ['B-paired'] } },
+          ],
+        },
+        {
+          title: 'Not settled by your pick',
+          note: 'Open questions only. Nothing above changes because of them.',
+          items: [
+            {
+              id: 'pick-open',
+              kind: 'note',
+              name: 'Still open',
+              boardWidth: 340,
+              text: "1. Settings → Desktop when not paired. Round 1 showed the shared page there in every option, so this page keeps it. Whether “I like B pairing page” means B’s Pair a desktop page should replace it there too is yours to say; the two pages carry the same three steps.\n\n2. Reopening while out of reach. A shows waiting starts on their tickets and in Settings → Desktop, and nothing else. B’s banner on Maps was part of B, not of your pick, so after a restart nothing on Maps says starts are waiting.\n\n3. #230’s Session tab after a restart while out of reach. These frames show the history last relayed, with Reconnecting. #222 says reconnecting restores the history; whether the phone keeps it across a restart is not decided.\n\n4. M2 after a long wait. A start whose model has gone is turned down and asks again, possibly hours later. That is M2 as you picked it.\n\nShown here, not decided by this page: when a reopened app reconnects. #222 says sending is automatic once Wayfinder is open and reaches RAMON‑PC, and that a suspended or closed app may not reconnect straight away.\n\nOwned elsewhere: the desktop’s pairing code and phone list (#335), the desktop endpoint (#230), building the phone start (#231), notifications (#225).",
+            },
+          ],
+        },
+      ],
+    },
   ],
 };
