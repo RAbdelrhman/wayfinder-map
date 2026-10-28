@@ -1,0 +1,162 @@
+/* #335: only what the real Settings classes in src/ui/styles.css don't already give. App tokens only. */
+html, body.p335 { height: 100%; margin: 0; }
+.p335 { overflow: hidden; }
+
+/* ---------- the app shell (a demo sidebar, as on #292's board) ---------- */
+.p335-shell { display: grid; grid-template-columns: 210px minmax(0, 1fr); height: 100%; }
+.p335-sidebar { display: flex; flex-direction: column; gap: 12px; padding: 22px 16px 16px; border-right: 1px solid var(--hairline); background: var(--surface-1); }
+.p335-sidebar a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--text-secondary); text-decoration: none; }
+.p335-sidebar a:hover { background: var(--wash); }
+.p335-sidebar .p335-brand { color: var(--text-primary); font-weight: 650; font-size: 17px; padding: 0 4px 14px; }
+.p335-sidebar .eyebrow { padding: 16px 10px 0; }
+.p335-footer { display: grid; grid-template-columns: 28px 1fr; align-items: center; gap: 8px; margin-top: auto; }
+.p335-footer a { grid-column: 1 / -1; }
+.p335:not(.is-c) .p335-footer a { background: var(--wash); color: var(--text-primary); }
+.p335-avatar { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--hairline); border-radius: 50%; font-size: 12px; background: var(--plane); }
+.p335-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; background: var(--plane); }
+.p335 .topbar { gap: 10px; padding: 0 20px 0 18px; }
+.p335 :is(.p335-sidebar, .topbar, #layer) :is(a, button):focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.p335 .i { width: 16px; height: 16px; flex: none; }
+.p335 .primary .i, .p335 .ghost .i { width: 14px; height: 14px; }
+
+/* ---------- rows and lists ---------- */
+.p335-list { list-style: none; margin: 0; padding: 0; }
+.settings-page .p335-list .settings-row { border-top: 1px solid var(--hairline); }
+.settings-page .p335-row { align-items: flex-start; }
+.settings-page .p335-row > .primary, .settings-page .p335-row > .ghost, .p335-status { margin-top: 2px; flex: none; }
+.p335-tile { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: var(--wash); color: var(--text-secondary); flex: none; }
+.p335-tile.is-danger { color: var(--state-failed); background: color-mix(in srgb, var(--state-failed) 10%, transparent); }
+.p335-phone.is-new .p335-tile { color: var(--accent-text); background: color-mix(in srgb, var(--state-claimed) 12%, transparent); }
+.p335-new { color: var(--text-primary); background: color-mix(in srgb, var(--state-claimed) 16%, transparent); margin-left: 4px; }
+.p335-push { display: inline-flex; align-items: center; gap: 5px; }
+.p335-push .i { width: 13px; height: 13px; }
+.p335-push.is-off { color: var(--text-muted); }
+.p335-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.p335-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--state-frontier); flex: none; }
+.p335-empty { display: flex; align-items: center; gap: 10px; margin: 0; padding: 16px 0 18px; color: var(--text-secondary); font-size: 13px; border-top: 1px solid var(--hairline); }
+.p335-empty .i { color: var(--text-muted); }
+.settings-page .settings-section h3 .badge { margin-left: 6px; vertical-align: 1px; }
+
+/* ---------- notices and problems ---------- */
+.p335-notice { display: flex; align-items: flex-start; gap: 10px; padding: 12px 10px 12px 14px; margin: 0 0 18px; border: 1px solid color-mix(in srgb, var(--state-frontier) 40%, var(--hairline)); border-radius: 10px; background: color-mix(in srgb, var(--state-frontier) 7%, var(--surface-1)); font-size: 13px; line-height: 1.55; }
+.p335-notice > .i { color: var(--handoff-pr-ready); margin-top: 2px; }
+.p335-notice > span { flex: 1; }
+.p335-notice .iconbtn { width: 28px; height: 28px; margin: -3px 0 0; }
+.p335-notice:focus { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.p335-prereq { display: flex; align-items: flex-start; gap: 12px; padding: 16px 0; font-size: 13px; }
+.p335-prereq > .i { color: var(--state-failed); margin-top: 2px; }
+.p335-prereq > div { flex: 1; }
+.p335-prereq .hint { margin: 3px 0 0; font-size: 12px; line-height: 1.6; max-width: 440px; }
+
+/* ---------- the code: QR, typeable address and code, time left ---------- */
+.p335-code { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: start; }
+.p335-code.is-compact { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 14px; }
+.p335-code.is-compact .p335-code-main { justify-self: stretch; }
+.p335-qr { position: relative; padding: 8px; border: 1px solid var(--hairline); border-radius: 12px; background: #fff; line-height: 0; }
+.p335-qr-svg { display: block; border-radius: 4px; }
+.p335-code.is-expired .p335-qr-svg { opacity: 0.12; }
+.p335-qr-over { position: absolute; inset: 0; display: grid; place-items: center; font: 600 13px/1 system-ui, sans-serif; color: #52514e; }
+.p335-lead { margin: 2px 0 14px; font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+.p335-lead b { color: var(--text-primary); font-weight: 600; }
+.p335-fields { display: grid; gap: 12px; margin: 0 0 14px; }
+.p335-fields dt { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.p335-fields dd { display: flex; align-items: center; gap: 6px; margin: 0; min-width: 0; }
+.p335 .p335-type { font: 15px/1.4 ui-monospace, 'Cascadia Code', Consolas, monospace; padding: 5px 9px; border-radius: 7px; background: var(--plane); color: var(--text-primary); user-select: all; overflow-wrap: anywhere; }
+.p335 .p335-type.is-code { font-size: 22px; font-weight: 600; letter-spacing: 0.08em; padding: 4px 12px; white-space: nowrap; }
+.p335 .p335-type.is-expired { color: var(--text-muted); border: 1px solid var(--hairline); text-decoration: line-through; }
+.p335-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.p335-code.is-compact .p335-type:not(.is-code) { font-size: 13px; }
+.p335-copy.iconbtn { width: 30px; height: 30px; flex: none; }
+.p335-copy .i { width: 15px; height: 15px; }
+.p335-timer { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.p335-timer b { color: var(--text-primary); }
+.p335-timer.is-warn { color: var(--handoff-needs-you); }
+.p335-timer.is-warn b { color: inherit; }
+.p335-timer.is-over { color: var(--state-failed); }
+.p335-at { color: var(--text-muted); }
+.p335-timer.is-warn .p335-at { color: inherit; }
+.p335-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.p335-actions.is-end { justify-content: flex-end; }
+.p335-inline-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.p335-danger { display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 600; background: var(--state-failed); color: #fff; }
+.p335-danger .i { width: 14px; height: 14px; }
+.p335-danger:hover { filter: brightness(1.08); }
+.p335-danger:disabled { opacity: 0.6; cursor: progress; }
+:root[data-theme='dark'] .p335-danger { color: #0b0b0b; }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme='light'])) .p335-danger { color: #0b0b0b; } }
+.p335-done { display: flex; align-items: flex-start; gap: 14px; }
+.p335-done-mark { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: color-mix(in srgb, var(--state-frontier) 14%, transparent); color: var(--handoff-pr-ready); flex: none; }
+.p335-done-title { margin: 6px 0 4px; font-size: 15px; }
+.p335-done-title:focus { outline: none; }
+.p335-done .hint { margin: 0; font-size: 13px; line-height: 1.6; }
+.p335 code.p335-used { text-decoration: line-through; color: var(--text-muted); }
+
+/* A prototype-only strip, dashed so it never reads as product UI. */
+.p335-proto { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 16px; padding: 8px 10px; border: 1px dashed var(--baseline); border-radius: 8px; font-size: 11.5px; color: var(--text-muted); }
+.p335-proto button { border: 1px solid var(--hairline); border-radius: 6px; background: none; padding: 3px 8px; font-size: 11.5px; color: var(--text-secondary); }
+.p335-proto button:hover { background: var(--wash); color: var(--text-primary); }
+
+/* ---------- A: dialogs ---------- */
+.p335-dialog { width: min(600px, calc(100vw - 32px)); padding: 18px 20px 20px; }
+.p335-dialog.is-small { width: min(440px, calc(100vw - 32px)); }
+.p335-dialog .dialog-head { margin-bottom: 16px; }
+.p335-dialog .dialog-head h2 { font-size: 16px; }
+.p335-dlg-body { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+.p335-dialog :is(button):focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+/* ---------- B: in place ---------- */
+.p335-inplace { padding: 14px 0 20px; }
+.settings-page .settings-section.is-pairing { border-color: color-mix(in srgb, var(--state-claimed) 45%, var(--hairline)); }
+.settings-page .settings-section h3:focus { outline: none; }
+.settings-page .p335-phone.is-confirming { background: color-mix(in srgb, var(--state-failed) 5%, transparent); margin: 0 -22px; padding-left: 22px; padding-right: 22px; }
+#rm-title { font-weight: 600; }
+#rm-desc { max-width: 520px; }
+
+/* ---------- C: the Phones popover ---------- */
+.p335-phones-btn { padding: 5px 10px; }
+.p335-phones-btn .badge { margin-left: 2px; }
+.p335-phones-btn[aria-expanded='true'] { background: var(--wash); color: var(--text-primary); }
+.p335-pop { position: fixed; top: 52px; right: 60px; z-index: 30; width: 372px; max-height: calc(100vh - 68px); display: flex; flex-direction: column; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-1); box-shadow: var(--shadow); }
+.p335-pop-head { display: flex; align-items: center; gap: 6px; padding: 12px 14px 10px; border-bottom: 1px solid var(--hairline); }
+.p335-pop-head h2 { margin: 0; font-size: 14px; flex: 1; }
+.p335-pop-head h2:focus { outline: none; }
+.p335-pop-head .iconbtn { width: 28px; height: 28px; margin-left: -6px; }
+.p335-pop-body { padding: 12px 14px; overflow: auto; min-height: 0; }
+.p335-pop-body .p335-notice { margin: 0 0 10px; font-size: 12.5px; }
+.p335-pop-body .p335-prereq { padding: 4px 0 12px; flex-wrap: wrap; }
+.p335-pop-body .p335-prereq .ghost { margin-left: 28px; }
+.p335-pop-status { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; font-size: 12px; color: var(--text-secondary); }
+.p335-pop-list { list-style: none; margin: 0; padding: 0; }
+.p335-pop-list li { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid var(--hairline); font-size: 13px; }
+.p335-pop-list .grow { flex: 1; min-width: 0; }
+.p335-pop-list .hint { display: block; margin-top: 2px; font-size: 12px; }
+.p335-pop-list .iconbtn { width: 30px; height: 30px; }
+.p335-pop-list li.is-new .p335-tile { color: var(--accent-text); background: color-mix(in srgb, var(--state-claimed) 12%, transparent); }
+.p335-pop-foot { padding: 12px 14px; border-top: 1px solid var(--hairline); }
+.p335-pop-foot .primary { width: 100%; }
+.p335-pop .p335-actions { margin-top: 14px; }
+.p335-pop .p335-empty { border-top: 0; padding: 6px 0 4px; }
+.p335-home { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; max-width: 1000px; margin: 0 auto; }
+.p335-home div { height: 150px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-1); }
+
+/* ---------- narrow windows ---------- */
+@media (max-width: 1050px) {
+  .p335-shell { grid-template-columns: 180px minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  .p335-shell { grid-template-columns: 56px minmax(0, 1fr); }
+  .p335-sidebar { padding: 18px 10px; align-items: center; }
+  .p335-sidebar > :not(.p335-brand), .p335-footer { display: none; }
+  .p335-sidebar .p335-brand { font-size: 0; padding: 0; }
+  .p335-sidebar .p335-brand .i { width: 22px; height: 22px; }
+  .p335-code { grid-template-columns: minmax(0, 1fr); justify-items: start; }
+  .p335 .p335-type.is-code { font-size: 19px; }
+  .p335-pop { right: 8px; left: 8px; width: auto; }
+  .p335-home { grid-template-columns: minmax(0, 1fr); }
+  .settings-page .p335-phone.is-confirming { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+}
+@media (max-height: 560px) {
+  .p335-pop { max-height: calc(100vh - 60px); }
+}
+.p335-dialog h2:focus { outline: none; }
+.p335-pop-body .p335-prereq > div { flex-basis: calc(100% - 28px); }
