@@ -7,6 +7,7 @@ import {
   isCanvasClick,
   canvasFrameHtml,
   canvasOptionForFile,
+  canvasOptionForAddress,
   canvasToolbarHtml,
   floatGeometry,
   readCanvasMessage,
@@ -143,6 +144,14 @@ describe('approved ACF4 shell', () => {
       option: 'B-running',
     });
     expect(canvasOptionForFile(pages, '/proto/other.html')).toBeNull();
+  });
+  it('uses the page as well as the option ID when IDs repeat', () => {
+    const pages = [
+      { id: 'light', title: 'Light', options: [{ id: 'D', name: 'D', file: '/same.html' }] },
+      { id: 'dark', title: 'Dark', options: [{ id: 'D', name: 'D', file: '/same.html' }] },
+    ];
+    expect(canvasOptionForAddress(pages, 'dark', 'D')).toEqual({ page: 'dark', option: 'D' });
+    expect(canvasOptionForAddress(pages, 'missing', 'D')).toBeNull();
   });
   it('keeps the same size control and only offers GitHub at full window and pane', () => {
     const pages = [
@@ -304,10 +313,10 @@ describe('pin and note messages and routes (#213)', () => {
     };
     const browser = new Window();
     const link = browser.document.createElement('a');
-    const attrs = canvasEntryAttrs('octo/repo', prototype, 'Canvas', null, null, { pick: 208, variant: 'B', variants: [{ id: 'B', name: '<Split>' }] });
+    const attrs = canvasEntryAttrs('octo/repo', prototype, 'Canvas', null, null, { pick: 208, page: 'round-2', variant: 'B', variants: [{ id: 'B', name: '<Split>' }] });
     for (const [, name, value] of attrs.matchAll(/([\w-]+)="([^"]*)"/g)) link.setAttribute(name!, value!.replaceAll('&quot;', '"').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&'));
     const read = readCanvasRoute(canvasEntryRoute(link.dataset as unknown as DOMStringMap, link.dataset['canvasUrl']), origin);
-    expect(read).toMatchObject({ ticket: 207, pick: 208, variant: 'B', variants: [{ id: 'B', name: '<Split>' }] });
+    expect(read).toMatchObject({ ticket: 207, pick: 208, page: 'round-2', variant: 'B', variants: [{ id: 'B', name: '<Split>' }] });
     expect(readCanvasRoute({ ...route, ticket: -1, pick: 1.5, variants: 'x' }, origin)).toEqual(readCanvasRoute(route, origin));
   });
 });

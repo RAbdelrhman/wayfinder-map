@@ -7,6 +7,7 @@ import { ticketStateOf } from './ticketState.js';
 export { ticketStateOf } from './ticketState.js';
 import { parseBlockedByLine, parseChildNumbers, parseMapBody } from './mapBody.js';
 import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SHOTS_DIR, PROTOTYPE_SNAPSHOT_FILE, canvasEntries, isHtml, isSelfContained, pickPreview, prototypeTicketNumber, prototypeVariantInfo, unlistedCanvasBoards, verdictComment } from './prototypes.js';
+import { canvasCatalog } from './canvasCatalog.js';
 import { idleCutoff, isIdleCandidate, settlementOf } from './settling.js';
 import { isMapShown, mapVisibility } from './visibility.js';
 import type { Viewer } from './visibility.js';
@@ -1096,6 +1097,7 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[], r
         : await ghJson<RawCommit>(['api', `repos/${repo}/commits/${encodeURIComponent(branch)}`]).catch(() => null);
     const { updatedAt, files } = branchFacts(compare, tip);
     const preview = await previewOf(repo, revision, files, readFile);
+    const metadata = await variantsOf(repo, revision, ticketNumber, files, preview, shots, readFile);
     return {
       branch,
       ...(sha ? { sha } : {}),
@@ -1106,7 +1108,8 @@ async function fetchMapPrototypes(repo: string, maps: readonly WayfinderMap[], r
       files,
       ...preview,
       verdict: verdictComment(comments.map((comment) => comment.body)),
-      variants: await variantsOf(repo, revision, ticketNumber, files, preview, shots, readFile),
+      variants: metadata.variants,
+      canvasPages: metadata.pages,
     };
   });
 
@@ -1132,14 +1135,14 @@ async function variantsOf(
   preview: { openable: string[]; preview: string | null },
   shots: readonly string[],
   readFile: typeof fetchBranchFile,
-): Promise<PrototypeVariant[]> {
+): Promise<{ variants: PrototypeVariant[]; pages: ReturnType<typeof canvasCatalog> }> {
   const configFile = preview.preview !== null && /(?:^|\/)index\.html$/i.test(preview.preview)
     ? preview.preview.replace(/index\.html$/i, 'config.js') : null;
   const configSource = configFile === null ? null : await readFile(repo, branch, configFile).then((bytes) => bytes.toString('utf8'), () => null);
   const canvasDir = configFile === null ? '' : configFile.replace(/config\.js$/, '');
   const pages = [...new Set([...preview.openable, ...files.filter(isHtml)])]
     .filter((file) => canvasDir === '' || file.startsWith(canvasDir));
-  return prototypeVariantInfo(ticketNumber, shots, configSource, canvasDir, pages);
+  return { variants: prototypeVariantInfo(ticketNumber, shots, configSource, canvasDir, pages), pages: configSource === null ? [] : canvasCatalog(configSource) };
 }
 
 /** One file off the default branch, as raw bytes. */

@@ -11,6 +11,11 @@ import {
   prototypeCardState,
   prototypeVariants,
   sortPrototypeCards,
+  selectPrototypePage,
+  selectPrototypeHero,
+  revealPrototypeSource,
+  togglePrototypeRound,
+  togglePrototypeMore,
 } from './prototypeBoard.js';
 import { canvasEntryRoute, readCanvasRoute } from './canvasViewer.js';
 
@@ -156,6 +161,8 @@ describe('prototype variant metadata', () => {
     expect(pickedVariantIds('Use A + B, with the combined board as the winner.', ['A', 'B', 'AB', 'C'])).toEqual(['AB']);
     expect(pickedVariantIds('We selected C for the goal-first flow.', ['A', 'B', 'C'])).toEqual(['C']);
     expect(pickedVariantIds('The reviewer discussed A, B, and C.', ['A', 'B', 'C'])).toEqual([]);
+    expect(pickedVariantIds('The canvas has five rounds. The confirm list uses option A’s dialog.', ['A', 'B', 'C'])).toEqual([]);
+    expect(pickedVariantIds('The reviewer selected the direction after discussing A, B, and C.', ['A', 'B', 'C'])).toEqual([]);
   });
 
   it('reads the answer line first and never picks a variant the verdict rejects', () => {
@@ -194,15 +201,122 @@ describe('prototype variant metadata', () => {
   it('prefers an explicit final canvas pick over earlier options mentioned in the verdict', () => {
     const html = prototypeBoardHtml('octo/wayfinder', map([ticket(163, 'Start next', 'prototype', 'done')]), [prototype(163, {
       verdict: '## Answer\n\nThe canvas opens on Round 5. The menu opens option A’s dialog.',
-      variants: [
-        { id: 'A', title: 'Earlier', page: null, shot: null },
-        { id: 'AC', title: 'A + C', page: null, shot: null },
-        { id: 'F', title: 'Final round', page: null, shot: null, finalPick: true },
+      canvasPages: [
+        { id: 'round-2', title: 'Earlier', round: 2, items: [{ id: 'A', name: 'Earlier', src: 'a.html', disposition: 'change', feedback: null, basedOn: [] }] },
+        { id: 'round-5', title: 'Final', round: 5, items: [{ id: 'F', name: 'Final round', src: 'f.html', disposition: 'keep', feedback: 'Final pick', basedOn: [] }] },
       ],
     })]);
     expect(html).toContain('Picked F');
-    expect(html).toContain('Open variant F: Final round (picked)');
+    expect(html).toContain('Open Final round on Final');
     expect(html).not.toContain('Open variant A: Earlier (picked)');
+  });
+
+  it('shows the final canvas item first and keeps page identity for repeated IDs', () => {
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(225, 'Notifications', 'prototype', 'done')]), [prototype(225, {
+      verdict: 'D, Round 2, is approved.',
+      canvasPages: [
+        { id: 'round-1-dark', title: 'Dark', round: 1, items: [{ id: 'D', name: 'Old', src: 'variants/old.html', disposition: null, feedback: null, basedOn: [] }] },
+        { id: 'round-1-light', title: 'Light', round: 1, items: [{ id: 'D', name: 'Light', src: 'variants/old.html', disposition: null, feedback: null, basedOn: [] }] },
+        { id: 'round-2', title: 'Remix', round: 2, items: [{ id: 'D', name: 'Final', src: 'variants/new.html', disposition: 'keep', feedback: 'Approved D', basedOn: ['A', 'B'] }] },
+      ],
+    })]);
+    expect(html).toContain('Chosen · Round 2 · Remix');
+    expect(html).toContain('data-canvas-page="round-2"');
+    expect(html).toContain('data-canvas-page="round-1-dark"');
+    expect(html).toContain('How it got here');
+    const browser = new Window();
+    setTrustedHtml(browser.document.body as unknown as HTMLElement, html);
+    const buttons = [...browser.document.querySelectorAll('[data-proto-round]')] as unknown as HTMLButtonElement[];
+    const panels = [...browser.document.querySelectorAll('[data-proto-round-panel]')] as unknown as HTMLElement[];
+    togglePrototypeRound(buttons[0]!);
+    expect(panels[0]?.hidden).toBe(false);
+    expect(panels[1]?.hidden).toBe(true);
+    const pageButtons = [...browser.document.querySelectorAll('[data-proto-page]')] as unknown as HTMLButtonElement[];
+    const pagePanels = [...panels[0]!.querySelectorAll('[data-proto-page-panel]')] as unknown as HTMLElement[];
+    selectPrototypePage(pageButtons[1]!);
+    expect(pagePanels.map((panel) => panel.hidden)).toEqual([true, false]);
+    togglePrototypeRound(buttons[1]!);
+    expect(panels[0]?.hidden).toBe(true);
+    expect(panels[1]?.hidden).toBe(false);
+    togglePrototypeRound(buttons[1]!);
+    expect(panels[1]?.hidden).toBe(true);
+  });
+
+  it('uses an exact round and item named in the verdict only when it identifies one page', () => {
+    const card = prototype(226, {
+      verdict: 'Decision: Ramon selected Round 2 R2A, based on A.',
+      canvasPages: [{ id: 'round-2', title: 'Remix', round: 2, items: [{ id: 'R2A', name: 'Notes in More', src: 'variants/phone.html', disposition: 'keep', feedback: 'Looks good to me.', basedOn: ['A'] }] }],
+    });
+    const mapView = map([ticket(226, 'Mobile viewer', 'prototype', 'done')]);
+    expect(prototypeBoardHtml('octo/wayfinder', mapView, [card])).toContain('Chosen · Round 2 · Remix');
+    const duplicate = { ...card, canvasPages: [...card.canvasPages!, { ...card.canvasPages![0]!, id: 'round-2-dark' }] };
+    expect(prototypeBoardHtml('octo/wayfinder', mapView, [duplicate])).not.toContain('Chosen · Round 2 · Remix');
+    const changed = { ...card, canvasPages: [{ ...card.canvasPages![0]!, items: [{ ...card.canvasPages![0]!.items[0]!, disposition: 'change' }] }] };
+    expect(prototypeBoardHtml('octo/wayfinder', mapView, [changed])).not.toContain('Chosen · Round 2 · Remix');
+  });
+
+  it('uses an explicitly chosen direction when the kept canvas item is unique', () => {
+    const card = prototype(314, {
+      verdict: '## Chosen direction E, prototype complete',
+      canvasPages: [{ id: 'round-2', title: 'Remix', round: 2, items: [
+        { id: 'D', name: 'Copy', src: 'd.html', disposition: null, feedback: 'Not chosen.', basedOn: [] },
+        { id: 'E', name: 'Send', src: 'e.html', disposition: 'keep', feedback: 'The user chose this.', basedOn: ['B'] },
+      ] }],
+    });
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(314, 'Feedback', 'prototype', 'done')]), [card]);
+    expect(html).toContain('Chosen · Round 2 · Remix');
+    expect(html).toContain('Not chosen');
+    expect(html).toContain('data-canvas-page="round-2"');
+  });
+
+  it('keeps separate confirmed choices from different rounds and lets the user switch between them', () => {
+    const card = prototype(223, {
+      verdict: '## Answer\n- **Sign-in: S-A, button (Keep).**\n- **Repos: R-C2, round 2 (Keep).**',
+      canvasPages: [
+        { id: 'directions', title: 'Directions', round: 1, items: [{ id: 'S-A', name: 'Sign in', src: 'a.html', disposition: 'keep', feedback: 'Picked', basedOn: [] }] },
+        { id: 'round-2', title: 'Remix', round: 2, items: [{ id: 'R-C2', name: 'Repos', src: 'c.html', disposition: 'keep', feedback: 'Looks great', basedOn: ['R-C'] }] },
+      ],
+    });
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(223, 'Phone', 'prototype', 'done')]), [card]);
+    const browser = new Window();
+    setTrustedHtml(browser.document.body as unknown as HTMLElement, html);
+    const buttons = [...browser.document.querySelectorAll('[data-proto-hero]')] as unknown as HTMLButtonElement[];
+    const panels = [...browser.document.querySelectorAll('[data-proto-hero-panel]')] as unknown as HTMLElement[];
+    expect(buttons).toHaveLength(2);
+    selectPrototypeHero(buttons[1]!);
+    expect(panels.map((panel) => panel.hidden)).toEqual([true, false]);
+    expect(buttons[1]?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('opens and highlights an unambiguous source on its round', () => {
+    const card = prototype(225, {
+      canvasPages: [
+        { id: 'round-1', title: 'Options', round: 1, items: [{ id: 'A', name: 'Original', src: 'a.html', disposition: 'combine', feedback: null, basedOn: [] }] },
+        { id: 'round-2', title: 'Remix', round: 2, items: [{ id: 'D', name: 'Final', src: 'd.html', disposition: 'keep', feedback: 'Approved D', basedOn: ['A'] }] },
+      ],
+    });
+    const browser = new Window();
+    setTrustedHtml(browser.document.body as unknown as HTMLElement, prototypeBoardHtml('octo/wayfinder', map([ticket(225, 'Phone', 'prototype', 'done')]), [card]));
+    const source = browser.document.querySelector('[data-proto-source]') as unknown as HTMLButtonElement;
+    revealPrototypeSource(source);
+    const panel = browser.document.querySelector('[data-proto-round-panel="0"]') as unknown as HTMLElement;
+    expect(panel.hidden).toBe(false);
+    expect(panel.querySelector('[data-proto-item="A"]')?.classList.contains('is-led')).toBe(true);
+  });
+
+  it('limits a long round until the user expands it', () => {
+    const items = Array.from({ length: 6 }, (_, index) => ({ id: `A${index}`, name: `Item ${index}`, src: 'a.html', disposition: index === 0 ? 'keep' : null, feedback: index === 0 ? 'Final pick' : null, basedOn: [] }));
+    const card = prototype(10, { canvasPages: [{ id: 'round-1', title: 'Options', round: 1, items }] });
+    const browser = new Window();
+    setTrustedHtml(browser.document.body as unknown as HTMLElement, prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'done')]), [card]));
+    const button = browser.document.querySelector('[data-proto-more]') as unknown as HTMLButtonElement;
+    const panel = browser.document.querySelector('[data-proto-more-panel]') as unknown as HTMLElement;
+    expect(panel.hidden).toBe(true);
+    togglePrototypeMore(button);
+    expect(panel.hidden).toBe(false);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    togglePrototypeMore(button);
+    expect(panel.hidden).toBe(true);
   });
 
   it('opens every canvas entry on a decided board in the viewer, screenshots included', () => {

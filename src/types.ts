@@ -185,14 +185,14 @@ export interface Prototype {
   verdict: string | null;
   /** The variants its canvas lays out side by side, named as the canvas names them. */
   variants?: PrototypeVariant[];
+  /** Pages and items read from the canvas without executing its code. */
+  canvasPages?: import('./canvasCatalog.js').CanvasCatalogPage[];
 }
 
 /** One variant of a prototype: its letter, its name, and what to show and open for it. */
 export interface PrototypeVariant {
   id: string;
   title: string;
-  /** Canvas feedback explicitly identifies this option as the final approved pick. */
-  finalPick?: boolean;
   /** The variant's page on the prototype branch, with any query, or null. */
   page: string | null;
   /** Its screenshot's file name among the default branch's prototype shots, or null. */
