@@ -55,6 +55,15 @@ export function canvasOptionForFile(pages: readonly CanvasPage[], file: string |
   const match = exact ?? candidates.find((candidate) => candidate.option.file?.split(/[?#]/)[0] === file.split(/[?#]/)[0]);
   return match ? { page: match.page, option: match.option.id } : null;
 }
+/** Resolve an explicit address first; only fall back to a file when it identifies one item. */
+export function canvasOptionForAddressOrFile(pages: readonly CanvasPage[], pageId: string, optionId: string, file: string | null): { page: string; option: string } | null {
+  const address = canvasOptionForAddress(pages, pageId, optionId);
+  if (address || !file) return address;
+  const candidates = pages.flatMap((page) => page.options.filter((option) => option.file !== null).map((option) => ({ page: page.id, option })));
+  const exact = candidates.filter((candidate) => candidate.option.file === file);
+  const matches = exact.length ? exact : candidates.filter((candidate) => candidate.option.file?.split(/[?#]/)[0] === file.split(/[?#]/)[0]);
+  return matches.length === 1 ? { page: matches[0]!.page, option: matches[0]!.option.id } : null;
+}
 export type CanvasMessage =
   | { wf: 1; type: 'ready'; source: 'dom' | 'engine' | 'page'; pages: CanvasPage[] }
   | { wf: 1; type: 'state'; page: string | null; option: string | null; presenting: boolean }
@@ -596,8 +605,8 @@ export function mountCanvasViewer(
     if (pendingAddress) {
       const address = pendingAddress;
       pendingAddress = null;
+      const match = canvasOptionForAddressOrFile(pages, address.page, address.option, pendingFile);
       pendingFile = null;
-      const match = canvasOptionForAddress(pages, address.page, address.option);
       if (match) send(match.page, match.option);
       else send(pages[0]!.id, null);
       return;

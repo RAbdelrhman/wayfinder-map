@@ -327,6 +327,15 @@ describe('prototype variant metadata', () => {
     expect(panel.querySelector('[data-proto-item="A"]')?.classList.contains('is-led')).toBe(true);
   });
 
+  it('treats inherited object property names as unknown outcomes', () => {
+    const card = prototype(10, { canvasPages: [{ id: 'round-1', title: 'Options', round: 1, items: [
+      { id: 'A', name: 'Chosen', src: 'a.html', disposition: 'keep', feedback: 'Final pick', basedOn: [] },
+      { id: 'B', name: 'Other', src: 'b.html', disposition: 'constructor', feedback: null, basedOn: [] },
+    ] }] });
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'done')]), [card]);
+    expect(html).toContain('No outcome recorded');
+  });
+
   it('limits a long round until the user expands it', () => {
     const items = Array.from({ length: 6 }, (_, index) => ({ id: `A${index}`, name: `Item ${index}`, src: 'a.html', disposition: index === 0 ? 'keep' : null, feedback: index === 0 ? 'Final pick' : null, basedOn: [] }));
     const card = prototype(10, { canvasPages: [{ id: 'round-1', title: 'Options', round: 1, items }] });

@@ -8,6 +8,7 @@ import {
   canvasFrameHtml,
   canvasOptionForFile,
   canvasOptionForAddress,
+  canvasOptionForAddressOrFile,
   canvasToolbarHtml,
   floatGeometry,
   readCanvasMessage,
@@ -152,6 +153,9 @@ describe('approved ACF4 shell', () => {
     ];
     expect(canvasOptionForAddress(pages, 'dark', 'D')).toEqual({ page: 'dark', option: 'D' });
     expect(canvasOptionForAddress(pages, 'missing', 'D')).toBeNull();
+    expect(canvasOptionForAddressOrFile(pages, 'missing', 'D', '/same.html')).toBeNull();
+    expect(canvasOptionForAddressOrFile(pages.slice(1), 'missing', 'D', '/same.html')).toEqual({ page: 'dark', option: 'D' });
+    expect(canvasOptionForAddressOrFile(pages, 'dark', 'D', '/same.html')).toEqual({ page: 'dark', option: 'D' });
   });
   it('keeps the same size control and only offers GitHub at full window and pane', () => {
     const pages = [

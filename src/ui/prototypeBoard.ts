@@ -20,6 +20,7 @@ export interface PrototypeCardState {
 }
 
 const STATUS_ORDER: Record<PrototypeDecisionState, number> = { waiting: 0, building: 1, decided: 2 };
+const DISPOSITION_LABEL = new Map([['keep', 'Kept'], ['change', 'Changed'], ['combine', 'Combined']]);
 const IMAGE_FILE = /\.(?:avif|gif|jpe?g|png|webp)$/i;
 const HTML_FILE = /\.html?$/i;
 const VARIANT_DIRECTORY = /(?:^|\/)(?:(?:assets\/)?(?:protos?|variants?|screenshots?|thumbnails?)(?:\/|[-_])|(?:variant|direction|option|after)[-_])/i;
@@ -237,7 +238,7 @@ function catalogHistory(repo: string, prototype: Prototype, title: string, picks
     const isPick = picks.some((pick) => pick.page.id === page.id && pick.item.id === item.id);
     const phone = item.width && item.height && item.height > item.width ? { width: item.width, height: item.height } : null;
     const frame = variantFrame({ id: item.id, title: item.name, page: file, image: null }, phone);
-    const outcome = isPick ? 'Chosen' : /^\s*not chosen\b/i.test(item.feedback ?? '') ? 'Not chosen' : ({ keep: 'Kept', change: 'Changed', combine: 'Combined' } as Record<string, string>)[item.disposition ?? ''] ?? 'No outcome recorded';
+    const outcome = isPick ? 'Chosen' : /^\s*not chosen\b/i.test(item.feedback ?? '') ? 'Not chosen' : DISPOSITION_LABEL.get(item.disposition ?? '') ?? 'No outcome recorded';
     const name = item.name.startsWith(`${item.id} · `) ? item.name.slice(item.id.length + 3) : item.name;
     return `<a class="wf-var decision-variant${isPick ? ' is-picked' : ''}" data-proto-item="${escapeHtml(item.id)}" data-proto-item-page="${escapeHtml(page.id)}" href="${escapeHtml(url)}" ${canvasEntryAttrs(repo, prototype, title, file, null, { page: page.id, variant: item.id })} aria-label="Open ${escapeHtml(item.name)} on ${escapeHtml(page.title)}">${frame}<span class="lbl">${escapeHtml(item.id)} · ${escapeHtml(name)}</span><span>${escapeHtml(outcome)}</span></a>`;
   };
