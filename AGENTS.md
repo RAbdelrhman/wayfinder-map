@@ -1,5 +1,9 @@
 # Wayfinder map
 
+## Subagent effort
+
+- Use medium effort for subagents and delegated tasks by default. Never use effort above medium without asking Ramon and receiving explicit approval for that task. Set the effort explicitly in the tool options; do not inherit a higher effort.
+
 Tool output truncates at about 42 KB, and `src/ui/app.ts`, `src/server.ts`, `src/handOffTracking.ts` and `src/github.ts` exceed it: find symbols with `rg -n`, then read line ranges.
 
 ## Where each concern lives
