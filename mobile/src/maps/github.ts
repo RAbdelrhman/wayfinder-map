@@ -54,6 +54,7 @@ type Issue = {
   labels: string[];
   updated_at: string;
   pull_request: boolean;
+  parent_issue_url: string;
   sub_issues_summary: { total: number; completed: number };
 };
 export class GithubError extends Error {
@@ -105,6 +106,7 @@ function issue(value: unknown): Issue {
       : [],
     updated_at: string(raw.updated_at),
     pull_request: raw.pull_request != null,
+    parent_issue_url: string(raw.parent_issue_url),
     sub_issues_summary: {
       total: Number(summary.total) || 0,
       completed: Number(summary.completed) || 0,
@@ -382,9 +384,17 @@ export class MobileGithub {
       (
         await pool(numbers, async (number) => {
           try {
-            return issue(
+            const linked = issue(
               await this.get(`/repos/${ref.repo}/issues/${number}`, signal),
             );
+            if (linked.parent_issue_url) {
+              try {
+                if (new URL(linked.parent_issue_url).pathname.toLowerCase() !== `/repos/${ref.repo}/issues/${ref.number}`.toLowerCase()) return null;
+              } catch {
+                return null;
+              }
+            }
+            return linked;
           } catch (error) {
             if (
               !(error instanceof GithubError) ||
@@ -432,10 +442,11 @@ export class MobileGithub {
       usedFallback ? [] : parseChildNumbers(raw.body, ref.repo)
     ).filter((number) => number !== raw.number && !attached.has(number));
     if (unattached.length) {
-      warnings.push(
-        `Also showing tickets linked in the map body: ${unattached.map((number) => `#${number}`).join(', ')}.`,
+      const linked = await bodyIssues(unattached);
+      if (linked.length) warnings.push(
+        `Also showing tickets linked in the map body: ${linked.map(({ number }) => `#${number}`).join(', ')}.`,
       );
-      children.push(...(await bodyIssues(unattached)));
+      children.push(...linked);
     }
     const tickets = await pool(
       children.filter((child) => !child.pull_request),

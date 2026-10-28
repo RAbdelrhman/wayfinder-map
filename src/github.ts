@@ -445,15 +445,6 @@ function dependenciesUnsupported(error: unknown): boolean {
   return error instanceof GhError && /\bHTTP (?:404|410)\b/.test(error.message);
 }
 
-/** Issues `number` blocks. Empty only when the dependency endpoint is unsupported. */
-async function fetchBlocking(repo: string, number: number): Promise<RawIssue[]> {
-  try {
-    return await ghJson<RawIssue[]>(['api', `repos/${repo}/issues/${number}/dependencies/blocking`]);
-  } catch (error) {
-    if (!dependenciesUnsupported(error)) throw error;
-    return [];
-  }
-}
 
 interface Blocker {
   number: number;
@@ -510,6 +501,14 @@ interface Fallbacks {
 
 async function fetchChildren(repo: string, map: { number: number; body?: string | null }, fallbacks: Fallbacks): Promise<RawIssue[]> {
   const numbers = parseChildNumbers(map.body ?? '', repo).filter((number) => number !== map.number);
+  const belongsElsewhere = (issue: RawIssue): boolean => {
+    if (!issue.parent_issue_url) return false;
+    try {
+      return new URL(issue.parent_issue_url).pathname.toLowerCase() !== `/repos/${repo}/issues/${String(map.number)}`.toLowerCase();
+    } catch {
+      return true;
+    }
+  };
   let subIssues: RawIssue[];
   subIssueWatcher.resetBodyIssues(repo, map.number);
   try {
@@ -521,16 +520,18 @@ async function fetchChildren(repo: string, map: { number: number; body?: string 
       if (ghProblem(error) === RATE_LIMIT_WARNING) fallbacks.rateLimited = true;
     }
     const fetched = await pool(numbers, 8, (number) => subIssueWatcher.fetchBodyIssue(repo, map.number, number));
-    return fetched.filter((issue): issue is RawIssue => issue !== null);
+    return fetched.filter((issue): issue is RawIssue => issue !== null && !belongsElsewhere(issue));
   }
 
   const attached = new Set(subIssues.map((issue) => issue.number));
   const unattachedNumbers = numbers.filter((number) => !attached.has(number));
-  if (unattachedNumbers.length > 0) {
-    fallbacks.unattachedTickets.push({ mapNumber: map.number, ticketNumbers: unattachedNumbers });
-  }
   const fetched = await pool(unattachedNumbers, 8, (number) => subIssueWatcher.fetchBodyIssue(repo, map.number, number));
-  return [...subIssues, ...fetched.filter((issue): issue is RawIssue => issue !== null)];
+  const foreign = new Set(fetched.filter((issue): issue is RawIssue => issue !== null && belongsElsewhere(issue)).map((issue) => issue.number));
+  const unattached = unattachedNumbers.filter((number) => !foreign.has(number));
+  if (unattached.length > 0) {
+    fallbacks.unattachedTickets.push({ mapNumber: map.number, ticketNumbers: unattached });
+  }
+  return [...subIssues, ...fetched.filter((issue): issue is RawIssue => issue !== null && !foreign.has(issue.number))];
 }
 
 export interface FetchResult {
@@ -899,59 +900,6 @@ async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fal
 
   const blockerLists = await pool(children, concurrency, (child) => fetchBlockers(repo, child));
 
-  // Issues off this map on either side of a dependency: blockers above it, dependents below.
-  const onMap = new Set(children.map((child) => child.number));
-  const outsideRaw = new Map<number, RawIssue | null>();
-  const blocks = new Map<number, number[]>();
-  const waitsOn = new Map<number, number[]>();
-  const dependentsOnMap = new Map<number, number>();
-  const link = (store: Map<number, number[]>, key: number, value: number): void => {
-    store.set(key, [...(store.get(key) ?? []), value]);
-  };
-
-  children.forEach((child, index) => {
-    for (const blocker of blockerLists[index] ?? []) {
-      if (onMap.has(blocker.number)) {
-        dependentsOnMap.set(blocker.number, (dependentsOnMap.get(blocker.number) ?? 0) + 1);
-        continue;
-      }
-      link(blocks, blocker.number, child.number);
-      if (blocker.raw !== undefined || !outsideRaw.has(blocker.number)) outsideRaw.set(blocker.number, blocker.raw ?? null);
-    }
-  });
-
-  // Only ask the tickets whose blocking count says a dependent lives off the map.
-  const blockingElsewhere = children.filter(
-    (child) => (child.issue_dependencies_summary?.total_blocking ?? 0) > (dependentsOnMap.get(child.number) ?? 0),
-  );
-  const blockingLists = await pool(blockingElsewhere, concurrency, (child) => fetchBlocking(repo, child.number));
-  blockingElsewhere.forEach((child, index) => {
-    for (const dependent of blockingLists[index] ?? []) {
-      if (onMap.has(dependent.number)) continue;
-      link(waitsOn, dependent.number, child.number);
-      outsideRaw.set(dependent.number, dependent);
-    }
-  });
-
-  const missing = [...outsideRaw].filter(([, raw]) => raw === null).map(([number]) => number);
-  for (const raw of await pool(missing, concurrency, (number) => fetchIssue(repo, number))) {
-    if (raw !== null) outsideRaw.set(raw.number, raw);
-  }
-  const outsideIssues = [...outsideRaw.values()].filter((raw): raw is RawIssue => raw !== null);
-  for (const raw of outsideIssues) openByNumber.set(raw.number, isOpenState(raw.state));
-  // Their own blockers too, so they open in the panel like any ticket.
-  const outsideBlockers = await pool(outsideIssues, concurrency, (raw) => fetchBlockers(repo, raw));
-  const outside = outsideIssues.map((raw, index) =>
-    toOutsideTicket(raw, repo, {
-      blocks: blocks.get(raw.number) ?? [],
-      waitsOn: waitsOn.get(raw.number) ?? [],
-      blockers: (outsideBlockers[index] ?? []).map((blocker) => ({
-        number: blocker.number,
-        open: blocker.open ?? openByNumber.get(blocker.number) ?? true,
-      })),
-      typePrefix,
-    }),
-  );
 
   const tickets = children.map((child, index): Ticket => {
     const labels = labelNames(child);
@@ -990,7 +938,7 @@ async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fal
     visibility: mapVisibility(mapIssue.body ?? ''),
     sections: parseMapBody(mapIssue.body ?? ''),
     tickets,
-    outside,
+    outside: [],
     criticalPath: criticalPath(tickets),
     stalled: [],
     pullRequests: [],

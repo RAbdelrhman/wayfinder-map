@@ -110,6 +110,12 @@ describe('prototype decision state', () => {
     });
   });
 
+  it('does not use another map ticket from a legacy cache as its pick ticket', () => {
+    const mapView = map([ticket(43, 'Prototype three views', 'prototype', 'claimed')]);
+    mapView.outside = [{ ...ticket(47, 'Other map decision', 'grilling', 'frontier', [43]), pullRequest: false, blocks: [], waitsOn: [43] }];
+    expect(prototypeCardState(mapView, prototype(43))).toEqual({ state: 'building', pickTicket: null });
+  });
+
   it('treats a closed prototype ticket as decided', () => {
     expect(prototypeCardState(map([ticket(43, 'Prototype three views', 'prototype', 'done')]), prototype(43))).toEqual({
       state: 'decided',

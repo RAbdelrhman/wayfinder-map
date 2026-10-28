@@ -88,7 +88,7 @@ export function prototypeVariants(prototype: Prototype): PrototypeVariant[] {
 
 export function prototypeCardState(map: WayfinderMap, prototype: Prototype): PrototypeCardState {
   const ownTicket = map.tickets.find((ticket) => ticket.number === prototype.ticketNumber);
-  const tickets = [...map.tickets, ...map.outside];
+  const tickets = map.tickets;
   const pickTicket = tickets.find(
     (candidate) =>
       candidate.type === 'grilling' &&

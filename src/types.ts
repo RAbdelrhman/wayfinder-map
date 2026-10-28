@@ -39,14 +39,14 @@ export interface MapSections {
 }
 
 /**
- * An issue or pull request linked to the map's tickets by a dependency, but not itself on the map.
- * A full ticket, so it opens in the panel like one; an open pull request counts as claimed by its author.
+ * Legacy persisted links from versions that imported outside issues into maps.
+ * Retained for cache compatibility only; these records never become map members or panel targets.
  */
 export interface OutsideTicket extends Ticket {
   pullRequest: boolean;
-  /** Tickets on the map that wait on it. The canvas draws these above the map. */
+  /** Historical tickets on the map that waited on it. */
   blocks: number[];
-  /** Tickets on the map it waits on. The canvas draws these below the map. */
+  /** Historical tickets on the map it waited on. */
   waitsOn: number[];
 }
 
@@ -62,7 +62,7 @@ export interface WayfinderMap {
   visibility: MapVisibility;
   sections: MapSections;
   tickets: Ticket[];
-  /** Blockers named by this map's tickets that live outside the map, so the UI can still link them. */
+  /** Legacy snapshot field, always empty on fresh reads. Outside issues must never become map tickets. */
   outside: OutsideTicket[];
   /** The chain of tickets most of what is left waits on. See `criticalPath`. */
   criticalPath: CriticalPath;

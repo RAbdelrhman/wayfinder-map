@@ -328,7 +328,7 @@ export class NotificationInbox {
       const map = snapshot.maps.find((candidate) => candidate.number === item.mapNumber);
       if (map === undefined || !map.open) return true;
       if (map.ticketsLoaded) {
-        const ticket = [...map.tickets, ...map.outside].find((candidate) => candidate.number === item.ticketNumber);
+        const ticket = map.tickets.find((candidate) => candidate.number === item.ticketNumber);
         if (ticket === undefined || !ticket.open) return true;
         if (item.kind === 'stalled') return !map.stalled.some((stall) => stall.ticket === item.ticketNumber);
         const pr = map.pullRequests.find((candidate) => candidate.ticket === item.ticketNumber);

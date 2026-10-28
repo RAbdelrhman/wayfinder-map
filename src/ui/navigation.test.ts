@@ -103,7 +103,7 @@ describe('Jump to destinations', () => {
     expect(byTitle[0]?.label).toContain('Search tickets');
   });
 
-  it('includes linked fog issues in Jump to', () => {
+  it('does not route a cached outside ticket into a map that does not own it', () => {
     const fog: OutsideTicket = {
       ...ticket(58, 'Linked external issue'),
       pullRequest: false,
@@ -115,11 +115,7 @@ describe('Jump to destinations', () => {
       maps: [{ ...SNAPSHOT.maps[0]!, outside: [fog] }],
     };
 
-    expect(createJumpDestinations([], [snapshotWithFog], '#58')[0]).toMatchObject({
-      kind: 'ticket',
-      label: '#58 Linked external issue',
-      href: '/repos/octo/wayfinder/maps/35?view=map&ticket=58',
-    });
+    expect(createJumpDestinations([], [snapshotWithFog], '#58')).toEqual([]);
   });
 
   it('does not treat a lone hash as an empty number prefix', () => {

@@ -73,7 +73,7 @@ describe('layoutTickets', () => {
     expect(edges).toEqual([{ from: 1, to: 2 }]);
   });
 
-  it('places issues off the map in the columns their dependencies put them in', () => {
+  it('never imports outside issues or their edges from a legacy snapshot', () => {
     const graph = graphTickets({
       tickets: [ticket(1), ticket(2, [1, 80])],
       outside: [
@@ -84,13 +84,12 @@ describe('layoutTickets', () => {
     const layout = layoutTickets(graph);
     const layerOf = (number: number) => layout.nodes.find((node) => node.number === number)?.layer;
 
-    expect(layerOf(80)).toBe(0);
+    expect(layerOf(80)).toBeUndefined();
     expect(layerOf(2)).toBe(1);
-    expect(layerOf(90)).toBe(2);
+    expect(layerOf(90)).toBeUndefined();
+    expect(layout.nodes.map((node) => node.number)).toEqual([1, 2]);
     expect(layout.edges).toEqual([
       { from: 1, to: 2 },
-      { from: 80, to: 2 },
-      { from: 2, to: 90 },
     ]);
   });
 

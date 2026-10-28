@@ -58,10 +58,10 @@ describe('native dependency reads', () => {
     },
   );
 
-  it.each([403, 422, 429, 503])('does not erase external dependents when the blocking read returns HTTP %i', async (status) => {
+  it('does not load or import an outside dependent even when GitHub reports it', async () => {
     runGh.mockImplementation(async (_file, args) => {
       const path = args.at(-1) ?? '';
-      if (path.endsWith('/dependencies/blocking')) throw new Error(`HTTP ${String(status)}`);
+      if (path.endsWith('/dependencies/blocking')) throw new Error('An outside dependent must not be read');
       if (path.endsWith('/dependencies/blocked_by')) return response([]);
       if (path.endsWith('/sub_issues')) return {
         stdout: Buffer.from(`HTTP/2.0 200 OK\r\nETag: "map"\r\n\r\n${JSON.stringify([{ ...raw, body: '', issue_dependencies_summary: { total_blocking: 1 } }])}`),
@@ -72,6 +72,45 @@ describe('native dependency reads', () => {
       }]]);
       throw new Error(`Unexpected command: ${args.join(' ')}`);
     });
-    await expect(fetchMaps({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' })).rejects.toThrow(`HTTP ${String(status)}`);
+    const result = await fetchMaps({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' });
+    expect(result.maps[0]?.tickets.map((ticket) => ticket.number)).toEqual([42]);
+    expect(result.maps[0]?.outside).toEqual([]);
+    expect(runGh.mock.calls.some(([, args]) => args.some((arg) => arg.endsWith('/dependencies/blocking')))).toBe(false);
+  });
+
+  it('keeps an outside open blocker conservative without importing its ticket', async () => {
+    runGh.mockImplementation(async (_file, args) => {
+      const path = args.at(-1) ?? '';
+      if (path.endsWith('/dependencies/blocked_by')) return response([{ number: 7, title: 'Other map', state: 'open' }]);
+      if (path.endsWith('/sub_issues')) return {
+        stdout: Buffer.from(`HTTP/2.0 200 OK\r\nETag: "map"\r\n\r\n${JSON.stringify([{ ...raw, body: '' }])}`),
+        stderr: Buffer.alloc(0),
+      };
+      if (args.includes('--slurp')) return response([[{ number: 10, title: 'Map', state: 'open', updated_at: new Date().toISOString() }]]);
+      throw new Error(`Outside issues must not be loaded: ${path}`);
+    });
+    const result = await fetchMaps({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' });
+    expect(result.maps[0]?.outside).toEqual([]);
+    expect(result.maps[0]?.tickets[0]).toMatchObject({ number: 42, openBlockers: [7], state: 'blocked' });
+  });
+
+  it.each([false, true])('does not turn a body reference to another map ticket into membership, fallback=%s', async (fallback) => {
+    runGh.mockImplementation(async (_file, args) => {
+      const path = args.at(-1) ?? '';
+      let value: unknown;
+      if (path.endsWith('/dependencies/blocked_by')) value = [];
+      else if (path.endsWith('/sub_issues')) {
+        if (fallback) throw new Error('HTTP 404');
+        value = [{ ...raw, body: '' }];
+      } else if (path.endsWith('/issues/7')) value = { number: 7, title: 'Other map ticket', state: 'open', parent_issue_url: 'https://api.github.com/repos/o/r/issues/99' };
+      else if (args.includes('--slurp')) return response([[{ number: 10, title: 'Map', body: '- [ ] #7', state: 'open', updated_at: new Date().toISOString() }]]);
+      else throw new Error(`Unexpected route ${path}`);
+      return args.includes('--include')
+        ? { stdout: Buffer.from(`HTTP/2.0 200 OK\r\nETag: "map"\r\n\r\n${JSON.stringify(value)}`), stderr: Buffer.alloc(0) }
+        : response(value);
+    });
+    const result = await fetchMaps({ repo: 'o/r', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' });
+    expect(result.maps[0]?.tickets.map((ticket) => ticket.number)).toEqual(fallback ? [] : [42]);
+    expect(result.warnings.join(' ')).not.toContain('also showing');
   });
 });

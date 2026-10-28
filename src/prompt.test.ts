@@ -53,6 +53,12 @@ describe('renderTemplate', () => {
 });
 
 describe('buildPrompt', () => {
+  it.each([undefined, '{{mapRules}}', 'Ticket {{ticketNumber}}'])('keeps map isolation mandatory with template %j', (template) => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket, ...(template === undefined ? {} : { template }) });
+    expect(prompt.match(/No cross-map tickets or dependencies\./g)).toHaveLength(1);
+    expect(prompt).toContain('Every ticket and every blocker must belong to this map.');
+  });
+
   describe.each([['map', map], ['standalone', null]] as const)('%s grilling hand-offs', (_name, parentMap) => {
     it.each(['', ' \n\t '])('uses the complete default prompt for a blank saved template %j', (template) => {
       const input = { repo: 'owner/repo', map: parentMap, ticket: { ...ticket, type: 'grilling' as const } };
@@ -300,7 +306,7 @@ describe('buildPrompt', () => {
       template: '{{ticketSlug}}\n{{worktreeName}}\n{{branchName}}',
     });
 
-    expect(prompt).toBe(
+    expect(prompt.split('\n\n')[0]).toBe(
       '11-retire-api-agents-once-nothing-needs-it\n' +
         '../wayfinder-11-retire-api-agents-once-nothing-needs-it\n' +
         'wayfinder/11-retire-api-agents-once-nothing-needs-it',
@@ -315,7 +321,7 @@ describe('buildPrompt', () => {
       template: '{{ticketSlug}}',
     });
 
-    expect(prompt).toBe('11-ticket');
+    expect(prompt.split('\n\n')[0]).toBe('11-ticket');
   });
 
   it('calls out open blockers', () => {
@@ -338,6 +344,11 @@ describe('buildPrompt', () => {
 });
 
 describe('buildNewMapPrompt', () => {
+  it.each([undefined, 'Plan {{goal}}'])('forbids cross-map links even in saved planning template %j', (template) => {
+    const result = buildNewMapPrompt({ repo: 'o/r', goal: 'x', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', ...(template === undefined ? {} : { template }) });
+    expect(result.match(/No cross-map tickets or dependencies\./g)).toHaveLength(1);
+  });
+
   const prompt = buildNewMapPrompt({
     repo: 'owner/repo',
     goal: 'Build an offline-first sync engine.\n\nKeep drafts local.',

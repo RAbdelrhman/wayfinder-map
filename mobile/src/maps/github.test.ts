@@ -111,6 +111,18 @@ describe('mobile GitHub maps', () => {
     expect(result.tickets[1]?.state).toBe('frontier');
     expect(result.tickets[1]?.blockedBy).toEqual([]);
   });
+  it.each([false, true])('does not import another map ticket from body links, fallback=%s', async (fallback) => {
+    const { api } = setup((path) => {
+      if (path.endsWith('/issues/1')) return raw(1, { labels: ['wayfinder:map'], body: '- [ ] #2\n- [ ] #3' });
+      if (path.endsWith('/sub_issues')) return fallback ? new Response('', { status: 404 }) : [raw(2)];
+      if (path.endsWith('/issues/2')) return raw(2);
+      if (path.endsWith('/issues/3')) return raw(3, { parent_issue_url: 'https://api.github.com/repos/me/project/issues/99' });
+      return [];
+    });
+    const result = await api.map({ repo: 'me/project', number: 1 });
+    expect(result.tickets.map(({ number }) => number)).toEqual([2]);
+    expect(result.warnings.join(' ')).not.toContain('Also showing');
+  });
   it.each([401, 403, 422, 429, 503])(
     'does not return a ready ticket after a dependency read fails with HTTP %i',
     async (status) => {

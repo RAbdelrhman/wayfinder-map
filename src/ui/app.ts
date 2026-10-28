@@ -6,7 +6,7 @@ import type { HandOffStatusDto } from '../handOffTracking.js';
 import { isLiveHandOff } from '../handOffLiveness.js';
 import { prototypeBranch } from '../prompt.js';
 import { TICKET_TYPES } from '../types.js';
-import type { MapSections, MapSnapshot, OutsideTicket, Prototype, Stall, Ticket, TicketPullRequest, TicketState, TicketType, WayfinderMap } from '../types.js';
+import type { MapSections, MapSnapshot, Prototype, Stall, Ticket, TicketPullRequest, TicketState, TicketType, WayfinderMap } from '../types.js';
 import type { MapEvent } from '../mapWatch.js';
 import { DEFAULT_NOTIFICATION_SETTINGS, readNotificationSettings } from '../notificationTypes.js';
 import type { NotificationSettings } from '../notificationTypes.js';
@@ -36,7 +36,7 @@ import * as icons from './icons.js';
 import { icon } from './icons.js';
 import { archivedMapsPath, parseRepoPagePath, repoPath, scopedApiPath } from '../repoRoutes.js';
 import { archivedMapCardHtml } from './archive.js';
-import { FOG_KEY_ROW, STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
+import { STATE_ORDER, STATE_STYLE, allTickets, bindAccountMark, bindUpdater, countStates, paintIcons, progressRing } from './chrome.js';
 import { mountNavigation, viewFromQuery } from './navigation.js';
 import { NOTIFICATION_SETTINGS_EVENT } from './settings.js';
 import { mountMapEventInbox } from './mapEventInbox.js';
@@ -268,7 +268,7 @@ function ticketHandOff(map: WayfinderMap | null, ticketNumber: number): HandOffS
 function notifyHandOffTransitions(previous: readonly HandOffStatusDto[], next: readonly HandOffStatusDto[]): void {
   const map = currentMap();
   if (map === null || snapshot === null) return;
-  const ticketNumbers = new Set([...map.tickets, ...map.outside].map((ticket) => ticket.number));
+  const ticketNumbers = new Set(map.tickets.map((ticket) => ticket.number));
   const scoped = (items: readonly HandOffStatusDto[]): HandOffStatusDto[] => items
     .filter((handOff) =>
       handOff.repo.toLocaleLowerCase() === snapshot?.repo.toLocaleLowerCase() &&
@@ -668,13 +668,9 @@ function applySnapshot(nextSnapshot: MapSnapshot, initial: boolean, cached = fal
 
 /* ---------- small builders ---------- */
 
-/** A ticket on this map, or an issue off it that one links to. Both open in the panel. */
+/** A ticket must belong to the current map to open in its panel. */
 function ticketAt(map: WayfinderMap, number: number | null): Ticket | undefined {
-  return map.tickets.find((ticket) => ticket.number === number) ?? map.outside.find((ticket) => ticket.number === number);
-}
-
-function isOutside(map: WayfinderMap, number: number): boolean {
-  return map.outside.some((ticket) => ticket.number === number);
+  return map.tickets.find((ticket) => ticket.number === number);
 }
 
 /**
@@ -693,14 +689,13 @@ function ticketPills(map: WayfinderMap, numbers: readonly number[], withTitles =
       const accent = STATE_STYLE[other.state].variable;
       const title = withTitles ? ` ${other.title}` : '';
       const label = `<span class="pill-text">${escapeHtml(`#${String(number)}${title}`)}</span>`;
-      const tooltip = isOutside(map, number) ? `${other.title} (fog)` : other.title;
-      return `<button type="button" class="pill" style="--accent: var(${accent})" data-jump="${String(number)}" title="${escapeHtml(tooltip)}">${label}</button>`;
+      return `<button type="button" class="pill" style="--accent: var(${accent})" data-jump="${String(number)}" title="${escapeHtml(other.title)}">${label}</button>`;
     })
     .join('');
 }
 
 function dependents(map: WayfinderMap, number: number): number[] {
-  return [...map.tickets, ...map.outside].filter((ticket) => ticket.blockedBy.includes(number)).map((ticket) => ticket.number);
+  return map.tickets.filter((ticket) => ticket.blockedBy.includes(number)).map((ticket) => ticket.number);
 }
 
 function pullRequestOf(map: WayfinderMap, number: number): TicketPullRequest | undefined {
@@ -848,7 +843,7 @@ function renderKey(): void {
     const style = TYPE_STYLE[type];
     return `<div class="keyrow is-type">${icon(style.icon)}<b>${escapeHtml(style.label)}</b>${escapeHtml(style.blurb)}</div>`;
   }).join('');
-  setTrustedHtml(els.keyMenu, `${states}${FOG_KEY_ROW}<div class="menu-sep"></div>${SIGNAL_KEY_ROWS}<div class="menu-sep"></div>${types}`);
+  setTrustedHtml(els.keyMenu, `${states}<div class="menu-sep"></div>${SIGNAL_KEY_ROWS}<div class="menu-sep"></div>${types}`);
 }
 
 /** A card's chip while its ticket waits in a Start next batch or is being handed off. */
@@ -857,10 +852,9 @@ function batchChip(ticketNumber: number): string | null {
   return snapshot === null || map === null ? null : batchCardChip(startNext.batches(), snapshot.repo, map.number, ticketNumber);
 }
 
-/** A card on the canvas. An issue off the map gets the same card under a fog effect, placed where its dependencies put it. */
-function nodeHtml(ticket: Ticket | OutsideTicket, position: PositionedNode): string {
+/** A card for a ticket that belongs to this map. */
+function nodeHtml(ticket: Ticket, position: PositionedNode): string {
   const style = STATE_STYLE[ticket.state];
-  const fog = 'pullRequest' in ticket;
   const map = currentMap();
   const handOff = ticketHandOff(map, ticket.number);
   const stall = map === null ? undefined : stallOf(map, ticket.number);
@@ -872,9 +866,9 @@ function nodeHtml(ticket: Ticket | OutsideTicket, position: PositionedNode): str
       ? `blocked by ${ticket.openBlockers.map((n) => `#${String(n)}`).join(', ')}`
       : ticket.assignee !== null
         ? `@${ticket.assignee}`
-        : (ticket.type ?? (fog && ticket.pullRequest ? 'pull request' : 'untyped'));
+        : (ticket.type ?? 'untyped');
   // #125: a stall says so; otherwise the PR, its checks and review take the line `@assignee` had.
-  const autoNote = fog || map === null || snapshot === null ? null : autoCardNote(ticket.state, ticket.type, autoMaps.setting(snapshot.repo, map.number));
+  const autoNote = map === null || snapshot === null ? null : autoCardNote(ticket.state, ticket.type, autoMaps.setting(snapshot.repo, map.number));
   const meta =
     stalled !== null
       ? `<span class="signal-meta">${icon(icons.CLOCK)}${escapeHtml(`Stalled · ${stalled.short}`)}</span>`
@@ -889,10 +883,10 @@ function nodeHtml(ticket: Ticket | OutsideTicket, position: PositionedNode): str
     pullRequest === undefined ? '' : pullRequestText(pullRequest),
   ].filter((part) => part !== '');
 
-  return `<button type="button" class="node${ticket.state === 'done' ? ' is-done' : ''}${fog ? ' is-outside' : ''}${stalled === null ? '' : ' is-stalled'}"
+  return `<button type="button" class="node${ticket.state === 'done' ? ' is-done' : ''}${stalled === null ? '' : ' is-stalled'}"
     data-number="${String(ticket.number)}"
     style="--accent: var(${style.variable}); left:${String(position.x)}px; top:${String(position.y)}px; width:${String(position.width)}px; height:${String(position.height)}px"
-    aria-label="${escapeHtml(`#${String(ticket.number)} ${ticket.title}, ${style.label}${fog ? ', fog' : ''}${handOff === undefined ? '' : `, hand-off ${handOffPresentation(handOff).label}`}${signals.map((part) => `, ${part}`).join('')}`)}">
+    aria-label="${escapeHtml(`#${String(ticket.number)} ${ticket.title}, ${style.label}${handOff === undefined ? '' : `, hand-off ${handOffPresentation(handOff).label}`}${signals.map((part) => `, ${part}`).join('')}`)}">
     <span class="node-top">
       ${typeGlyph(ticket.type)}
       <span class="num">#${String(ticket.number)}</span>
@@ -919,7 +913,6 @@ function renderGraph(): void {
 
   const layout = layoutTickets(graphTickets(map), DEFAULT_LAYOUT);
   const byNumber = new Map(map.tickets.map((ticket) => [ticket.number, ticket]));
-  const outsideByNumber = new Map(map.outside.map((outside) => [outside.number, outside]));
   const positions = new Map(layout.nodes.map((node) => [node.number, node]));
   const critical = map.criticalPath.remaining > 0 ? criticalEdges(map.criticalPath) : new Set<string>();
 
@@ -928,7 +921,7 @@ function renderGraph(): void {
 
   setTrustedHtml(els.nodes, layout.nodes
     .map((position) => {
-      const ticket = byNumber.get(position.number) ?? outsideByNumber.get(position.number);
+      const ticket = byNumber.get(position.number);
       return ticket ? nodeHtml(ticket, position) : '';
     })
     .join(''));
@@ -1288,7 +1281,6 @@ function ticketHtml(map: WayfinderMap, ticket: Ticket): string {
     </div>
     <h2 class="dtitle">${escapeHtml(ticket.title)}</h2>
     ${banner === null ? '' : stall !== undefined ? `<div class="banner" style="--accent: var(--text-muted)">${icon(icons.CLOCK)}<span>${banner}</span></div>` : `<div class="banner" style="--accent: var(${style.variable})">${icon(style.icon)}<span>${banner}</span></div>`}
-    ${isOutside(map, ticket.number) ? '<p class="hint">Fog: not a sub-issue of this map, but linked to it by a dependency.</p>' : ''}
     <dl class="facts">
       <dt>Type</dt><dd>${icon(typeStyle(ticket.type).icon)}${escapeHtml(typeStyle(ticket.type).label)}</dd>
       <dt>Assignee</dt><dd>${ticket.assignee === null ? '<span class="none">unclaimed</span>' : escapeHtml(`@${ticket.assignee}`)}</dd>

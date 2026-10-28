@@ -54,7 +54,7 @@ function normalizedTitle(value: string): string {
 
 export function summarizeRepository(repo: string, snapshot: MapSnapshot | null | undefined): RepositorySummary {
   const maps = snapshot?.maps ?? [];
-  const tickets = maps.flatMap((map) => [...map.tickets, ...map.outside]);
+  const tickets = maps.flatMap((map) => map.tickets);
   const latestMap = maps.reduce<WayfinderMap | null>(
     (latest, map) => (latest === null || map.number > latest.number ? map : latest),
     null,
@@ -193,10 +193,6 @@ export function buildHomeWorkItems(
         const key = `${snapshot.repo.toLocaleLowerCase()}:${map.number}:${ticket.number}`;
         if (!ticket.open || (ticket.type !== 'grilling' && ticket.type !== 'prototype') || handedOffTickets.has(key)) continue;
         items.push(issueItem(snapshot.repo, map, ticket, 'ticket', 'needs-you', snapshot.fetchedAt));
-      }
-      for (const ticket of map.outside) {
-        if (!ticket.open || !ticket.pullRequest) continue;
-        items.push(issueItem(snapshot.repo, map, ticket, 'pull-request', 'needs-you', snapshot.fetchedAt));
       }
     }
   }
