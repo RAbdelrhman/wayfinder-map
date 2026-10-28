@@ -6,7 +6,7 @@
   Rules kept: one Follow / Unfollow per map on a screen; follows are per GitHub login on this phone; Wayfinder never writes
   to GitHub; a follow it can't read shows only the saved owner/repo#number, never cached details; only a readable map
   without `Visibility: public` is called private.
-  Nothing here is chosen. Check with: node prototypes/359-prototype-unreadable-followed-maps-on-the-phone/tools/check.mjs
+  Option A is kept by Ramon; B and C remain undecided. Check with: node prototypes/359-prototype-unreadable-followed-maps-on-the-phone/tools/check.mjs
 */
 
 // Every frame is the whole clickable phone at one state; src stays a literal so Wayfinder can read each option's page.
@@ -40,6 +40,8 @@ window.CANVAS = {
               name: 'In its repository',
               src: 'variants/phone.html?o=A&s=unknown', ...PHONE,
               note: {
+                disposition: 'keep',
+                feedback: 'Ramon chose Keep A and confirmed in the T3 thread: unreadable follows stay in their repository group, show only the saved reference and reason, keep one Unfollow, distinguish unknown access from confirmed private, and restore normal details when access returns.',
                 idea: 'On Public maps, a follow Wayfinder can\'t read stays in its repository\'s group, as a reference row (#21) with the reason and its Unfollow. A repository GitHub no longer returns keeps a group holding just its references. #353\'s "Followed, not public now" section stays above, unchanged.',
                 pros: ['Each follow stays where you\'d look for it, beside the repository\'s other maps', 'No new section or screen; the row uses the same Unfollow button as every other row', 'Closest to what PR #358 built, now with a reason line instead of a bare number'],
                 cons: ['Rows that can\'t be opened sit between rows that can', 'A repository that\'s gone still gets a group, only to hold references', 'Unknown and private follows are in different places on the screen'],
