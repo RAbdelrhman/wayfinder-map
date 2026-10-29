@@ -12,9 +12,8 @@ Run on 2026-10-29 from this checkout, installed Chrome via playwright-core.
 | Scripted flow (R1, R2) | 18/18: alert focus on Edit, Tab stays in alert, Escape returns to the field with text kept, Sending → Accepted, retry keeps reply ID `r-7K2Q-41FD`, a changed thread blocks Send until re-checked, a gone thread offers no Send, offline disables Review, R2 Edit/Back/Back to #230 |
 | Board via `tools/serve.mjs` (sandbox CSP) | Overview, R1, R2 pages and Present render; theme toggle re-renders frames dark |
 
-`node --test prototypes/366-…/tools/check.test.mjs` fails 3 tests that read the
-legacy `prototypes/canvas` fixtures (`variants/shell.js`); the scaffolded copies in
-#316 and #225 fail the same 3. CI runs `test:canvas`, which passes.
+The board's copied `tools/check.test.mjs` points at the shared canvas fixtures,
+as #226 and #353 do: `node --test` on it passes 15/15.
 
 Not verified: real iOS/Android devices, the OS keyboard, safe areas, touch,
 screen readers, large text, and any real RAMON‑PC or T3 Code response.
