@@ -249,13 +249,15 @@
         unreadable.delete(k);
         privateNow.delete(k);
       }
-      if (ui.sheet && !refList().length && !privateList().length) ui.sheet = false;
+      const closedSheet = ui.sheet && !refList().length && !privateList().length;
+      if (closedSheet) ui.sheet = false;
       render();
       const m = other(k);
       const named = m && !refOf(k) ? `#${m.number} ${m.title}` : k;
       // The desktop's toast copy (src/ui/home.ts); a reference has no title, so it names owner/repo#number.
       Kit.toast(act === 'follow' ? `Following ${named}. It is on your maps now.` : `Unfollowed ${named}.`);
       if (ui.sheet) app.querySelector('.u-close')?.focus();
+      else if (closedSheet) (app.querySelector('.f-notice') ?? app.querySelector('h1'))?.focus();
     }
   });
   app.addEventListener('keydown', (e) => {

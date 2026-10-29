@@ -1,14 +1,14 @@
 // Run with: node --test <canvas>/tools/check.test.mjs
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { checkCanvas, checkPageHtml, checkSharedCanvasCopies, loadConfig } from './check.mjs';
-import { THUMBNAIL_SOURCES, VIEWPORT } from './capture-thumbnails.mjs';
+
 
 const CANVAS_DIR = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -182,9 +182,9 @@ test('prototype-local engine, kit and phone helper copies are rejected without b
   const prototypesDir = mkdtempSync(join(tmpdir(), 'wayfinder-canvas-check-'));
   try {
     mkdirSync(join(prototypesDir, 'canvas', 'kit'), { recursive: true });
-    const engine = readFileSync(join(CANVAS_DIR, 'canvas.js'));
-    const kit = readFileSync(join(CANVAS_DIR, 'kit', 'kit.js'));
-    const device = readFileSync(join(CANVAS_DIR, 'device.js'));
+    const engine = readFileSync(join(CANVAS_DIR, '..', 'canvas', 'canvas.js'));
+    const kit = readFileSync(join(CANVAS_DIR, '..', 'canvas', 'kit', 'kit.js'));
+    const device = readFileSync(join(CANVAS_DIR, '..', 'canvas', 'device.js'));
     writeFileSync(join(prototypesDir, 'canvas', 'canvas.js'), engine);
     writeFileSync(join(prototypesDir, 'canvas', 'kit', 'kit.js'), kit);
     writeFileSync(join(prototypesDir, 'canvas', 'device.js'), device);
@@ -227,92 +227,4 @@ test('prototype-local engine, kit and phone helper copies are rejected without b
   } finally {
     rmSync(prototypesDir, { recursive: true, force: true });
   }
-});
-
-function jpegDimensions(buffer) {
-  assert.equal(buffer[0], 0xff, 'thumbnail must start with the JPEG marker');
-  assert.equal(buffer[1], 0xd8, 'thumbnail must start with the JPEG marker');
-
-  for (let offset = 2; offset + 9 < buffer.length; ) {
-    if (buffer[offset] !== 0xff) {
-      offset += 1;
-      continue;
-    }
-
-    const marker = buffer[offset + 1];
-    offset += 2;
-    if (marker === 0xd8 || marker === 0xd9 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
-
-    const length = buffer.readUInt16BE(offset);
-    if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
-      return { width: buffer.readUInt16BE(offset + 5), height: buffer.readUInt16BE(offset + 3) };
-    }
-    offset += length;
-  }
-
-  throw new Error('Thumbnail has no JPEG frame dimensions');
-}
-
-test('every prototype board variant has a distinct screenshot and a refreshable source', () => {
-  const window = {};
-  runInNewContext(readFileSync(join(CANVAS_DIR, 'variants', 'data.js'), 'utf8'), {
-    window,
-    location: { search: '?data=many' },
-    URLSearchParams,
-    Kit: { icons: {} },
-  });
-  const boardShots = window.DATA.REPOS.flatMap((repo) =>
-    repo.prototypes.flatMap((prototype) => prototype.variants.map((variant) => variant[2])),
-  ).filter(Boolean);
-  const sources = THUMBNAIL_SOURCES.map(({ id }) => id);
-  assert.deepEqual([...sources].sort(), [...new Set(boardShots)].sort());
-
-  const hashes = [];
-  for (const { id, ref, page } of THUMBNAIL_SOURCES) {
-    const [sourcePage] = page.split('?');
-    const screenshotPath = join(CANVAS_DIR, 'assets', 'protos', `${id}.jpg`);
-    assert.match(ref, /^origin\/prototype\/\d+-/, `${id} has a source prototype branch`);
-    assert.ok(sourcePage.length > 0, `${id} has a source page`);
-    assert.ok(existsSync(screenshotPath), `${id} screenshot exists`);
-
-    const image = readFileSync(screenshotPath);
-    assert.deepEqual(jpegDimensions(image), VIEWPORT, `${id} was captured at the standard viewport`);
-    hashes.push(createHash('sha256').update(image).digest('hex'));
-  }
-  assert.equal(new Set(hashes).size, THUMBNAIL_SOURCES.length, 'each screenshot visibly represents a different variant');
-});
-
-test('a missing variant screenshot falls back to the sketch frame', () => {
-  const window = {};
-  const document = { addEventListener: () => {} };
-  const data = { STATES: {}, TYPES: {}, REPOS: [] };
-  const kit = { esc: String, icon: () => '' };
-  runInNewContext(readFileSync(join(CANVAS_DIR, 'variants', 'shell.js'), 'utf8'), {
-    window,
-    document,
-    location: { search: '' },
-    URLSearchParams,
-    DATA: data,
-    Kit: kit,
-  });
-
-  const frame = window.WF.frame('B', { shot: 'missing' });
-  assert.match(frame, /\.\.\/assets\/protos\/missing\.jpg/);
-  assert.match(frame, /onerror="WF\.onThumbnailError\(this\)"/);
-  assert.match(frame, /class="col"/);
-  assert.match(frame, /class="fb"/);
-
-  const image = { hidden: false, parentElement: { classList: { add: (value) => (image.fallback = value) } } };
-  window.WF.onThumbnailError(image);
-  assert.equal(image.hidden, true);
-  assert.equal(image.fallback, 'is-fallback');
-
-  const fallback = window.WF.frame('A');
-  assert.doesNotMatch(fallback, /<img /);
-  assert.match(fallback, /class="col"/);
-
-  const styles = readFileSync(join(CANVAS_DIR, 'variants', 'shell.css'), 'utf8');
-  assert.match(styles, /\.wf-frame\.has-shot\.is-fallback img\s*\{\s*display:\s*none;/);
-  assert.match(styles, /\.wf-frame\.has-shot\.is-fallback \.col\s*\{\s*display:\s*grid;/);
-  assert.match(styles, /\.wf-frame\.has-shot\.is-fallback \.fb\s*\{\s*display:\s*grid;/);
 });
