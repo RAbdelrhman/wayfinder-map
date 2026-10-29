@@ -24,3 +24,6 @@
 
 /* Round 2 of A: #15's Follow sits centered in its row instead of at the top. */
 .f-prow > .f-act.u-center { align-self: center; }
+
+/* Confirmed #359 correction: center the reference row whose reason was removed. */
+.f-prow.u-center-row { align-items: center; }

@@ -120,7 +120,7 @@
   function refRow(r, inRepo) {
     const w = WHY[r.why];
     const name = inRepo ? `#${r.number}` : key(r);
-    return `<div class="m-row f-prow u-ref"><span class="f-hid u-why-${r.why}">${ic(w.icon)}</span><span class="m-row-main"><span class="m-row-title u-name">${esc(name)}</span>
+    return `<div class="m-row f-prow u-ref${key(r) === R2_NO_REASON ? ' u-center-row' : ''}"><span class="f-hid u-why-${r.why}">${ic(w.icon)}</span><span class="m-row-main"><span class="m-row-title u-name">${esc(name)}</span>
       ${key(r) === R2_NO_REASON ? '' : `<span class="m-row-sub f-wrap"><b class="u-head">${esc(w.head)}.</b> ${esc(w.text)}</span>`}</span>${refBtn(r)}</div>`;
   }
   const movedLine = (r) => `<p class="f-none f-moved">#${r.number} is above, under Shared from GitHub.</p>`;
