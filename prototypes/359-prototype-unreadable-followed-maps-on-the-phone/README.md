@@ -2,7 +2,7 @@
 
 ## Check this board
 
-Run `node prototypes/359-prototype-unreadable-followed-maps-on-the-phone/tools/check.mjs` and `node --test prototypes/359-prototype-unreadable-followed-maps-on-the-phone/tools/check.test.mjs` from the repository root. Capture and check its poster with `bun run canvas:poster prototypes/359-prototype-unreadable-followed-maps-on-the-phone` and the same command with `--check`.
+Run `node prototypes/359-prototype-unreadable-followed-maps-on-the-phone/tools/check.mjs` and `node --test prototypes/359-prototype-unreadable-followed-maps-on-the-phone/tools/check.test.mjs` from the repository root. Capture and check its poster with `bun run canvas:poster prototypes/359-prototype-unreadable-followed-maps-on-the-phone` and `bun run canvas:poster --check prototypes/359-prototype-unreadable-followed-maps-on-the-phone`.
 
 An in-repo board for design decisions. It lays out options side by side: full pages, style directions, component sheets, palettes, type, and layered compositions. The user compares them, opens any one full size, and picks.
 

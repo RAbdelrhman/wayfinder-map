@@ -233,7 +233,8 @@
     }
     if (act === 'back') {
       ui.screen = ui.stack.pop() ?? 'maps';
-      return render();
+      render();
+      return app.querySelector('h1')?.focus();
     }
     if (act === 'sheet') {
       ui.sheet = true;
