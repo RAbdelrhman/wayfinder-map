@@ -56,13 +56,22 @@ can read the issue.
 
 ## Tickets
 
+Each ticket belongs to one map. Dependencies stay within that map. Never reuse
+another map's ticket as a blocker, and never import dependency neighbors into a
+map's graph, counts, search results, or ticket panel. A link in prose is context,
+not permission to include a ticket owned by another map.
+
 - **Label:** one of `wayfinder:research`, `wayfinder:prototype`,
   `wayfinder:grilling` or `wayfinder:task`.
 - **Belonging to the map:** add the ticket as a **sub-issue** of the map issue.
   Wayfinder also picks up tickets the map body lists, either as a task list
   (`- [ ] #12`) or as full issue links, and warns you that they aren't attached.
+  A body link to a ticket already owned by a different map is excluded.
 - **Waiting on other tickets:** use GitHub's native "blocked by" issue
-  relationship. If you can't, put a `Blocked by: #4, #7` line in the ticket body.
+  relationship. When the dependency endpoint is unsupported, put a
+  `Blocked by: #4, #7` line in the ticket body. A successful native response,
+  including an empty list, takes precedence over that line. Other read failures
+  stay errors and preserve the last successful snapshot.
 - **Body:** usually a `## Question` (or `## What to build`) and a `## Done when`.
   Wayfinder shows the body as written.
 

@@ -63,7 +63,7 @@ describe('Home repository summaries', () => {
     });
   });
 
-  it('counts linked fog issues in repository totals', () => {
+  it('excludes cached outside issues from repository totals', () => {
     const fog: OutsideTicket = {
       number: 58,
       title: 'Linked external issue',
@@ -83,8 +83,8 @@ describe('Home repository summaries', () => {
     };
 
     expect(summarizeRepository('octo/wayfinder', { ...snapshot, maps: [{ ...map, outside: [fog] }] })).toMatchObject({
-      openTicketCount: 2,
-      ticketCount: 3,
+      openTicketCount: 1,
+      ticketCount: 2,
       doneTicketCount: 1,
     });
   });

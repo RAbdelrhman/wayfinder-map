@@ -1,6 +1,8 @@
 import { PROTOTYPE_BRANCH_PREFIX } from './prototypes.js';
 import type { Ticket, TicketType, WayfinderMap } from './types.js';
 
+const MAP_BOUNDARY_RULE = 'No cross-map tickets or dependencies. Every ticket and every blocker must belong to this map. Never reuse another map\'s ticket or add a blocked-by link to one.';
+
 export const DEFAULT_TEMPLATE = `Pick up wayfinder ticket #{{ticketNumber}} on the "{{mapTitle}}" map.
 
 Repo:    {{repo}}
@@ -60,6 +62,7 @@ What the user wants to accomplish:
 Turn this into a map. A map is plain GitHub issues, so no particular skill is
 needed. If a wayfinder skill is installed you may use it, as long as the issues
 come out in the format below.
+${MAP_BOUNDARY_RULE}
 1. Interview the user as needed, one question at a time with your recommended
    answer, until the destination, scope, decisions so far, and fog are clear.
    Also ask whether the map should stay private (the default: only its author
@@ -141,6 +144,7 @@ user hasn't agreed to. If you can't reach the user, stop and say so.`;
  * part of the app take turns through Needs, and an independent verifier checks the work before it merges.
  */
 const MAP_RULES = `Rules for every ticket on a map:
+- ${MAP_BOUNDARY_RULE}
 - The user sees every UI before it is chosen. Build only UI that a prototype
   the user picked shows. If this ticket needs a control, screen, layout or
   copy that no chosen prototype shows, or would add a second control for
@@ -358,13 +362,16 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
 
   // Saved templates may predate typeSteps or omit it entirely. Human-decision
   // and prototype authoring instructions must survive those templates.
-  if (humanInTheLoop && typeSteps && !chosenTemplate.includes('{{typeSteps}}')) {
-    return `${renderTemplate(typeSteps, prototypeValues)}\n\n${rendered}`.trim();
-  }
-  return rendered;
+  const withTypeSteps = humanInTheLoop && typeSteps && !chosenTemplate.includes('{{typeSteps}}')
+    ? `${renderTemplate(typeSteps, prototypeValues)}\n\n${rendered}`.trim()
+    : rendered;
+  return map && !chosenTemplate.includes('{{mapRules}}')
+    ? `${withTypeSteps}\n\n${MAP_BOUNDARY_RULE}`.trim()
+    : withTypeSteps;
 }
 
 /** The prompt `Start a new map` hands to T3 Code: plan the map with the user, then create it on GitHub. */
 export function buildNewMapPrompt({ repo, goal, mapLabel, typePrefix, template }: NewMapPromptInput): string {
-  return renderTemplate(template ?? DEFAULT_NEW_MAP_TEMPLATE, { repo, goal: indent(goal), mapLabel, typePrefix }).trim();
+  const rendered = renderTemplate(template ?? DEFAULT_NEW_MAP_TEMPLATE, { repo, goal: indent(goal), mapLabel, typePrefix }).trim();
+  return rendered.includes(MAP_BOUNDARY_RULE) ? rendered : `${rendered}\n\n${MAP_BOUNDARY_RULE}`.trim();
 }

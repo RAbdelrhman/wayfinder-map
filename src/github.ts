@@ -424,31 +424,27 @@ async function fetchIssue(repo: string, number: number): Promise<RawIssue | null
 }
 
 /**
- * Blockers for one ticket: GitHub's native dependencies first, the body line as fallback.
+ * Blockers for one ticket: GitHub's native dependencies, or the body line when unsupported.
  * Asked for unconditionally, because the summary counts only OPEN blockers and a closed
  * one still draws the edge that shows how the map was sequenced.
  */
 async function fetchBlockers(repo: string, raw: RawIssue): Promise<Blocker[]> {
   try {
     const blockers = await ghJson<RawIssue[]>(['api', `repos/${repo}/issues/${raw.number}/dependencies/blocked_by`]);
-    if (blockers.length > 0) {
-      return blockers.map((blocker) => ({ number: blocker.number, open: isOpenState(blocker.state), raw: blocker }));
-    }
-  } catch {
+    return blockers.map((blocker) => ({ number: blocker.number, open: isOpenState(blocker.state), raw: blocker }));
+  } catch (error) {
+    if (!dependenciesUnsupported(error)) throw error;
     // Dependencies unavailable on this repo. Fall through to the body line.
   }
   // The body line names numbers only, so the state comes from the map's own tickets.
   return parseBlockedByLine(raw.body ?? '').map((number) => ({ number, open: null }));
 }
 
-/** Issues `number` blocks. Empty when dependencies are unavailable. */
-async function fetchBlocking(repo: string, number: number): Promise<RawIssue[]> {
-  try {
-    return await ghJson<RawIssue[]>(['api', `repos/${repo}/issues/${number}/dependencies/blocking`]);
-  } catch {
-    return [];
-  }
+/** Only an unsupported endpoint permits the legacy body fallback. Failed reads remain failed. */
+function dependenciesUnsupported(error: unknown): boolean {
+  return error instanceof GhError && /\bHTTP (?:404|410)\b/.test(error.message);
 }
+
 
 interface Blocker {
   number: number;
@@ -501,10 +497,29 @@ interface Fallbacks {
   maps: number[];
   rateLimited: boolean;
   unattachedTickets: Array<{ mapNumber: number; ticketNumbers: number[] }>;
+  foreignTickets: Map<number, Set<number>>;
+}
+
+/** Missing ownership supports legacy body lists; unreadable ownership never proves completion. */
+function bodyTicketScope(repo: string, mapNumber: number, issue: RawIssue): 'eligible' | 'foreign' | 'unknown' {
+  if (!issue.parent_issue_url) return 'eligible';
+  try {
+    const path = new URL(issue.parent_issue_url).pathname.toLowerCase();
+    if (!/^\/repos\/[^/]+\/[^/]+\/issues\/[1-9]\d*$/.test(path)) return 'unknown';
+    return path === `/repos/${repo}/issues/${String(mapNumber)}`.toLowerCase() ? 'eligible' : 'foreign';
+  } catch {
+    return 'unknown';
+  }
 }
 
 async function fetchChildren(repo: string, map: { number: number; body?: string | null }, fallbacks: Fallbacks): Promise<RawIssue[]> {
   const numbers = parseChildNumbers(map.body ?? '', repo).filter((number) => number !== map.number);
+  const eligibleBodyIssues = (fetched: readonly (RawIssue | null)[]): RawIssue[] => {
+    fallbacks.foreignTickets.set(map.number, new Set(fetched
+      .filter((issue): issue is RawIssue => issue !== null && bodyTicketScope(repo, map.number, issue) === 'foreign')
+      .map((issue) => issue.number)));
+    return fetched.filter((issue): issue is RawIssue => issue !== null && bodyTicketScope(repo, map.number, issue) === 'eligible');
+  };
   let subIssues: RawIssue[];
   subIssueWatcher.resetBodyIssues(repo, map.number);
   try {
@@ -516,16 +531,19 @@ async function fetchChildren(repo: string, map: { number: number; body?: string 
       if (ghProblem(error) === RATE_LIMIT_WARNING) fallbacks.rateLimited = true;
     }
     const fetched = await pool(numbers, 8, (number) => subIssueWatcher.fetchBodyIssue(repo, map.number, number));
-    return fetched.filter((issue): issue is RawIssue => issue !== null);
+    return eligibleBodyIssues(fetched);
   }
 
   const attached = new Set(subIssues.map((issue) => issue.number));
   const unattachedNumbers = numbers.filter((number) => !attached.has(number));
-  if (unattachedNumbers.length > 0) {
-    fallbacks.unattachedTickets.push({ mapNumber: map.number, ticketNumbers: unattachedNumbers });
-  }
   const fetched = await pool(unattachedNumbers, 8, (number) => subIssueWatcher.fetchBodyIssue(repo, map.number, number));
-  return [...subIssues, ...fetched.filter((issue): issue is RawIssue => issue !== null)];
+  const eligible = eligibleBodyIssues(fetched);
+  const foreign = fallbacks.foreignTickets.get(map.number) ?? new Set<number>();
+  const unattached = unattachedNumbers.filter((number) => !foreign.has(number));
+  if (unattached.length > 0) {
+    fallbacks.unattachedTickets.push({ mapNumber: map.number, ticketNumbers: unattached });
+  }
+  return [...subIssues, ...eligible];
 }
 
 export interface FetchResult {
@@ -687,10 +705,15 @@ async function checkFinished(repo: string, issue: MapIssue): Promise<{ state: Fi
   const attached = new Set(subIssues.map((subIssue) => subIssue.number));
   const loose = listed.filter((number) => !attached.has(number));
   const fetched = await pool(loose, 8, (number) => fetchIssue(repo, number));
-  const extra = fetched.filter((raw): raw is RawIssue => raw !== null);
+  const foreign = new Set(fetched.filter((raw): raw is RawIssue => raw !== null && bodyTicketScope(repo, issue.number, raw) === 'foreign').map((raw) => raw.number));
+  const extra = fetched.filter((raw): raw is RawIssue => raw !== null && bodyTicketScope(repo, issue.number, raw) === 'eligible');
   const read = [...subIssues, ...extra].map((raw) => ({ number: raw.number, open: isOpenState(raw.state) }));
-  const unattached = Object.fromEntries(loose.map((number, index) => [number, fetched[index] === null || fetched[index] === undefined ? null : isOpenState(fetched[index].state)]));
-  return { state: finishedState(read, listed), unattached };
+  const extraByNumber = new Map(extra.map((raw) => [raw.number, raw]));
+  const unattached = Object.fromEntries(loose.filter((number) => !foreign.has(number)).map((number) => {
+    const raw = extraByNumber.get(number);
+    return [number, raw === undefined ? null : isOpenState(raw.state)];
+  }));
+  return { state: finishedState(read, listed.filter((number) => !foreign.has(number))), unattached };
 }
 
 /**
@@ -731,7 +754,7 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
   const choices = options.choices ?? {};
   const expand = new Set(options.expand ?? []);
   const warnings: string[] = [];
-  const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [] };
+  const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [], foreignTickets: new Map() };
 
   const labeled = await listMapIssues(repo, mapLabel);
 
@@ -801,7 +824,8 @@ export async function fetchMaps(options: MapListOptions): Promise<FetchResult> {
     const canFinish = (settled === null || settled.reason === 'idle') && mayFinish(mapIssue);
     // When the sub-issues couldn't be read the tickets are the body's alone, so all of them done proves nothing.
     const incomplete = fallbacks.maps.includes(mapIssue.number);
-    const judged = canFinish ? finishedState(loaded.tickets, listedTickets(repo, mapIssue)) : 'active';
+    const listed = listedTickets(repo, mapIssue).filter((number) => !fallbacks.foreignTickets.get(mapIssue.number)?.has(number));
+    const judged = canFinish ? finishedState(loaded.tickets, listed) : 'active';
     const state = judged === 'finished' && incomplete ? 'unknown' : judged;
     const unattached = fallbacks.unattachedTickets.find((entry) => entry.mapNumber === mapIssue.number)?.ticketNumbers ?? [];
     // Still watched while active when only body-only tickets could hold it there: an edit to the body can finish it.
@@ -856,7 +880,7 @@ function fallbackWarnings(fallbacks: Fallbacks): string[] {
 
 /** Read the tickets of maps that were listed settled, keeping their settlement. */
 export async function fetchMapDetails(options: FetchOptions, maps: readonly WayfinderMap[]): Promise<FetchResult> {
-  const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [] };
+  const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [], foreignTickets: new Map() };
   const loaded = await pool(maps, options.concurrency ?? 6, async (map) => ({
     ...(await loadMap(options, { number: map.number, title: map.title, url: map.url, body: map.body, state: map.open ? 'open' : 'closed', author: map.author }, fallbacks)),
     settled: map.settled,
@@ -894,59 +918,6 @@ async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fal
 
   const blockerLists = await pool(children, concurrency, (child) => fetchBlockers(repo, child));
 
-  // Issues off this map on either side of a dependency: blockers above it, dependents below.
-  const onMap = new Set(children.map((child) => child.number));
-  const outsideRaw = new Map<number, RawIssue | null>();
-  const blocks = new Map<number, number[]>();
-  const waitsOn = new Map<number, number[]>();
-  const dependentsOnMap = new Map<number, number>();
-  const link = (store: Map<number, number[]>, key: number, value: number): void => {
-    store.set(key, [...(store.get(key) ?? []), value]);
-  };
-
-  children.forEach((child, index) => {
-    for (const blocker of blockerLists[index] ?? []) {
-      if (onMap.has(blocker.number)) {
-        dependentsOnMap.set(blocker.number, (dependentsOnMap.get(blocker.number) ?? 0) + 1);
-        continue;
-      }
-      link(blocks, blocker.number, child.number);
-      if (blocker.raw !== undefined || !outsideRaw.has(blocker.number)) outsideRaw.set(blocker.number, blocker.raw ?? null);
-    }
-  });
-
-  // Only ask the tickets whose blocking count says a dependent lives off the map.
-  const blockingElsewhere = children.filter(
-    (child) => (child.issue_dependencies_summary?.total_blocking ?? 0) > (dependentsOnMap.get(child.number) ?? 0),
-  );
-  const blockingLists = await pool(blockingElsewhere, concurrency, (child) => fetchBlocking(repo, child.number));
-  blockingElsewhere.forEach((child, index) => {
-    for (const dependent of blockingLists[index] ?? []) {
-      if (onMap.has(dependent.number)) continue;
-      link(waitsOn, dependent.number, child.number);
-      outsideRaw.set(dependent.number, dependent);
-    }
-  });
-
-  const missing = [...outsideRaw].filter(([, raw]) => raw === null).map(([number]) => number);
-  for (const raw of await pool(missing, concurrency, (number) => fetchIssue(repo, number))) {
-    if (raw !== null) outsideRaw.set(raw.number, raw);
-  }
-  const outsideIssues = [...outsideRaw.values()].filter((raw): raw is RawIssue => raw !== null);
-  for (const raw of outsideIssues) openByNumber.set(raw.number, isOpenState(raw.state));
-  // Their own blockers too, so they open in the panel like any ticket.
-  const outsideBlockers = await pool(outsideIssues, concurrency, (raw) => fetchBlockers(repo, raw));
-  const outside = outsideIssues.map((raw, index) =>
-    toOutsideTicket(raw, repo, {
-      blocks: blocks.get(raw.number) ?? [],
-      waitsOn: waitsOn.get(raw.number) ?? [],
-      blockers: (outsideBlockers[index] ?? []).map((blocker) => ({
-        number: blocker.number,
-        open: blocker.open ?? openByNumber.get(blocker.number) ?? true,
-      })),
-      typePrefix,
-    }),
-  );
 
   const tickets = children.map((child, index): Ticket => {
     const labels = labelNames(child);
@@ -985,7 +956,7 @@ async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fal
     visibility: mapVisibility(mapIssue.body ?? ''),
     sections: parseMapBody(mapIssue.body ?? ''),
     tickets,
-    outside,
+    outside: [],
     criticalPath: criticalPath(tickets),
     stalled: [],
     pullRequests: [],

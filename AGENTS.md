@@ -1,5 +1,11 @@
 # Wayfinder map
 
+## Map boundaries
+
+- Each ticket belongs to one map. Dependencies must stay within that map.
+- Never reuse another map's ticket as a blocker or import it into this map's graph, counts, search, or ticket panel.
+- Cross-map links are invalid data to repair, not a navigation feature to design around.
+
 ## Subagent effort
 
 - Use medium effort for subagents and delegated tasks by default. Never use effort above medium without asking Ramon and receiving explicit approval for that task. Set the effort explicitly in the tool options; do not inherit a higher effort.

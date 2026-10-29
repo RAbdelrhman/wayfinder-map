@@ -25,9 +25,6 @@ export const STATE_STYLE = STATE_LOOKS;
 
 export const STATE_ORDER: TicketState[] = ['frontier', 'claimed', 'blocked', 'done'];
 
-/** The Key's fog entry: issues linked to the map by a dependency but not among its sub-issues, drawn under a haze. */
-export const FOG_KEY_ROW = '<div class="keyrow is-fog"><span class="fog-swatch" aria-hidden="true"></span><b>Fog</b>Linked by a dependency, not on this map</div>';
-
 /** Progress reads left to right: finished, in hand, ready, waiting. */
 export const PROGRESS_ORDER: TicketState[] = ['done', 'claimed', 'frontier', 'blocked'];
 
@@ -410,9 +407,9 @@ export function repoIconHtml(repo: string, size: 'sm' | 'md' | 'lg' = 'md'): str
   return `<span class="repo-icon-badge${sizeClass}" data-repo="${escapeHtml(repo)}" aria-hidden="true"><span class="repo-monogram">${monoSvg}</span>${imgTag}</span>`;
 }
 
-/** Every ticket the map counts: its sub-issues plus the fog, the issues linked to them by a dependency. */
+/** A dependency never makes an outside issue part of this map. */
 export function allTickets(map: WayfinderMap): Ticket[] {
-  return [...map.tickets, ...map.outside];
+  return map.tickets;
 }
 
 export function countStates(map: WayfinderMap): Record<TicketState, number> {

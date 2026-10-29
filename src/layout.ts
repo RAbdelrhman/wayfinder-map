@@ -128,10 +128,7 @@ export function layoutTickets(tickets: readonly GraphTicket[], options: LayoutOp
   return { nodes, edges, width, height, layerSizes };
 }
 
-/**
- * Every card's dependencies, the issues off the map included. Laid out together, an issue off the
- * map lands in the column its dependencies put it in, like any card.
- */
+/** Only the map's own tickets can become graph nodes, including when old caches contain outside issues. */
 export function graphTickets(map: Pick<WayfinderMap, 'tickets' | 'outside'>): GraphTicket[] {
-  return [...map.tickets, ...map.outside.map((outside) => ({ number: outside.number, blockedBy: outside.waitsOn }))];
+  return map.tickets;
 }

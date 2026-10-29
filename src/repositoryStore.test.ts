@@ -18,6 +18,17 @@ function store(fetcher: RepositoryFetcher, limit = 10, changeChecker?: (repo: st
 }
 
 describe('RepositoryStore', () => {
+  it('keeps the last successful snapshot when a dependency refresh fails', async () => {
+    const fetcher = vi.fn<RepositoryFetcher>()
+      .mockResolvedValueOnce({ maps: [], warnings: [] })
+      .mockRejectedValueOnce(new Error('HTTP 503 reading dependencies'));
+    const cache = store(fetcher);
+    const initial = await cache.snapshot('owner/repo');
+
+    await expect(cache.snapshot('owner/repo', true)).rejects.toThrow('HTTP 503');
+    expect(cache.cached('owner/repo')).toBe(initial);
+  });
+
   it('isolates cached snapshots by repository', async () => {
     const fetcher = vi.fn<RepositoryFetcher>(async ({ repo }) => ({ maps: [], warnings: [repo] }));
     const cache = store(fetcher);

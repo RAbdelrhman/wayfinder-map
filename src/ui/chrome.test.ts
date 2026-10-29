@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import type { OutsideTicket, Ticket, WayfinderMap } from '../types.js';
 import {
-  FOG_KEY_ROW,
   allTickets,
   countStates,
   paintRepoIcons,
@@ -30,17 +29,10 @@ function fog(number: number, state: Ticket['state']): OutsideTicket {
 }
 
 describe('countStates', () => {
-  it('counts the fog as part of the map', () => {
+  it('counts only the map members even when a legacy cache has outside issues', () => {
     const map = { tickets: [ticket(1, 'blocked'), ticket(2, 'done')], outside: [fog(58, 'done'), fog(59, 'frontier')] } as unknown as WayfinderMap;
-    expect(allTickets(map).map((t) => t.number)).toEqual([1, 2, 58, 59]);
-    expect(countStates(map)).toEqual({ frontier: 1, claimed: 0, blocked: 1, done: 2 });
-  });
-});
-
-describe('fog labels', () => {
-  it('calls the off-map cards fog in the Key', () => {
-    expect(FOG_KEY_ROW).toContain('<b>Fog</b>');
-    expect(FOG_KEY_ROW).toContain('fog-swatch');
+    expect(allTickets(map).map((t) => t.number)).toEqual([1, 2]);
+    expect(countStates(map)).toEqual({ frontier: 0, claimed: 0, blocked: 1, done: 1 });
   });
 });
 
