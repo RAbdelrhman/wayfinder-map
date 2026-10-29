@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isOpenableLink, isT3ThreadLink, mapAppLink, parseMapAppLink } from './appLinks.js';
+import { isOpenableLink, isT3ThreadLink, mapAppLink, nativeThreadLink, parseMapAppLink } from './appLinks.js';
 
 describe('installed app destinations', () => {
   it('round-trips a map without a machine-specific hostname or port', () => {
@@ -39,5 +39,11 @@ describe('installed app destinations', () => {
     for (const link of ['t3code://threads/env/', 't3code://threads/env/thread?command=run', 't3code://threads/env/%00', 't3code://threads/env/%ZZ', 't3code://settings', 'file:///C:/Windows/System32/calc.exe', 'javascript:alert(1)', 'data:text/html,hello']) {
       expect(isOpenableLink(link), link).toBe(false);
     }
+  });
+  it('opens T3-supplied scoped references in the native app without inventing an environment', () => {
+    expect(nativeThreadLink('t3-thread://v2/env-1/thread%3A123')).toBe('t3code://threads/env-1/thread%253A123');
+    expect(nativeThreadLink('t3-thread://v2/env-1/thread:123')).toBe('t3code://threads/env-1/thread%3A123');
+    expect(isOpenableLink('t3-thread://v2/env-1/thread%3A123')).toBe(true);
+    expect(nativeThreadLink('t3-thread://v1/thread-only')).toBeNull();
   });
 });

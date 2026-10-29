@@ -30,18 +30,26 @@ export function parseMapAppLink(value: string): MapLink | null {
 }
 
 /** T3's public native thread route, shared by desktop and production mobile. */
-export function isT3ThreadLink(value: string): boolean {
+export function nativeThreadLink(value: string): string | null {
   try {
     const url = new URL(value);
-    if (url.protocol !== 't3code:' || url.hostname !== 'threads' || url.username || url.password || url.port || url.search || url.hash) return false;
+    const threadRoute = url.protocol === 't3code:' && url.hostname === 'threads';
+    const sharedRoute = url.protocol === 't3-thread:' && url.hostname === 'v2';
+    if ((!threadRoute && !sharedRoute) || url.username || url.password || url.port || url.search || url.hash) return null;
     const parts = url.pathname.split('/');
-    return parts.length === 3 && parts.slice(1).every((part) => {
-      const decoded = decodeURIComponent(part);
+    const valid = parts.length === 3 && parts.slice(1).every((part) => {
+      const decoded = sharedRoute ? part : decodeURIComponent(part);
       return decoded.length > 0 && [...decoded].every((character) => character.charCodeAt(0) > 32 && character.charCodeAt(0) !== 127);
     });
+    // Scoped T3 references contain raw IDs; their percent signs belong to the ID.
+    return valid ? `t3code://threads/${parts.slice(1).map(part => encodeURIComponent(sharedRoute ? part : decodeURIComponent(part))).join('/')}` : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function isT3ThreadLink(value: string): boolean {
+  return nativeThreadLink(value) !== null;
 }
 
 /** Allow the two concrete app routes alongside ordinary web links. */

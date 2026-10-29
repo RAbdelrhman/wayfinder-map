@@ -15,7 +15,7 @@ import { shouldEnableUpdates } from './updaterPolicy.js';
 import { notificationBadgePng } from './notificationBadge.js';
 import { mapPath } from '../repoRoutes.js';
 import type { DesktopNotification } from '../notifications.js';
-import { parseMapAppLink } from '../appLinks.js';
+import { nativeThreadLink, parseMapAppLink } from '../appLinks.js';
 
 const TRAY_ICON = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFSSURBVDhPjVOhbsMwEA0sLByyBwf3CYWDlUrGWjhNm29wpNLYQD9gcKrUfygKCRkcqTQYKaSJXTUqqKYq4E3npGnsNOpOeoriu/fe2T4HQUdIyvuSzMDiMbvy850hKZsIZWJJBk0IMmupsle/vg52FGSWPtGHIPMlaX3t84P/kGsRZb7lOO7VZKnSB7/oEgRt3k/uSudlYou5BpJwa4tGYQHoPUacWxwAHDB1hPJ+wPtpKk9XAFa7WgwoMJ9VYnbd6WQQSEqHziI7setsjwQFEg1Ei1KYv66AfrHX5ixWxHl4sI7snIR7RFUnTi1fq6Ts1lU9tl452r3jdBYO0uHxCn+bCXsOteMOEf+29496QgVtPlrJC+C5Oc3BOO4J0j9+URfsWPvvg8/CJs4QHDLPzHN255CPYd+DMp8+qeG8bDmfi3K47Hy8WSh9L5/MjV/H8QcYxvxKVQ6UNgAAAABJRU5ErkJggg==';
 
@@ -153,11 +153,11 @@ function installNavigationBoundary(window: BrowserWindow): void {
     if (isAppPageUrl(target, runtimeOrigin)) return;
     event.preventDefault();
     // A raw file opened in the window strands it: there is no menu, Back or Escape to leave.
-    if (!isInternalUrl(target, runtimeOrigin) && isSafeExternalUrl(target)) void shell.openExternal(target);
+    if (!isInternalUrl(target, runtimeOrigin) && isSafeExternalUrl(target)) void shell.openExternal(nativeThreadLink(target) ?? target);
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (parseMapAppLink(url) !== null) receiveMapLink(url);
-    else if (!isInternalUrl(url, runtimeOrigin) && isSafeExternalUrl(url)) void shell.openExternal(url);
+    else if (!isInternalUrl(url, runtimeOrigin) && isSafeExternalUrl(url)) void shell.openExternal(nativeThreadLink(url) ?? url);
     return { action: 'deny' };
   });
 }

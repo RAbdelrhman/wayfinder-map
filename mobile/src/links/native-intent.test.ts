@@ -10,5 +10,6 @@ describe('incoming map links', () => {
       expect(redirectSystemPath({ path, initial: true })).toBe('/');
     }
     expect(redirectSystemPath({ path: '/settings', initial: false })).toBe('/settings');
+    expect(redirectSystemPath({ path: 'wayfinder://expo-sharing', initial: true })).toBe('/');
   });
 });

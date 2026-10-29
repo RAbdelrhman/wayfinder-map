@@ -1,4 +1,4 @@
-import { isOpenableLink } from '../appLinks.js';
+import { isOpenableLink, nativeThreadLink } from '../appLinks.js';
 
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => {
@@ -28,7 +28,7 @@ function inline(text: string): string {
         .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (whole, label: string, escapedUrl: string) => {
           // Validation uses the original URL; the attribute keeps the escaped spelling.
           const url = escapedUrl.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-          return isOpenableLink(url) ? `<a href="${escapedUrl}" target="_blank" rel="noreferrer">${label}</a>` : whole;
+          return isOpenableLink(url) ? `<a href="${escapeHtml(nativeThreadLink(url) ?? url)}" target="_blank" rel="noreferrer">${label}</a>` : whole;
         });
     })
     .join('');

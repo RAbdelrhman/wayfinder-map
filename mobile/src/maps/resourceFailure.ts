@@ -13,6 +13,8 @@ export async function resourceFailure(
   if (denied) await removeCache(storage, login, key).catch(() => undefined);
   return {
     ...(denied ? { data: null, savedAt: null } : {}),
+    accessDenied: denied,
+    offline: !(error instanceof GithubError),
     loading: false,
     refreshing: false,
     error:

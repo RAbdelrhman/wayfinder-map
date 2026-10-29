@@ -294,10 +294,12 @@ export function ResourceBody<T>({
   resource,
   children,
   warnings = [],
+  showWithoutData = false,
 }: {
   resource: Resource<T>;
   children: ReactNode;
   warnings?: string[];
+  showWithoutData?: boolean;
 }) {
   const t = useTheme();
   return (
@@ -356,7 +358,7 @@ export function ResourceBody<T>({
           {warning}
         </Text>
       ))}
-      {resource.data ? children : null}
+      {resource.data || showWithoutData ? children : null}
     </ScrollView>
   );
 }

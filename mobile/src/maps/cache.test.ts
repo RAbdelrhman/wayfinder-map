@@ -1,8 +1,135 @@
 import { describe, expect, it } from 'vitest';
-import { cacheKey, parseFollows, readCache, writeCache } from './cache';
+import {
+  cacheKey,
+  parseFollows,
+  readCache,
+  writeCache,
+  readFollows,
+  updateFollow,
+  removeFollowSnapshots,
+  removeMapContents,
+} from './cache';
 import { isMapList } from './validate';
 
 describe('account-scoped map storage', () => {
+  it('evicts a map and its queued ticket writes without touching other maps or accounts', async () => {
+    let unblock: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: async (key: string) => values.get(key) ?? null,
+      setItem: async (key: string, value: string) => {
+        if (key.includes('ticket-map:a/b#1:2')) await gate;
+        values.set(key, value);
+      },
+      removeItem: async (key: string) => {
+        values.delete(key);
+      },
+      getAllKeys: async () => [...values.keys()],
+    };
+    await writeCache(storage, 'me', 'map:a/b#1', { value: 1 });
+    await writeCache(storage, 'me', 'map:a/b#3', { value: 3 });
+    await writeCache(storage, 'other', 'map:a/b#1', { value: 4 });
+    const pending = writeCache(storage, 'me', 'ticket-map:a/b#1:2', {
+      value: 2,
+    });
+    const removal = removeMapContents(storage, 'me', {
+      repo: 'a/b',
+      number: 1,
+    });
+    unblock();
+    await Promise.all([pending, removal]);
+    expect(values.has(cacheKey('me', 'map:a/b#1'))).toBe(false);
+    expect(values.has(cacheKey('me', 'ticket-map:a/b#1:2'))).toBe(false);
+    expect(values.has(cacheKey('me', 'map:a/b#3'))).toBe(true);
+    expect(values.has(cacheKey('other', 'map:a/b#1'))).toBe(true);
+  });
+  it('evicts only the confirmed unavailable followed maps for the active account', async () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: async (key: string) => values.get(key) ?? null,
+      setItem: async (key: string, value: string) => {
+        values.set(key, value);
+      },
+      removeItem: async (key: string) => {
+        values.delete(key);
+      },
+    };
+    for (const [login, resource] of [
+      ['me', 'followed:a/repo#1'],
+      ['me', 'followed:b/repo#2'],
+      ['other', 'followed:a/repo#1'],
+    ])
+      await writeCache(storage, login!, resource!, { title: 'saved' });
+    await removeFollowSnapshots(storage, 'me', [{ repo: 'A/Repo', number: 1 }]);
+    expect(values.has(cacheKey('me', 'followed:a/repo#1'))).toBe(false);
+    expect(values.has(cacheKey('me', 'followed:b/repo#2'))).toBe(true);
+    expect(values.has(cacheKey('other', 'followed:a/repo#1'))).toBe(true);
+  });
+  it('preserves accounts and serializes concurrent follow changes, including seeded unfollows', async () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: async (key: string) => values.get(key) ?? null,
+      setItem: async (key: string, value: string) => {
+        values.set(key, value);
+      },
+    };
+    const seed = JSON.stringify({ Ramon: { 'one/repo': [1] } });
+    await Promise.all([
+      updateFollow(
+        storage,
+        'Ramon',
+        { repo: 'one/repo', number: 1 },
+        false,
+        seed,
+      ),
+      updateFollow(
+        storage,
+        'Other',
+        { repo: 'two/repo', number: 2 },
+        true,
+        seed,
+      ),
+      updateFollow(
+        storage,
+        'ramon',
+        { repo: 'three/repo', number: 3 },
+        true,
+        seed,
+      ),
+    ]);
+    expect(await readFollows(storage, 'RAMON', seed)).toEqual([
+      { repo: 'three/repo', number: 3 },
+    ]);
+    expect(await readFollows(storage, 'other', seed)).toEqual([
+      { repo: 'two/repo', number: 2 },
+    ]);
+  });
+  it('does not overwrite corrupt saved follows', async () => {
+    const storage = {
+      getItem: async () => '{',
+      setItem: async () => {
+        throw new Error('unexpected write');
+      },
+    };
+    await expect(
+      updateFollow(storage, 'me', { repo: 'one/repo', number: 1 }, true),
+    ).rejects.toThrow();
+  });
+  it('does not overwrite an unreadable account entry', async () => {
+    const storage = {
+      getItem: async () => '{"me":"broken"}',
+      setItem: async () => {
+        throw new Error('unexpected write');
+      },
+    };
+    await expect(readFollows(storage, 'me')).rejects.toThrow('unreadable');
+    await expect(
+      updateFollow(storage, 'me', { repo: 'one/repo', number: 1 }, true),
+    ).rejects.toThrow('unreadable');
+  });
   it('serializes overlapping writes so a slower old write cannot replace newer data', async () => {
     let unblock: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => {
