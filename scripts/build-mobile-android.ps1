@@ -6,6 +6,12 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $mobileRoot = Join-Path $repoRoot 'mobile'
+if (-not $SkipBuild -and $env:OS -eq 'Windows_NT') {
+  $rootItem = Get-Item -LiteralPath $repoRoot
+  if ($repoRoot.Length -gt 40 -or ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw 'Android native builds need a real checkout path of at most 40 characters, such as D:\wf-mobile. A junction still exposes long paths to CMake.'
+  }
+}
 Push-Location $mobileRoot
 try {
   if (-not $SkipBuild) {

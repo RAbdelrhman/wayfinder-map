@@ -116,6 +116,11 @@ describe('threadDefaults', () => {
 
 describe('threadCommands', () => {
   const defaults = { modelSelection: { model: 'm' }, runtimeMode: 'full-access', interactionMode: 'default' };
+  it('gives the agent the exact newly created thread destination before its first turn', () => {
+    const { threadId, start } = threadCommands({ projectId: 'p1', title: 't', prompt: 'hello', defaults, worktree: null, environmentId: 'env-1' });
+    expect(start).toMatchObject({ message: { text: expect.stringContaining(`[Open thread in T3 Code](t3code://threads/env-1/${threadId})`) } });
+    expect(start).toMatchObject({ message: { text: expect.stringContaining('Include this exact link when work is ready or needs the user.') } });
+  });
 
   it('creates the thread on its worktree, then starts the first turn', () => {
     const { threadId, create, start } = threadCommands({

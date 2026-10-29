@@ -1,0 +1,55 @@
+export interface MapLink {
+  repo: string;
+  mapNumber: number;
+}
+
+function validRepo(value: string): boolean {
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value) && value.split('/').every((part) => part !== '.' && part !== '..');
+}
+
+/** One destination link for the installed desktop and phone apps. No local host or credentials. */
+export function mapAppLink(repo: string, mapNumber: number): string {
+  if (!validRepo(repo) || !Number.isSafeInteger(mapNumber) || mapNumber <= 0) throw new Error('Invalid map destination');
+  return `wayfinder://map?repo=${encodeURIComponent(repo)}&number=${String(mapNumber)}`;
+}
+
+/** Accept only map destinations, never arbitrary paths, commands, hosts or nested URLs. */
+export function parseMapAppLink(value: string): MapLink | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'wayfinder:' || url.hostname !== 'map' || url.port || url.username || url.password || url.hash || (url.pathname !== '' && url.pathname !== '/')) return null;
+    const params = url.searchParams;
+    if ([...params.keys()].some((key) => key !== 'repo' && key !== 'number') || params.getAll('repo').length !== 1 || params.getAll('number').length !== 1) return null;
+    const repo = params.get('repo') ?? '';
+    const number = params.get('number') ?? '';
+    const mapNumber = Number(number);
+    return validRepo(repo) && /^[1-9]\d*$/.test(number) && Number.isSafeInteger(mapNumber) ? { repo, mapNumber } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** T3's public native thread route, shared by desktop and production mobile. */
+export function isT3ThreadLink(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 't3code:' || url.hostname !== 'threads' || url.username || url.password || url.port || url.search || url.hash) return false;
+    const parts = url.pathname.split('/');
+    return parts.length === 3 && parts.slice(1).every((part) => {
+      const decoded = decodeURIComponent(part);
+      return decoded.length > 0 && [...decoded].every((character) => character.charCodeAt(0) > 32 && character.charCodeAt(0) !== 127);
+    });
+  } catch {
+    return false;
+  }
+}
+
+/** Allow the two concrete app routes alongside ordinary web links. */
+export function isOpenableLink(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' || parseMapAppLink(value) !== null || isT3ThreadLink(value);
+  } catch {
+    return false;
+  }
+}

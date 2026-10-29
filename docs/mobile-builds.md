@@ -73,7 +73,10 @@ Its launcher evidence is `C:/wf-phone/artifacts/phone-wayfinder-icon.png`.
 Use the repository's locked Bun dependencies. Install the Android SDK, build
 tools, NDK and JDK required by Expo SDK 57, and configure `ANDROID_HOME` and
 `JAVA_HOME`. Keep this checkout's path short on Windows, for example `C:/wf229`,
-because generated C++ object paths can exceed Windows' filename limit.
+because generated C++ object paths can exceed Windows' filename limit. The build
+script rejects Windows checkout paths longer than 40 characters and junctions
+before invoking the native tools. Use a real short worktree; CMake resolves a
+junction back to its long source path.
 
 Set `EXPO_PUBLIC_GITHUB_CLIENT_ID` in `mobile/.env.local` using the existing
 GitHub OAuth app with Device Flow enabled. See [mobile-sign-in.md](mobile-sign-in.md).

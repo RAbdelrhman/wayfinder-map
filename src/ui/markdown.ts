@@ -1,3 +1,5 @@
+import { isOpenableLink } from '../appLinks.js';
+
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => {
     switch (char) {
@@ -23,7 +25,11 @@ function inline(text: string): string {
       if (index % 2 === 1) return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
       return escapeHtml(part)
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+        .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (whole, label: string, escapedUrl: string) => {
+          // Validation uses the original URL; the attribute keeps the escaped spelling.
+          const url = escapedUrl.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+          return isOpenableLink(url) ? `<a href="${escapedUrl}" target="_blank" rel="noreferrer">${label}</a>` : whole;
+        });
     })
     .join('');
 }

@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,6 +12,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BackButton } from '../auth/BackButton';
 import { Icon } from '../auth/Icon';
+import { openExternal } from './openExternal';
+export { openExternal } from './openExternal';
 import { themes } from '../auth/theme';
 import type { Theme } from '../auth/theme';
 import type { Ticket, TicketState } from '../shared';
@@ -92,10 +93,6 @@ export function Header({
       </View>
     </View>
   );
-}
-export async function openExternal(url: string): Promise<void> {
-  if (!/^https?:\/\//i.test(url)) return;
-  await Linking.openURL(url).catch(() => undefined);
 }
 export function Section({ children }: { children: string }) {
   const t = useTheme();

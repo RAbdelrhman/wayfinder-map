@@ -15,6 +15,7 @@ import { shouldEnableUpdates } from './updaterPolicy.js';
 import { notificationBadgePng } from './notificationBadge.js';
 import { mapPath } from '../repoRoutes.js';
 import type { DesktopNotification } from '../notifications.js';
+import { parseMapAppLink } from '../appLinks.js';
 
 const TRAY_ICON = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFSSURBVDhPjVOhbsMwEA0sLByyBwf3CYWDlUrGWjhNm29wpNLYQD9gcKrUfygKCRkcqTQYKaSJXTUqqKYq4E3npGnsNOpOeoriu/fe2T4HQUdIyvuSzMDiMbvy850hKZsIZWJJBk0IMmupsle/vg52FGSWPtGHIPMlaX3t84P/kGsRZb7lOO7VZKnSB7/oEgRt3k/uSudlYou5BpJwa4tGYQHoPUacWxwAHDB1hPJ+wPtpKk9XAFa7WgwoMJ9VYnbd6WQQSEqHziI7setsjwQFEg1Ei1KYv66AfrHX5ixWxHl4sI7snIR7RFUnTi1fq6Ts1lU9tl452r3jdBYO0uHxCn+bCXsOteMOEf+29496QgVtPlrJC+C5Oc3BOO4J0j9+URfsWPvvg8/CJs4QHDLPzHN255CPYd+DMp8+qeG8bDmfi3K47Hy8WSh9L5/MjV/H8QcYxvxKVQ6UNgAAAABJRU5ErkJggg==';
 
@@ -26,6 +27,29 @@ let runtimeOrigin: string | null = null;
 let startupPromise: Promise<void> | null = null;
 let stopUpdates = (): void => undefined;
 let unreadNotifications = 0;
+let pendingMapUrl: string | null = null;
+let mapNavigation = Promise.resolve();
+let mapLinkVersion = 0;
+
+function receiveMapLink(value: string): void {
+  const target = parseMapAppLink(value);
+  if (target === null) return;
+  mapLinkVersion++;
+  pendingMapUrl = mapPath(target.repo, target.mapNumber);
+  if (startupPromise === null) openPendingMap();
+}
+
+function openPendingMap(): void {
+  if (pendingMapUrl === null || mainWindow === null || runtimeOrigin === null) return;
+  const path = pendingMapUrl;
+  pendingMapUrl = null;
+  const target = new URL(path, runtimeOrigin).href;
+  const version = mapLinkVersion;
+  mapNavigation = mapNavigation.then(() => mainWindow?.loadURL(target)).then(showWindow).catch(() => {
+    // A failed navigation is not evidence the destination opened. Keep it for a retry.
+    if (mapLinkVersion === version) pendingMapUrl ??= path;
+  });
+}
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] ?? character);
@@ -121,13 +145,19 @@ function installNavigationBoundary(window: BrowserWindow): void {
       void startRuntime();
       return;
     }
+    if (parseMapAppLink(target) !== null) {
+      event.preventDefault();
+      receiveMapLink(target);
+      return;
+    }
     if (isAppPageUrl(target, runtimeOrigin)) return;
     event.preventDefault();
     // A raw file opened in the window strands it: there is no menu, Back or Escape to leave.
     if (!isInternalUrl(target, runtimeOrigin) && isSafeExternalUrl(target)) void shell.openExternal(target);
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (!isInternalUrl(url, runtimeOrigin) && isSafeExternalUrl(url)) void shell.openExternal(url);
+    if (parseMapAppLink(url) !== null) receiveMapLink(url);
+    else if (!isInternalUrl(url, runtimeOrigin) && isSafeExternalUrl(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
 }
@@ -239,6 +269,7 @@ async function startRuntime(): Promise<void> {
     }
   })().finally(() => {
     startupPromise = null;
+    openPendingMap();
   });
   return startupPromise;
 }
@@ -290,7 +321,17 @@ if (!primaryInstance) {
   process.stderr.write('Wayfinder is already running. Raising the window that is already open.\n');
   app.quit();
 } else {
-  app.on('second-instance', showWindow);
+  // Register only installed builds. A dev checkout must not steal the installed handler.
+  if (app.isPackaged) app.setAsDefaultProtocolClient('wayfinder');
+  for (const argument of process.argv) receiveMapLink(argument);
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    receiveMapLink(url);
+  });
+  app.on('second-instance', (_event, commandLine) => {
+    for (const argument of commandLine) receiveMapLink(argument);
+    showWindow();
+  });
   app.on('before-quit', (event) => {
     if (lifecycle.isQuitting) return;
     event.preventDefault();

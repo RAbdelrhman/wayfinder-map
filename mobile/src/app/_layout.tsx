@@ -11,13 +11,13 @@ function Navigation() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="index" />
-        <Stack.Screen name="map" />
         <Stack.Screen name="ticket" />
         <Stack.Screen name="settings" />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="signin" />
       </Stack.Protected>
+      <Stack.Screen name="map" />
     </Stack>
   );
   return signedIn ? (
