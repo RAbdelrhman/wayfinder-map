@@ -1,0 +1,29 @@
+/* #359 additions on top of the #223 / #353 phone styles. Tokens come from src/ui/styles.css. Targets stay 44px or more. */
+
+#app :focus-visible { outline: 2px solid var(--accent-text); outline-offset: -3px; }
+.m-bar h1:focus { outline: none; }
+
+/* A follow Wayfinder can't show: the saved reference in the desktop's mono stack, and the reason in words. */
+.u-name { font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; font-size: 14.5px; overflow-wrap: anywhere; }
+.u-head { font-weight: 600; color: var(--text-secondary); }
+.u-ref .f-hid { color: var(--text-muted); }
+
+/* Shared from GitHub: R3 option 1's card, holding the one Unfollow for a follow it can't read. */
+.u-card h2 { display: flex; align-items: center; gap: 8px; }
+.u-card h2 .i { width: 20px; height: 20px; flex: none; color: var(--text-secondary); }
+.u-card-text { margin: 0; font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
+
+/* C: the sheet that lists followed maps not showing. */
+.u-sheet { max-height: 82%; }
+.u-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 8px 0 16px; }
+.u-sheet-head .m-sheet-title { margin: 0; }
+.u-close { width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 12px; background: none; color: var(--text-secondary); }
+.u-close .i { width: 20px; height: 20px; }
+.u-sheet-body { overflow: auto; padding: 0 16px 28px; }
+.u-sheet-body .m-section-title:first-child { margin-top: 8px; }
+
+/* Round 2 of A: #15's Follow sits centered in its row instead of at the top. */
+.f-prow > .f-act.u-center { align-self: center; }
+
+/* Confirmed #359 correction: center the reference row whose reason was removed. */
+.f-prow.u-center-row { align-items: center; }
