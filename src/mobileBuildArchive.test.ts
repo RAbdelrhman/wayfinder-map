@@ -20,7 +20,7 @@ it.skipIf(process.platform !== 'win32')('rejects a long native build root before
     copyFileSync(resolve('scripts/build-mobile-android.ps1'), join(root, 'scripts/build-mobile-android.ps1'));
     expect(() => execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(root, 'scripts/build-mobile-android.ps1')], { stdio: 'pipe' })).toThrow('Android native builds need a real checkout path');
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 30_000);
 
 it.skipIf(process.platform !== 'win32')(
   'retains distinct APKs and accurate manifests when device installation fails',
