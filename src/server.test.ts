@@ -169,6 +169,31 @@ const sampleMap: WayfinderMap = {
 };
 
 describe('repository-scoped server', () => {
+  it('resolves opaque object links with current ownership and no cached permission', async () => {
+    let login: string | null = 'octo';
+    const map = { __typename: 'Issue', id: 'map-node', number: 5, body: '', author: { login: 'octo' }, repository: { nameWithOwner: 'renamed/repo' }, labels: { nodes: [{ name: 'wayfinder:map' }], pageInfo: { hasNextPage: false } } };
+    const lookup = vi.fn(async (id: string): Promise<unknown> => id === 'repo-node'
+      ? { __typename: 'Repository', id, nameWithOwner: 'renamed/repo' }
+      : id === 'map-node' ? map
+      : id === 'ticket-node' ? { ...map, id, number: 11, labels: { nodes: [{ name: 'wayfinder:task' }], pageInfo: { hasNextPage: false } }, parent: map } : null);
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3,
+      lookupObjectNode: lookup, following: { login: async () => login, store: { follows: async () => [], set: async () => [] } } });
+    try {
+      for (const [kind, id, location] of [['repo', 'repo-node', '/repos/renamed/repo'], ['map', 'map-node', '/repos/renamed/repo/maps/5'], ['ticket', 'ticket-node', '/repos/renamed/repo/maps/5?ticket=11']]) {
+        const response = await fetch(`${running.url}/open/${kind}/${id}`, { redirect: 'manual' });
+        expect(response.status).toBe(302);
+        expect(response.headers.get('location')).toBe(location);
+        expect(response.headers.get('cache-control')).toBe('no-store');
+      }
+      login = 'someone-else';
+      expect((await fetch(`${running.url}/open/map/map-node`, { redirect: 'manual' })).status).toBe(404);
+      login = null;
+      expect((await fetch(`${running.url}/open/ticket/ticket-node`, { redirect: 'manual' })).status).toBe(404);
+      lookup.mockClear();
+      expect((await fetch(`${running.url}/open/ticket/ticket-node?command=run`)).status).toBe(400);
+      expect(lookup).not.toHaveBeenCalled();
+    } finally { await closeServer(running.server); }
+  });
   it('keeps discovery cached when the account mark is read and shares its scope across every document route', async () => {
     const homeLoader = vi.fn(async () => home);
     const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader, accountReader: async () => home.account, fetcher: async () => ({ maps: [], warnings: [] }), handOffStore: new HandOffStore({ filePath: null }) });

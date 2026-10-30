@@ -153,6 +153,7 @@ export function isOpenState(state: string): boolean {
 }
 
 interface RawIssue {
+  node_id?: string;
   number: number;
   title: string;
   html_url?: string;
@@ -477,6 +478,7 @@ export async function fetchTicketWithParent(
     .filter((blocker) => blocker.open ?? true)
     .map((blocker) => blocker.number);
   const ticket: Ticket = {
+    ...(raw.node_id ? { nodeId: raw.node_id } : {}),
     number: raw.number,
     title: raw.title,
     url: issueUrl(raw, repo),
@@ -559,6 +561,7 @@ export interface FetchResult {
 
 /** The map issue as `gh issue list` returns it. */
 interface MapIssue {
+  nodeId?: string;
   number: number;
   title: string;
   url?: string;
@@ -630,6 +633,7 @@ async function listMapIssues(repo: string, mapLabel: string): Promise<MapIssue[]
     `repos/${repo}/issues?state=all&labels=${encodeURIComponent(mapLabel)}&per_page=100`,
   ]);
   return flattenIssuePages(mapIssuePages).map((issue): MapIssue => ({
+    ...(issue.node_id ? { nodeId: issue.node_id } : {}),
     number: issue.number,
     title: issue.title,
     url: issueUrl(issue, repo),
@@ -882,7 +886,7 @@ function fallbackWarnings(fallbacks: Fallbacks): string[] {
 export async function fetchMapDetails(options: FetchOptions, maps: readonly WayfinderMap[]): Promise<FetchResult> {
   const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [], foreignTickets: new Map() };
   const loaded = await pool(maps, options.concurrency ?? 6, async (map) => ({
-    ...(await loadMap(options, { number: map.number, title: map.title, url: map.url, body: map.body, state: map.open ? 'open' : 'closed', author: map.author }, fallbacks)),
+    ...(await loadMap(options, { ...(map.nodeId ? { nodeId: map.nodeId } : {}), number: map.number, title: map.title, url: map.url, body: map.body, state: map.open ? 'open' : 'closed', author: map.author }, fallbacks)),
     settled: map.settled,
   }));
   return { maps: loaded, warnings: fallbackWarnings(fallbacks) };
@@ -891,6 +895,7 @@ export async function fetchMapDetails(options: FetchOptions, maps: readonly Wayf
 /** A settled map as the list shows it: its issue, without a single ticket read. */
 function settledMap(repo: string, mapIssue: MapIssue, settled: MapSettlement): WayfinderMap {
   return {
+    ...(mapIssue.nodeId ? { nodeId: mapIssue.nodeId } : {}),
     number: mapIssue.number,
     title: mapIssue.title,
     url: issueUrl(mapIssue, repo),
@@ -932,6 +937,7 @@ async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fal
       .map((blocker) => blocker.number);
     return {
       number: child.number,
+      ...(child.node_id ? { nodeId: child.node_id } : {}),
       title: child.title,
       url: issueUrl(child, repo),
       body: child.body ?? '',
@@ -948,6 +954,7 @@ async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fal
 
   return {
     number: mapIssue.number,
+    ...(mapIssue.nodeId ? { nodeId: mapIssue.nodeId } : {}),
     title: mapIssue.title,
     url: issueUrl(mapIssue, repo),
     body: mapIssue.body ?? '',

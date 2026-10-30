@@ -1,7 +1,7 @@
 import { normalizeShortcut, shortcutAssignments, SHORTCUTS_CHANGED, SHORTCUTS_KEY } from '../canvasShortcuts.js';
 import { mountCanvasSettings } from './canvasSettings.js';
 import { setTrustedHtml, insertTrustedHtml } from './trustedHtml.js';
-import { isPictureUrl, prototypeAssetRepo } from '../prototypes.js';
+import { isPictureUrl, prototypeAssetRepo, parsePrototypeFilePath, prototypeFileUrl } from '../prototypes.js';
 import { canvasSize, isCanvasSize } from './canvasPreference.js';
 import type { CanvasSize } from './canvasPreference.js';
 import { escapeHtml } from './markdown.js';
@@ -580,7 +580,7 @@ export function mountCanvasViewer(
   };
   const openFrame = (route: CanvasRoute): void => {
     pendingFile = route.file;
-    pendingAddress = route.page && route.variant ? { page: route.page, option: route.variant } : null;
+    pendingAddress = route.page ? { page: route.page, option: route.variant ?? '' } : null;
     if (mountedUrl !== route.url) {
       mountFrame(route, origin);
       return;
@@ -605,6 +605,11 @@ export function mountCanvasViewer(
     if (pendingAddress) {
       const address = pendingAddress;
       pendingAddress = null;
+      if (!address.option && pages.some(page => page.id === address.page)) {
+        pendingFile = null;
+        send(address.page, null);
+        return;
+      }
       const match = canvasOptionForAddressOrFile(pages, address.page, address.option, pendingFile);
       pendingFile = null;
       if (match) send(match.page, match.option);
@@ -953,7 +958,16 @@ export function mountCanvasViewer(
     const observer = new MutationObserver(() => {
       const target = [...app.querySelectorAll<HTMLElement>('[data-canvas-url]')].find((el) => el.dataset['canvasUrl'] === requested);
       if (!target) return;
-      const route = readCanvasRoute(canvasEntryRoute(target.dataset, requested), location.origin);
+      const address = new URL(location.href).searchParams;
+      const raw = canvasEntryRoute(target.dataset, requested);
+      const revision = address.get('canvasRev');
+      if (revision && /^[a-f0-9]{40}$/i.test(revision)) {
+        const source = parsePrototypeFilePath(new URL(requested, location.origin).pathname);
+        if (source) raw['url'] = prototypeFileUrl(source.repo, source.branch, source.file, revision.toLowerCase());
+      }
+      if (address.has('canvasPage')) raw['page'] = address.get('canvasPage');
+      if (address.has('canvasItem')) raw['variant'] = address.get('canvasItem');
+      const route = readCanvasRoute(raw, location.origin);
       if (!route) {
         observer.disconnect();
         return;
@@ -961,6 +975,7 @@ export function mountCanvasViewer(
       observer.disconnect();
       const base = new URL(location.href);
       base.searchParams.delete('canvas');
+      for (const key of ['canvasRev', 'canvasPage', 'canvasItem']) base.searchParams.delete(key);
       const state = record(history.state) ? { ...history.state } : {};
       delete state['wfCanvas'];
       history.replaceState(state, '', base.pathname + base.search + base.hash);

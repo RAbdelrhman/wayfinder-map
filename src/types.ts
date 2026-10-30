@@ -12,6 +12,7 @@ export type TicketType = (typeof TICKET_TYPES)[number];
 export type TicketState = 'done' | 'blocked' | 'claimed' | 'frontier';
 
 export interface Ticket {
+  nodeId?: string;
   number: number;
   title: string;
   url: string;
@@ -51,6 +52,7 @@ export interface OutsideTicket extends Ticket {
 }
 
 export interface WayfinderMap {
+  nodeId?: string;
   number: number;
   title: string;
   url: string;

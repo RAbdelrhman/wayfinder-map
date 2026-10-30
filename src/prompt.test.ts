@@ -43,6 +43,13 @@ const ticket: Ticket = {
 };
 
 describe('renderTemplate', () => {
+  it('supplies stable map/ticket IDs even when a saved template omits destinations', () => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map: { ...map, nodeId: 'map-node' }, ticket: { ...ticket, nodeId: 'ticket-node', type: 'prototype' }, template: 'Build it.' });
+    expect(prompt).toContain('[Open map in Wayfinder](wayfinder://map/map-node)');
+    expect(prompt).toContain('[Open ticket in Wayfinder](wayfinder://ticket/ticket-node)');
+    expect(prompt).toContain('Omit rev to open the newest canvas');
+    expect(prompt).toContain('exact current thread link');
+  });
   it('fills known placeholders', () => {
     expect(renderTemplate('hi {{name}}', { name: 'there' })).toBe('hi there');
   });

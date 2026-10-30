@@ -15,7 +15,7 @@ import { shouldEnableUpdates } from './updaterPolicy.js';
 import { notificationBadgePng } from './notificationBadge.js';
 import { mapPath } from '../repoRoutes.js';
 import type { DesktopNotification } from '../notifications.js';
-import { nativeThreadLink, parseMapAppLink } from '../appLinks.js';
+import { nativeThreadLink, wayfinderOpenPath } from '../appLinks.js';
 
 const TRAY_ICON = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFSSURBVDhPjVOhbsMwEA0sLByyBwf3CYWDlUrGWjhNm29wpNLYQD9gcKrUfygKCRkcqTQYKaSJXTUqqKYq4E3npGnsNOpOeoriu/fe2T4HQUdIyvuSzMDiMbvy850hKZsIZWJJBk0IMmupsle/vg52FGSWPtGHIPMlaX3t84P/kGsRZb7lOO7VZKnSB7/oEgRt3k/uSudlYou5BpJwa4tGYQHoPUacWxwAHDB1hPJ+wPtpKk9XAFa7WgwoMJ9VYnbd6WQQSEqHziI7setsjwQFEg1Ei1KYv66AfrHX5ixWxHl4sI7snIR7RFUnTi1fq6Ts1lU9tl452r3jdBYO0uHxCn+bCXsOteMOEf+29496QgVtPlrJC+C5Oc3BOO4J0j9+URfsWPvvg8/CJs4QHDLPzHN255CPYd+DMp8+qeG8bDmfi3K47Hy8WSh9L5/MjV/H8QcYxvxKVQ6UNgAAAABJRU5ErkJggg==';
 
@@ -32,10 +32,10 @@ let mapNavigation = Promise.resolve();
 let mapLinkVersion = 0;
 
 function receiveMapLink(value: string): void {
-  const target = parseMapAppLink(value);
+  const target = wayfinderOpenPath(value);
   if (target === null) return;
   mapLinkVersion++;
-  pendingMapUrl = mapPath(target.repo, target.mapNumber);
+  pendingMapUrl = target;
   if (startupPromise === null) openPendingMap();
 }
 
@@ -145,7 +145,7 @@ function installNavigationBoundary(window: BrowserWindow): void {
       void startRuntime();
       return;
     }
-    if (parseMapAppLink(target) !== null) {
+    if (wayfinderOpenPath(target) !== null) {
       event.preventDefault();
       receiveMapLink(target);
       return;
@@ -156,7 +156,7 @@ function installNavigationBoundary(window: BrowserWindow): void {
     if (!isInternalUrl(target, runtimeOrigin) && isSafeExternalUrl(target)) void shell.openExternal(nativeThreadLink(target) ?? target);
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (parseMapAppLink(url) !== null) receiveMapLink(url);
+    if (wayfinderOpenPath(url) !== null) receiveMapLink(url);
     else if (!isInternalUrl(url, runtimeOrigin) && isSafeExternalUrl(url)) void shell.openExternal(nativeThreadLink(url) ?? url);
     return { action: 'deny' };
   });

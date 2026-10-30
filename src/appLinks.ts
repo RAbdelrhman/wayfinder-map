@@ -1,3 +1,6 @@
+import { objectWebPath, parseObjectAppLink } from './objectLinks.js';
+import { mapPath } from './repoRoutes.js';
+
 export interface MapLink {
   repo: string;
   mapNumber: number;
@@ -52,11 +55,19 @@ export function isT3ThreadLink(value: string): boolean {
   return nativeThreadLink(value) !== null;
 }
 
+/** The OS handler only navigates to known local app routes. */
+export function wayfinderOpenPath(value: string): string | null {
+  const object = parseObjectAppLink(value);
+  if (object) return objectWebPath(object);
+  const map = parseMapAppLink(value);
+  return map ? mapPath(map.repo, map.mapNumber) : null;
+}
+
 /** Allow the two concrete app routes alongside ordinary web links. */
 export function isOpenableLink(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' || url.protocol === 'http:' || parseMapAppLink(value) !== null || isT3ThreadLink(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' || wayfinderOpenPath(value) !== null || isT3ThreadLink(value);
   } catch {
     return false;
   }

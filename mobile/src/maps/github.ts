@@ -11,6 +11,8 @@ import {
 } from '../shared';
 import type { MapSections, Ticket } from '../shared';
 import type { UnavailableFollow } from './unreadableFollows';
+import { OBJECT_NODE_QUERY, resolveObjectDestination } from '../../../src/objectLookup';
+import type { ObjectLink } from '../../../src/objectLinks';
 
 export type MapRef = { repo: string; number: number };
 export type MapViewer = { login: string; follows: readonly MapRef[] };
@@ -213,12 +215,20 @@ async function pool<T, U>(
   return result;
 }
 
-/** REST-only adapter: phone reads GitHub directly and never imports the desktop's Node/gh client. */
+/** Phone reads GitHub directly and never imports the desktop's Node/gh client. */
 export class MobileGithub {
   constructor(
     private readonly token: string,
     private readonly fetcher: typeof fetch = fetch,
   ) {}
+
+  async destination(link: ObjectLink, viewer: MapViewer, signal?: AbortSignal) {
+    return resolveObjectDestination(link, async (id) => {
+      const result = object(await this.get('/graphql', signal, { query: OBJECT_NODE_QUERY, variables: { id } }));
+      if (Array.isArray(result.errors) && result.errors.length) throw new Error('GitHub could not resolve this destination.');
+      return object(result.data).node;
+    }, async (map) => mayViewMap(map, viewer));
+  }
 
   async prototypeRefs(repo: string, ticket: number, signal?: AbortSignal): Promise<{ branch: string; sha: string }[]> {
     if (!validRef({ repo, number: ticket })) throw new Error('Invalid prototype ticket.');
@@ -253,7 +263,7 @@ export class MobileGithub {
     return raw.content.replace(/\s/g, '');
   }
 
-  private async get(path: string, signal?: AbortSignal): Promise<unknown> {
+  private async get(path: string, signal?: AbortSignal, body?: unknown): Promise<unknown> {
     const controller = new AbortController();
     const abort = () => controller.abort();
     signal?.addEventListener('abort', abort, { once: true });
@@ -261,7 +271,9 @@ export class MobileGithub {
     const timer = setTimeout(abort, 20_000);
     try {
       const response = await this.fetcher(`https://api.github.com${path}`, {
+        ...(body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }),
         headers: {
+          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
           Authorization: `Bearer ${this.token}`,
           Accept: 'application/vnd.github+json',
           'X-GitHub-Api-Version': '2026-03-10',
