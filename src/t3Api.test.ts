@@ -230,6 +230,21 @@ describe('T3 protocol compatibility', () => {
 });
 
 describe('T3 shell stream', () => {
+  it.each([1, 2])('reads complete phone-watch history using protocol %i and an encoded thread ID', async version => {
+    const api = new T3Api('http://127.0.0.1:3773', { exe: 't3', script: 'server.mjs' });
+    vi.spyOn(api, 'environment').mockResolvedValue({ orchestrationProtocolVersion: version });
+    vi.spyOn(api as unknown as { issue: () => Promise<{ token: string }> }, 'issue').mockResolvedValue({ token: 'test-secret' });
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ thread: { id: 'thread/1', messages: ['history'] } }), { headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetcher);
+    try {
+      expect(await api.thread('thread/1')).toEqual({ thread: { id: 'thread/1', messages: ['history'] } });
+      const [url, options] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+      expect(url.pathname).toBe('/api/orchestration/threads/thread%2F1');
+      const headers = options.headers as Record<string, string>;
+      expect(headers['authorization']).toBe('Bearer test-secret');
+      expect(headers['x-t3-orchestration-protocol']).toBe(version === 2 ? '2' : undefined);
+    } finally { vi.unstubAllGlobals(); }
+  });
   it.each([1, 2])('resumes on protocol %i, forwards chunks, and reports a dropped connection', async (version) => {
     const sockets: Array<{
       url: URL;

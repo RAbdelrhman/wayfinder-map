@@ -116,6 +116,7 @@ export async function startWayfinder(
   let running: RunningServer;
   try {
     running = await dependencies.startServer({
+      enablePhoneAccess: true,
       config,
       repo,
       template,

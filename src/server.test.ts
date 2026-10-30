@@ -18,6 +18,7 @@ import type { WorkspaceDependencies } from './workspaces.js';
 import { RepositoryCloneError } from './clone.js';
 import type { MapSnapshot, Ticket, WayfinderMap } from './types.js';
 import { HandOffStore } from './handOffTracking.js';
+import { PhonePairingStore } from './phonePairing.js';
 import { MapWatcher } from './mapWatcher.js';
 import type { MapRead } from './mapWatcher.js';
 import { memoryNotificationSettings } from './notifications.js';
@@ -169,6 +170,81 @@ const sampleMap: WayfinderMap = {
 };
 
 describe('repository-scoped server', () => {
+  it('pairs a remote client, starts through the real hand-off route once, watches its exact session and revokes', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wf-phone-server-'));
+    const phonePairingStore = new PhonePairingStore(join(directory, 'phones.json'));
+    let state: Ticket['state'] = 'frontier';
+    let offered = true;
+    const started = vi.fn(async () => ({ threadId: 'phone-thread', prompt: 'prompt' }));
+    const read = vi.fn(async () => ({ thread: { id: 'phone-thread', messages: [{ text: 'Completed' }], status: 'completed' } }));
+    const copy = vi.fn(async () => undefined);
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null,
+      phonePairingStore, phoneConnectionOptions: { address: async () => '127.0.0.1', port: 0 },
+      fetcher: async () => ({ maps: [{ ...sampleMap, tickets: [{ ...sampleTicket, state }] }], warnings: [] }),
+      workspaces: new WorkspaceResolver({ knownProjects: async () => ['/fixture'], verify: async path => path, readRemembered: async () => ({}), writeRemembered: async () => undefined }),
+      t3: { ...t3, models: async () => ({ providers: offered ? [{ instanceId: 'codex', name: 'Codex', ready: true, models: [{ slug: 'exact', name: 'Exact', isDefault: true, effort: null }] }] : [] }),
+        steps: () => ({ startThread: started, openApp: copy, copy }), readPhoneThread: read },
+    });
+    try {
+      const codeResponse = await fetch(running.url + '/api/phones/code', { method: 'POST' });
+      expect(codeResponse.status).toBe(200);
+      const code = await codeResponse.json() as { code: string; address: string; qr: string };
+      expect(code.qr).toMatch(/^data:image\/svg\+xml;base64,/);
+      const paired = await (await fetch(code.address + '/v1/pair', { method: 'POST', body: JSON.stringify({ code: code.code, name: 'Phone', model: 'Android' }) })).json() as { token: string; phone: { id: string } };
+      const headers = { authorization: `Bearer ${paired.token}` };
+      const input = { requestId: 'stable', repo: 'octo/one', map: 5, ticket: 11, model: { instanceId: 'codex', model: 'exact' } };
+      const start = () => fetch(code.address + '/v1/start', { method: 'POST', headers, body: JSON.stringify(input) });
+      const result = await start();
+      expect(result.status).toBe(200);
+      const first = await result.json();
+      expect(first).toMatchObject({ threadId: 'phone-thread' });
+      offered = false; // A lost response is still recoverable after the catalog changes.
+      expect(await (await start()).json()).toEqual(first);
+      offered = true;
+      expect(started).toHaveBeenCalledTimes(1);
+      expect(copy).not.toHaveBeenCalled();
+      expect(await (await fetch(code.address + '/v1/watch?repo=octo/one&map=5&ticket=11', { headers })).json()).toMatchObject({ handOff: { threadId: 'phone-thread', ticketNumber: 11, mapNumber: 5 }, session: { thread: { status: 'completed' } } });
+      expect(read).toHaveBeenCalledWith('phone-thread', await t3.detect!());
+      expect((await fetch(code.address + '/v1/watch?repo=octo/one&map=6&ticket=11', { headers })).status).toBe(503);
+      expect(read).toHaveBeenCalledTimes(1);
+      state = 'blocked';
+      expect((await fetch(code.address + '/v1/start', { method: 'POST', headers, body: JSON.stringify({ ...input, requestId: 'blocked' }) })).status).toBe(409);
+      expect(started).toHaveBeenCalledTimes(1);
+      await fetch(running.url + '/api/phones/revoke', { method: 'POST', body: JSON.stringify({ id: paired.phone.id }) });
+      expect((await start()).status).toBe(401);
+    } finally { await closeServer(running.server); await rm(directory, { recursive: true, force: true, maxRetries: 3 }); }
+  }, 30_000);
+  it.each(['missing clone', 'failed thread', 'archived map', 'read failure'] as const)('rejects a phone start with %s without reporting success', async reason => {
+    const directory = await mkdtemp(join(tmpdir(), 'wf-phone-failure-'));
+    const pairing = new PhonePairingStore(join(directory, 'phones.json'));
+    let failRead = reason === 'read failure';
+    const started = vi.fn(async (): Promise<never> => { throw new Error('No thread confirmed'); });
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null,
+      phonePairingStore: pairing, phoneConnectionOptions: { address: async () => '127.0.0.1', port: 0 },
+      fetcher: async () => { if (failRead) throw new Error('GitHub unavailable'); return { maps: [{ ...sampleMap, settled: reason === 'archived map' ? { reason: 'manual', since: new Date().toISOString() } : null }], warnings: [] }; },
+      workspaces: new WorkspaceResolver({ knownProjects: async () => reason === 'missing clone' ? [] : ['/fixture'], verify: async path => path, readRemembered: async () => ({}), writeRemembered: async () => undefined }),
+      t3: { ...t3, models: async () => ({ providers: [{ instanceId: 'codex', name: 'Codex', ready: true, models: [{ slug: 'exact', name: 'Exact', isDefault: true, effort: null }] }] }), steps: () => ({ startThread: started, openApp: async () => { throw new Error('No fallback'); }, copy: async () => { throw new Error('No fallback'); } }) },
+    });
+    try {
+      const code = await (await fetch(running.url + '/api/phones/code', { method: 'POST' })).json() as { code: string; address: string };
+      const { token } = (await pairing.pair(code.code, 'Phone', 'Android'))!;
+      const headers = { authorization: `Bearer ${token}` };
+      const input = { requestId: 'stable', repo: 'octo/one', map: 5, ticket: 11, model: { instanceId: 'codex', model: 'exact' } };
+      const start = () => fetch(code.address + '/v1/start', { method: 'POST', headers, body: JSON.stringify(input) });
+      const response = await start();
+      expect(response.status).toBe(reason === 'missing clone' || reason === 'archived map' ? 409 : 503);
+      if (reason === 'read failure') {
+        expect(await response.json()).toMatchObject({ code: 'start_not_dispatched' });
+        failRead = false;
+        // The retry gets as far as dispatch; it is not stuck on the earlier read failure.
+        expect((await start()).status).toBe(503);
+        expect(started).toHaveBeenCalledTimes(1);
+      } else expect(started).toHaveBeenCalledTimes(reason === 'failed thread' ? 1 : 0);
+      const status = await (await fetch(running.url + '/api/phones')).json();
+      expect(status).toMatchObject({ phones: [{ name: 'Phone' }], code: { usedBy: expect.any(String) } });
+      expect((await fetch(running.url + '/api/phones/code', { method: 'DELETE' })).status).toBe(200);
+    } finally { await closeServer(running.server); await rm(directory, { recursive: true, force: true, maxRetries: 3 }); }
+  }, 30_000);
   it('opens a pinned board removed from latest without reading current prototypes or relying on a current tile', async () => {
     let login = 'octo';
     const revision = 'a'.repeat(40);

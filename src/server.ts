@@ -1,4 +1,8 @@
 import { createServer } from 'node:http';
+import { PhonePairingStore } from './phonePairing.js';
+import { PhoneConnection } from './phoneConnection.js';
+import { phoneStartFingerprint } from './phoneRemote.js';
+import type { PhoneConnectionOptions } from './phoneConnection.js';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -104,7 +108,7 @@ export const PAGE_CSP =
 
 export type ServerT3 =
   Pick<T3HandOff, 'models' | 'steps' | 'projects'> &
-  Partial<Pick<T3HandOff, 'focus' | 'sendToThread'>> &
+  Partial<Pick<T3HandOff, 'focus' | 'sendToThread' | 'readPhoneThread'>> &
   Partial<Pick<T3HandOff, 'readHandOffSnapshot' | 'subscribeShell'>> & {
     close?: () => void;
     /** Finds the running T3 Code. Tests pass a fixed one so they never read this machine's T3 Code. */
@@ -112,6 +116,9 @@ export type ServerT3 =
   };
 
 export interface ServeOptions {
+  phonePairingStore?: PhonePairingStore;
+  phoneConnectionOptions?: PhoneConnectionOptions;
+  enablePhoneAccess?: boolean;
   config: Config;
   repo: string | null;
   template: string;
@@ -273,6 +280,9 @@ function extensionOf(file: string): string {
 }
 
 export async function startServer({
+  phonePairingStore,
+  phoneConnectionOptions,
+  enablePhoneAccess = false,
   config,
   repo,
   template,
@@ -792,6 +802,42 @@ export async function startServer({
   await autoMaps.init();
 
   let port = config.port;
+  const phonePairing = phonePairingStore ?? new PhonePairingStore(join(homedir(), '.wayfinder-map', 'phones-v1.json'));
+  const phones = new PhoneConnection({
+    pairing: phonePairing,
+    catalog: async () => t3.models(await detect()),
+    start: async (phoneId, input) => {
+      const fingerprint = phoneStartFingerprint(input);
+      const previous = await phonePairing.reserveStart(phoneId, input.requestId, fingerprint);
+      if (previous) return previous;
+      let target: ReturnType<typeof find>;
+      let workspace: string | null;
+      try {
+        const snapshot = await repositories.snapshot(input.repo, true, [input.map]);
+        target = find(snapshot, input.map, input.ticket);
+        workspace = await clones.resolve(input.repo);
+      } catch {
+        await phonePairing.abandonStart(phoneId, input.requestId);
+        return { status: 503, body: { error: 'Desktop could not check this start. Retry the same request.', code: 'start_not_dispatched' } };
+      }
+      let reply: { status: number; body: Record<string, unknown> } = !workspace
+        ? { status: 409, body: { error: 'This repository has no verified local clone.', code: 'workspace_unavailable' } }
+        : target && (target.ticket.state !== 'frontier' || target.map.settled !== null)
+        ? { status: 409, body: { error: 'Ticket is no longer ready to start.' } }
+        : target
+        ? await startTicketHandOff(input.repo, target.map, target.ticket, { model: input.model, tier: null, auto: null, threadOnly: true })
+        : { status: 404, body: { error: 'Ticket does not belong to this map.' } };
+      if (reply.status === 200 && reply.body['rung'] !== 'thread') reply = { status: 503, body: { error: 'T3 Code did not confirm a thread start.', code: 'start_unknown' } };
+      await phonePairing.completeStart(phoneId, input.requestId, reply);
+      return reply;
+    },
+    watch: async (repo, map, ticket) => {
+      const target = await handOffTracker.ticketThread(repo, ticket);
+      if (!target || target.mapNumber !== map || !target.threadId || !t3.readPhoneThread) throw new Error('No session available for this ticket');
+      return { handOff: { id: target.id, repo: target.repo, mapNumber: target.mapNumber, ticketNumber: target.ticketNumber, threadId: target.threadId, status: target.status, updatedAt: target.updatedAt }, session: await t3.readPhoneThread(target.threadId, await detect()) };
+    },
+  }, phoneConnectionOptions);
+  if (enablePhoneAccess) phones.start();
   let url = `http://${config.host}:${String(port)}`;
 
   const server = createServer((request, response) => {
@@ -800,6 +846,7 @@ export async function startServer({
     });
   });
   server.on('close', () => {
+    phones.close();
     handOffTracker.close();
     autoMaps.close();
     mapWatcher.close();
@@ -867,6 +914,22 @@ export async function startServer({
       if (!originAllowed(request, port)) {
         json(response, 403, { error: 'Cross-origin requests are not accepted.' });
         return;
+      }
+
+      if (path === '/api/phones' && request.method === 'GET') {
+        json(response, 200, { connection: await phones.check(requestUrl.searchParams.has('refresh')), phones: await phonePairing.list(), code: await phonePairing.codeState() });
+        return;
+      }
+      if (path === '/api/phones/code' && request.method === 'POST') {
+        json(response, 200, await phones.code()); return;
+      }
+      if (path === '/api/phones/code' && request.method === 'DELETE') {
+        await phonePairing.cancelCode(); json(response, 200, { cancelled: true }); return;
+      }
+      if (path === '/api/phones/revoke' && request.method === 'POST') {
+        const input = await readBody(request) as { id?: unknown };
+        if (typeof input.id !== 'string') { json(response, 400, { error: 'Choose a phone.' }); return; }
+        await phonePairing.revoke(input.id); json(response, 200, { removed: true }); return;
       }
 
       if (path === '/api/canvas-destination' && request.method === 'GET') {

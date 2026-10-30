@@ -1,0 +1,17 @@
+# Paired desktop contract
+
+Implementation for #230 on map #217. #231 consumes the pairing/catalog/start contract; #232 consumes watch. Pairing is immediate, with no second desktop approval. Codes last five minutes and are invalidated by use, cancellation or replacement, as Ramon confirmed on #230.
+
+The desktop keeps its browser API on loopback. A separate listener binds only the current Tailscale IPv4 address on port 4479. Tailscale encrypts transport. It exposes none of the desktop browser routes. Both devices must be online in the same tailnet; Tailscale membership alone does not authorize requests. Settings → Phones checks Tailscale and shows the address, QR and typeable code. Pairing credentials are never T3 credentials.
+
+The QR payload is JSON `{version:1,address:"http://100.x.x.x:4479",code:"XXXX-XXXX"}`. Pair with `POST /v1/pair` and JSON `{code,name,model}`. `name` and `model` are phone-supplied display strings, each at most 100 characters. The response is `{phone,token}`. Save the token in the phone's secure storage. An invalid, used or expired code returns 401. Pairing attempts share a ten-per-minute limit on this listener. Every other endpoint requires `Authorization: Bearer TOKEN`; browser origins and cookies grant no access.
+
+`DELETE /v1/pair` revokes the caller. Desktop removal also revokes that phone. The phone must discard its pending starts and push registration on unpair/replacement or a confirmed 401. An unreachable desktop is not a revocation. The store removes the entire credential record, including any associated push token. Push delivery and registration belong to #234.
+
+`GET /v1/models` returns the shared `ModelCatalog`: provider instance IDs, readiness, exact model slugs and effort descriptors with allowed option IDs. `POST /v1/start` accepts `{requestId,repo,map,ticket,model:{instanceId,model,effort:{id,value}}}`. Map and ticket are positive integers. Persist the request ID and exact choice with a pending start. Supply an exact effort whenever the model has an effort descriptor. The desktop rejects unavailable providers/models/efforts with 409 and `code: "model_unavailable"`; it never substitutes a model. It rechecks native map membership and current ticket state/dependencies before dispatching through the existing hand-off path. Remote starts never fall back to clipboard or an empty app window.
+
+The start response retains the existing hand-off result, including `threadId` and `handOffId`. Reservations are persisted before dispatch, keyed by phone and request ID. Reusing an ID with different contents returns 409. A repeat of a completed request returns its recorded result. A crash or lost result after reservation returns 409 `start_unknown`, preventing an automatic duplicate; refresh the ticket's session before deciding what to do next.
+
+`GET /v1/watch?repo=OWNER/REPO&map=217&ticket=230` returns `{handOff,session}` for the newest tracked thread belonging to that exact repository/map/ticket. `session` is T3's complete thread snapshot, including history, tool activity and current status. Poll to observe changes and fetch again after reconnect to recover history. Arbitrary thread IDs, terminal operations and replies are not accepted. #367 owns confirmed typed replies separately. The phone API returns 503 when the desktop cannot retrieve a session, preserving uncertainty rather than reporting completion.
+
+Local test-client proof does not establish installed phone UI, actual Tailscale connectivity or live-provider dispatch. Those evidence layers must be reported separately.

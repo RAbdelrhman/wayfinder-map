@@ -365,6 +365,11 @@ export class T3HandOff {
     return api.subscribeShell(afterSequence, onValue, onClose);
   }
 
+  async readPhoneThread(threadId: string, runtime: T3Runtime): Promise<unknown> {
+    const { api } = await this.connect(runtime);
+    return api.thread(threadId);
+  }
+
   steps(runtime: T3Runtime): HandOffSteps {
     return {
       startThread: async (input) => {

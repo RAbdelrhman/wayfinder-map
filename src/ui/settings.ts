@@ -19,6 +19,8 @@ import { TOUR_COPY } from './tourCopy.js';
 import { KEYBOARD, mountShortcutSettings, shortcutSectionHtml } from './canvasShortcutSettings.js';
 import type { ShortcutView } from './canvasShortcutSettings.js';
 import { CHECK, icon } from './icons.js';
+import { mountPhoneSettings, PHONE, phoneNavCountHtml } from './phones.js';
+import type { PhonesState } from './phones.js';
 
 /* Settings (#40, #104): the GitHub account and the preferences that belong to no one page. */
 
@@ -49,10 +51,11 @@ export interface SettingsView {
 }
 
 const THEME_LABEL: Record<Theme, string> = { light: 'Light', dark: 'Dark' };
-export const SETTINGS_CATEGORIES = ['appearance', 'shortcuts', 'tasks', 'notifications', 'progress', 'account', 'help'] as const;
+export const SETTINGS_CATEGORIES = ['appearance', 'shortcuts', 'tasks', 'notifications', 'phones', 'progress', 'account', 'help'] as const;
 export type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number];
-const CATEGORY_LABEL: Record<SettingsCategory, string> = { appearance: 'Appearance', shortcuts: 'Keyboard shortcuts', tasks: 'Tasks & models', notifications: 'Notifications', progress: 'Progress', account: 'Account', help: TOUR_COPY.settings.category };
+const CATEGORY_LABEL: Record<SettingsCategory, string> = { appearance: 'Appearance', shortcuts: 'Keyboard shortcuts', tasks: 'Tasks & models', notifications: 'Notifications', phones: 'Phones', progress: 'Progress', account: 'Account', help: TOUR_COPY.settings.category };
 const CATEGORY_HINT: Record<SettingsCategory, string> = {
+  phones: '',
   appearance: 'Choose how Wayfinder looks.',
   shortcuts: 'Keys for the canvas viewer’s tools. Click one, then press a letter, alone or with Shift, Alt or Ctrl.',
   tasks: 'Set the defaults for new tickets and maps. You can override them on a ticket.',
@@ -61,7 +64,7 @@ const CATEGORY_HINT: Record<SettingsCategory, string> = {
   account: 'Manage the GitHub account Wayfinder uses.',
   help: TOUR_COPY.settings.hint,
 };
-const CATEGORY_ICON: Record<Exclude<SettingsCategory, 'shortcuts'>, string> = { appearance: 'moon', tasks: 'sliders', notifications: 'bell', progress: 'map', account: 'person', help: 'help' };
+const CATEGORY_ICON: Record<Exclude<SettingsCategory, 'shortcuts'>, string> = { appearance: 'moon', tasks: 'sliders', notifications: 'bell', phones: 'desktop', progress: 'map', account: 'person', help: 'help' };
 
 export function settingsCategory(value: string | null): SettingsCategory {
   return SETTINGS_CATEGORIES.find((category) => category === value) ?? 'appearance';
@@ -72,10 +75,10 @@ export function settingsHref(category: SettingsCategory, canvas = false): string
   return `/settings?section=${category}${canvas ? '&canvas=1' : ''}`;
 }
 
-export function settingsNavigationHtml(category: SettingsCategory, canvas = false): string {
+export function settingsNavigationHtml(category: SettingsCategory, canvas = false, phoneCount = 0): string {
   return SETTINGS_CATEGORIES.map((candidate) => {
-    const glyph = candidate === 'shortcuts' ? `<span aria-hidden="true">${icon(KEYBOARD)}</span>` : `<span data-icon="${CATEGORY_ICON[candidate]}" aria-hidden="true"></span>`;
-    return `<a href="${settingsHref(candidate, canvas)}" data-settings-category="${candidate}"${candidate === category ? ' aria-current="location"' : ''}>${glyph}${CATEGORY_LABEL[candidate]}</a>`;
+    const glyph = candidate === 'phones' ? `<span aria-hidden="true">${icon(PHONE)}</span>` : candidate === 'shortcuts' ? `<span aria-hidden="true">${icon(KEYBOARD)}</span>` : `<span data-icon="${CATEGORY_ICON[candidate]}" aria-hidden="true"></span>`;
+    return `<a href="${settingsHref(candidate, canvas)}" data-settings-category="${candidate}"${candidate === category ? ' aria-current="location"' : ''}>${glyph}${CATEGORY_LABEL[candidate]}${candidate === 'phones' ? phoneNavCountHtml(phoneCount) : ''}</a>`;
   }).join('');
 }
 export const NOTIFICATION_SETTINGS_EVENT = 'wayfinder:notification-settings';
@@ -194,6 +197,7 @@ export function settingsBodyHtml(view: SettingsView, category?: SettingsCategory
     GOALS.map((goal) => seg('data-settings-goal', String(goal), String(goal), goal === view.progress?.goal, view.progress === null)).join(''),
   );
   const contents: Record<SettingsCategory, string> = {
+    phones: '<div data-phone-settings></div>',
     account: `<section class="settings-section" aria-labelledby="settings-account-title">
       <h3 id="settings-account-title">GitHub account</h3>
       ${accountHtml(view.account, view.busy)}
@@ -285,6 +289,14 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
   };
   let category = settingsCategory(new URLSearchParams(location.search).get('section'));
   let calibrationOpen = false;
+  let phoneCount = 0;
+  const updatePhoneCount = (count: number): void => {
+    phoneCount = count;
+    const link = nav.querySelector('[data-settings-category="phones"]');
+    if (!link) return;
+    link.querySelector('[data-phone-count]')?.remove();
+    insertTrustedHtml(link, 'beforeend', phoneNavCountHtml(count));
+  };
   let view: SettingsView = { account: null, theme: currentTheme(), tier: defaultTier(), rater: autoRater(), calibration: calibrationMode(), models: currentCatalog(), tierModels: tierDefaults(), cap: handOffCap(), progress: null, stalls: null, notifications: null, busy: null };
   view.progress = routeData().peek<ProgressState>('/api/progress')?.settings ?? null;
   view.stalls = routeData().peek<StallSettings>('/api/stall-settings');
@@ -295,14 +307,16 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
     calibrationOpen = body.querySelector<HTMLDetailsElement>('#settings-calibration')?.open ?? calibrationOpen;
     // The HTML builders escape account/catalog strings; hostile-field DOM tests cover this boundary.
     // nosemgrep: javascript.browser.security.insecure-document-method, javascript.browser.security.insecure-innerhtml
-    setTrustedHtml(body, settingsBodyHtml({ ...view, shortcuts: shortcuts.view() }, category));
+    const phoneRoot = body.querySelector<HTMLElement>('[data-phone-settings]');
+    if (category !== 'phones' || !phoneRoot) setTrustedHtml(body, settingsBodyHtml({ ...view, shortcuts: shortcuts.view() }, category));
+    if (category === 'phones' && !phoneRoot) mountPhoneSettings(body.querySelector<HTMLElement>('[data-phone-settings]')!, updatePhoneCount, toast);
     if (shortcuts.arriving()) body.querySelector('.shortcut-section')?.classList.add('is-arriving');
     const saved = category === 'shortcuts' ? shortcuts.view().saved : null;
     saveNote.classList.toggle('is-saved', saved !== null);
     setTrustedHtml(saveNote, `${icon(CHECK)}${saved === null ? 'Changes save automatically' : `Saved · ${escapeHtml(saved.text)}`}`);
     const details = body.querySelector<HTMLDetailsElement>('#settings-calibration');
     if (details !== null) details.open = calibrationOpen;
-    root.querySelector<HTMLElement>('#settings-category-title')!.textContent = CATEGORY_LABEL[category];
+    root.querySelector<HTMLElement>('#settings-category-title')!.textContent = category === 'phones' ? '' : CATEGORY_LABEL[category];
     root.querySelector<HTMLElement>('#settings-category-hint')!.textContent = CATEGORY_HINT[category];
     paintIcons(body);
     if (focusKey !== null) body.querySelector<HTMLElement>(focusKey)?.focus();
@@ -320,6 +334,7 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
       readRouteJson<ProgressState>('/api/progress', true).then((progress) => { if (!current() || before.progress !== view.progress) return; view = { ...view, progress: progress.login === null ? null : progress.settings }; draw(); }),
       readRouteJson<StallSettings>('/api/stall-settings', true).then((stalls) => { if (!current() || before.stalls !== view.stalls) return; view = { ...view, stalls }; draw(); }),
       readRouteJson<NotificationSettings>('/api/notification-settings', true).then((notifications) => { if (!current() || before.notifications !== view.notifications) return; view = { ...view, notifications }; draw(); }),
+      readRouteJson<PhonesState>('/api/phones', true).then(phones => { if (current()) updatePhoneCount(phones.phones.length); }),
     ]);
     if (!current()) return;
     setTrustedHtml(loadStatus, results.some((result) => result.status === 'rejected') ? '<p class="hint failure">Some settings could not be loaded. <button type="button" class="linkish" data-settings-retry>Try again</button></p>' : '');
@@ -353,7 +368,7 @@ export function mountSettingsPage(root: HTMLElement, toast: (message: string, ms
     if (category !== 'shortcuts') shortcuts.stop();
     // IDs, labels and icons come from the fixed category allowlist; query text is never interpolated.
     // nosemgrep: javascript.browser.security.insecure-document-method, javascript.browser.security.insecure-innerhtml
-    setTrustedHtml(nav, settingsNavigationHtml(category, canvas));
+    setTrustedHtml(nav, settingsNavigationHtml(category, canvas, phoneCount));
     paintIcons(nav);
     draw();
   };
