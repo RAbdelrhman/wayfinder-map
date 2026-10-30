@@ -1,4 +1,5 @@
 import { objectWebPath, parseObjectAppLink } from './objectLinks.js';
+import { parseHttpsObjectLink } from './httpsLinks.js';
 import { mapPath } from './repoRoutes.js';
 
 export interface MapLink {
@@ -57,7 +58,7 @@ export function isT3ThreadLink(value: string): boolean {
 
 /** The OS handler only navigates to known local app routes. */
 export function wayfinderOpenPath(value: string): string | null {
-  const object = parseObjectAppLink(value);
+  const object = parseObjectAppLink(value) ?? parseHttpsObjectLink(value);
   if (object) return objectWebPath(object);
   const map = parseMapAppLink(value);
   return map ? mapPath(map.repo, map.mapNumber) : null;

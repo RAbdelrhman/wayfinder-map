@@ -2,17 +2,29 @@
   "expo": {
     "name": "Wayfinder",
     "slug": "wayfinder",
-    "version": "1.3.3",
+    "version": "1.4.0",
     "scheme": "wayfinder",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.abdelrhr.wayfinder"
+      "bundleIdentifier": "com.abdelrhr.wayfinder",
+      "associatedDomains": ["applinks:wayfinder-links-pearl.vercel.app"]
     },
     "android": {
-      "versionCode": 11,
+      "versionCode": 12,
+      "intentFilters": [{
+        "action": "VIEW",
+        "autoVerify": true,
+        "category": ["BROWSABLE", "DEFAULT"],
+        "data": [
+          { "scheme": "https", "host": "wayfinder-links-pearl.vercel.app", "pathPrefix": "/open/repo/" },
+          { "scheme": "https", "host": "wayfinder-links-pearl.vercel.app", "pathPrefix": "/open/map/" },
+          { "scheme": "https", "host": "wayfinder-links-pearl.vercel.app", "pathPrefix": "/open/ticket/" },
+          { "scheme": "https", "host": "wayfinder-links-pearl.vercel.app", "pathPrefix": "/open/prototype/" }
+        ]
+      }],
       "adaptiveIcon": {
         "backgroundColor": "#0d1117",
         "foregroundImage": "./assets/android-icon-foreground.png",
