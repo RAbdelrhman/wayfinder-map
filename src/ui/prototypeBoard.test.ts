@@ -538,3 +538,16 @@ describe('recorded approval wording and phone support', () => {
     expect(html).toContain('The board does not guess a pick');
   });
 });
+
+
+it('names the latest text round and counts only its own page in the undecided lead', () => {
+  const card = prototype(366, { canvasPages: [
+    { id: 'overview', title: 'Overview', round: null, items: [{ id: 'A', name: 'Overview', src: 'a.html', disposition: null, feedback: null, basedOn: [] }] },
+    { id: 'r1', title: 'R1 \u00b7 Reply bar', round: null, items: [] },
+    { id: 'r2', title: 'R2 \u00b7 Reply page', round: null, items: [{ id: 'B', name: 'Reply', src: 'b.html', disposition: null, feedback: null, basedOn: [] }] },
+  ] });
+  const html = prototypeBoardHtml('octo/wayfinder', map([ticket(366, 'Reply', 'prototype', 'claimed')]), [card]);
+  expect(html).toContain('<p class="gist">R2 \u00b7 Reply page \u00b7 1 option, none chosen yet.</p>');
+  const numbered = { ...card, canvasPages: card.canvasPages!.map((page, index) => ({ ...page, round: index + 1 })) };
+  expect(prototypeBoardHtml('octo/wayfinder', map([ticket(366, 'Reply', 'prototype', 'claimed')]), [numbered])).toContain('<p class="gist">Round 3 \u00b7 1 option, none chosen yet.</p>');
+});

@@ -320,11 +320,14 @@ function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string
       ? '<span class="chip" style="--accent: var(--state-blocked)"><span data-icon="refresh" aria-hidden="true"></span>Being built</span>'
       : `<span class="chip" style="--accent: var(--state-done)"><span data-icon="check" aria-hidden="true"></span>${selected.length === 0 ? 'Decided' : `Picked ${escapeHtml(selected.join(' + '))}`}</span>`;
 
-  const latestPage = [...(prototype.canvasPages ?? [])].sort((a, b) => (typeof b.round === 'number' ? b.round : 0) - (typeof a.round === 'number' ? a.round : 0))[0];
-  const latestItems = (prototype.canvasPages ?? []).filter((page) => page.round === latestPage?.round).reduce((count, page) => count + page.items.length, 0);
+  const pages = prototype.canvasPages ?? [];
+  const latestPage = pages.every((page) => typeof page.round === 'number')
+    ? [...pages].sort((a, b) => Number(b.round) - Number(a.round))[0]
+    : pages.at(-1);
+  const latestItems = pages.filter((page) => latestPage?.round === null ? page.id === latestPage.id : page.round === latestPage?.round).reduce((count, page) => count + page.items.length, 0);
   const undecidedLead = decision.state === 'decided' || !latestPage
     ? 'The board does not guess a pick from the closing comment.'
-    : `${typeof latestPage.round === 'number' ? `Round ${String(latestPage.round)}` : latestPage.round ?? latestPage.title} ? ${String(latestItems)} ${latestItems === 1 ? 'option' : 'options'}, none chosen yet.`;
+    : `${typeof latestPage.round === 'number' ? `Round ${String(latestPage.round)}` : latestPage.round ?? latestPage.title} \u00b7 ${String(latestItems)} ${latestItems === 1 ? 'option' : 'options'}, none chosen yet.`;
   const date = dateLabel(prototype.updatedAt);
   const variantList = variants.map((variant) => ({ id: variant.id, name: variant.title }));
   const variantHtml = variants
