@@ -360,7 +360,9 @@ describe('buildNewMapPrompt', () => {
   it('teaches a new-map agent to report a native destination with the created issue number', () => {
     const prompt = buildNewMapPrompt({ repo: 'o/r', goal: 'x', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', template: 'Plan {{goal}}' });
     expect(prompt).toContain('wayfinder://map?repo=o%2Fr&number=NUMBER');
-    expect(prompt).toContain('replacing NUMBER with its actual GitHub issue number');
+    expect(prompt).toContain('[Open map in Wayfinder](wayfinder://map/MAP_NODE_ID)');
+    expect(prompt).toContain('replacing MAP_NODE_ID with that URL-encoded ID');
+    expect(prompt).toContain('with the actual issue number');
     expect(prompt).toContain('exact current thread link');
   });
   it.each([undefined, 'Plan {{goal}}'])('forbids cross-map links even in saved planning template %j', (template) => {
