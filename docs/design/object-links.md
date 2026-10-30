@@ -76,4 +76,33 @@ Consult `docs/mobile-builds.md` for actual build and
 installation evidence. T3 must also preserve these explicit routes through its
 Markdown sanitizer, native link presentation and desktop external-link boundary.
 The companion change lives in T3's source; a Wayfinder update alone cannot change
-the installed T3 client.
+the installed T3 client's handling of native schemes.
+
+## HTTPS links for stock T3
+
+Ramon chose HTTPS destinations on 2026-10-30 so delivery does not depend on a T3
+fork or upstream patch. Agents share `https://wayfinder-links-pearl.vercel.app`
+plus the existing `/open/<kind>/<id>` path and optional canvas/rev/page/item query.
+Native `wayfinder://` routes remain the app's internal launch destinations.
+
+The public host routes destinations and never fetches GitHub issue data or
+tokens. Object lookup and permission checks remain inside the signed-in app.
+Android uses verified App Links for the four object-route prefixes; the served
+association fingerprint must match the actual installed signing certificate.
+Cold and warm HTTPS opens normalize to the existing resolver and canvas viewer.
+Only the exact production origin is accepted; unknown origins, parameters and
+object kinds are rejected.
+
+Desktop uses a small browser page with an explicit Open in Wayfinder button.
+Ramon picked #373's A centered card at `11074255b6549d3dbfac72ef0084783c78c3936b`.
+The implementation uses that layout and copy, a real repository releases link,
+and the same strict destination parser as the app. It never reports app-open
+success. The built-artifact Chrome regression runs in CI and checks destination
+kinds, fixed/newest canvas metadata, invalid links, keyboard focus, overflow and
+unintended navigation across two themes and four viewports.
+The same page is a browser fallback on phones. iOS associated domains are
+configured, but verified Universal Links additionally need a real Apple Team ID
+in the AASA file; no placeholder identity is published.
+
+Consult the build record for packaged versus installed proof. The HTTPS route
+removes the T3 companion PR from the delivery dependency chain.

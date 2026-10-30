@@ -18,6 +18,8 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:link-host": "node scripts/build-link-host.mjs",
+    "test:link-host:browser": "node scripts/check-link-host.mjs",
     "start": "node dist/cli.js",
     "desktop": "node scripts/desktop.mjs",
     "icons": "node scripts/create-icons.mjs",

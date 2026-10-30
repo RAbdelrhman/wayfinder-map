@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildNewMapPrompt, buildPrompt, renderTemplate } from './prompt.js';
 import type { Ticket, WayfinderMap } from './types.js';
+import { WAYFINDER_LINK_ORIGIN } from './httpsLinks.js';
 
 const map: WayfinderMap = {
   number: 4,
@@ -45,8 +46,8 @@ const ticket: Ticket = {
 describe('renderTemplate', () => {
   it('supplies stable map/ticket IDs even when a saved template omits destinations', () => {
     const prompt = buildPrompt({ repo: 'owner/repo', map: { ...map, nodeId: 'map-node' }, ticket: { ...ticket, nodeId: 'ticket-node', parentIssueNumber: map.number, type: 'prototype' }, template: 'Build it.' });
-    expect(prompt).toContain('[Open map in Wayfinder](wayfinder://map/map-node)');
-    expect(prompt).toContain('[Open ticket in Wayfinder](wayfinder://ticket/ticket-node)');
+    expect(prompt).toContain(`[Open map in Wayfinder](${WAYFINDER_LINK_ORIGIN}/open/map/map-node)`);
+    expect(prompt).toContain(`[Open ticket in Wayfinder](${WAYFINDER_LINK_ORIGIN}/open/ticket/ticket-node)`);
     expect(prompt).toContain('Omit rev to open the newest canvas');
     expect(prompt).toContain('exact current thread link');
   });
@@ -55,8 +56,8 @@ describe('renderTemplate', () => {
       const ticketWithId = { ...ticket, nodeId: 'ticket-node', type: 'prototype' as const, ...(parent ? { parentIssueNumber: parent } : {}) };
       for (const owner of [undefined, map]) {
         const prompt = buildPrompt({ repo: 'owner/repo', ticket: ticketWithId, ...(owner ? { map: owner } : {}) });
-        expect(prompt).not.toContain('wayfinder://ticket/');
-        expect(prompt).not.toContain('wayfinder://prototype/');
+        expect(prompt).not.toContain(`${WAYFINDER_LINK_ORIGIN}/open/ticket/`);
+        expect(prompt).not.toContain(`${WAYFINDER_LINK_ORIGIN}/open/prototype/`);
         expect(prompt).toContain(ticket.url);
       }
     }
@@ -73,7 +74,8 @@ describe('renderTemplate', () => {
 describe('buildPrompt', () => {
   it.each([undefined, 'Ticket {{ticketNumber}}', 'Map {{mapAppUrl}}'])('requires destination links even with saved template %j', (template) => {
     const prompt = buildPrompt({ repo: 'owner/repo', map, ticket, ...(template === undefined ? {} : { template }) });
-    expect(prompt).toContain('[Open map in Wayfinder](wayfinder://map?repo=owner%2Frepo&number=4)');
+    expect(prompt).toContain(map.url);
+    expect(prompt).not.toContain('wayfinder://');
     expect(prompt).toContain('exact current thread link supplied by T3 Code');
     expect(prompt).not.toContain('{{mapAppUrl}}');
   });
@@ -368,12 +370,12 @@ describe('buildPrompt', () => {
 });
 
 describe('buildNewMapPrompt', () => {
-  it('teaches a new-map agent to report a native destination with the created issue number', () => {
+  it('teaches a new-map agent to report a stock-T3-compatible HTTPS destination', () => {
     const prompt = buildNewMapPrompt({ repo: 'o/r', goal: 'x', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', template: 'Plan {{goal}}' });
-    expect(prompt).toContain('wayfinder://map?repo=o%2Fr&number=NUMBER');
-    expect(prompt).toContain('[Open map in Wayfinder](wayfinder://map/MAP_NODE_ID)');
+    expect(prompt).not.toContain('wayfinder://');
+    expect(prompt).toContain(`[Open map in Wayfinder](${WAYFINDER_LINK_ORIGIN}/open/map/MAP_NODE_ID)`);
     expect(prompt).toContain('replacing MAP_NODE_ID with that URL-encoded ID');
-    expect(prompt).toContain('with the actual issue number');
+    expect(prompt).toContain('Keep the GitHub issue URL as a fallback');
     expect(prompt).toContain('exact current thread link');
   });
   it.each([undefined, 'Plan {{goal}}'])('forbids cross-map links even in saved planning template %j', (template) => {
