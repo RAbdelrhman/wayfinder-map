@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { acquireStoreLock } from './handOffTracking.js';
@@ -51,7 +51,7 @@ export class PhonePairingStore {
   createCode(): Promise<{ code: string; expiresAt: number }> {
     return this.transaction(data => {
       const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      const text = [...randomBytes(8)].map(value => alphabet[value % alphabet.length]).join('');
+      const text = Array.from({ length: 8 }, () => alphabet.charAt(randomInt(alphabet.length))).join('');
       const code = `${text.slice(0, 4)}-${text.slice(4)}`;
       const expiresAt = this.now() + 5 * 60_000;
       data.code = { hash: hash(code), expiresAt };

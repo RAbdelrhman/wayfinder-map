@@ -31,6 +31,7 @@ describe('phone pairing authorization', { timeout: 30_000 }, () => {
   it('pairs immediately once, stores only hashes, survives restart and revokes', async () => {
     const { store, file } = await fixture();
     const { code, expiresAt } = await store.createCode();
+    expect(code).toMatch(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
     expect(expiresAt).toBe(301_000);
     expect(await store.pair('WRONG-CODE', 'Phone', 'Android')).toBeNull();
     const paired = await store.pair(code, 'Phone', 'Android');
