@@ -11,10 +11,10 @@ export function sharedFollowState(ref: MapRef, previous: { map: MapSummary | nul
   const same = (item: MapRef) => mapKey(item) === mapKey(ref);
   if (latest.denied) return { map: null, hidden: null, missing: { ...ref, reason: 'issue' } };
   if (latest.fresh && latest.savedAt !== null && latest.savedAt >= previous.observedAt) {
-    const hidden = latest.hidden.find(same);
-    if (hidden) return { map: null, hidden, missing: null };
     const missing = latest.unavailable.find(same);
     if (missing) return { map: null, hidden: null, missing };
+    const hidden = latest.hidden.find(same);
+    if (hidden) return { map: null, hidden, missing: null };
     const map = latest.maps.find(same);
     if (map && latest.savedAt > previous.observedAt) return { map, hidden: null, missing: null };
   }

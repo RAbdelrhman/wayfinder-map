@@ -1,8 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import { discoverPublicMaps } from './discovery';
 import { GithubError } from './github';
+import { sharedFollowState } from './unreadableFollows';
+import type { MapSummary } from './github';
 
 describe('public map discovery', () => {
+  it.each([403, 404, 410])('drops earlier private summaries after a later repository %s denial', async status => {
+    const ref = { repo: 'private/repo', number: 9 };
+    const hidden: MapSummary = { ...ref, title: 'PRIVATE TITLE', body: 'PRIVATE BODY', url: '', author: 'other', open: true, updatedAt: '', completed: 0, total: 0 };
+    const result = await discoverPublicMaps({ publicMaps: async () => { throw new GithubError(status, 'Denied'); } }, 'me', '', [ref], { maps: [], hidden: [hidden], unavailable: [], warnings: [] }, new AbortController().signal, async () => undefined);
+    expect(result.hidden).toEqual([]);
+    expect(result.unavailable).toEqual([{ ...ref, reason: 'repo' }]);
+    expect(JSON.stringify(result)).not.toMatch(/PRIVATE TITLE|PRIVATE BODY/);
+    expect(sharedFollowState(ref, { map: null, missing: null, observedAt: 100 }, { fresh: true, denied: false, savedAt: 200, maps: [], hidden: result.hidden, unavailable: result.unavailable })).toMatchObject({ map: null, hidden: null, missing: { reason: 'repo' } });
+  });
   it('does not treat an invalid repository as offline', async () => {
     const result = await discoverPublicMaps(
       {

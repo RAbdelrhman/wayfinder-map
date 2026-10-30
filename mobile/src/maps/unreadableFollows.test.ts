@@ -14,6 +14,7 @@ describe('unreadable followed maps, chosen #359 Round 2 A', () => {
     expect(sharedFollowState(map, previous, { ...latest, savedAt: 99, hidden: [hidden] }).map).toBe(map);
     expect(sharedFollowState(map, previous, { ...latest, fresh: false, hidden: [hidden] }).map).toBe(map);
     expect(sharedFollowState(map, previous, { ...latest, denied: true })).toMatchObject({ map: null, missing: { reason: 'issue' } });
+    expect(sharedFollowState(map, previous, { ...latest, hidden: [hidden], unavailable: [{ repo: 'o/r', number: 21, reason: 'repo' }] })).toMatchObject({ map: null, hidden: null, missing: { reason: 'repo' } });
   });
   it('keeps unknown access distinct from a positive non-map observation', () => {
     const unknown = followReason({ repo: 'o/r', number: 21 });

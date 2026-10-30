@@ -37,6 +37,7 @@ export async function discoverPublicMaps(
   const warnings = [...own.warnings];
   let offline = false;
   const unavailable = own.unavailable.map(ref => ({ ...ref }));
+  const deniedRepos = new Set<string>();
   const groups = await Promise.all(
     repos.map(async (name) => {
       try {
@@ -53,6 +54,7 @@ export async function discoverPublicMaps(
           [403, 404, 410].includes(error.status) &&
           !error.rateLimited
         ) {
+          deniedRepos.add(name.toLowerCase());
           const refs = follows.filter(
             (ref) => ref.repo.toLowerCase() === name.toLowerCase(),
           );
@@ -78,7 +80,7 @@ export async function discoverPublicMaps(
   );
   return {
     groups,
-    hidden: own.hidden,
+    hidden: own.hidden.filter(map => !deniedRepos.has(map.repo.toLowerCase())),
     unavailable,
     warnings,
     follows,
