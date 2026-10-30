@@ -75,7 +75,7 @@ export async function followedMaps(login: string) {
 }
 /** Evict saved public-map summaries when GitHub confirms access was lost. */
 export async function loadMaps(
-  api: MobileGithub,
+  api: Pick<MobileGithub, 'maps'>,
   login: string,
   signal: AbortSignal,
 ) {
@@ -95,7 +95,7 @@ export async function loadMaps(
   try {
     const result = await api.maps(login, follows, signal);
     if (followError) result.warnings.push(followError);
-    await evict(result.unavailable);
+    await evict([...result.unavailable, ...result.hidden]);
     const followedKeys = new Set(
       follows.map((ref) => `${ref.repo.toLowerCase()}#${ref.number}`),
     );
