@@ -6,6 +6,23 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $mobileRoot = Join-Path $repoRoot 'mobile'
+function Get-BuildSource {
+  $sourceCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
+  if ($LASTEXITCODE -ne 0) { throw 'Could not identify the source commit.' }
+  $paths = @(& git -C $repoRoot -c core.quotepath=false ls-files --cached --others --exclude-standard -- mobile src scripts/build-mobile-android.ps1)
+  if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate build source.' }
+  if (Test-Path -LiteralPath (Join-Path $mobileRoot '.env.local')) { $paths += 'mobile/.env.local' }
+  $fingerprints = foreach ($path in ($paths | Sort-Object -Unique)) {
+    $absolute = [IO.Path]::GetFullPath((Join-Path $repoRoot $path))
+    if (-not $absolute.StartsWith($repoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Build source escaped its checkout.' }
+    if (-not [IO.File]::Exists($absolute)) { "$path`:missing"; continue }
+    $stream = [IO.File]::OpenRead($absolute)
+    $digest = [Security.Cryptography.SHA256]::Create()
+    try { "$path`:" + [BitConverter]::ToString($digest.ComputeHash($stream)) }
+    finally { $stream.Dispose(); $digest.Dispose() }
+  }
+  return [pscustomobject]@{ commit = $sourceCommit; fingerprint = ($fingerprints -join "`n") }
+}
 if (-not $SkipBuild -and $env:OS -eq 'Windows_NT') {
   $rootItem = Get-Item -LiteralPath $repoRoot
   if ($repoRoot.Length -gt 40 -or ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
@@ -14,6 +31,7 @@ if (-not $SkipBuild -and $env:OS -eq 'Windows_NT') {
 }
 Push-Location $mobileRoot
 try {
+  $buildSource = Get-BuildSource
   if (-not $SkipBuild) {
     $env:CI = '1'
     $env:NODE_ENV = 'production'
@@ -29,8 +47,11 @@ try {
   }
   $apk = Join-Path $mobileRoot 'android/app/build/outputs/apk/release/app-release.apk'
   if (-not (Test-Path -LiteralPath $apk)) { throw "The APK does not exist: $apk" }
-  $commit = (& git rev-parse HEAD).Trim()
-  if ($LASTEXITCODE -ne 0) { throw 'Could not identify the source commit.' }
+  $afterBuild = Get-BuildSource
+  if ($afterBuild.commit -ne $buildSource.commit -or $afterBuild.fingerprint -ne $buildSource.fingerprint) {
+    throw 'Source changed during the build. Nothing was archived or installed; rebuild the final source.'
+  }
+  $commit = $buildSource.commit
   $config = Get-Content -LiteralPath (Join-Path $mobileRoot 'app.json') -Raw | ConvertFrom-Json
   $changes = @(& git -C $repoRoot status --porcelain --untracked-files=normal -- mobile src scripts/build-mobile-android.ps1)
   $label = if ($changes.Count) { "$($commit.Substring(0, 8))-working" } else { $commit.Substring(0, 8) }

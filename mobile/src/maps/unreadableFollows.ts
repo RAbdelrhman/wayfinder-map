@@ -4,6 +4,23 @@ import type { MapRef, MapSummary } from './github';
 
 export type UnavailableFollow = MapRef & { reason?: 'issue' | 'repo' | 'label' | 'nosave' };
 
+/** Compare actual observations; absence from a discovery list never proves lost access. */
+export function sharedFollowState(ref: MapRef, previous: { map: MapSummary | null; missing: UnavailableFollow | null; observedAt: number }, latest: {
+  fresh: boolean; savedAt: number | null; denied: boolean; maps: readonly MapSummary[]; hidden: readonly MapSummary[]; unavailable: readonly UnavailableFollow[];
+}): { map: MapSummary | null; hidden: MapSummary | null; missing: UnavailableFollow | null } {
+  const same = (item: MapRef) => mapKey(item) === mapKey(ref);
+  if (latest.denied) return { map: null, hidden: null, missing: { ...ref, reason: 'issue' } };
+  if (latest.fresh && latest.savedAt !== null && latest.savedAt >= previous.observedAt) {
+    const missing = latest.unavailable.find(same);
+    if (missing) return { map: null, hidden: null, missing };
+    const hidden = latest.hidden.find(same);
+    if (hidden) return { map: null, hidden, missing: null };
+    const map = latest.maps.find(same);
+    if (map && latest.savedAt > previous.observedAt) return { map, hidden: null, missing: null };
+  }
+  return { map: previous.map, hidden: null, missing: previous.missing };
+}
+
 /** Cached or older successes cannot reverse a later observed access failure. */
 export function restoredFollow(ref: MapRef, failedAt: number, latest: { fresh: boolean; savedAt: number | null; maps: readonly MapSummary[] }): MapSummary | null {
   if (!latest.fresh || latest.savedAt === null || latest.savedAt <= failedAt) return null;

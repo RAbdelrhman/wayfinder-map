@@ -1,4 +1,4 @@
-import { GithubError } from './github';
+import { GithubError, GithubNetworkError } from './github';
 import type { MapRef, MapSummary, MobileGithub } from './github';
 import type { UnavailableFollow } from './unreadableFollows';
 
@@ -37,13 +37,14 @@ export async function discoverPublicMaps(
   const warnings = [...own.warnings];
   let offline = false;
   const unavailable = own.unavailable.map(ref => ({ ...ref }));
+  const deniedRepos = new Set<string>();
   const groups = await Promise.all(
     repos.map(async (name) => {
       try {
         return { repo: name, maps: await api.publicMaps(name, login, signal) };
       } catch (error) {
         if (signal.aborted) throw error;
-        if (!(error instanceof GithubError)) offline = true;
+        if (error instanceof GithubNetworkError) offline = true;
         if (error instanceof GithubError && error.status === 401) {
           await evict(follows);
           throw error;
@@ -53,6 +54,7 @@ export async function discoverPublicMaps(
           [403, 404, 410].includes(error.status) &&
           !error.rateLimited
         ) {
+          deniedRepos.add(name.toLowerCase());
           const refs = follows.filter(
             (ref) => ref.repo.toLowerCase() === name.toLowerCase(),
           );
@@ -78,7 +80,7 @@ export async function discoverPublicMaps(
   );
   return {
     groups,
-    hidden: own.hidden,
+    hidden: own.hidden.filter(map => !deniedRepos.has(map.repo.toLowerCase())),
     unavailable,
     warnings,
     follows,

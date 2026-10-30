@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.24](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.23...v0.2.24) (2026-10-30)
+
+
+### Features
+
+* prototype desktop phone pairing and revocation ([#362](https://github.com/RAbdelrhman/wayfinder-map/issues/362)) ([3a28990](https://github.com/RAbdelrhman/wayfinder-map/commit/3a28990b0284099cc1d67e229295148cc02486c8))
+
+
+### Bug Fixes
+
+* keep tickets within their owning map ([#364](https://github.com/RAbdelrhman/wayfinder-map/issues/364)) ([72be2ad](https://github.com/RAbdelrhman/wayfinder-map/commit/72be2ad97a294294a9d7cda9d189484808db32cf))
+* read real canvas choices and preview metadata ([#369](https://github.com/RAbdelrhman/wayfinder-map/issues/369)) ([5246bb3](https://github.com/RAbdelrhman/wayfinder-map/commit/5246bb32d945f684495c09072aabf1ae51b7de82))
+
 ## [0.2.23](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.22...v0.2.23) (2026-10-28)
 
 

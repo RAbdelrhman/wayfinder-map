@@ -4,7 +4,7 @@ import { Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Icon } from '../auth/Icon';
 import { followedMaps, useBrowse, useResource } from './BrowseProvider';
-import { GithubError, mayViewMap } from './github';
+import { isGithubAccessDenied, mayViewMap } from './github';
 import { readCache, removeMapContents } from './cache';
 import {
   Card,
@@ -52,7 +52,7 @@ export function TicketScreen() {
             signal,
           );
         } catch (error) {
-          if (error instanceof GithubError && [401, 404].includes(error.status))
+          if (isGithubAccessDenied(error))
             await removeMapContents(AsyncStorage, session.login, {
               repo: ref.repo,
               number: mapNumber,

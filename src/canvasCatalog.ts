@@ -1,115 +1,32 @@
-import { parse } from 'acorn';
-import type { ArrayExpression, Expression, ObjectExpression, Property } from 'estree';
+import { canvasData } from './canvasData.js';
 import type { CanvasCatalogPage } from './types.js';
 
-function property(object: ObjectExpression, key: string): Expression | null {
-  const found = object.properties.find((entry): entry is Property => entry.type === 'Property' && !entry.computed &&
-    ((entry.key.type === 'Identifier' && entry.key.name === key) || (entry.key.type === 'Literal' && entry.key.value === key)));
-  return found ? found.value as Expression : null;
+function object(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
+const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
+const string = (value: unknown): string | null => typeof value === 'string' ? value : null;
 
-function literal(node: Expression | null): string | number | null {
-  if (node?.type === 'Literal' && (typeof node.value === 'string' || typeof node.value === 'number')) return node.value;
-  if (node?.type === 'TemplateLiteral' && node.expressions.length === 0) return node.quasis[0]?.value.cooked ?? null;
-  return null;
-}
-function string(node: Expression | null): string | null {
-  const value = literal(node);
-  return typeof value === 'string' ? value : null;
-}
-function array(node: Expression | null): Expression[] {
-  return node?.type === 'ArrayExpression' ? (node as ArrayExpression).elements.filter((item): item is Expression => item !== null && item.type !== 'SpreadElement') : [];
-}
-function object(node: Expression | null): ObjectExpression | null {
-  return node?.type === 'ObjectExpression' ? node : null;
-}
-
-/** Literal notes for the native viewer. This never executes prototype code. */
-export function canvasText(source: string): { title: string; question: string; notes: Record<string, string> } {
-  const empty = { title: 'Canvas', question: '', notes: {} };
-  try {
-    const program = parse(source, { ecmaVersion: 'latest', sourceType: 'script' });
-    const assignment = program.body.find(statement => statement.type === 'ExpressionStatement'
-      && statement.expression.type === 'AssignmentExpression' && statement.expression.left.type === 'MemberExpression'
-      && statement.expression.left.object.type === 'Identifier' && statement.expression.left.object.name === 'window'
-      && statement.expression.left.property.type === 'Identifier' && statement.expression.left.property.name === 'CANVAS');
-    if (assignment?.type !== 'ExpressionStatement' || assignment.expression.type !== 'AssignmentExpression') return empty;
-    const config = object(assignment.expression.right as unknown as Expression);
-    if (!config) return empty;
-    const notes: Record<string, string> = {};
-    for (const value of array(property(config, 'pages'))) {
-      const page = object(value);
-      if (!page) continue;
-      const items = [...array(property(page, 'items')), ...array(property(page, 'sections')).flatMap(section => {
-        const entry = object(section); return entry ? array(property(entry, 'items')) : [];
-      })];
-      for (const entry of items) {
-        const item = object(entry);
-        if (!item) continue;
-        const id = string(property(item, 'id'));
-        if (!id) continue;
-        const note = property(item, 'note');
-        const detail = object(note);
-        notes[id] = string(note) ?? (detail ? [string(property(detail, 'idea')),
-          ...array(property(detail, 'pros')).map(value => string(value)),
-          ...array(property(detail, 'cons')).map(value => string(value)),
-          string(property(detail, 'feedback'))].filter(Boolean).join('\n\n') : string(property(item, 'text'))) ?? '';
-      }
-    }
-    return { title: string(property(config, 'title')) ?? 'Canvas', question: string(property(config, 'question')) ?? '', notes };
-  } catch { return empty; }
-}
-
-/** Read literal canvas metadata without executing repository-supplied JavaScript. */
+/** Read canvas metadata from data expressions without executing repository-supplied JavaScript. */
 export function canvasCatalog(source: string): CanvasCatalogPage[] {
-  try {
-    const program = parse(source, { ecmaVersion: 'latest', sourceType: 'script' });
-    const assignment = program.body.find((statement) => statement.type === 'ExpressionStatement' &&
-      statement.expression.type === 'AssignmentExpression' && statement.expression.left.type === 'MemberExpression' &&
-      statement.expression.left.object.type === 'Identifier' && statement.expression.left.object.name === 'window' &&
-      statement.expression.left.property.type === 'Identifier' && statement.expression.left.property.name === 'CANVAS');
-    if (assignment?.type !== 'ExpressionStatement' || assignment.expression.type !== 'AssignmentExpression') return [];
-    const config = object(assignment.expression.right as unknown as Expression);
-    if (!config) return [];
-    const constants = new Map<string, ObjectExpression>();
-    for (const statement of program.body) {
-      if (statement.type !== 'VariableDeclaration' || statement.kind !== 'const') continue;
-      for (const declaration of statement.declarations) {
-        if (declaration.id.type === 'Identifier' && declaration.init?.type === 'ObjectExpression')
-          constants.set(declaration.id.name, declaration.init as unknown as ObjectExpression);
-      }
-    }
-    return array(property(config, 'pages')).flatMap((value, index) => {
-      const page = object(value);
-      if (!page) return [];
-      const title = string(property(page, 'title')) ?? string(property(page, 'name')) ?? `Page ${index + 1}`;
-      const id = string(property(page, 'id')) ?? (title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'page');
-      const sections = array(property(page, 'sections')).flatMap((entry) => {
-        const section = object(entry);
-        return section ? array(property(section, 'items')) : [];
-      });
-      const items = [...array(property(page, 'items')), ...sections].flatMap((entry) => {
-        const item = object(entry);
-        if (!item) return [];
-        const itemId = string(property(item, 'id'));
-        if (!itemId || string(property(item, 'kind')) === 'note') return [];
-        const note = object(property(item, 'note'));
-        const spread = item.properties.find((entry) => entry.type === 'SpreadElement' && entry.argument.type === 'Identifier');
-        const defaults = spread?.type === 'SpreadElement' && spread.argument.type === 'Identifier' ? constants.get(spread.argument.name) : undefined;
-        const width = literal(property(item, 'width')) ?? (defaults ? literal(property(defaults, 'width')) : null);
-        const height = literal(property(item, 'height')) ?? (defaults ? literal(property(defaults, 'height')) : null);
-        const based = note ? property(note, 'basedOn') : null;
-        const sources = string(based);
-        return [{ id: itemId, name: string(property(item, 'name')) ?? itemId, src: string(property(item, 'src')),
-          disposition: note ? string(property(note, 'disposition')) : null,
-          feedback: note ? string(property(note, 'feedback')) : null,
-          ...(typeof width === 'number' && width > 0 ? { width } : {}),
-          ...(typeof height === 'number' && height > 0 ? { height } : {}),
-          basedOn: sources ? [sources] : array(based).map(string).filter((x): x is string => x !== null) }];
-      });
-      return [{ id, title, round: literal(property(page, 'round')), items }];
+  return array(canvasData(source)?.pages).flatMap((value, index) => {
+    const page = object(value);
+    if (Object.keys(page).length === 0) return [];
+    const title = string(page.title) ?? string(page.name) ?? `Page ${index + 1}`;
+    const id = string(page.id) ?? (title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'page');
+    const sections = array(page.sections).flatMap((entry) => array(object(entry).items));
+    const items = [...array(page.items), ...sections].flatMap((entry) => {
+      const item = object(entry);
+      const itemId = string(item.id);
+      if (!itemId || item.kind === 'note') return [];
+      const note = object(item.note);
+      const sources = string(note.basedOn);
+      return [{ id: itemId, name: string(item.name) ?? itemId, src: string(item.src),
+        disposition: string(note.disposition), feedback: string(note.feedback),
+        ...(typeof item.width === 'number' && item.width > 0 ? { width: item.width } : {}),
+        ...(typeof item.height === 'number' && item.height > 0 ? { height: item.height } : {}),
+        basedOn: sources ? [sources] : array(note.basedOn).filter((x): x is string => typeof x === 'string') }];
     });
-  } catch {
-    return [];
-  }
+    return [{ id, title, round: typeof page.round === 'string' || typeof page.round === 'number' ? page.round : null, items }];
+  });
 }

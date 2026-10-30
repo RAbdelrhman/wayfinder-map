@@ -7,6 +7,8 @@ function patchAppBuildGradle(contents) {
 // Metro watches ../src, and Gradle must also invalidate its embedded JS bundle when those files change.
 tasks.configureEach { task ->
     if (task.name.startsWith('createBundle') && task.name.endsWith('JsAndAssets')) {
+        // Gradle's worker cap does not limit Metro's separate Node worker pool.
+        task.extraPackagerArgs.addAll(['--max-workers', '2'])
         task.inputs.dir(rootProject.file('../../src'))
             .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
         // Expo inlines .env and process environment values. Always rebundle to avoid stale sign-in configuration.

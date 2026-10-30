@@ -203,8 +203,7 @@ function catalogPicks(prototype: Prototype): Array<{ page: NonNullable<Prototype
     });
   if (named.length > 0) return named;
   const candidates = (prototype.canvasPages ?? []).flatMap((page) => page.items.flatMap((item) => {
-    const approved = item.disposition === 'keep' && item.feedback !== null && !/\b(?:not\s+(?:approved|chosen|picked|the\s+final\s+pick)|rejected|no\s+longer\s+(?:approved|chosen|the\s+final\s+pick))\b/i.test(item.feedback) &&
-      (/^\s*final pick\b/i.test(item.feedback) || new RegExp(`(?:\\bapproved\\s+|^\\s*keep\\s+)${item.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(item.feedback));
+    const approved = item.disposition === 'keep' && item.feedback !== null && !/\b(?:not\s+(?:approved|chosen|picked|the\s+final\s+pick)|rejected|no\s+longer\s+(?:approved|chosen|the\s+final\s+pick))\b/i.test(item.feedback);
     return approved && page.items.filter((candidate) => candidate.id === item.id).length === 1 ? [{ page, item }] : [];
   }));
   const verdictIds = pickedVariantIds(prototype.verdict ?? '', [...new Set((prototype.canvasPages ?? []).flatMap((page) => page.items.map((item) => item.id)))]);
@@ -226,7 +225,8 @@ function catalogPicks(prototype: Prototype): Array<{ page: NonNullable<Prototype
   }
   const rounds = candidates.map(({ page }) => typeof page.round === 'number' ? page.round : -1);
   const latest = Math.max(...rounds);
-  return candidates.filter(({ page }) => (typeof page.round === 'number' ? page.round : -1) === latest);
+  const latestPicks = candidates.filter(({ page }) => (typeof page.round === 'number' ? page.round : -1) === latest);
+  return latestPicks.filter(({ item }) => latestPicks.filter((pick) => pick.item.id === item.id).length === 1);
 }
 
 function catalogHistory(repo: string, prototype: Prototype, title: string, picks: ReturnType<typeof catalogPicks>): string {
