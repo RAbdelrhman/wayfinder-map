@@ -40,6 +40,11 @@ describe('renderMarkdown', () => {
     expect(html).toContain('href="t3code://threads/env/thread"');
     expect(html).not.toContain('href="t3code://settings"');
   });
+  it('decodes generated HTML entities once without changing literal entities in a URL', () => {
+    expect(renderMarkdown('[Open](https://example.test/?value=&quot;&other=&amp;lt;)')).toBe(
+      '<p><a href="https://example.test/?value=&amp;quot;&amp;other=&amp;amp;lt;" target="_blank" rel="noreferrer">Open</a></p>',
+    );
+  });
 });
 
 describe('listItemCount', () => {
