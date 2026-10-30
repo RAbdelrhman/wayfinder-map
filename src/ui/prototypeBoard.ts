@@ -200,7 +200,11 @@ function roundKey(page: NonNullable<Prototype['canvasPages']>[number]): string {
 
 /** Numeric catalogs use round order; other catalogs preserve the author's round-group order. */
 function pageOrder(pages: NonNullable<Prototype['canvasPages']>, page: NonNullable<Prototype['canvasPages']>[number]): number {
-  return pages.every((candidate) => typeof candidate.round === 'number') ? Number(page.round) : pages.findIndex((candidate) => roundKey(candidate) === roundKey(page));
+  if (pages.every((candidate) => typeof candidate.round === 'number')) return Number(page.round);
+  const numbered = pages.filter((candidate) => typeof candidate.round === 'number');
+  const descending = numbered.length > 1 && Number(numbered[0]!.round) > Number(numbered.at(-1)!.round);
+  const chronological = descending ? [...pages].reverse() : pages;
+  return chronological.findIndex((candidate) => roundKey(candidate) === roundKey(page));
 }
 
 /** Explicitly approved items on the most recent round with a recorded final choice. */

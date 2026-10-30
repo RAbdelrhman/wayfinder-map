@@ -581,3 +581,16 @@ it.each(['Final', 2])('preserves multiple choices and ambiguity within round %s 
   expect(html).not.toContain('Picked A');
   expect(html).not.toContain('data-proto-hero-id');
 });
+
+
+it('normalizes the newest-first mixed catalog returned for the five-round board', () => {
+  const pages = [5, 4, 3, 2, 'Baseline'].map((round, index) => ({ id: `p${index}`, title: String(round), round, items: [{ id: `A${index}`, name: 'Option', src: 'a.html', disposition: 'keep', feedback: 'Final pick', basedOn: [] }] }));
+  const mapView = map([ticket(10, 'Example', 'prototype', 'done')]);
+  const html = prototypeBoardHtml('octo/wayfinder', mapView, [prototype(10, { canvasPages: pages })]);
+  expect(html).toContain('Picked A0');
+  const history = html.slice(html.indexOf('aria-label="Canvas rounds"'));
+  expect(history.indexOf('>Baseline')).toBeLessThan(history.indexOf('>Round 2'));
+  expect(history.indexOf('>Round 2')).toBeLessThan(history.indexOf('>Round 5'));
+  const building = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'claimed')]), [prototype(10, { canvasPages: pages })]);
+  expect(building).toContain('Round 5 \u00b7 1 option, none chosen yet.');
+});
