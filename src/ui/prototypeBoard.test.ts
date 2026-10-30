@@ -510,3 +510,31 @@ describe('prototype decision board states', () => {
     expect(prototypeBoardErrorHtml('<script>')).not.toContain('<script>');
   });
 });
+
+
+describe('recorded approval wording and phone support', () => {
+  it.each([
+    [196, 'R4', '"Perfect". Picked as the answer to #196.', ''],
+    [125, 'A', 'I only like A.', '**Answer:** option A'],
+  ])('preserves the confirmed choice on #%s', (number, id, feedback, verdict) => {
+    const card = prototype(number as number, { verdict: verdict as string, canvasPages: [{ id: 'final', title: 'Final', round: 4, items: [
+      { id: id as string, name: 'Final', src: 'a.html', disposition: 'keep', feedback: feedback as string, basedOn: [] },
+      { id: 'A-stalled', name: 'Stalled', src: 'stalled.html', disposition: 'keep', feedback: 'Part of direction A', basedOn: [] },
+    ] }] });
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(number as number, 'Example', 'prototype', 'done')]), [card]);
+    expect(html).toContain(`Picked ${id}`);
+    expect(html).not.toContain('Picked A + A-stalled');
+  });
+
+  it('rounds support thumbnails using their phone dimensions', () => {
+    const card = prototype(225, { canvasPages: [{ id: 'final', title: 'Final', round: 2, items: ['D', 'D-push', 'D-settings'].map((id) => ({ id, name: id, src: `${id}.html`, width: 390, height: 844, disposition: 'keep', feedback: id === 'D' ? 'Final pick' : 'Supporting state', basedOn: [] })) }] });
+    const browser = new Window();
+    setTrustedHtml(browser.document.body as unknown as HTMLElement, prototypeBoardHtml('octo/wayfinder', map([ticket(225, 'Phone', 'prototype', 'done')]), [card]));
+    expect(browser.document.querySelectorAll('[data-proto-support] .chosen-phone')).toHaveLength(3);
+  });
+
+  it('explains that a closed undecided card has no recorded pick', () => {
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'done')]), [prototype(10)]);
+    expect(html).toContain('The board does not guess a pick');
+  });
+});
