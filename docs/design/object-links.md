@@ -64,8 +64,10 @@ through sign-in. Prototype destinations reuse the existing canvas viewer, with
 newest and pinned revisions. Live browser verification opened repository, map
 #217, ticket #366, and both revisions of its actual canvas.
 
-The installed 1.3.0 phone build contains the #226 R2A canvas viewer; 1.3.1 adds
-object-ID destinations. Consult `docs/mobile-builds.md` for actual build and
+The installed 1.3.0 phone build contains the #226 R2A canvas viewer; packaged
+1.3.2 adds object-ID destinations and fixed revisions without a current branch.
+Offline saved data must match an explicitly requested revision and board.
+Consult `docs/mobile-builds.md` for actual build and
 installation evidence. T3 must also preserve these explicit routes through its
 Markdown sanitizer, native link presentation and desktop external-link boundary.
 The companion change lives in T3's source; a Wayfinder update alone cannot change

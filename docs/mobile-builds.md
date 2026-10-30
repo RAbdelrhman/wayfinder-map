@@ -15,7 +15,8 @@ deliverables. A closed prototype ticket does not mean its native screens shipped
 | 1.2.1 / 5 | Clean source `f9818d40c831a83e877ac404c8ef6c109c9f0ddf`, combined public follows and app links | Samsung SM-S936U, 2026-10-29 20:09 EDT. Native build and upgrade succeeded; dumpsys confirms 1.2.1 / 5. Sign-in as RAbdelrhman retained, live Maps loaded, and `wayfinder://map?repo=RAbdelrhman%2Fwayfinder-map&number=217` opened #217 Path with 25 tickets. | #353 public discovery/follows/share entry, #359 selected unreadable-follow states, strict map links with sign-in destination retention, and outbound native T3 thread links. |
 | 1.2.3 / 7 | Clean source `371809c8b50d2d0a061e2232d93e304fc00dac22` | Samsung SM-S936U, USB upgrade succeeded, sign-in retained; repository filter, #217 Path, #229 Overview/Links/Activity, followed public map and persistent Unfollow verified. | Completed #229 phone acceptance, plus app links. |
 | 1.3.0 / 8 | Clean source `2e4348a4649d3a3c798011035d9908cfcabee4c6` | Samsung SM-S936U, USB upgrade succeeded on 2026-10-29. Android confirms 1.3.0 / 8. Opened #366's actual canvas, switched R1/R2 and pages, used More → Notes and zoom/fit, and retained typed prototype text through entering/exiting full screen. | Approved #226 R2A native canvas viewer, per-account immutable GitHub packages, embedded sandbox resources. Typed replies shown inside #366 remain a prototype; real T3 sending is not included. |
-| 1.3.1 / 9 | Clean source `76e8e6cb88ca7c42fe7bb88814b08a82b85fc271` | Android build passed in 9m 34s on 2026-10-30. Installation and physical ID-link acceptance are pending: USB and wireless ADB discovery were empty after packaging. | RepoID, MapID, TicketID and PrototypeID destinations, retained through sign-in; newest canvas by default and optional pinned revision/page/item. Requires the companion T3 client change for clickable Wayfinder destinations in T3 chat. |
+| 1.3.1 / 9 | Clean source `76e8e6cb88ca7c42fe7bb88814b08a82b85fc271` | Android build passed in 9m 34s on 2026-10-30. Not installed; superseded by 1.3.2 below. | Initial RepoID, MapID, TicketID and PrototypeID destinations with sign-in retention. |
+| 1.3.2 / 10 | Clean source `48b382aa4bad093d68cc235e557ba3ee1fe8f985` | Android build passed in 7m 25s on 2026-10-30. Installation and physical ID-link acceptance are pending USB; latest installed remains 1.3.0/code 8. | Object-ID destinations and review fixes. Fixed canvas revisions work without a current branch; explicit boards prove ticket identity from pinned config; offline fallback cannot substitute another revision or board. Includes the 1.3.0 canvas viewer. T3 chat still requires the companion T3 client update. |
 
 Latest installed APK:
 `C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.3.0-2e4348a4-f173da5e86f4403cb142f459521b5c30-arm64.apk`.
@@ -24,10 +25,15 @@ working-tree change list, checksum and successful installation time. SHA-256:
 `2834dd96c74425a1822e1810dc9ca913846800e2f060da82c581c85dabbe0723`.
 
 Newly packaged links APK (not yet installed):
-`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.3.1-76e8e6cb-0cee7083bfa44e18a4d001abd4f386fe-arm64.apk`.
-Its adjacent manifest records clean source, version 1.3.1/code 9 and installation
+`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.3.2-48b382aa-53770880ce1f442580b3efb64d7c8d32-arm64.apk`.
+Its adjacent manifest records clean source, version 1.3.2/code 10 and installation
 status `not-attempted`. SHA-256:
-`5e9c519a5b4c2352380e5eb3d6dcb1e89b63fbb7c4e3b19a41d1a12eff2f75d4`.
+`4616c6e7133d9e7be1e1a9dd11e0e051f2368bbcae15b9158e9b223ef10ee990`.
+The review-fix verification passed typecheck/lint, 1,944 root tests across 143
+files, 169 mobile tests across 19 files and both mobile exports. The browser
+regression opened a pinned board absent from latest, reloaded it and closed back
+to its owning ticket without any latest tile or page error. These checks do not
+establish physical app switching on the uninstalled build.
 
 The 1.3.0 native build passed in 12m 4s and its adjacent manifest records the
 successful USB installation. The native device proof and screenshot are retained
