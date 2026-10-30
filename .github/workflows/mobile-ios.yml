@@ -47,9 +47,17 @@ jobs:
       # A Release build embeds the JS bundle, so no Metro server is needed.
       - run: xcodebuild -version
 
-      - run: bunx expo run:ios --configuration Release --no-bundler --device "$UDID"
+      # Associated Domains makes Expo request development signing even for a
+      # named simulator. Build its unsigned generic simulator target, then
+      # install on the booted device. This proves boot, not Universal Links.
+      - run: bunx expo run:ios --configuration Release --no-bundler --device generic --output ./build-simulator
         env:
           CI: 1
+
+      - name: Install the simulator build
+        run: |
+          test -d build-simulator/Wayfinder.app
+          xcrun simctl install "$UDID" build-simulator/Wayfinder.app
 
       - name: The app is still running after launch
         run: |
