@@ -16,6 +16,7 @@ import { allowedCanvasNavigation, canvasHost } from './host';
 import type { CanvasPackage } from './package';
 import { embeddedCanvas } from './embed';
 import type { CanvasAssets } from './embed';
+import { canvasSourceRef, matchesCanvasRequest } from './source';
 
 export function CanvasScreen() {
   const params = useLocalSearchParams<{ repo: string; number: string; mapNumber: string; board?: string; rev?: string; page?: string; item?: string }>();
@@ -57,10 +58,9 @@ export function CanvasScreen() {
           removeCanvasFiles(session.login, repo, mapNumber, ticket);
           throw new Error('This prototype is no longer in this map.');
         }
-        const refs = await api.prototypeRefs(repo, ticket, abort.signal);
-        const ref = refs[0];
+        const ref = await canvasSourceRef(api, repo, ticket, params.rev, abort.signal);
         if (!ref) throw new Error('No canvas was found for this ticket.');
-        const sha = params.rev && /^[a-f\d]{40}$/i.test(params.rev) ? params.rev : ref.sha;
+        const sha = ref.sha;
         const storage = canvasFiles(session.login, repo, mapNumber, ticket, sha);
         const source = { prototypeTree: api.prototypeTree.bind(api),
           prototypeBlob: async (repository: string, blob: string, signal?: AbortSignal) => {
@@ -89,9 +89,11 @@ export function CanvasScreen() {
             && /^[a-f\d]{40}$/i.test(saved.sha) && 'board' in saved && typeof saved.board === 'string') {
             // Rebuild metadata from the immutable config, rather than trusting serialized paths.
             const cached = canvasFiles(session.login, repo, mapNumber, ticket, saved.sha);
-            const { packagePages, canvasMetadata, safeAssetPath } = await import('./package');
-            if (!safeAssetPath(saved.board) || !saved.board.startsWith(`prototypes/${ticket}-`)) throw failure;
+            const { packagePages, canvasMetadata, safeAssetPath, isCanvasForTicket } = await import('./package');
+            if (!safeAssetPath(saved.board) || !matchesCanvasRequest({ sha: saved.sha, board: saved.board },
+              { ...(params.rev ? { revision: params.rev } : {}), ...(params.board ? { board: params.board } : {}) })) throw failure;
             const config = await cached.text(saved.board.replace(/[^/]+$/, 'config.js'));
+            if (!isCanvasForTicket(config, ticket)) throw failure;
             const pages = packagePages(config);
             setAssets(JSON.parse(await cached.text('assets.json')) as CanvasAssets);
             setCanvas({ repo, ticket, mapNumber, sha: saved.sha, board: saved.board, branch: '', ...canvasMetadata(config), pages,

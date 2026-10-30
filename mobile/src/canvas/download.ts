@@ -1,7 +1,8 @@
-import { assetReferences, canvasMetadata, isolatedCanvasHtml, packagePages, prototypeBoards, relativeAsset, safeAssetPath } from './package';
+import { assetReferences, canvasMetadata, isCanvasForTicket, isolatedCanvasHtml, packagePages, prototypeBoards, relativeAsset, safeAssetPath } from './package';
 import type { CanvasBlob, CanvasPackage, CanvasRef } from './package';
 import { assetMime } from './embed';
 import type { CanvasAssets } from './embed';
+import { validCanvasPath } from '../../../src/objectLinks';
 
 export interface CanvasSource {
   prototypeTree(repo: string, sha: string, signal?: AbortSignal): Promise<CanvasBlob[]>;
@@ -22,7 +23,7 @@ export async function downloadCanvas(source: CanvasSource, storage: CanvasStorag
   progress: (files: number, bytes: number) => void = () => undefined): Promise<CanvasPackage> {
   const tree = await source.prototypeTree(ref.repo, ref.sha, signal);
   const board = ref.board ?? prototypeBoards(ref.ticket, tree)[0];
-  if (!board || !prototypeBoards(ref.ticket, tree).includes(board)) throw new Error('No canvas was found for this ticket.');
+  if (!board || !validCanvasPath(board) || !tree.some(file => file.path === board)) throw new Error('No canvas was found for this ticket.');
   const blobs = new Map(tree.filter(file => safeAssetPath(file.path)).map(file => [file.path, file]));
   const prefix = board.slice(0, board.lastIndexOf('/') + 1);
   const pending = [board, `${prefix}config.js`];
@@ -55,6 +56,7 @@ export async function downloadCanvas(source: CanvasSource, storage: CanvasStorag
       if (/\.(?:html?|js|css|json)$/i.test(path)) {
         const text = await storage.text(path);
         if (path === `${prefix}config.js`) {
+          if (!isCanvasForTicket(text, ref.ticket)) throw new Error('No canvas was found for this ticket.');
           config = text;
           pending.push(...packagePages(config).flatMap(page => page.items.flatMap(item => {
             const target = item.src ? relativeAsset(board, item.src) : null;
