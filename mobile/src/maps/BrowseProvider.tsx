@@ -15,7 +15,6 @@ import {
   readFollows,
   readCache,
   removeFollowSnapshots,
-  removeMapContents,
   writeCache,
   updateFollow,
 } from './cache';
