@@ -91,6 +91,8 @@ describe('account-scoped map storage', () => {
     const discovery = JSON.parse(values.get(cacheKey('me', 'public-maps:other/repo'))!).data;
     expect(discovery.groups[0].maps).toEqual([]);
     expect(discovery.groups[1].maps).toEqual([kept]);
+    expect(discovery.follows).toEqual([{ repo: 'other/repo', number: 9 }]);
+    expect(JSON.stringify(discovery)).not.toContain('Denied');
     expect(values.has(cacheKey('other-account', 'map:other/repo#9'))).toBe(true);
   });
   it('preserves accounts and serializes concurrent follow changes, including seeded unfollows', async () => {
