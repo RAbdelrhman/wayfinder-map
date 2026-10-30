@@ -428,7 +428,7 @@ async function removeFailedStoreLock(lockPath: string): Promise<void> {
   }
 }
 
-async function acquireStoreLock(lockPath: string): Promise<() => Promise<void>> {
+export async function acquireStoreLock(lockPath: string): Promise<() => Promise<void>> {
   const startedAt = Date.now();
   const token = randomUUID();
   while (true) {

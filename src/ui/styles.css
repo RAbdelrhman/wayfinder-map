@@ -9318,3 +9318,119 @@ a.archive-door:hover {
 
 .chosen-support [data-proto-hero] { min-width: 0; white-space: normal; }
 .chosen-canvas-main .primary { justify-self: start; }
+
+/* #335 chosen Round 4 A4 styles, adapted from its approved canvas. */
+/* ---------- rows and lists ---------- */
+.p335-list { list-style: none; margin: 0; padding: 0; }
+.settings-page .p335-list .settings-row { border-top: 1px solid var(--hairline); }
+.settings-page .p335-row { align-items: flex-start; }
+.settings-page .p335-row > .primary, .settings-page .p335-row > .ghost, .p335-status { margin-top: 2px; flex: none; }
+.p335-tile { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: var(--wash); color: var(--text-secondary); flex: none; }
+.p335-tile.is-danger { color: var(--state-failed); background: color-mix(in srgb, var(--state-failed) 10%, transparent); }
+.p335-phone.is-new .p335-tile { color: var(--accent-text); background: color-mix(in srgb, var(--state-claimed) 12%, transparent); }
+.p335-new { color: var(--text-primary); background: color-mix(in srgb, var(--state-claimed) 16%, transparent); margin-left: 4px; }
+.p335-push { display: inline-flex; align-items: center; gap: 5px; }
+.p335-push .i { width: 13px; height: 13px; }
+.p335-push.is-off { color: var(--text-muted); }
+.p335-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.p335-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--state-frontier); flex: none; }
+.p335-empty { display: flex; align-items: center; gap: 10px; margin: 0; padding: 16px 0 18px; color: var(--text-secondary); font-size: 13px; border-top: 1px solid var(--hairline); }
+.p335-empty .i { color: var(--text-muted); }
+.settings-page .settings-section h3 .badge { margin-left: 6px; vertical-align: 1px; }
+
+/* ---------- notices and problems ---------- */
+.p335-notice { display: flex; align-items: flex-start; gap: 10px; padding: 12px 10px 12px 14px; margin: 0 0 18px; border: 1px solid color-mix(in srgb, var(--state-frontier) 40%, var(--hairline)); border-radius: 10px; background: color-mix(in srgb, var(--state-frontier) 7%, var(--surface-1)); font-size: 13px; line-height: 1.55; }
+.p335-notice > .i { color: var(--handoff-pr-ready); margin-top: 2px; }
+.p335-notice > span { flex: 1; }
+.p335-notice .iconbtn { width: 28px; height: 28px; margin: -3px 0 0; }
+.p335-notice:focus { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.p335-prereq { display: flex; align-items: flex-start; gap: 12px; padding: 16px 0; font-size: 13px; }
+.p335-prereq > .i { color: var(--state-failed); margin-top: 2px; }
+.p335-prereq > div { flex: 1; }
+.p335-prereq .hint { margin: 3px 0 0; font-size: 12px; line-height: 1.6; max-width: 440px; }
+
+/* ---------- the code: QR, typeable address and code, time left ---------- */
+.p335-code { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: start; }
+.p335-code.is-compact { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 14px; }
+.p335-code.is-compact .p335-code-main { justify-self: stretch; }
+.p335-qr { position: relative; padding: 8px; border: 1px solid var(--hairline); border-radius: 12px; background: #fff; line-height: 0; }
+.p335-qr-svg { display: block; border-radius: 4px; }
+.p335-code.is-expired .p335-qr-svg { opacity: 0.12; }
+.p335-qr-over { position: absolute; inset: 0; display: grid; place-items: center; font: 600 13px/1 system-ui, sans-serif; color: #52514e; }
+.p335-lead { margin: 2px 0 14px; font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+.p335-lead b { color: var(--text-primary); font-weight: 600; }
+.p335-fields { display: grid; gap: 12px; margin: 0 0 14px; }
+.p335-fields dt { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.p335-fields dd { display: flex; align-items: center; gap: 6px; margin: 0; min-width: 0; }
+.p335-type { font: 15px/1.4 ui-monospace, 'Cascadia Code', Consolas, monospace; padding: 5px 9px; border-radius: 7px; background: var(--plane); color: var(--text-primary); user-select: all; overflow-wrap: anywhere; }
+.p335-type.is-code { font-size: 22px; font-weight: 600; letter-spacing: 0.08em; padding: 4px 12px; white-space: nowrap; }
+.p335-type.is-expired { color: var(--text-muted); border: 1px solid var(--hairline); text-decoration: line-through; }
+.p335-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.p335-code.is-compact .p335-type:not(.is-code) { font-size: 13px; }
+.p335-copy.iconbtn { width: 30px; height: 30px; flex: none; }
+.p335-copy .i { width: 15px; height: 15px; }
+.p335-timer { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.p335-timer b { color: var(--text-primary); }
+.p335-timer.is-warn { color: var(--handoff-needs-you); }
+.p335-timer.is-warn b { color: inherit; }
+.p335-timer.is-over { color: var(--state-failed); }
+.p335-at { color: var(--text-muted); }
+.p335-timer.is-warn .p335-at { color: inherit; }
+.p335-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.p335-actions.is-end { justify-content: flex-end; }
+.p335-inline-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.p335-danger { display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 600; background: var(--state-failed); color: #fff; }
+.p335-danger .i { width: 14px; height: 14px; }
+.p335-danger:hover { filter: brightness(1.08); }
+.p335-danger:disabled { opacity: 0.6; cursor: progress; }
+:root[data-theme='dark'] .p335-danger { color: #0b0b0b; }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme='light'])) .p335-danger { color: #0b0b0b; } }
+.p335-done { display: flex; align-items: flex-start; gap: 14px; }
+.p335-done-mark { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: color-mix(in srgb, var(--state-frontier) 14%, transparent); color: var(--handoff-pr-ready); flex: none; }
+.p335-done-title { margin: 6px 0 4px; font-size: 15px; }
+.p335-done-title:focus { outline: none; }
+.p335-done .hint { margin: 0; font-size: 13px; line-height: 1.6; }
+code.p335-used { text-decoration: line-through; color: var(--text-muted); }
+
+/* ---------- A: dialogs ---------- */
+.p335-dialog { width: min(600px, calc(100vw - 32px)); padding: 18px 20px 20px; }
+.p335-dialog.is-small { width: min(440px, calc(100vw - 32px)); }
+.p335-dialog .dialog-head { margin-bottom: 16px; }
+.p335-dialog .dialog-head h2 { font-size: 16px; }
+.p335-dlg-body { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+.p335-dialog :is(button):focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+/* ---------- Round 2 (?o=A2): A with Ramon's notes on A's Three phones frame ---------- */
+/* "Center." on the phone rows, their Remove buttons and This desktop's row. */
+.settings-page .p335-row { align-items: center; }
+.settings-page .p335-row > :is(.primary, .ghost), .p335-status { margin-top: 0; }
+/* "Allow this to be longer so it doesn't wrap": phone lines take the row's full width. */
+.settings-page .p335-phone .hint { max-width: none; }
+/* "Add a line between the div's": a hairline under the This desktop heading. */
+.settings-page #desk-title + * { border-top: 1px solid var(--hairline); }
+
+/* ---------- Round 3 (?o=A3): A2 with Ramon's notes on A2's Three phones frame ---------- */
+/* "Make this longer so it doesn't start a new line": every row's description, not only phones'. */
+.settings-page .p335-row .hint { max-width: none; }
+/* "Add more bottom padding. Or … in Div" and "a line here … padding consistent": one lined header per section. */
+.settings-page .p335-sec-head { padding: 14px 0 14px; border-bottom: 1px solid var(--hairline); }
+.settings-page .p335-sec-head h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.settings-page #desk-title + * { border-top: 0; }
+.settings-page .p335-sec-head + .settings-row { border-top: 0; }
+/* "Can make the heading bigger": each row's name, above its two smaller lines. */
+.settings-page .p335-row > .grow { font-size: 14px; font-weight: 600; }
+/* "Phones" (the category heading) is removed; its line stays as the page's lead. */
+.p335-lead-line { margin: 0 0 18px; font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+.p335-lead-count { color: var(--text-primary); font-weight: 600; }
+/* The count's three places, one per frame. */
+.settings-categories .p335-nav-count { margin-left: auto; }
+.p335-desk-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; }
+.p335-desk-count { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+@media (max-width: 720px) {
+  .settings-categories .p335-nav-count { margin-left: 6px; }
+}
+
+/* ---------- Round 4 (?o=A4): A3-nav plus a second count where Ramon pinned it ---------- */
+/* "Where I want a second phone count placement": the right end of Paired phones' header, in line with the rows' buttons. */
+.settings-page .p335-sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.p335-head-count { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
