@@ -565,3 +565,19 @@ it.each([null, 'Final'])('uses the later approved page after a numbered round wh
   const history = html.slice(html.indexOf('aria-label="Canvas rounds"'));
   expect(history.indexOf('>Round 5')).toBeLessThan(history.indexOf('>Final'));
 });
+
+
+it.each(['Final', 2])('preserves multiple choices and ambiguity within round %s in a mixed catalog', (round) => {
+  const item = (id: string) => ({ id, name: id, src: `${id}.html`, disposition: 'keep', feedback: 'Final pick', basedOn: [] });
+  const pages = [
+    { id: 'a', title: 'First', round, items: [item('A')] },
+    { id: 'b', title: 'Second', round, items: [item('B')] },
+    { id: 'notes', title: 'Notes', round: null, items: [] },
+  ];
+  const mapView = map([ticket(10, 'Example', 'prototype', 'done')]);
+  expect(prototypeBoardHtml('octo/wayfinder', mapView, [prototype(10, { canvasPages: pages })])).toContain('Picked A + B');
+  const repeated = pages.map((page) => page.id === 'b' ? { ...page, items: [item('A')] } : page);
+  const html = prototypeBoardHtml('octo/wayfinder', mapView, [prototype(10, { canvasPages: repeated })]);
+  expect(html).not.toContain('Picked A');
+  expect(html).not.toContain('data-proto-hero-id');
+});

@@ -194,9 +194,13 @@ function variantFrame(variant: BoardVariant, phone: { width: number; height: num
   return `<span class="wf-frame proto-thumb${variant.image === null && variant.page === null ? ' is-empty' : ''}${phone ? ' is-phone' : ''}"${phone ? ` data-phone-width="${String(phone.width)}" data-phone-height="${String(phone.height)}"` : ''}>${picture}<span class="tag">${escapeHtml(variant.id)}</span></span>`;
 }
 
-/** Numeric catalogs use round order; other catalogs preserve the author's page order. */
+function roundKey(page: NonNullable<Prototype['canvasPages']>[number]): string {
+  return typeof page.round === 'number' ? `Round ${String(page.round)}` : page.round ?? page.title;
+}
+
+/** Numeric catalogs use round order; other catalogs preserve the author's round-group order. */
 function pageOrder(pages: NonNullable<Prototype['canvasPages']>, page: NonNullable<Prototype['canvasPages']>[number]): number {
-  return pages.every((candidate) => typeof candidate.round === 'number') ? Number(page.round) : pages.indexOf(page);
+  return pages.every((candidate) => typeof candidate.round === 'number') ? Number(page.round) : pages.findIndex((candidate) => roundKey(candidate) === roundKey(page));
 }
 
 /** Explicitly approved items on the most recent round with a recorded final choice. */
@@ -264,7 +268,7 @@ function catalogHistory(repo: string, prototype: Prototype, title: string, picks
   picks.forEach(visit);
   const groups = new Map<string, typeof pages>();
   for (const page of pages) {
-    const key = typeof page.round === 'number' ? `Round ${String(page.round)}` : page.round ?? page.title;
+    const key = roundKey(page);
     groups.set(key, [...(groups.get(key) ?? []), page]);
   }
   const rounds = [...groups.entries()].sort(([, a], [, b]) => pageOrder(pages, a[0]!) - pageOrder(pages, b[0]!));
