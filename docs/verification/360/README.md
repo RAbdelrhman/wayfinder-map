@@ -47,6 +47,12 @@ checks click entry, native dialog autofocus after entry, Tab and Escape.
 The checked-in JSON files preserve those observations. Chrome Beta fixture proof
 does not establish stable-browser, installed-app or complete-viewer acceptance.
 
+After merging current `origin/main`, `bun run typecheck`, `bun run lint` and
+`bun run test` passed: 153 test files and 2,030 tests. `bun install --frozen-lockfile`
+also completed the branch build. Three hand-off restart failures on the original
+base reproduced unchanged in a detached baseline; main's existing scenario-clock
+fix resolved them without changes to that subsystem in this ticket's diff.
+
 ## Remaining acceptance gates
 
 None of the ticket's four Done-when items is claimed complete. Still required:
