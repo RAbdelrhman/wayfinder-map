@@ -48,7 +48,7 @@ export function BrowseProvider({
         process.env.EXPO_PUBLIC_FOLLOWED_MAPS ?? null,
       );
       try {
-        if (!follow) await removeMapContents(AsyncStorage, session.login, ref);
+        if (!follow) await removeFollowSnapshots(AsyncStorage, session.login, [ref]);
       } finally {
         setFollowRevision((value) => value + 1);
       }

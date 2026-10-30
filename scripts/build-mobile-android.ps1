@@ -11,7 +11,9 @@ function Get-BuildSource {
   if ($LASTEXITCODE -ne 0) { throw 'Could not identify the source commit.' }
   $paths = @(& git -C $repoRoot -c core.quotepath=false ls-files --cached --others --exclude-standard -- mobile src scripts/build-mobile-android.ps1)
   if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate build source.' }
-  if (Test-Path -LiteralPath (Join-Path $mobileRoot '.env.local')) { $paths += 'mobile/.env.local' }
+  foreach ($envFile in @('.env', '.env.local', '.env.production', '.env.production.local')) {
+    if (Test-Path -LiteralPath (Join-Path $mobileRoot $envFile)) { $paths += "mobile/$envFile" }
+  }
   $fingerprints = foreach ($path in ($paths | Sort-Object -Unique)) {
     $absolute = [IO.Path]::GetFullPath((Join-Path $repoRoot $path))
     if (-not $absolute.StartsWith($repoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Build source escaped its checkout.' }

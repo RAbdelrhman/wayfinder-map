@@ -49,6 +49,8 @@ it.skipIf(process.platform !== 'win32')(
         join(apkDir, 'app-release.apk'),
         'test APK, never installed',
       );
+      writeFileSync(join(root, '.gitignore'), 'mobile/.env.*\n');
+      writeFileSync(join(mobile, '.env.production.local'), 'EXPO_PUBLIC_TEST_VALUE=before\n');
       for (const args of [
         ['init', '--quiet'],
         [
@@ -85,13 +87,24 @@ $script:sourceReads = 0
 function global:git {
   if ($args -contains 'rev-parse') {
     $script:sourceReads++
-    if ($script:sourceReads -eq 2) { Add-Content -LiteralPath (Join-Path $PSScriptRoot 'mobile/app.json') -Value ' ' }
+    if ($script:sourceReads -eq 2) {
+      if ($script:changeProductionEnv) { Add-Content -LiteralPath (Join-Path $PSScriptRoot 'mobile/.env.production.local') -Value 'EXPO_PUBLIC_TEST_VALUE=after' }
+      else { Add-Content -LiteralPath (Join-Path $PSScriptRoot 'mobile/app.json') -Value ' ' }
+    }
   }
   & $buildGitExe @args
 }
 try {
   & (Join-Path $PSScriptRoot 'scripts/build-mobile-android.ps1') -SkipBuild -OutputDirectory $archive
   throw 'Expected changed-source refusal'
+} catch {
+  if ($_.Exception.Message -notlike 'Source changed during the build*') { throw }
+}
+$script:sourceReads = 0
+$script:changeProductionEnv = $true
+try {
+  & (Join-Path $PSScriptRoot 'scripts/build-mobile-android.ps1') -SkipBuild -OutputDirectory $archive
+  throw 'Expected changed-production-env refusal'
 } catch {
   if ($_.Exception.Message -notlike 'Source changed during the build*') { throw }
 }
