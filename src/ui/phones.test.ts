@@ -58,3 +58,26 @@ it('cancels the real code on Escape and switches an expired code to the approved
   expect(fetcher).toHaveBeenCalledWith('/api/phones/code', expect.objectContaining({ method: 'DELETE' }));
   expect(root.querySelector('dialog')).toBeNull();
 });
+
+it('reports pairing success only for the phone that consumed the displayed code', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(1000));
+  let current: PhonesState = { ...state, phones: [], code: null };
+  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => new Response(JSON.stringify(url.endsWith('/code') && options?.method === 'POST'
+    ? { code: 'ABCD-EFGH', address: state.connection.address, qr: 'data:image/png;base64,', expiresAt: 301_000 }
+    : current), { status: 200 })));
+  const root = document.createElement('div'); document.body.append(root);
+  mountPhoneSettings(root, vi.fn(), vi.fn());
+  await vi.advanceTimersByTimeAsync(0);
+  root.querySelector<HTMLButtonElement>('[data-pair]')!.click();
+  await vi.advanceTimersByTimeAsync(0);
+  current = { ...state, code: { expiresAt: 301_000, usedBy: 'unrelated-phone' } };
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(root.querySelector('[data-done]')).toBeNull();
+  current = { ...state, code: { expiresAt: 301_000, usedBy: phone.id } };
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(root.querySelector('.p335-done-title')?.textContent).toBe(`Paired with ${phone.name}`);
+  expect(root.querySelector('[onerror]')).toBeNull();
+  root.querySelector<HTMLButtonElement>('[data-done]')!.click();
+  expect(root.querySelector('dialog')).toBeNull();
+});

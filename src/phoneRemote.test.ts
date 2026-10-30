@@ -16,7 +16,8 @@ async function fixture() {
   const catalog: ModelCatalog = { providers: [{ instanceId: 'codex', name: 'Codex', ready: true, models: [{ slug: 'exact', name: 'Exact', isDefault: true, effort: { id: 'reasoningEffort', label: 'Effort', options: [{ id: 'medium', label: 'Medium' }], defaultValue: 'medium' } }] }] };
   const start = vi.fn(async () => ({ status: 200, body: { threadId: 'thread-1' } }));
   const watch = vi.fn(async () => ({ session: { threadId: 'thread-1', messages: ['Started', 'Finished'], status: 'completed' } }));
-  const server = phoneRemoteServer({ pairing, catalog: async () => catalog, start, watch });
+  const catalogRead = vi.fn(async (_fresh?: boolean) => catalog);
+  const server = phoneRemoteServer({ pairing, catalog: catalogRead, start, watch });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanups.push(() => new Promise<void>((resolve, reject) => { server.closeAllConnections(); server.close(error => error ? reject(error) : resolve()); }));
   const url = `http://127.0.0.1:${(server.address() as Exclude<ReturnType<Server['address']>, string | null>).port}`;
@@ -29,7 +30,7 @@ async function fixture() {
   expect(exchange.status).toBe(200);
   const paired = await exchange.json() as { token: string; phone: { id: string } };
   const input = { requestId: 'stable-1', repo: 'owner/repo', map: 217, ticket: 230, model: { instanceId: 'codex', model: 'exact', effort: { id: 'reasoningEffort', value: 'medium' } } };
-  return { request, pairing, catalog, start, watch, paired, input, code };
+  return { request, pairing, catalog, catalogRead, start, watch, paired, input, code };
 }
 
 it('test client pairs, reads exact catalog, starts, watches history and unpairs', async () => {
@@ -37,6 +38,7 @@ it('test client pairs, reads exact catalog, starts, watches history and unpairs'
   expect(await (await f.request('/v1/models', 'GET', undefined, f.paired.token)).json()).toEqual(f.catalog);
   expect(await (await f.request('/v1/start', 'POST', f.input, f.paired.token)).json()).toEqual({ threadId: 'thread-1' });
   expect(f.start).toHaveBeenCalledWith(f.paired.phone.id, f.input);
+  expect(f.catalogRead).toHaveBeenLastCalledWith(true);
   expect(await (await f.request('/v1/watch?repo=owner/repo&map=217&ticket=230', 'GET', undefined, f.paired.token)).json()).toMatchObject({ session: { status: 'completed', messages: ['Started', 'Finished'] } });
   expect(f.watch).toHaveBeenCalledWith('owner/repo', 217, 230);
   expect((await f.request('/v1/pair', 'DELETE', undefined, f.paired.token)).status).toBe(200);
