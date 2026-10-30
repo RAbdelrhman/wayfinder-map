@@ -28,7 +28,7 @@ export function mountInlineCanvas(session: InlineCanvasSession, call: InlineTool
   let menu = false;
   let pages: CanvasPage[] = [];
   const requests = new Map<string, string>();
-  const send = (message: Record<string, unknown>): void => frame.contentWindow?.postMessage(message, '*');
+  const send = (message: Record<string, unknown>): void => frame.contentWindow?.postMessage({ ...message, wf: 1 }, '*');
   const feedback = new CanvasFeedback({
     context: () => context,
     send,
@@ -37,7 +37,9 @@ export function mountInlineCanvas(session: InlineCanvasSession, call: InlineTool
       const data = input as { body?: unknown; url?: unknown };
       if (url === `/api/repos/${session.repo}/canvas-thread` && typeof data.url === 'string') return call('notify_canvas_thread', { session: session.id, url: data.url });
       if (url !== `/api/repos/${session.repo}/canvas-notes` || typeof data.body !== 'string') throw new Error('Invalid canvas feedback request.');
-      const requestId = requests.get(data.body) ?? crypto.randomUUID();
+      // randomUUID is unavailable in opaque/insecure mobile WebViews, while
+      // getRandomValues remains available. This is a retry ID, not a credential.
+      const requestId = requests.get(data.body) ?? Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
       requests.set(data.body, requestId);
       const result = await call('post_canvas_feedback', { session: session.id, requestId, body: data.body });
       requests.delete(data.body);
@@ -83,10 +85,12 @@ export function mountInlineCanvas(session: InlineCanvasSession, call: InlineTool
       send({ wf: 1, type: 'go', page: session.target.page ?? message.pages[0]?.id, option: session.target.item ?? null });
     } else if (message.type === 'state') {
       context.page = message.page; context.option = message.option; feedback.stateChanged();
-    } else if (message.type === 'hit') feedback.onHit(message);
-    else if (message.type === 'targets') feedback.onTargets(message.items);
-    else if (message.type === 'layout') feedback.onLayout(message.marks, message.viewport);
-    else if (message.type === 'key') feedback.canvasKey(message.key);
+    } else if (message.type === 'hit') return feedback.onHit(message);
+    else if (message.type === 'targets') return feedback.onTargets(message.items);
+    // Layout/target replies update their own overlays. A full repaint here
+    // sends marks again and creates a marks -> layout -> marks message loop.
+    else if (message.type === 'layout') return feedback.onLayout(message.marks, message.viewport);
+    else if (message.type === 'key') return feedback.canvasKey(message.key);
     paint();
   }, { signal: controller.signal });
   document.addEventListener('keydown', event => {
