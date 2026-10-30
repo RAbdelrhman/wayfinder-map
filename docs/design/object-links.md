@@ -64,12 +64,14 @@ through sign-in. Prototype destinations reuse the existing canvas viewer, with
 newest and pinned revisions. Live browser verification opened repository, map
 #217, ticket #366, and both revisions of its actual canvas.
 
-The installed 1.3.2 phone build contains the #226 R2A canvas viewer, object-ID
+The installed 1.3.3 phone build contains the #226 R2A canvas viewer, object-ID
 destinations and fixed revisions without a current branch. Physical Samsung
 acceptance opened repo, map, ticket and newest/pinned canvas destinations, then
 switched from a Wayfinder Activity link into the exact T3 delivery thread once
 T3 was connected. Initial T3 reconnection showed its thread list instead.
 Offline saved data must match an explicitly requested revision and board.
+Every downloaded revision retains its own manifest. Pinned opens use that
+manifest offline and do not replace the pointer used by newest destinations.
 Consult `docs/mobile-builds.md` for actual build and
 installation evidence. T3 must also preserve these explicit routes through its
 Markdown sanitizer, native link presentation and desktop external-link boundary.

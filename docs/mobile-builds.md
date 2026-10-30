@@ -17,8 +17,20 @@ deliverables. A closed prototype ticket does not mean its native screens shipped
 | 1.3.0 / 8 | Clean source `2e4348a4649d3a3c798011035d9908cfcabee4c6` | Samsung SM-S936U, USB upgrade succeeded on 2026-10-29. Android confirms 1.3.0 / 8. Opened #366's actual canvas, switched R1/R2 and pages, used More → Notes and zoom/fit, and retained typed prototype text through entering/exiting full screen. | Approved #226 R2A native canvas viewer, per-account immutable GitHub packages, embedded sandbox resources. Typed replies shown inside #366 remain a prototype; real T3 sending is not included. |
 | 1.3.1 / 9 | Clean source `76e8e6cb88ca7c42fe7bb88814b08a82b85fc271` | Android build passed in 9m 34s on 2026-10-30. Not installed; superseded by 1.3.2 below. | Initial RepoID, MapID, TicketID and PrototypeID destinations with sign-in retention. |
 | 1.3.2 / 10 | Clean source `48b382aa4bad093d68cc235e557ba3ee1fe8f985` | Samsung SM-S936U, USB upgrade succeeded on 2026-10-30; Android confirms 1.3.2/code 10. Sign-in retained. RepoID filtering, MapID #217, TicketID #366, pinned and newest PrototypeID links, page/item selection and a Wayfinder Activity link into this exact T3 thread passed on the phone. | Object-ID destinations and review fixes. Fixed canvas revisions work without a current branch; explicit boards prove ticket identity from pinned config; offline fallback cannot substitute another revision or board. Includes the 1.3.0 canvas viewer. T3 chat still requires the companion T3 client update. |
+| 1.3.3 / 11 | Clean source `34d5530c06f7d0bd28ea6f9772d19bd73d7de1d1` | Native build passed in 11m 59s. Samsung USB upgrade succeeded at 2026-10-30 06:29 UTC; Android confirms 1.3.3/code 11. Existing session retained; pinned R1 canvas and page/item, live #366 Activity and its link into the exact T3 conversation passed. | Retains a manifest beside each revision's files, reads pinned manifests from their revision, and changes the newest pointer only for newest opens. Two regression cases prove saved A survives newest B and an unsaved pin never substitutes B. Physical offline recovery is Not Verified. |
 
 Latest installed APK:
+`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.3.3-34d5530c-5568ff8ca24f4d11be7505ae97f76bf9-arm64.apk`.
+Its adjacent manifest records clean source, version 1.3.3/code 11 and successful
+installation. SHA-256:
+`4db2fd9fe035af771279b92e6d033fc2412689079f80fc88b76d5a339dd365a0`.
+All 1,944 root tests, 171 mobile tests, root/mobile typecheck, lint and both mobile
+exports pass. The first root run overlapped Android compilation and hit unrelated
+wall-clock timeouts; it was stopped and the full suite reran successfully after
+compilation, with existing timeouts unchanged. The installed APK, safe manifest
+and checksum are retained at prerelease `mobile-v1.3.3-34d5530`.
+
+Previous installed links APK:
 `C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.3.2-48b382aa-53770880ce1f442580b3efb64d7c8d32-arm64.apk`.
 Its adjacent manifest records clean source, version 1.3.2/code 10 and installation
 status `succeeded`, installed at 2026-10-30 05:49 UTC. SHA-256:
@@ -39,7 +51,7 @@ The APK, public-safe manifest and checksum are retained at prerelease
 `D:/wf-destinations/.audit/372-phone-acceptance.md` and
 `372-phone-t3-thread.png`. Opening Wayfinder links from installed T3 chat remains
 Not Verified until companion PR `pingdotgg/t3code#27385` ships. Its upstream
-workflows await maintainer approval. Physical iOS and cold T3 reconnection that
+checks now pass; maintainer merge and a client release remain pending. Physical iOS and cold T3 reconnection that
 retains a pending destination are not claimed by this acceptance.
 
 The 1.3.0 native build passed in 12m 4s and its adjacent manifest records the
