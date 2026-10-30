@@ -23,7 +23,7 @@ it.skipIf(process.platform !== 'win32')('rejects a long native build root before
 }, 30_000);
 
 it.skipIf(process.platform !== 'win32')(
-  'retains distinct APKs and accurate manifests when device installation fails',
+  'retains distinct APKs, records failed installations, and refuses source changes',
   () => {
     const root = mkdtempSync(join(tmpdir(), 'wayfinder-archive-'));
     try {
@@ -79,6 +79,21 @@ try {
   throw 'Expected installation failure'
 } catch {
   if ($_.Exception.Message -notlike 'Phone installation failed*') { throw }
+}
+$buildGitExe = (Get-Command git).Source
+$script:sourceReads = 0
+function global:git {
+  if ($args -contains 'rev-parse') {
+    $script:sourceReads++
+    if ($script:sourceReads -eq 2) { Add-Content -LiteralPath (Join-Path $PSScriptRoot 'mobile/app.json') -Value ' ' }
+  }
+  & $buildGitExe @args
+}
+try {
+  & (Join-Path $PSScriptRoot 'scripts/build-mobile-android.ps1') -SkipBuild -OutputDirectory $archive
+  throw 'Expected changed-source refusal'
+} catch {
+  if ($_.Exception.Message -notlike 'Source changed during the build*') { throw }
 }
 `,
       );

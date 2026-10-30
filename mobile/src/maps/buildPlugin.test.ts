@@ -11,6 +11,7 @@ describe('shared native bundle inputs', () => {
     expect(result).toContain("task.inputs.dir(rootProject.file('../../src'))");
     expect(result).toContain('PathSensitivity.RELATIVE');
     expect(result).toContain('task.outputs.upToDateWhen { false }');
+    expect(result).toContain("task.extraPackagerArgs.addAll(['--max-workers', '2'])");
   });
   it('does not append a second configuration on repeated prebuilds', () => {
     const first = patchAppBuildGradle('original\n');

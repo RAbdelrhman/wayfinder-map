@@ -167,23 +167,26 @@ export async function removeCache(
   }
 }
 export async function removeFollowSnapshots(
-  storage: { removeItem(key: string): Promise<void> },
+  storage: Storage & { getAllKeys(): Promise<readonly string[]>; removeItem(key: string): Promise<void> },
   login: string,
   refs: readonly MapRef[],
 ): Promise<void> {
   await Promise.all(
-    refs.map((ref) =>
-      removeCache(
+    refs.map(async (ref) => {
+      await removeMapContents(storage, login, ref);
+      await removeCache(
         storage,
         login,
         `followed:${ref.repo.toLowerCase()}#${ref.number}`,
-      ),
-    ),
+      );
+    }),
   );
 }
 /** Remove a map and all ticket snapshots scoped to it, after queued writes settle. */
 export async function removeMapContents(
   storage: {
+    getItem(key: string): Promise<string | null>;
+    setItem(key: string, value: string): Promise<void>;
     getAllKeys(): Promise<readonly string[]>;
     removeItem(key: string): Promise<void>;
   },
@@ -199,6 +202,41 @@ export async function removeMapContents(
     ...[...keys]
       .filter((key) => key.startsWith(prefix))
       .map((key) => removeCache(storage, login, key.slice(base.length))),
+    ...[...keys].filter(key => key === cacheKey(login, 'maps') || key.startsWith(cacheKey(login, 'public-maps:')))
+      .map(async key => {
+        const update = (writes.get(key) ?? Promise.resolve()).catch(() => undefined).then(async () => {
+          const text = await storage.getItem(key);
+          if (text === null) return;
+          let envelope: unknown;
+          try { envelope = JSON.parse(text); } catch { await storage.removeItem(key); return; }
+          if (!envelope || typeof envelope !== 'object') return;
+          const saved = envelope as Record<string, unknown>;
+          const data = saved.data;
+          if (!data || typeof data !== 'object') return;
+          const value = data as Record<string, unknown>;
+          const matching = (entry: unknown): boolean => {
+            if (!entry || typeof entry !== 'object') return false;
+            const item = entry as Record<string, unknown>;
+            return typeof item.repo === 'string' && item.repo.toLowerCase() === ref.repo.toLowerCase() && item.number === ref.number;
+          };
+          const scrub = (entries: unknown): unknown => Array.isArray(entries) ? entries.filter(entry => !matching(entry)) : entries;
+          const next = { ...value };
+          for (const field of ['maps', 'hidden']) if (Array.isArray(value[field])) next[field] = scrub(value[field]);
+          for (const field of ['follows', 'unavailable']) if (Array.isArray(value[field])) next[field] = value[field].map(entry => {
+            if (!matching(entry)) return entry;
+            const item = entry as Record<string, unknown>;
+            return { repo: item.repo, number: item.number };
+          });
+          if (Array.isArray(value.groups)) next.groups = value.groups.map(group => {
+            if (!group || typeof group !== 'object') return group;
+            const item = group as Record<string, unknown>;
+            return { ...item, maps: scrub(item.maps) };
+          });
+          await storage.setItem(key, JSON.stringify({ ...saved, data: next }));
+        });
+        writes.set(key, update);
+        try { await update; } finally { if (writes.get(key) === update) writes.delete(key); }
+      }),
   ]);
 }
 export async function writeCache<T>(

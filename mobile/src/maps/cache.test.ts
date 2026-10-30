@@ -56,6 +56,7 @@ describe('account-scoped map storage', () => {
       removeItem: async (key: string) => {
         values.delete(key);
       },
+      getAllKeys: async () => [...values.keys()],
     };
     for (const [login, resource] of [
       ['me', 'followed:a/repo#1'],
@@ -67,6 +68,30 @@ describe('account-scoped map storage', () => {
     expect(values.has(cacheKey('me', 'followed:a/repo#1'))).toBe(false);
     expect(values.has(cacheKey('me', 'followed:b/repo#2'))).toBe(true);
     expect(values.has(cacheKey('other', 'followed:a/repo#1'))).toBe(true);
+  });
+  it('scrubs denied maps from every aggregate and detail cache while retaining unrelated maps and accounts', async () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: async (key: string) => values.get(key) ?? null,
+      setItem: async (key: string, value: string) => { values.set(key, value); },
+      removeItem: async (key: string) => { values.delete(key); },
+      getAllKeys: async () => [...values.keys()],
+    };
+    const denied = { repo: 'other/repo', number: 9, title: 'Denied title', body: 'Denied body' };
+    const kept = { repo: 'kept/repo', number: 2, title: 'Keep title', body: 'Keep body' };
+    for (const resource of ['followed:other/repo#9', 'map:other/repo#9', 'ticket-map:other/repo#9:12']) await writeCache(storage, 'me', resource, denied);
+    await writeCache(storage, 'me', 'maps', { maps: [denied, kept], hidden: [denied] });
+    await writeCache(storage, 'me', 'public-maps:other/repo', { groups: [{ repo: 'other/repo', maps: [denied] }, { repo: 'kept/repo', maps: [kept] }], hidden: [denied], follows: [denied] });
+    await writeCache(storage, 'other-account', 'map:other/repo#9', denied);
+    await removeFollowSnapshots(storage, 'me', [denied]);
+    expect(values.has(cacheKey('me', 'map:other/repo#9'))).toBe(false);
+    expect(values.has(cacheKey('me', 'ticket-map:other/repo#9:12'))).toBe(false);
+    const maps = JSON.parse(values.get(cacheKey('me', 'maps'))!).data;
+    expect(maps).toEqual({ maps: [kept], hidden: [] });
+    const discovery = JSON.parse(values.get(cacheKey('me', 'public-maps:other/repo'))!).data;
+    expect(discovery.groups[0].maps).toEqual([]);
+    expect(discovery.groups[1].maps).toEqual([kept]);
+    expect(values.has(cacheKey('other-account', 'map:other/repo#9'))).toBe(true);
   });
   it('preserves accounts and serializes concurrent follow changes, including seeded unfollows', async () => {
     const values = new Map<string, string>();

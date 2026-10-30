@@ -4,6 +4,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({ default: {
   getItem: async (key: string) => values.get(key) ?? null,
   setItem: async (key: string, value: string) => { values.set(key, value); },
   removeItem: async (key: string) => { values.delete(key); },
+  getAllKeys: async () => [...values.keys()],
 } }));
 import { loadMaps } from './BrowseProvider';
 import { cacheKey, updateFollow, writeCache } from './cache';

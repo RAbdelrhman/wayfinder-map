@@ -34,7 +34,7 @@ import { discoverPublicMaps } from './discovery';
 import type { Discovery } from './discovery';
 import { FollowReferenceRow } from './FollowReferenceRow';
 import type { UnavailableFollow } from './unreadableFollows';
-import { restoredFollow } from './unreadableFollows';
+import { sharedFollowState } from './unreadableFollows';
 
 const isDiscovery = (value: unknown): value is Discovery => {
   if (!value || typeof value !== 'object') return false;
@@ -73,7 +73,7 @@ export function PublicMapsScreen() {
   const [savedFollows, setSavedFollows] = useState<MapSummary[]>([]);
   const [fetchedSharedMap, setSharedMap] = useState<MapSummary | null>(null);
   const [shareMessage, setShareMessage] = useState('');
-  const [sharedMissing, setSharedMissing] = useState<UnavailableFollow | null>(null);
+  const [fetchedSharedMissing, setSharedMissing] = useState<UnavailableFollow | null>(null);
   const [shareFailedAt, setShareFailedAt] = useState(0);
   const [shareRevision, setShareRevision] = useState(0);
   const sharedRef = useMemo(() => shared ? sharedMapRef(shared) : null, [shared]);
@@ -120,6 +120,7 @@ export function PublicMapsScreen() {
       .sharedMap(ref, controller.signal)
       .then((map) => {
         if (controller.signal.aborted) return;
+        setShareFailedAt(Date.now());
         if (!map) {
           setShareFailedAt(Date.now());
           setSharedMissing({ ...ref, reason: 'label' });
@@ -163,11 +164,18 @@ export function PublicMapsScreen() {
     isDiscovery,
   );
   const offline = resource.offline || !!resource.data?.offline;
-  const sharedMap = fetchedSharedMap ?? (sharedMissing && sharedRef ? restoredFollow(sharedRef, shareFailedAt, {
+  const sharedState = sharedRef ? sharedFollowState(sharedRef, { map: fetchedSharedMap, missing: fetchedSharedMissing, observedAt: shareFailedAt }, {
     fresh: !resource.loading && !resource.refreshing && !resource.error && !offline && !resource.accessDenied,
     savedAt: resource.savedAt,
+    denied: resource.accessDenied,
     maps: resource.data?.groups.flatMap(group => group.maps) ?? [],
-  }) : null);
+    hidden: resource.data?.hidden ?? [],
+    unavailable: resource.data?.unavailable ?? [],
+  }) : { map: null, missing: null, hidden: null };
+  const sharedMap = sharedState.map;
+  const sharedMissing = sharedState.missing;
+  const sharedHidden = sharedState.hidden;
+  const currentShareMessage = sharedMap || sharedMissing || sharedHidden ? '' : shareMessage;
   useEffect(() => {
     if (!resource.accessDenied && (resource.loading || resource.refreshing))
       return;
@@ -199,7 +207,7 @@ export function PublicMapsScreen() {
     session.login,
   ]);
   const following = useMemo(() => new Set(follows.map(mapKey)), [follows]);
-  const sharedTarget = sharedMap ?? sharedMissing;
+  const sharedTarget = sharedMap ?? sharedMissing ?? sharedHidden;
   const hiddenRows = hiddenFollowRows(
     resource.data?.hidden ?? [],
     following,
@@ -415,7 +423,7 @@ export function PublicMapsScreen() {
         {shared ? (
           <>
             <Section>Shared from GitHub</Section>
-            {shareMessage ? (
+            {currentShareMessage ? (
               <View
                 accessibilityRole="alert"
                 style={[
@@ -424,14 +432,17 @@ export function PublicMapsScreen() {
                 ]}
               >
                 <Text style={{ color: t.textPrimary, fontWeight: '600' }}>
-                  {shareMessage.split('\n')[0]}
+                  {currentShareMessage.split('\n')[0]}
                 </Text>
-                {shareMessage.includes('\n') ? (
+                {currentShareMessage.includes('\n') ? (
                   <Text style={{ color: t.textSecondary, marginTop: 3 }}>
-                    {shareMessage.split('\n').slice(1).join('\n')}
+                    {currentShareMessage.split('\n').slice(1).join('\n')}
                   </Text>
                 ) : null}
               </View>
+            ) : sharedHidden ? (
+              following.has(mapKey(sharedHidden)) ? <Card>{row(sharedHidden, true)}</Card>
+                : <Text style={{ color: t.textSecondary }}>#{sharedHidden.number} isn't public. @{sharedHidden.author} has to add Visibility: public to the map before anyone can follow it.</Text>
             ) : sharedMissing && !sharedMap ? (
               <Card><FollowReferenceRow follow={sharedMissing} busy={busy} grouped={false} {...(following.has(mapKey(sharedMissing)) ? { onUnfollow: () => void unfollowReference(sharedMissing) } : {})} /></Card>
             ) : sharedMap ? (
@@ -543,14 +554,12 @@ export function PublicMapsScreen() {
                   {saved.map((map) => row(map))}
                   {missing.map(ref => <FollowReferenceRow key={mapKey(ref)} follow={ref} busy={busy} onUnfollow={() => void unfollowReference(ref)} />)}
                 </Card>
-              ) : (
+              ) : !sharedTarget || sharedTarget.repo.toLowerCase() !== name.toLowerCase() ? (
                 <Text style={{ color: t.textMuted }}>
-                  {sharedTarget &&
-                  (group?.maps.some((map) => mapKey(map) === mapKey(sharedTarget)) || sharedTarget.repo.toLowerCase() === name.toLowerCase())
-                    ? `#${sharedTarget.number} is above, under Shared from GitHub.`
-                    : 'No public maps from other people.'}
+                  No public maps from other people.
                 </Text>
-              )}
+              ) : null}
+              {sharedTarget && sharedTarget.repo.toLowerCase() === name.toLowerCase() ? <Text style={{ color: t.textMuted, marginTop: 8 }}>#{sharedTarget.number} is above, under Shared from GitHub.</Text> : null}
             </View>
           );
         })}
