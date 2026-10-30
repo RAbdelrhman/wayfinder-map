@@ -13,6 +13,7 @@ import {
   floatGeometry,
   readCanvasMessage,
   readCanvasRoute,
+  readPinnedCanvasResponse,
   revealScroll,
   stripEdges,
 } from './canvasViewer.js';
@@ -28,6 +29,19 @@ const route = {
 };
 
 describe('canvas routing', () => {
+  it('accepts a verified pinned board without a current tile, only in its owning map', () => {
+    const revision = 'a'.repeat(40);
+    const link = { kind: 'prototype', id: 'node', canvas: 'prototypes/old/index.html', revision } as const;
+    const canvas = { ...route, ticket: 207, url: `/proto/octo/repo/prototype%2F207/${revision}/viewer-12/${link.canvas}` };
+    const response = { repo: 'octo/repo', mapNumber: 205, ticketNumber: 207, canvas };
+    const href = origin + '/repos/octo/repo/maps/205?ticket=207';
+    expect(readPinnedCanvasResponse(response, href, link)).toMatchObject({ url: canvas.url });
+    expect(readPinnedCanvasResponse(response, origin + '/repos/octo/repo/maps/999?ticket=207', link)).toBeNull();
+    expect(readPinnedCanvasResponse(response, href.replace('ticket=207', 'ticket=208'), link)).toBeNull();
+    for (const url of [canvas.url.replace(revision, 'b'.repeat(40)), canvas.url.replace('old/index', 'other/index'), 'https://attacker.test' + canvas.url]) {
+      expect(readPinnedCanvasResponse({ ...response, canvas: { ...canvas, url } }, href, link)).toBeNull();
+    }
+  });
   it('leaves modified and non-primary canvas clicks to the browser', () => {
     const click = { button: 0, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false };
     expect(isCanvasClick(click)).toBe(true);

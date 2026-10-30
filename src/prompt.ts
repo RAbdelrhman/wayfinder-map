@@ -376,8 +376,9 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
     : withTypeSteps;
   const destinations: string[] = [];
   if (map) destinations.push(`[Open map in Wayfinder](${map.nodeId ? objectAppLink({ kind: 'map', id: map.nodeId }) : mapAppLink(repo, map.number)})`);
-  if (ticket.nodeId) destinations.push(`[Open ticket in Wayfinder](${objectAppLink({ kind: 'ticket', id: ticket.nodeId })})`);
-  const prototypeLinks = ticket.type === 'prototype'
+  const linkedTicketId = map && ticket.parentIssueNumber === map.number ? ticket.nodeId : undefined;
+  if (linkedTicketId) destinations.push(`[Open ticket in Wayfinder](${objectAppLink({ kind: 'ticket', id: linkedTicketId })})`);
+  const prototypeLinks = ticket.type === 'prototype' && linkedTicketId
     ? '\nWhen the canvas is ready, include its Wayfinder link: wayfinder://prototype/TICKET_NODE_ID?canvas=ENCODED_CANVAS_PATH. Use this ticket’s actual GitHub node_id and the authored board path. Omit rev to open the newest canvas; add &rev=FULL_COMMIT_SHA when pointing to a fixed reviewed version. Never invent IDs or canvas paths.' : '';
   const readyLinks = `${destinations.length ? `When work is ready or needs the user, include ${destinations.join(' and ')}. These links open the installed desktop or phone app.\n` : ''}${THREAD_READY_RULE}${prototypeLinks}`;
   // Saved templates cannot silently drop destination links from ready messages.

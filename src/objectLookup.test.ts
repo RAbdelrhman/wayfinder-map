@@ -9,6 +9,17 @@ function issue(number: number, labels: string[], patch: Record<string, unknown> 
 const map = issue(217, ['wayfinder:map']);
 
 describe('current object lookup and map boundaries', () => {
+  it('uses configured map and prototype labels without accepting the default labels by accident', async () => {
+    const parent = issue(217, ['plan:map']);
+    const node = issue(366, ['plan:prototype'], { parent });
+    const labels = { mapLabel: 'plan:map', typePrefix: 'plan:' };
+    const link = { kind: 'prototype', id: 'node-366', canvas: 'prototypes/replies/index.html' } as const;
+    expect(await resolveObjectDestination({ kind: 'map', id: 'node-217' }, async () => parent, async () => true, labels)).toMatchObject({ mapNumber: 217 });
+    expect(await resolveObjectDestination(link, async () => node, async () => true, labels)).toMatchObject({ ticketNumber: 366 });
+    expect(await resolveObjectDestination(link, async () => node, async () => true)).toBeNull();
+    expect(await resolveObjectDestination(link, async () => ({ ...node, labels: { nodes: [{ name: 'wayfinder:prototype' }], pageInfo: { hasNextPage: false } } }), async () => true, labels)).toBeNull();
+    expect(await resolveObjectDestination(link, async () => node, async () => false, labels)).toBeNull();
+  });
   it('looks up an opaque ID and uses the current repository name', async () => {
     const lookup = vi.fn(async () => map);
     expect(await resolveObjectDestination({ kind: 'map', id: 'old-opaque-id' }, lookup, async () => true))

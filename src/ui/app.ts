@@ -207,7 +207,7 @@ const canvasViewer = mountCanvasViewer(els.app, () => {
       renderInspector();
     }
   };
-});
+}, { isDestinationReady: () => snapshot !== null && !initialRouteTicketPending, onDestinationError: message => toast(message, 9000) });
 const handOffSurface = mountHandOffs();
 const notificationInbox = mountNotificationInbox();
 const unblockedNotice = mountUnblockedNotice(need('unblocked-notice'), (ticketNumber) => select(ticketNumber), startUnblockedBatch);

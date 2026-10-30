@@ -55,6 +55,7 @@ export async function resolveObjectDestination(
   link: ObjectLink,
   lookupNode: (id: string) => Promise<unknown>,
   canViewMap: (map: ObjectMap) => Promise<boolean>,
+  labels: { mapLabel: string; typePrefix: string } = { mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' },
 ): Promise<ObjectDestination | null> {
   const node = record(await lookupNode(link.id));
   if (!node) return null;
@@ -68,14 +69,14 @@ export async function resolveObjectDestination(
   const target = issue(node);
   if (!target) return null;
   if (link.kind === 'map') {
-    return target.labels.includes('wayfinder:map') && await canViewMap(target)
+    return target.labels.includes(labels.mapLabel) && await canViewMap(target)
       ? { kind: 'map', id: target.id, repo: target.repo, mapNumber: target.number } : null;
   }
   const parent = issue(node['parent']);
-  if (!parent || !parent.labels.includes('wayfinder:map')
+  if (!parent || !parent.labels.includes(labels.mapLabel)
     || parent.repo.toLowerCase() !== target.repo.toLowerCase()
-    || target.labels.includes('wayfinder:map')
-    || (link.kind === 'prototype' && !target.labels.includes('wayfinder:prototype'))
+    || target.labels.includes(labels.mapLabel)
+    || (link.kind === 'prototype' && !target.labels.includes(`${labels.typePrefix}prototype`))
     || !await canViewMap(parent)) return null;
   return { kind: link.kind, id: target.id, repo: target.repo, mapNumber: parent.number, ticketNumber: target.number };
 }

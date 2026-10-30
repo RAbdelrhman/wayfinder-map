@@ -32,10 +32,18 @@ existing follow policy. An unknown, deleted, inaccessible or wrongly typed
 object must not resolve to another object or reveal saved private details.
 Tickets open through their current map, and never enter a different map's graph,
 counts, search or panel. A supplied map hint is not ownership evidence.
+Server lookups honor the configured map label and ticket-type prefix. Ready
+prompts advertise ticket/prototype destinations only after native parent-map
+ownership is established; standalone and body-only tickets retain GitHub links.
 
 Prototype links without `rev` resolve the current branch commit once on opening.
 Assets and metadata then use that same immutable SHA, so a branch moving during
 the download cannot mix versions. A fixed-revision link uses only that SHA.
+Its board and adjacent config are read from the pinned commit, with the config's
+ticket identity checked against the current owning ticket. It does not require
+the board, a tile or even the prototype branch to survive in the latest version.
+The existing viewer retains the canonical destination through reload and returns
+to the owning ticket when closed.
 Ready messages should include the newest destination and name the verified SHA;
 an exact-revision link may accompany it when discussing that version.
 

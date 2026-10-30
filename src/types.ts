@@ -13,6 +13,8 @@ export type TicketState = 'done' | 'blocked' | 'claimed' | 'frontier';
 
 export interface Ticket {
   nodeId?: string;
+  /** Same-repository parent observed through GitHub's native relationship. */
+  parentIssueNumber?: number;
   number: number;
   title: string;
   url: string;
