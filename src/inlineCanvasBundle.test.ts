@@ -22,8 +22,9 @@ describe('self-contained sandboxed canvas bundle', () => {
     expect(html).not.toContain('src="a.js"');
     const window = new Window();
     setTrustedHtml(window.document.body as unknown as HTMLElement, '<main id="app"></main>');
-    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
-    for (const script of scripts.slice(0, -1)) window.eval(script[1]!);
+    const parsed = new window.DOMParser().parseFromString(html, 'text/html');
+    const scripts = [...parsed.querySelectorAll('script')];
+    for (const script of scripts.slice(0, -1)) window.eval(script.textContent);
     expect(window.document.getElementById('app')?.textContent).toBe('compose');
     // Screens have only their own assets; the engine owns the shared frame factory.
     expect(html).not.toContain('window.__wfDocument=');
@@ -66,5 +67,25 @@ describe('self-contained sandboxed canvas bundle', () => {
     const bundle = await bundleInlineCanvas(entry, async path => Buffer.from(files[path]!));
     const generated = '<html><head></head><body><img src="data:image/png;base64,aGVsbG8=" alt="Fixture"></body></html>';
     expect(inlineCanvasDocument(bundle, entry, 1, generated)).toContain('src="data:image/png;base64,aGVsbG8="');
+  });
+  it('rewrites mixed-case scripts with spaced closing tags without scanning their templates', async () => {
+    const bundle = await bundleInlineCanvas(entry, async path => Buffer.from(files[path]!));
+    const generated = '<html><head></head><body><SCRIPT src="variants/a.js"></SCRIPT ><script>const template=\'<img src="untouched.png">\';</script ></body></html>';
+    const html = inlineCanvasDocument(bundle, entry, 1, generated);
+    expect(html).not.toContain('src="variants/a.js"');
+    expect(html).toContain('document.getElementById');
+    expect(html).toContain('<img src="untouched.png">');
+  });
+  it('preserves replacement tokens in query data and keeps script delimiters inside bundle data', async () => {
+    const bundle = await bundleInlineCanvas(entry, async path => Buffer.from(files[path]!));
+    const html = inlineCanvasDocument(bundle, 'prototypes/42/variants/a.html?s=$&');
+    expect(html).toContain('new URLSearchParams("?s=$&")');
+    bundle.files['unused.txt'] = '</ScRiPt ><img id="escaped-bundle-data">';
+    const engine = inlineCanvasDocument(bundle);
+    const window = new Window();
+    const parsed = new window.DOMParser().parseFromString(engine, 'text/html');
+    expect(parsed.querySelector('#escaped-bundle-data')).toBeNull();
+    expect(parsed.querySelector('script')?.textContent).toContain('\\u003c/ScRiPt >');
+    await window.happyDOM.abort();
   });
 });

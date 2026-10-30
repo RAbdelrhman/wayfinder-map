@@ -73,4 +73,13 @@ describe('MCP canvas feedback scope', () => {
     const session = await service.open(objectAppLink({ ...target, revision: sha.toUpperCase() }));
     expect(session.target.revision).toBe(sha);
   });
+  it('rejects noncanonical comment endings without writing, while accepting canonical trailing whitespace', async () => {
+    const { service, request } = fixture();
+    const session = await service.open(objectAppLink(target));
+    const canonical = body('home', 'B');
+    await expect(service.post(session.id, 'alternate-end', canonical.slice(0, -3) + '--!>')).rejects.toThrow('canonical');
+    await expect(service.post(session.id, 'missing-end', canonical.slice(0, -3))).rejects.toThrow('canonical');
+    expect(request.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+    await expect(service.post(session.id, 'canonical', canonical + '\n ')).resolves.toHaveProperty('url');
+  });
 });

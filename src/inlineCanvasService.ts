@@ -106,7 +106,9 @@ export class InlineCanvasService {
   }
   private async save(session: InlineCanvasSession, body: string): Promise<{ url: string; handOffId: string | null }> {
     const at = body.lastIndexOf(CANVAS_NOTES_MARKER);
-    const raw = z.object({ branch: z.string(), sha: z.string(), source: z.enum(['engine', 'dom', 'page', 'none']), pins: z.array(markSchema).min(1).max(200) }).parse(JSON.parse(body.slice(at + CANVAS_NOTES_MARKER.length).replace(/\s*-->\s*$/, '')));
+    const block = body.slice(at + CANVAS_NOTES_MARKER.length).trimEnd();
+    if (!block.endsWith('-->')) throw new Error('Canvas feedback needs its canonical data marker.');
+    const raw = z.object({ branch: z.string(), sha: z.string(), source: z.enum(['engine', 'dom', 'page', 'none']), pins: z.array(markSchema).min(1).max(200) }).parse(JSON.parse(block.slice(0, -3)));
     const asset = parsePrototypeFilePath(session.route.url)!;
     if (raw.sha !== session.target.revision || raw.branch !== asset.branch) throw new Error('Feedback belongs to another canvas version.');
     const marks: CanvasMark[] = raw.pins.map(mark => {
