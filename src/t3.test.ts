@@ -10,6 +10,7 @@ const t3Mocks = vi.hoisted(() => ({
   apiCreated: vi.fn<() => void>(),
   issueSession: vi.fn<() => void>(),
   revokeSession: vi.fn<() => void>(),
+  config: vi.fn<() => Promise<unknown>>(),
 }));
 
 vi.mock('./t3Api.js', async (importOriginal) => {
@@ -23,6 +24,7 @@ vi.mock('./t3Api.js', async (importOriginal) => {
     }
 
     revoke(): void { t3Mocks.revokeSession(); }
+    rpc(): Promise<unknown> { return t3Mocks.config(); }
 
     snapshot(): Promise<{ projects: never[] }> {
       this.session ??= Promise.resolve().then(t3Mocks.issueSession);
@@ -40,6 +42,7 @@ beforeEach(() => {
   t3Mocks.apiCreated.mockReset();
   t3Mocks.issueSession.mockReset();
   t3Mocks.revokeSession.mockReset();
+  t3Mocks.config.mockReset().mockResolvedValue({ providers: [] });
 });
 
 const input = (workspaceRoot: string | null): HandOffInput => ({
@@ -64,6 +67,18 @@ const boom = (message: string) => async (): Promise<never> => {
 };
 
 describe('handOff', () => {
+  it('refreshes the catalog for a remote start even while the display catalog is cached', async () => {
+    t3Mocks.serverCommand.mockResolvedValue({ exe: 't3', script: 'server.mjs' });
+    t3Mocks.config.mockResolvedValue({ providers: [{ instanceId: 'codex', displayName: 'Codex', enabled: true, installed: true, status: 'ready', models: [{ slug: 'removed', name: 'Removed' }] }] });
+    const client = new T3HandOff();
+    try {
+      expect((await client.models(runtime)).providers[0]?.models[0]?.slug).toBe('removed');
+      t3Mocks.config.mockResolvedValue({ providers: [] });
+      expect((await client.models(runtime)).providers[0]?.models[0]?.slug).toBe('removed');
+      expect((await client.models(runtime, true)).providers).toEqual([]);
+      expect(t3Mocks.config).toHaveBeenCalledTimes(2);
+    } finally { client.close(); }
+  });
   it('starts a running thread and leaves the clipboard alone', async () => {
     const s = steps();
     const result = await handOff(input('/repo'), s);

@@ -130,7 +130,7 @@ export class T3Api {
       headers: {
         authorization: `Bearer ${token}`,
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-        ...(path === '/api/orchestration/shell' && await this.protocolVersion() === 2 ? { 'x-t3-orchestration-protocol': '2' } : {}),
+        ...((path === '/api/orchestration/shell' || path.startsWith('/api/orchestration/threads/')) && await this.protocolVersion() === 2 ? { 'x-t3-orchestration-protocol': '2' } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: AbortSignal.timeout(timeoutMs),
@@ -170,6 +170,10 @@ export class T3Api {
 
   shell(): Promise<unknown> {
     return this.request('/api/orchestration/shell', undefined, false, 20_000);
+  }
+
+  async thread(threadId: string): Promise<unknown> {
+    return this.request(`/api/orchestration/threads/${encodeURIComponent(threadId)}`, undefined, false, 20_000);
   }
 
   async environment(): Promise<unknown> {

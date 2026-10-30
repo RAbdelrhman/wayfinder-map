@@ -6,8 +6,15 @@ import { USAGE, resolveConfig } from './config.js';
 import { WayfinderStartupError, startWayfinder } from './runtime.js';
 import { openExternal } from './t3.js';
 import { WAYFINDER_VERSION } from './version.js';
+import { startCanvasMcp } from './canvasMcp.js';
 
 async function main(): Promise<number> {
+  if (process.argv[2] === 'mcp') {
+    const args = process.argv.slice(3);
+    if (args.length !== 0 && (args.length !== 2 || args[0] !== '--origin')) throw new Error('Usage: wayfinder-map mcp [--origin http://127.0.0.1:4479]');
+    await startCanvasMcp(args[1]);
+    return 0;
+  }
   let config;
   try {
     config = await resolveConfig(process.argv.slice(2));

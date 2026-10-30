@@ -497,6 +497,12 @@ a.btn {
   display: none;
 }
 
+/* Notes remain on the board. Present mode has no automatic notes overlay. */
+#present-view #side-note,
+#present-view #notes {
+  display: none !important;
+}
+
 .tabs {
   display: flex;
   gap: 2px;
