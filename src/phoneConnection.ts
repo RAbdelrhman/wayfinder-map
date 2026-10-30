@@ -36,6 +36,7 @@ export class PhoneConnection {
 
   check(force = false): Promise<PhoneConnectionState> {
     if (this.stopped) return Promise.resolve({ ...this.state, address: null, ready: false });
+    if (this.opening) return this.opening;
     if (!force && Date.now() - this.checkedAt < 15_000) return Promise.resolve(this.state);
     this.opening ??= this.open().finally(() => { this.opening = null; });
     return this.opening;
