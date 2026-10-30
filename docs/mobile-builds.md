@@ -15,10 +15,25 @@ deliverables. A closed prototype ticket does not mean its native screens shipped
 | 1.2.1 / 5 | Clean source `f9818d40c831a83e877ac404c8ef6c109c9f0ddf`, combined public follows and app links | Samsung SM-S936U, 2026-10-29 20:09 EDT. Native build and upgrade succeeded; dumpsys confirms 1.2.1 / 5. Sign-in as RAbdelrhman retained, live Maps loaded, and `wayfinder://map?repo=RAbdelrhman%2Fwayfinder-map&number=217` opened #217 Path with 25 tickets. | #353 public discovery/follows/share entry, #359 selected unreadable-follow states, strict map links with sign-in destination retention, and outbound native T3 thread links. |
 
 Latest installed APK:
-`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.2.1-f9818d40-df7789777f0f4cdea690812bd829625e-arm64.apk`.
+`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.2.3-371809c8-1d3f5dc93fb94c93b471f5ca8d2829d2-arm64.apk`.
 The adjacent `.json` manifest records the exact source commit, an empty source
 working-tree change list, checksum and successful installation time. SHA-256:
-`4a2f61aea0f1e446ad4522bb7e814de4a6c1d3a7517c7141ae8310fa62011c98`.
+`315098688d84d6360c6ab4cc1a4e5626b74fef47b3099f289ee3256eb9c9b8b9`.
+
+The 1.2.3/code 7 APK was built from clean `371809c8b50d2d0a061e2232d93e304fc00dac22`
+and installed over USB on the Samsung on 2026-10-29. Gradle passed in 9m 57s,
+installation returned Success, and Android package metadata confirmed 1.2.3/7.
+Sign-in was retained. On that exact build, repository filtering showed the nine
+Wayfinder maps; #217 Path showed 15 Done, 2 Claimed, 1 Next up and 7 Blocked;
+#229 Overview, Links and Activity matched live GitHub. A real other-author public
+map appeared, Unfollow changed to Follow, and cold restart retained its removal.
+The temporary fixture #357 was then closed and its map label removed.
+Root typecheck/lint and 1,909 tests across 140 files passed. Mobile typecheck,
+155 tests across 14 files, and Android/iOS exports passed. A fresh independent
+Sol verifier graded all three #229 Done-when items Pass and all scope answers No.
+The intervening 1.2.2/code 6 build is retained at the `mobile-v1.2.2` prerelease.
+Neither build contains a native canvas viewer. The 1.3.0/code 8 source adds it;
+do not call that build installed until its artifact and device checks are recorded.
 
 The 1.2.1 native ARM64 release build and release lint passed in 14m 51s. Root
 typecheck, lint, build and 1,895 tests across 140 files passed. Mobile typecheck,
