@@ -1,9 +1,11 @@
-# #360 focus prevention preparation
+# #360 focus prevention evidence
 
-Ramon chose strict prevention on 2026-10-30. The ticket remains open and shipping
-requires supported browser and Electron runtimes. A detect-and-restore fallback
-with transient focus loss is not accepted. See the
-[decision](https://github.com/RAbdelrhman/wayfinder-map/issues/360#issuecomment-6524917203).
+Ramon initially required supported browser and Electron runtimes before shipping.
+After reviewing the runtime failures and missing application proof, he explicitly
+authorized shipping this patch: "you can ship I'm telling you ship". That direction
+supersedes the earlier shipping hold; it does not change the observed results into
+passes. The [earlier decision](https://github.com/RAbdelrhman/wayfinder-map/issues/360#issuecomment-6524917203)
+is retained as history. No detect-and-restore fallback is included.
 
 ## Change
 
@@ -18,7 +20,7 @@ map-viewer ticket; it has no background map tiles. This patch does not change it
 No runtime switch or dependency upgrade enables experimental enforcement in the
 shipped application. The existing limited preview script guard remains in place.
 Older browsers ignore the new permission, so this patch alone does not complete
-the ticket on current stable runtimes.
+the original strict acceptance criteria on current stable runtimes.
 
 ## Reproduce
 
@@ -68,8 +70,9 @@ positive control as a pass. This setup still needs re-verification on a future
 supporting Electron runtime. Current failure is not acceptance proof.
 
 The independent report was written against commit `916f0e8`, before these probe
-setup and synthetic loading additions. Its acceptance verdict remains blocked;
+setup and synthetic loading additions. Its acceptance findings remain unchanged;
 the follow-up probe changes do not constitute a new independent all-Pass review.
+The owner subsequently authorized shipping despite those findings.
 
 After merging current `origin/main`, `bun run typecheck`, `bun run lint` and
 `bun run test` passed: 153 test files and 2,030 tests. `bun install --frozen-lockfile`
@@ -77,11 +80,13 @@ also completed the branch build. Three hand-off restart failures on the original
 base reproduced unchanged in a detached baseline; main's existing scenario-clock
 fix resolved them without changes to that subsystem in this ticket's diff.
 
-## Remaining acceptance gates
+## Remaining verification
 
-None of the ticket's four Done-when items is claimed complete. Still required:
+None of the ticket's four original Done-when items is claimed complete. Remaining:
 supported stable runtime enforcement; the exact #314 loading/autofocus flow;
 30-second full, pane and float probes in the complete localhost viewer and
 branch-built Electron application; preview click-through; interactive canvas
 and dialog behavior in those application flows; independent all-Pass verification
-and all three scope answers No before shipping, merge or closure.
+and independent all-Pass verification. The verifier answered all three scope
+questions No. These gaps remain recorded for follow-up after the owner-authorized
+shipment; they are not represented as completed acceptance proof.
