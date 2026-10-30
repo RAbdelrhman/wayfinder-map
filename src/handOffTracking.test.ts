@@ -669,7 +669,8 @@ describe('HandOffStore', () => {
           latestTurn: { state: 'completed', settledAt: '2026-09-30T12:19:00.000Z' },
         }));
 
-        const [restarted] = await new HandOffStore({ filePath }).list();
+        // A restart keeps the scenario clock, so retention does not depend on the day the test runs.
+        const [restarted] = await new HandOffStore({ filePath, now: () => now }).list();
         expect(restarted?.auto).toMatchObject({
           scoring: { version: 'rules-1', reason: 'Hard: concurrent starts share one T3 connection' },
           proposed: { tier: 'hard', model: 'gpt-5.6-sol', effort: 'high' },
@@ -688,8 +689,9 @@ describe('HandOffStore', () => {
     it('records an in-session model change and a usage-limit error apart from the proposal', async () => {
       const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
       const filePath = join(directory, 'hand-offs.json');
+      const now = () => new Date('2026-09-30T12:10:00.000Z');
       try {
-        const store = new HandOffStore({ filePath, now: () => new Date('2026-09-30T12:10:00.000Z') });
+        const store = new HandOffStore({ filePath, now });
         await store.record({ ...input, auto: auto({ final: { tier: 'hard', provider: 'codex', model: 'gpt-5.6-sol', effort: 'high' } }) });
         await store.applySnapshot('env-1', input.t3Origin ?? '', thread({
           modelSelection: { instanceId: 'codex', model: 'gpt-5.6-sol', options: [{ id: 'reasoningEffort', value: 'high' }] },
@@ -711,7 +713,7 @@ describe('HandOffStore', () => {
           }],
         });
 
-        const [saved] = await new HandOffStore({ filePath }).list();
+        const [saved] = await new HandOffStore({ filePath, now }).list();
         // The user kept Auto's proposal, so the later switch is a model change, not an override.
         expect(saved?.auto).toMatchObject({
           overrides: [],
@@ -734,8 +736,9 @@ describe('HandOffStore', () => {
       const directory = await mkdtemp(join(tmpdir(), 'wayfinder-hand-offs-'));
       const filePath = join(directory, 'hand-offs.json');
       const message = 'You have hit your usage limit (91.5% of the 5h window). Account acct-123.';
+      const now = () => new Date('2026-09-30T12:10:00.000Z');
       try {
-        const store = new HandOffStore({ filePath, now: () => new Date('2026-09-30T12:10:00.000Z') });
+        const store = new HandOffStore({ filePath, now });
         const { id } = await store.record(input);
         await store.applySnapshot('env-1', input.t3Origin ?? '', {
           snapshotSequence: 1,
@@ -744,7 +747,7 @@ describe('HandOffStore', () => {
 
         const written = await readFile(filePath, 'utf8');
         for (const leaked of ['91.5', 'acct-123', '5h window']) expect(written).not.toContain(leaked);
-        expect((await new HandOffStore({ filePath }).list())[0]?.lastError).toBe(USAGE_LIMIT_LABEL);
+        expect((await new HandOffStore({ filePath, now }).list())[0]?.lastError).toBe(USAGE_LIMIT_LABEL);
         expect(store.rawError(id)).toBe(message);
 
         await store.applySnapshot('env-1', input.t3Origin ?? '', {
