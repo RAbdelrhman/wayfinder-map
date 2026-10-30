@@ -1,4 +1,4 @@
-import { GithubError } from './github';
+import { GithubError, GithubNetworkError } from './github';
 import type { MapRef, MapSummary, MobileGithub } from './github';
 import type { UnavailableFollow } from './unreadableFollows';
 
@@ -43,7 +43,7 @@ export async function discoverPublicMaps(
         return { repo: name, maps: await api.publicMaps(name, login, signal) };
       } catch (error) {
         if (signal.aborted) throw error;
-        if (!(error instanceof GithubError)) offline = true;
+        if (error instanceof GithubNetworkError) offline = true;
         if (error instanceof GithubError && error.status === 401) {
           await evict(follows);
           throw error;

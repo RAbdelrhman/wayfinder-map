@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { followedMaps, useBrowse, useResource } from './BrowseProvider';
-import { GithubError, mayViewMap } from './github';
+import { isGithubAccessDenied, mayViewMap } from './github';
 import type { MapDetail } from './github';
 import { removeMapContents } from './cache';
 import {
@@ -58,7 +58,7 @@ export function MapScreen() {
           follows: await followedMaps(session.login),
         });
       } catch (error) {
-        if (error instanceof GithubError && [401, 404].includes(error.status))
+        if (isGithubAccessDenied(error))
           await removeMapContents(AsyncStorage, session.login, ref);
         throw error;
       }

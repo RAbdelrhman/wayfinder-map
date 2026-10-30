@@ -68,6 +68,10 @@ export class GithubError extends Error {
     super(message);
   }
 }
+export class GithubNetworkError extends Error {}
+export function isGithubAccessDenied(error: unknown): boolean {
+  return error instanceof GithubError && ([401, 404, 410].includes(error.status) || (error.status === 403 && !error.rateLimited));
+}
 export function mapKey(ref: MapRef): string {
   return `${ref.repo.toLowerCase()}#${ref.number}`;
 }
@@ -253,7 +257,7 @@ export class MobileGithub {
     } catch (error) {
       if (error instanceof GithubError) throw error;
       if (signal?.aborted) throw error;
-      throw new Error(
+      throw new GithubNetworkError(
         'Couldn’t reach GitHub. Check your connection and try again.',
       );
     } finally {

@@ -20,7 +20,7 @@ import {
   styles,
   useTheme,
 } from './components';
-import { GithubError, mapKey, validRef } from './github';
+import { GithubNetworkError, mapKey, validRef } from './github';
 import type { MapRef, MapSummary } from './github';
 import { isSummary } from './validate';
 import { hiddenFollowRows, sharedMapRef } from './share';
@@ -75,6 +75,7 @@ export function PublicMapsScreen() {
   const [shareMessage, setShareMessage] = useState('');
   const [sharedMissing, setSharedMissing] = useState<UnavailableFollow | null>(null);
   const [shareFailedAt, setShareFailedAt] = useState(0);
+  const [shareRevision, setShareRevision] = useState(0);
   const sharedRef = useMemo(() => shared ? sharedMapRef(shared) : null, [shared]);
   const { followRevision } = useBrowse();
   useEffect(() => {
@@ -133,11 +134,11 @@ export function PublicMapsScreen() {
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
           setShareFailedAt(Date.now());
-          setSharedMissing({ ...ref, reason: error instanceof GithubError ? 'issue' : 'nosave' });
+          setSharedMissing({ ...ref, reason: error instanceof GithubNetworkError ? 'nosave' : 'issue' });
         }
       });
     return () => controller.abort();
-  }, [api, session.login, shared]);
+  }, [api, session.login, shared, shareRevision]);
   const load = useCallback(
     async (signal: AbortSignal): Promise<Discovery> => {
       const follows = await followedMaps(session.login);
@@ -356,10 +357,11 @@ export function PublicMapsScreen() {
           resource.offline
             ? {
                 ...resource,
+                refresh: () => { setShareRevision(value => value + 1); resource.refresh(); },
                 error:
                   'Offline. Finding maps needs GitHub. Unfollow still works.',
               }
-            : resource
+            : { ...resource, refresh: () => { setShareRevision(value => value + 1); resource.refresh(); } }
         }
         warnings={resource.data?.warnings ?? []}
         showWithoutData
