@@ -220,6 +220,39 @@ export class MobileGithub {
     private readonly fetcher: typeof fetch = fetch,
   ) {}
 
+  async prototypeRefs(repo: string, ticket: number, signal?: AbortSignal): Promise<{ branch: string; sha: string }[]> {
+    if (!validRef({ repo, number: ticket })) throw new Error('Invalid prototype ticket.');
+    let raw: unknown;
+    try { raw = await this.get(`/repos/${repo}/git/matching-refs/heads/prototype/${ticket}`, signal); }
+    catch (error) { if (error instanceof GithubError && error.status === 404) return []; throw error; }
+    if (!Array.isArray(raw)) throw new Error('GitHub sent an unreadable prototype list.');
+    return raw.flatMap(value => {
+      const item = object(value);
+      const ref = typeof item.ref === 'string' ? item.ref.replace(/^refs\/heads\//, '') : '';
+      const sha = object(item.object).sha;
+      return new RegExp(`^prototype/${ticket}(?:-|$)`).test(ref) && typeof sha === 'string' && /^[a-f0-9]{40}$/i.test(sha) ? [{ branch: ref, sha }] : [];
+    });
+  }
+
+  async prototypeTree(repo: string, sha: string, signal?: AbortSignal): Promise<{ path: string; sha: string; size: number }[]> {
+    if (!validRef({ repo, number: 1 }) || !/^[a-f0-9]{40}$/i.test(sha)) throw new Error('Invalid prototype revision.');
+    const raw = object(await this.get(`/repos/${repo}/git/trees/${sha}?recursive=1`, signal));
+    if (raw.truncated !== false || !Array.isArray(raw.tree)) throw new Error('GitHub returned an incomplete prototype.');
+    return raw.tree.flatMap(value => {
+      const item = object(value);
+      return item.type === 'blob' && typeof item.path === 'string' && typeof item.sha === 'string'
+        && /^[a-f0-9]{40}$/i.test(item.sha) && typeof item.size === 'number' && Number.isSafeInteger(item.size) && item.size >= 0
+        ? [{ path: item.path, sha: item.sha, size: item.size }] : [];
+    });
+  }
+
+  async prototypeBlob(repo: string, sha: string, signal?: AbortSignal): Promise<string> {
+    if (!validRef({ repo, number: 1 }) || !/^[a-f0-9]{40}$/i.test(sha)) throw new Error('Invalid prototype blob.');
+    const raw = object(await this.get(`/repos/${repo}/git/blobs/${sha}`, signal));
+    if (raw.encoding !== 'base64' || typeof raw.content !== 'string' || Number(raw.size) > 5 * 1024 * 1024) throw new Error('This prototype file cannot be downloaded.');
+    return raw.content.replace(/\s/g, '');
+  }
+
   private async get(path: string, signal?: AbortSignal): Promise<unknown> {
     const controller = new AbortController();
     const abort = () => controller.abort();

@@ -1,5 +1,7 @@
 import { normalizeRepo } from './repoRoutes.js';
 import type { PrototypeVariant } from './types.js';
+import { canvasEntries } from './prototypeIdentity.js';
+export { canvasEntries, prototypeTicketNumber } from './prototypeIdentity.js';
 
 /**
  * Prototypes live on `prototype/<ticket>-<slug>` branches, one per prototype ticket. The
@@ -20,10 +22,6 @@ export const PROTOTYPE_ROUTE = '/proto/';
 export const PROTOTYPE_HOST_VERSION = 'viewer-12';
 
 /** The ticket a prototype branch belongs to, or null when the name does not follow the convention. */
-export function prototypeTicketNumber(branch: string): number | null {
-  const match = /^prototype\/(\d+)(?:-|$)/.exec(branch);
-  return match === null ? null : Number(match[1]);
-}
 
 /** HTML is the only thing worth opening live. Whether it *can* be is `isSelfContained`. */
 export function isHtml(file: string): boolean {
@@ -48,10 +46,6 @@ export function canvasEntry(openable: readonly string[], files: readonly string[
 }
 
 /** All independent canvas boards, retaining their own file paths. */
-export function canvasEntries(openable: readonly string[], files: readonly string[]): string[] {
-  const all = new Set(files);
-  return [...new Set(openable.filter((file) => /(?:^|\/)index\.html$/i.test(file) && all.has(file.replace(/index\.html$/i, 'config.js'))))];
-}
 
 /**
  * Canvas boards the branch changed without touching their `index.html`. The canvas engine

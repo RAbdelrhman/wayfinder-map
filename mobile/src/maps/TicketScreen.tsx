@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Icon } from '../auth/Icon';
 import { followedMaps, useBrowse, useResource } from './BrowseProvider';
@@ -159,6 +159,12 @@ export function TicketScreen() {
             </View>
             {tab === 'overview' ? (
               <>
+                {ticket.type === 'prototype' && mapNumber ? <Card>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Icon name="prototype" color={t.textSecondary} />
+                    <View style={{ flex: 1 }}><Text style={{ color: t.textPrimary, fontWeight: '600' }}>Prototype canvas</Text><Text style={{ color: t.textMuted }}>#{ticket.number} · {ticket.title}</Text></View></View>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Open canvas" onPress={() => router.push({ pathname: '/canvas', params: { repo: ref.repo, number: ticket.number, mapNumber } })}
+                    style={{ marginTop: 12, minHeight: 44, borderWidth: 1, borderColor: t.hairline, borderRadius: 8, justifyContent: 'center', alignItems: 'center' }}><Text style={{ color: t.textPrimary, fontWeight: '600' }}>Open canvas</Text></Pressable>
+                </Card> : null}
                 <View
                   style={{
                     backgroundColor: t.surface,

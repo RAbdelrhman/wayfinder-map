@@ -36,6 +36,7 @@ function Navigation() {
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="index" />
         <Stack.Screen name="ticket" />
+        <Stack.Screen name="canvas" />
         <Stack.Screen name="public-maps" />
         <Stack.Screen name="settings" />
       </Stack.Protected>
