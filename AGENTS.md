@@ -13,6 +13,7 @@
 - Only advertise ticket/prototype destinations after confirming their native parent map. Standalone and body-only tickets keep their GitHub fallback; a body list alone does not establish native ownership.
 - For a ready canvas, include `https://wayfinder-links-pearl.vercel.app/open/prototype/TICKET_NODE_ID?canvas=ENCODED_BOARD_PATH`. Omit `rev` to open newest. Add `rev=FULL_COMMIT_SHA` when linking the exact version reviewed; optional `page` and `item` address authored canvas IDs.
 - Include the GitHub issue URL as a fallback. HTTPS destinations use verified mobile app associations or the desktop browser's Open in Wayfinder page. Native `wayfinder://` destinations remain supported, but do not use them as the primary link in stock T3. State whether proof came from browser or native device; a destination link is not proof the installed app supports it.
+- When the Wayfinder canvas MCP server is configured, discover and use its `open_canvas` tool for an interactive canvas inside the conversation with saved feedback. Keep the exact HTTPS destination and GitHub fallback alongside it. Do not substitute an individual screen, a floating browser, or an `html_render` copy when persisted Wayfinder feedback is required. If the integration is unavailable, state that limitation rather than advertising a disconnected embed as the complete viewer.
 
 ## Subagent effort
 
