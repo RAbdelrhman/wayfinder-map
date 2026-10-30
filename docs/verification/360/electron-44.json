@@ -1,0 +1,61 @@
+[
+  {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.7977.130 Electron/44.4.3 Safari/537.36",
+    "policy": false
+  },
+  {
+    "preview": false,
+    "control": true,
+    "method": "html",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": false,
+    "control": true,
+    "method": "svg",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": false,
+    "control": true,
+    "method": "dialog",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": false,
+    "control": true,
+    "method": "nested",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": false,
+    "control": false,
+    "method": "html",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  }
+]

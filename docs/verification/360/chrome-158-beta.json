@@ -1,0 +1,262 @@
+[
+  {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
+    "policy": true
+  },
+  {
+    "preview": false,
+    "control": true,
+    "method": "html",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": false,
+    "control": true,
+    "method": "svg",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": false,
+    "control": true,
+    "method": "dialog",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": false,
+    "control": true,
+    "method": "autofocus",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": false,
+    "control": true,
+    "method": "window",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": false,
+    "control": true,
+    "method": "nested",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": false,
+    "control": false,
+    "method": "html",
+    "active": "BUTTON",
+    "focused": true,
+    "events": [
+      "host"
+    ]
+  },
+  {
+    "preview": false,
+    "control": false,
+    "method": "svg",
+    "active": "BUTTON",
+    "focused": true,
+    "events": [
+      "host"
+    ]
+  },
+  {
+    "preview": false,
+    "control": false,
+    "method": "dialog",
+    "active": "BUTTON",
+    "focused": true,
+    "events": [
+      "host"
+    ]
+  },
+  {
+    "preview": false,
+    "control": false,
+    "method": "autofocus",
+    "active": "BUTTON",
+    "focused": true,
+    "events": [
+      "host"
+    ]
+  },
+  {
+    "preview": false,
+    "control": false,
+    "method": "window",
+    "active": "BUTTON",
+    "focused": true,
+    "events": [
+      "host"
+    ]
+  },
+  {
+    "preview": false,
+    "control": false,
+    "method": "nested",
+    "active": "BUTTON",
+    "focused": true,
+    "events": [
+      "host"
+    ]
+  },
+  {
+    "preview": true,
+    "control": true,
+    "method": "html",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": true,
+    "control": true,
+    "method": "svg",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": true,
+    "control": true,
+    "method": "dialog",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": true,
+    "control": true,
+    "method": "autofocus",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": true,
+    "control": true,
+    "method": "window",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": true,
+    "control": true,
+    "method": "nested",
+    "active": "IFRAME",
+    "focused": true,
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "preview": true,
+    "control": false,
+    "method": "html",
+    "active": "BUTTON",
+    "focused": true,
+    "events": [
+      "host"
+    ]
+  },
+  {
+    "preview": true,
+    "control": false,
+    "method": "svg",
+    "active": "BUTTON",
+    "focused": true,
+    "events": [
+      "host"
+    ]
+  },
+  {
+    "preview": true,
+    "control": false,
+    "method": "dialog",
+    "active": "BUTTON",
+    "focused": true,
+    "events": [
+      "host"
+    ]
+  },
+  {
+    "preview": true,
+    "control": false,
+    "method": "autofocus",
+    "active": "BUTTON",
+    "focused": true,
+    "events": [
+      "host"
+    ]
+  },
+  {
+    "preview": true,
+    "control": false,
+    "method": "window",
+    "active": "BUTTON",
+    "focused": true,
+    "events": [
+      "host"
+    ]
+  },
+  {
+    "preview": true,
+    "control": false,
+    "method": "nested",
+    "active": "BUTTON",
+    "focused": true,
+    "events": [
+      "host"
+    ]
+  },
+  {
+    "interaction": "click, modal autofocus, Tab, Escape",
+    "pass": true
+  }
+]

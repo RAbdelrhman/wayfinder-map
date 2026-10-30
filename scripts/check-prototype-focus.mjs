@@ -7,7 +7,7 @@ import { createServer } from 'node:http';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { build } from 'esbuild';
-import { chromium } from 'playwright-core';
+import { chromium, _electron } from 'playwright-core';
 
 const artifacts = join(process.cwd(), '.shots/focus-360');
 await mkdir(artifacts, { recursive: true });
@@ -21,6 +21,13 @@ const child = `<!doctype html><button id="target">Canvas target</button>
     if(e.data === 'html') target.focus();
     if(e.data === 'svg') document.querySelector('#svg').focus();
     if(e.data === 'dialog') document.querySelector('dialog').showModal();
+    if(e.data === 'window') window.focus();
+    if(e.data === 'autofocus') {
+      const d = document.createElement('dialog');
+      d.innerHTML = '<input autofocus>';
+      document.body.append(d);
+      d.showModal();
+    }
     if(e.data === 'nested') {
       const f = document.createElement('iframe');
       f.allow = 'focus-without-user-activation *';
@@ -42,16 +49,28 @@ const server = createServer((request, response) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const results = [];
 let browser;
+let desktop;
 let version = 'unknown';
 try {
-  browser = await chromium.launch({ headless: false, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: 'chrome' }) });
-  version = browser.version();
-  const page = await browser.newPage();
   const base = `http://127.0.0.1:${server.address().port}`;
+  let page;
+  if (process.env.ELECTRON_PATH) {
+    const main = join(artifacts, 'electron-probe.cjs');
+    await writeFile(main, `const {app,BrowserWindow}=require('electron');app.whenReady().then(()=>{const window=new BrowserWindow({width:1280,height:800});window.loadURL(process.env.PROTOTYPE_FOCUS_URL);});`);
+    const env = { ...process.env, PROTOTYPE_FOCUS_URL: base };
+    delete env.ELECTRON_RUN_AS_NODE;
+    desktop = await _electron.launch({ executablePath: process.env.ELECTRON_PATH, args: [main], env });
+    version = `electron-${await desktop.evaluate(({ app }) => app.getVersion())}`;
+    page = await desktop.firstWindow();
+  } else {
+    browser = await chromium.launch({ headless: false, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: 'chrome' }) });
+    version = browser.version();
+    page = await browser.newPage();
+  }
   const support = await page.evaluate(() => ({ userAgent: window.navigator.userAgent, policy: document.featurePolicy.features().includes('focus-without-user-activation') }));
   console.log(JSON.stringify(support));
   results.push(support);
-  for (const preview of [false, true]) for (const control of [true, false]) for (const method of ['html', 'svg', 'dialog', 'nested']) {
+  for (const preview of [false, true]) for (const control of [true, false]) for (const method of ['html', 'svg', 'dialog', 'autofocus', 'window', 'nested']) {
     await page.goto(`${base}/${preview ? 'preview' : 'viewer'}-${control ? 'control' : 'deny'}`);
     await page.frames()[1].waitForLoadState();
     await page.bringToFront();
@@ -83,5 +102,6 @@ try {
 } finally {
   await writeFile(join(artifacts, `runtime-${version}.json`), JSON.stringify(results, null, 2));
   await browser?.close();
+  await desktop?.close();
   server.close();
 }
