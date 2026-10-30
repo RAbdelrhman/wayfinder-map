@@ -42,10 +42,12 @@ export function isCanvasClick(event: Pick<MouseEvent, 'button' | 'ctrlKey' | 'me
 /**
  * Every viewer frame retains the existing opaque-origin capabilities. A picture takes neither pointer nor
  * keyboard focus: focus inside it would swallow Escape, since no bridge passes keys back from a bare image.
+ * Denying automatic focus also covers loading documents and their descendants. A user's click or Tab can
+ * still enter the canvas, and focus can move within its focused subtree. Requires browser policy support.
  */
 export function canvasFrameHtml(route: CanvasRoute): string {
   const picture = isPictureUrl(route.url) ? ' is-picture" tabindex="-1' : '';
-  return `<iframe class="vw-frame${picture}" sandbox="allow-scripts" title="Canvas: ${escapeHtml(route.title)}" src="${escapeHtml(route.url)}"></iframe>`;
+  return `<iframe class="vw-frame${picture}" sandbox="allow-scripts" allow="focus-without-user-activation 'none'" title="Canvas: ${escapeHtml(route.title)}" src="${escapeHtml(route.url)}"></iframe>`;
 }
 
 export function canvasOptionForFile(pages: readonly CanvasPage[], file: string | null): { page: string; option: string } | null {

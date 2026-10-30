@@ -52,6 +52,7 @@ describe('prototypeTileHtml', () => {
     const url = previewUrl('octo/one', base);
     expect(url).toBe('/proto/octo/one/prototype%2F8-home/prototype-snapshot.html');
     expect(html).toContain(`<iframe name="wayfinder-preview" src="${url ?? ''}" sandbox="allow-scripts"`);
+    expect(html).toContain(`allow="focus-without-user-activation 'none'"`);
     expect(html).toContain(`href="${url ?? ''}" data-canvas-url="${url ?? ''}"`);
     expect(html).not.toContain('target="_blank"');
   });
