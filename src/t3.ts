@@ -309,11 +309,11 @@ export class T3HandOff {
   }
 
   /** T3 Code's providers and settings, cached for a minute: the reply is large and rarely changes. */
-  private async t3Config(runtime: T3Runtime): Promise<T3Config> {
+  private async t3Config(runtime: T3Runtime, fresh = false): Promise<T3Config> {
     const { api } = await this.connect(runtime);
     const hides = await readClientModelHides(runtime.stateDir);
     const key = `${this.api?.key ?? ''}#${hides.stamp}`;
-    if (this.config === null || this.config.key !== key || Date.now() - this.config.at > 60_000) {
+    if (fresh || this.config === null || this.config.key !== key || Date.now() - this.config.at > 60_000) {
       const value = api.rpc('server.getConfig').then((raw) => {
         const config = raw as { providers?: unknown; settings?: { defaultModelSelection?: unknown } };
         return {
@@ -330,8 +330,8 @@ export class T3HandOff {
   }
 
   /** The models T3 Code can run right now. */
-  async models(runtime: T3Runtime): Promise<ModelCatalog> {
-    return (await this.t3Config(runtime)).catalog;
+  async models(runtime: T3Runtime, fresh = false): Promise<ModelCatalog> {
+    return (await this.t3Config(runtime, fresh)).catalog;
   }
 
   /** The workspace roots T3 Code already holds projects for: every clone it knows about. */

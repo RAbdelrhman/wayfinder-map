@@ -805,7 +805,7 @@ export async function startServer({
   const phonePairing = phonePairingStore ?? new PhonePairingStore(join(homedir(), '.wayfinder-map', 'phones-v1.json'));
   const phones = new PhoneConnection({
     pairing: phonePairing,
-    catalog: async () => t3.models(await detect()),
+    catalog: async (fresh = false) => t3.models(await detect(), fresh),
     start: async (phoneId, input) => {
       const fingerprint = phoneStartFingerprint(input);
       const previous = await phonePairing.reserveStart(phoneId, input.requestId, fingerprint);

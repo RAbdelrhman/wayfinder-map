@@ -14,7 +14,7 @@ export interface PhoneStart {
 }
 export interface PhoneRemoteDependencies {
   pairing: PhonePairingStore;
-  catalog: () => Promise<ModelCatalog>;
+  catalog: (fresh?: boolean) => Promise<ModelCatalog>;
   start: (phoneId: string, request: PhoneStart) => Promise<{ status: number; body: unknown }>;
   watch: (repo: string, map: number, ticket: number) => Promise<unknown>;
 }
@@ -77,7 +77,7 @@ export function phoneRemoteServer(deps: PhoneRemoteDependencies) {
         const start: PhoneStart = { requestId: input.requestId, repo: input.repo, map: input.map, ticket: input.ticket, model };
         const previous = await deps.pairing.lookupStart(phone.id, start.requestId, phoneStartFingerprint(start));
         if (previous) { json(response, previous.status, previous.body); return; }
-        const catalog = await deps.catalog();
+        const catalog = await deps.catalog(true);
         const offered = findModel(catalog, model);
         const ready = catalog.providers.find(provider => provider.instanceId === model.instanceId)?.ready;
         if (!ready || !offered || (offered.effort ? !model.effort || model.effort.id !== offered.effort.id || !offered.effort.options.some(option => option.id === model.effort?.value) : model.effort !== undefined)) {
