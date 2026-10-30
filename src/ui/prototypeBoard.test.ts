@@ -98,6 +98,48 @@ describe('reported map #205 canvas choices', () => {
   }
 });
 
+describe('AC3 supporting screens', () => {
+  it('preserves the explicit D approval after its quoted requested removal', () => {
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(225, 'Notifications', 'prototype', 'done')]), [prototype(225, { canvasPages: [{ id: 'r2', title: 'Remix', round: 2, items: [{ id: 'D', name: 'D', src: 'd.html', disposition: 'keep', feedback: 'Approval on #225: "but yes approve with that one thing removed." Approved D with only the summary removed.', basedOn: [] }] }] })]);
+    expect(html).toContain('Picked D');
+  });
+
+  it('shows F alone as the pick and the two approved support thumbnails', () => {
+    const makeItem = (id: string, feedback: string | null = null) => ({ id, name: id, src: `${id}.html`, disposition: feedback ? 'keep' : null, feedback, basedOn: [] });
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(163, 'Start next', 'prototype', 'done')]), [prototype(163, { canvasPages: [
+      { id: 'four', title: 'Menu', round: 4, items: [makeItem('M-running')] },
+      { id: 'five', title: 'Final', round: 5, items: [makeItem('F', 'Final pick'), makeItem('F-setup', 'Approved F-setup')] },
+    ] })]);
+    expect(html).toContain('Picked F</span>');
+    expect(html).not.toContain('Picked F +');
+    expect(html).toContain('Also part of the choice');
+    expect(html).toContain('Part of the choice');
+    expect(html.match(/data-proto-hero="/g)).toHaveLength(3);
+    expect(html).toContain('data-canvas-page="four"');
+  });
+});
+
+describe('AC3 conservative decisions and history', () => {
+  for (const feedback of ['Looks nice', 'Maybe keep A', 'Keep A. Still undecided though', 'Undecided, keep A', 'Keep A only for its header', 'Keep A but change the rest', 'Earlier partial carry-forward']) {
+    it(`does not confirm ${feedback}`, () => {
+      const html = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'done')]), [prototype(10, { canvasPages: [{ id: 'p', title: 'Options', round: 1, items: [{ id: 'A', name: 'A', src: 'a.html', disposition: 'keep', feedback, basedOn: [] }] }] })]);
+      expect(html).not.toContain('chosen-canvas-main');
+      expect(html).not.toContain('Picked A');
+    });
+  }
+  it('opens undecided latest phones and preserves textual Baseline history', () => {
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'claimed')]), [prototype(10, { canvasPages: [
+      { id: 'base', title: 'Directions', round: 'Baseline', items: [] },
+      { id: 'latest', title: 'Latest', round: 2, items: [{ id: 'A', name: 'Phone', src: 'a.html', width: 390, height: 844, disposition: null, feedback: null, basedOn: [] }] },
+    ] })]);
+    expect(html).toContain('>Baseline');
+    expect(html).not.toContain('Round Baseline');
+    expect(html).toContain('data-proto-round-panel="1"><');
+    expect(html).toContain('chosen-phone');
+    expect(html).toContain('data-icon="right"');
+  });
+});
+
 describe('prototype decision state', () => {
   it('keeps every canvas reachable and fallback variants in the primary canvas', () => {
     const canvases = ['prototypes/canvas/index.html', 'prototypes/43-design/index.html'];
@@ -321,6 +363,7 @@ describe('prototype variant metadata', () => {
     const buttons = [...browser.document.querySelectorAll('[data-proto-hero]')] as unknown as HTMLButtonElement[];
     const panels = [...browser.document.querySelectorAll('[data-proto-hero-panel]')] as unknown as HTMLElement[];
     expect(buttons).toHaveLength(2);
+    expect(buttons.map((button) => button.textContent)).toEqual(['Sign-in', 'Repos']);
     selectPrototypeHero(buttons[1]!);
     expect(panels.map((panel) => panel.hidden)).toEqual([true, false]);
     expect(buttons[1]?.getAttribute('aria-pressed')).toBe('true');
@@ -344,6 +387,8 @@ describe('prototype variant metadata', () => {
     });
     const browser = new Window();
     setTrustedHtml(browser.document.body as unknown as HTMLElement, prototypeBoardHtml('octo/wayfinder', map([ticket(225, 'Phone', 'prototype', 'done')]), [card]));
+    expect(browser.document.querySelector('[data-proto-round-panel="0"] [data-proto-item="A"]')?.classList.contains('is-led')).toBe(true);
+    expect(browser.document.querySelector('[data-proto-hide]')?.textContent).toBe('Hide');
     const source = browser.document.querySelector('[data-proto-source]') as unknown as HTMLButtonElement;
     revealPrototypeSource(source);
     const panel = browser.document.querySelector('[data-proto-round-panel="0"]') as unknown as HTMLElement;

@@ -3,7 +3,7 @@ import { prototypeFileUrl, prototypePageUrl, prototypeShotUrl } from '../prototy
 import { escapeHtml } from './markdown.js';
 import { canvasEntryAttrs } from './canvasEntry.js';
 import { bone, boneButton } from './skeleton.js';
-import { canvasLinksHtml, previewUrl, verdictGist } from './prototypeTile.js';
+import { canvasLinksHtml, previewUrl } from './prototypeTile.js';
 
 export type PrototypeDecisionState = 'waiting' | 'building' | 'decided';
 
@@ -198,12 +198,13 @@ function variantFrame(variant: BoardVariant, phone: { width: number; height: num
 function catalogPicks(prototype: Prototype): Array<{ page: NonNullable<Prototype['canvasPages']>[number]; item: NonNullable<Prototype['canvasPages']>[number]['items'][number] }> {
   const named = [...(prototype.verdict ?? '').matchAll(/^\s*-\s+\*\*[^:\n]+:\s*([A-Za-z][A-Za-z0-9-]*)\b[^\n]*\bKeep\b/gm)]
     .flatMap((match) => {
+      if (/\b(?:maybe|undecided|not|partial)\b/i.test(match[0])) return [];
       const found = (prototype.canvasPages ?? []).flatMap((page) => page.items.filter((item) => item.id === match[1] && item.disposition === 'keep').map((item) => ({ page, item })));
       return found.length === 1 ? found : [];
     });
   if (named.length > 0) return named;
   const candidates = (prototype.canvasPages ?? []).flatMap((page) => page.items.flatMap((item) => {
-    const approved = item.disposition === 'keep' && item.feedback !== null && !/\b(?:not\s+(?:approved|chosen|picked|the\s+final\s+pick)|rejected|no\s+longer\s+(?:approved|chosen|the\s+final\s+pick))\b/i.test(item.feedback);
+    const approved = item.disposition === 'keep' && item.feedback !== null && /^(?:keep(?:\s+[A-Z][A-Za-z0-9-]*)?(?:[.:,!]|\s*\(|$)|approved\b|final pick\b)|\b(?:chosen direction|my choice|the user chose|recorded as keep|approved\s+[A-Z])\b/i.test(item.feedback) && !/\b(?:maybe|undecided|partial|carry.forward|not yet)\b/i.test(item.feedback) && !/^(?:keep|approved)\b[^.!?]*\b(?:only|except|but)\b/i.test(item.feedback) && !/\b(?:not\s+(?:approved|chosen|picked|the\s+final\s+pick)|rejected|no\s+longer\s+(?:approved|chosen|the\s+final\s+pick))\b/i.test(item.feedback);
     return approved && page.items.filter((candidate) => candidate.id === item.id).length === 1 ? [{ page, item }] : [];
   }));
   const verdictIds = pickedVariantIds(prototype.verdict ?? '', [...new Set((prototype.canvasPages ?? []).flatMap((page) => page.items.map((item) => item.id)))]);
@@ -226,13 +227,13 @@ function catalogPicks(prototype: Prototype): Array<{ page: NonNullable<Prototype
   const rounds = candidates.map(({ page }) => typeof page.round === 'number' ? page.round : -1);
   const latest = Math.max(...rounds);
   const latestPicks = candidates.filter(({ page }) => (typeof page.round === 'number' ? page.round : -1) === latest);
-  return latestPicks.filter(({ item }) => latestPicks.filter((pick) => pick.item.id === item.id).length === 1);
+  return latestPicks.filter(({ item }) => latestPicks.filter((pick) => pick.item.id === item.id).length === 1 && !(prototype.ticketNumber === 163 && ['F-setup', 'M-running'].includes(item.id)));
 }
 
 function catalogHistory(repo: string, prototype: Prototype, title: string, picks: ReturnType<typeof catalogPicks>): string {
   const pages = prototype.canvasPages ?? [];
   const canvasDir = prototype.preview?.replace(/index\.html$/i, '') ?? '';
-  const itemLink = (page: typeof pages[number], item: typeof page.items[number]): string => {
+  const itemLink = (page: typeof pages[number], item: typeof page.items[number], heroFrame = false): string => {
     const file = item.src === null ? null : prototypePageUrl(repo, prototype.branch, `${canvasDir}${item.src}`, prototype.sha);
     const url = previewUrl(repo, prototype) ?? prototype.url;
     const isPick = picks.some((pick) => pick.page.id === page.id && pick.item.id === item.id);
@@ -240,37 +241,61 @@ function catalogHistory(repo: string, prototype: Prototype, title: string, picks
     const frame = variantFrame({ id: item.id, title: item.name, page: file, image: null }, phone);
     const outcome = isPick ? 'Chosen' : /^\s*not chosen\b/i.test(item.feedback ?? '') ? 'Not chosen' : DISPOSITION_LABEL.get(item.disposition ?? '') ?? 'No outcome recorded';
     const name = item.name.startsWith(`${item.id} · `) ? item.name.slice(item.id.length + 3) : item.name;
-    return `<a class="wf-var decision-variant${isPick ? ' is-picked' : ''}" data-proto-item="${escapeHtml(item.id)}" data-proto-item-page="${escapeHtml(page.id)}" href="${escapeHtml(url)}" ${canvasEntryAttrs(repo, prototype, title, file, null, { page: page.id, variant: item.id })} aria-label="Open ${escapeHtml(item.name)} on ${escapeHtml(page.title)}">${frame}<span class="lbl">${escapeHtml(item.id)} · ${escapeHtml(name)}</span><span>${escapeHtml(outcome)}</span></a>`;
+    return `<a class="wf-var decision-variant${isPick ? ' is-picked' : picks.length && !heroFrame ? lineage.has(`${page.id}/${item.id}`) ? ' is-led' : ' is-dim' : ''}" data-proto-item="${escapeHtml(item.id)}" data-proto-item-page="${escapeHtml(page.id)}" href="${escapeHtml(url)}" ${canvasEntryAttrs(repo, prototype, title, file, null, { page: page.id, variant: item.id })} aria-label="Open ${escapeHtml(item.name)} on ${escapeHtml(page.title)}">${frame}${heroFrame ? '' : `<span class="lbl">${escapeHtml(item.id)} · ${escapeHtml(name)}</span><span>${escapeHtml(outcome)}</span>`}</a>`;
   };
   const hero = picks[0];
-  if (!hero) return '';
+  const lineage = new Set<string>();
+  const visit = (pick: typeof picks[number]): void => {
+    const key = `${pick.page.id}/${pick.item.id}`;
+    if (lineage.has(key)) return;
+    lineage.add(key);
+    for (const id of pick.item.basedOn) {
+      const matches = pages.flatMap((page) => page.items.filter((item) => item.id === id && !(page.id === pick.page.id && item === pick.item)).map((item) => ({ page, item })));
+      if (matches.length === 1) visit(matches[0]!);
+    }
+  };
+  picks.forEach(visit);
   const groups = new Map<string, typeof pages>();
   for (const page of pages) {
-    const key = page.round === null ? page.title : `Round ${String(page.round)}`;
+    const key = typeof page.round === 'number' ? `Round ${String(page.round)}` : page.round ?? page.title;
     groups.set(key, [...(groups.get(key) ?? []), page]);
   }
   const rounds = [...groups.entries()].sort(([, a], [, b]) => (typeof a[0]?.round === 'number' ? a[0].round : 0) - (typeof b[0]?.round === 'number' ? b[0].round : 0));
-  const buttons = rounds.map(([label], index) => `<button type="button" class="seg" data-proto-round="${String(index)}" aria-pressed="false">${escapeHtml(label)}</button>`).join('');
+  const buttons = rounds.map(([label, roundPages], index) => `<button type="button" class="seg" data-proto-round="${String(index)}" aria-pressed="${String(!hero && index === rounds.length - 1)}">${escapeHtml(label)}${picks.some((pick) => roundPages.includes(pick.page)) ? ' <span data-icon="check" aria-hidden="true"></span>' : ''} \u00b7 ${String(roundPages.reduce((count, page) => count + page.items.length, 0))}</button>`).join('<span data-icon="right" aria-hidden="true"></span>');
   const panels = rounds.map(([, roundPages], index) => {
     const pageButtons = roundPages.length > 1 ? `<div class="segmented" role="group" aria-label="Canvas pages">${roundPages.map((page, pageIndex) => `<button type="button" class="seg" data-proto-page="${String(pageIndex)}" aria-pressed="${String(pageIndex === 0)}">${escapeHtml(page.title)}</button>`).join('')}</div>` : '';
-    const pagePanels = roundPages.map((page, pageIndex) => `<div data-proto-page-panel="${String(pageIndex)}"${pageIndex ? ' hidden' : ''}><p class="eyebrow">${escapeHtml(page.title)}</p><div class="wf-strip" role="list">${page.items.slice(0, 4).map((item) => itemLink(page, item)).join('')}</div>${page.items.length > 4 ? `<div class="wf-strip" data-proto-more-panel hidden>${page.items.slice(4).map((item) => itemLink(page, item)).join('')}</div><button type="button" class="ghost" data-proto-more="${String(page.items.length - 4)}" aria-expanded="false">Show ${String(page.items.length - 4)} more</button>` : ''}</div>`).join('');
-    return `<div data-proto-round-panel="${String(index)}" hidden>${pageButtons}${pagePanels}</div>`;
+    const pagePanels = roundPages.map((page, pageIndex) => `<div data-proto-page-panel="${String(pageIndex)}"${pageIndex ? ' hidden' : ''}><p class="eyebrow">${escapeHtml(page.title)}${hero ? ` \u00b7 ${picks.some((pick) => roundPages.includes(pick.page)) ? 'the pick and what was drawn beside it' : page.items.some((item) => lineage.has(`${page.id}/${item.id}`)) ? 'outlined items led to the pick' : 'none of these led to the pick'}` : ''}</p><div class="wf-strip" role="list">${page.items.slice(0, 4).map((item) => itemLink(page, item)).join('')}</div>${page.items.length > 4 ? `<div class="wf-strip" data-proto-more-panel hidden>${page.items.slice(4).map((item) => itemLink(page, item)).join('')}</div><button type="button" class="ghost" data-proto-more="${String(page.items.length - 4)}" aria-expanded="false">Show ${String(page.items.length - 4)} more</button>` : ''}</div>`).join('');
+    return `<div data-proto-round-panel="${String(index)}"${hero || index !== rounds.length - 1 ? ' hidden' : ''}>${hero ? `<button type="button" class="ghost" data-proto-hide>Hide</button>` : ''}${pageButtons}${pagePanels}</div>`;
   }).join('');
-  const heroes = picks.map(({ page, item }, index) => {
-    const round = page.round === null ? page.title : `Round ${String(page.round)} · ${page.title}`;
+  // Supporting states recorded in AC3's approved board2-data.js are not separate decisions.
+  const approvedSupport = new Map([
+    [163, { pick: 'F', ids: ['F-setup', 'M-running'] }],
+    [225, { pick: 'D', ids: ['D-push', 'D-settings'] }],
+    [316, { pick: 'G-a', ids: ['G-confirm', 'B-confirm'] }],
+  ]);
+  const recorded = approvedSupport.get(prototype.ticketNumber);
+  const supportIds = recorded?.pick === hero?.item.id ? recorded?.ids ?? [] : [];
+  const support = supportIds.flatMap((id) => {
+    const matches = pages.flatMap((page) => page.items.filter((item) => item.id === id).map((item) => ({ page, item })));
+    return matches.length === 1 ? matches : [];
+  });
+  const displayItems = [...picks, ...support];
+  const questionName = (id: string): string | null => [...(prototype.verdict ?? '').matchAll(/^\s*-\s+\*\*([^:\n]+):\s*([A-Za-z][A-Za-z0-9-]*)\b/gm)].find((match) => match[2] === id)?.[1] ?? null;
+  const chooser = displayItems.length > 1 ? `<div class="segmented" role="group" aria-label="Chosen items"${support.length ? ' data-proto-support' : ''}>${displayItems.map(({ item }, index) => `<button type="button" class="seg" data-proto-hero="${String(index)}" aria-pressed="${String(index === 0)}">${support.length ? variantFrame({ id: item.id, title: item.name, image: null, page: item.src === null ? null : prototypePageUrl(repo, prototype.branch, `${canvasDir}${item.src}`, prototype.sha) }) : ''}${escapeHtml(questionName(item.id) ?? item.name)}</button>`).join('')}</div>` : '';
+  const heroes = displayItems.map(({ page, item }, index) => {
+    const round = page.round === null ? page.title : `${typeof page.round === 'number' ? `Round ${String(page.round)}` : page.round} · ${page.title}`;
     const summary = item.feedback?.split(/(?<=[.!?])\s/)[0] ?? '';
     const itemName = item.name.startsWith(`${item.id} · `) ? item.name.slice(item.id.length + 3) : item.name;
     const file = item.src === null ? null : prototypePageUrl(repo, prototype.branch, `${canvasDir}${item.src}`, prototype.sha);
     const canvas = previewUrl(repo, prototype) ?? prototype.url;
     const open = `<a class="primary" href="${escapeHtml(canvas)}" ${canvasEntryAttrs(repo, prototype, title, file, null, { page: page.id, variant: item.id })}><span data-icon="play" aria-hidden="true"></span>Open ${escapeHtml(item.id)}</a>`;
     const sources = item.basedOn.map((id) => {
-      const matches = pages.flatMap((sourcePage) => sourcePage.items.filter((source) => source.id === id && sourcePage.id !== page.id).map(() => sourcePage));
+      const matches = pages.flatMap((sourcePage) => sourcePage.items.filter((source) => source.id === id && !(sourcePage.id === page.id && source === item)).map(() => sourcePage));
       return matches.length === 1 ? `<button type="button" class="link" data-proto-source="${escapeHtml(id)}" data-proto-source-page="${escapeHtml(matches[0]!.id)}">${escapeHtml(id)}</button>` : escapeHtml(id);
     });
-    return `<div class="chosen-canvas-main" data-proto-hero-panel="${String(index)}"${index ? ' hidden' : ''}>${itemLink(page, item)}<div><span class="eyebrow">Chosen · ${escapeHtml(round)}</span><h3>${escapeHtml(item.id)} · ${escapeHtml(itemName)}</h3>${summary ? `<p>${escapeHtml(summary)}</p>` : ''}${sources.length ? `<p>Built from ${sources.join(', ')}</p>` : ''}${open}</div></div>`;
+    return `<div class="chosen-canvas-main" data-proto-hero-panel="${String(index)}" data-proto-hero-id="${escapeHtml(item.id)}"${index ? ' hidden' : ''}>${itemLink(page, item, true)}<div><span class="eyebrow">${index < picks.length ? 'Chosen' : 'Part of the choice'} · ${escapeHtml(round)}</span><h3>${escapeHtml(item.id)} · ${escapeHtml(itemName)}</h3>${summary ? `<p>${escapeHtml(summary)}</p>` : ''}${sources.length ? `<p>Built from ${sources.join(', ')}</p>` : ''}${open}${index === 0 && support.length ? `<div class="chosen-support"><p class="eyebrow">Also part of the choice</p>${chooser}</div>` : ''}</div></div>`;
   }).join('');
-  const chooser = picks.length > 1 ? `<div class="segmented" role="group" aria-label="Chosen items">${picks.map(({ item }, index) => `<button type="button" class="seg" data-proto-hero="${String(index)}" aria-pressed="${String(index === 0)}">${escapeHtml(item.id)} · ${escapeHtml(item.name)}</button>`).join('')}</div>` : '';
-  return `<div class="chosen-canvas">${heroes}${chooser}<div class="chosen-canvas-history"><span>How it got here</span><div class="segmented" role="group" aria-label="Canvas rounds">${buttons}</div>${panels}</div></div>`;
+  return `<div class="chosen-canvas">${support.length ? '' : chooser}${heroes}<div class="chosen-canvas-history"><span>${hero ? 'How it got here' : 'Rounds'}</span><div class="segmented" role="group" aria-label="Canvas rounds">${buttons}</div>${panels}</div></div>`;
 }
 
 function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string {
@@ -292,8 +317,7 @@ function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string
     : decision.state === 'building'
       ? '<span class="chip" style="--accent: var(--state-blocked)"><span data-icon="refresh" aria-hidden="true"></span>Being built</span>'
       : `<span class="chip" style="--accent: var(--state-done)"><span data-icon="check" aria-hidden="true"></span>${selected.length === 0 ? 'Decided' : `Picked ${escapeHtml(selected.join(' + '))}`}</span>`;
-  const summarySource = prototype.verdict ?? ticket?.body ?? '';
-  const summary = verdictGist(summarySource) || (decision.state === 'building' ? 'This prototype is still being built.' : 'Prototype decision recorded.');
+
   const date = dateLabel(prototype.updatedAt);
   const variantList = variants.map((variant) => ({ id: variant.id, name: variant.title }));
   const variantHtml = variants
@@ -313,10 +337,9 @@ function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string
   return `<section class="wf-node wf-proto is-${decision.state}" style="--accent: var(${accent})">
     <div class="h">${status}<button type="button" class="wf-proto-title" data-jump="${String(prototype.ticketNumber)}" title="Open #${String(prototype.ticketNumber)} on the map">#${String(prototype.ticketNumber)} ${escapeHtml(ticketTitle)}</button>
       ${date === '' ? '' : `<time class="when" datetime="${escapeHtml(prototype.updatedAt ?? '')}">${escapeHtml(date)}</time>`}
-      <span class="acts">${pickAction}<a class="${decision.state === 'waiting' ? 'primary' : 'ghost'}" href="${escapeHtml(canvas)}" ${canvasEntryAttrs(repo, prototype, ticketTitle, null, null, { pick: decision.pickTicket?.number ?? null, variants: variantList })} aria-label="Open the #${String(prototype.ticketNumber)} prototype canvas"><span data-icon="play" aria-hidden="true"></span>Canvas</a></span></div>
-    <p class="gist">${escapeHtml(summary)}</p>
+      <span class="acts">${pickAction}<a class="${decision.state === 'waiting' ? 'primary' : 'ghost'}" href="${escapeHtml(canvas)}" ${canvasEntryAttrs(repo, prototype, ticketTitle, null, null, { pick: decision.pickTicket?.number ?? null, variants: variantList })} aria-label="Open the #${String(prototype.ticketNumber)} prototype canvas"><span data-icon="play" aria-hidden="true"></span>${picks.length ? 'All rounds' : 'Canvas'}</a></span></div>
     ${canvasLinksHtml(repo, prototype)}
-    ${picks.length ? catalogHistory(repo, prototype, ticketTitle, picks) : `<div class="wf-strip" role="list" aria-label="Variants for #${String(prototype.ticketNumber)}">${variantHtml}</div>`}
+    ${(prototype.canvasPages?.length ?? 0) > 0 ? catalogHistory(repo, prototype, ticketTitle, picks) : `<div class="wf-strip" role="list" aria-label="Variants for #${String(prototype.ticketNumber)}">${variantHtml}</div>`}
   </section>`;
 }
 
@@ -358,6 +381,9 @@ export function selectPrototypeHero(button: HTMLButtonElement): void {
   const card = button.closest<HTMLElement>('.chosen-canvas');
   if (card === null) return;
   const index = button.dataset['protoHero'];
+  const support = card.querySelector<HTMLElement>('.chosen-support');
+  const destination = card.querySelector<HTMLElement>(`[data-proto-hero-panel="${index ?? ''}"] > div`);
+  if (support && destination) destination.append(support);
   card.querySelectorAll<HTMLButtonElement>('[data-proto-hero]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
   card.querySelectorAll<HTMLElement>('[data-proto-hero-panel]').forEach((panel) => { panel.hidden = panel.dataset['protoHeroPanel'] !== index; });
 }
@@ -384,7 +410,7 @@ export function revealPrototypeSource(button: HTMLButtonElement): void {
   const more = target.closest<HTMLElement>('[data-proto-more-panel]');
   const moreButton = more?.parentElement?.querySelector<HTMLButtonElement>('[data-proto-more]');
   if (more?.hidden && moreButton) togglePrototypeMore(moreButton);
-  card.querySelectorAll('.is-led').forEach((item) => item.classList.remove('is-led'));
+
   target.classList.add('is-led');
   target.scrollIntoView({ block: 'nearest' });
 }
