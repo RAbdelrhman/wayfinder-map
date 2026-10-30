@@ -18,7 +18,7 @@ import { parseModelChoice, TIERS } from './models.js';
 import type { ModelChoice, Tier } from './models.js';
 import { copyToClipboard } from './clipboard.js';
 import { DEFAULT_TEMPLATE, buildNewMapPrompt, buildPrompt, ticketBranch } from './prompt.js';
-import { PROTOTYPE_SHOTS_DIR, parsePrototypeFilePath, parsePrototypeShotPath } from './prototypes.js';
+import { PROTOTYPE_SHOTS_DIR, parsePrototypeFilePath, parsePrototypeShotPath, prototypeFileUrl } from './prototypes.js';
 import { detectT3, handOff } from './t3.js';
 import type { T3HandOff, T3Runtime } from './t3.js';
 import type { Config } from './config.js';
@@ -32,7 +32,12 @@ import { canvasNotesThreadMessage, isCanvasNotesComment, isTicketCommentUrl } fr
 import { viewerPrototypeBytes } from './canvasBridge.js';
 import { PrototypeFileCache } from './prototypeFileCache.js';
 import { AuthFlow } from './authFlow.js';
-import { normalizeRepo, parseRepoPagePath } from './repoRoutes.js';
+import { mapPath, repoPath, normalizeRepo, parseRepoPagePath } from './repoRoutes.js';
+import { objectAppLink, parseObjectAppLink, parseObjectWebPath } from './objectLinks.js';
+import type { ObjectLink } from './objectLinks.js';
+import { OBJECT_NODE_QUERY, resolveObjectDestination } from './objectLookup.js';
+import { pinnedCanvasRoute } from './canvasDestination.js';
+import { isMapShown, mapVisibility } from './visibility.js';
 import type { ScopedApiAction } from './repoRoutes.js';
 import { RepositoryStore } from './repositoryStore.js';
 import type { SnapshotPersistence } from './repositorySnapshotCache.js';
@@ -128,6 +133,8 @@ export interface ServeOptions {
   accountReader?: () => Promise<HomeAccount>;
   /** Every repository the account can open, for Home's picker. */
   repoLister?: () => Promise<string[]>;
+  lookupObjectNode?: (id: string) => Promise<unknown>;
+  prototypeFileReader?: typeof fetchBranchFile;
   onShutdown?: () => void;
   /**
    * Where the page's files live. Every entry point names it: the packaged app and the
@@ -279,6 +286,12 @@ export async function startServer({
   homeLoader,
   accountReader = readAccount,
   repoLister = listRepositories,
+  lookupObjectNode = async (id) => {
+    const result: { data?: { node?: unknown }; errors?: unknown[] } = JSON.parse(await gh(['api', 'graphql', '-f', `query=${OBJECT_NODE_QUERY}`, '-f', `id=${id}`]));
+    if (result.errors?.length) throw new Error('GitHub could not resolve this destination.');
+    return result.data?.node ?? null;
+  },
+  prototypeFileReader = fetchBranchFile,
   onShutdown,
   uiDir = join(process.cwd(), 'src', 'ui'),
   updater,
@@ -301,7 +314,7 @@ export async function startServer({
 }: ServeOptions): Promise<RunningServer> {
   const detect = t3.detect ?? detectT3;
   // No speculative file downloads. Existing previews and viewer preparation request what they need.
-  const prototypeFiles = new PrototypeFileCache(fetchBranchFile, undefined, fetcher === undefined ? async () => {
+  const prototypeFiles = new PrototypeFileCache(prototypeFileReader, undefined, fetcher === undefined ? async () => {
     const account = await signedInAccount();
     if (account.status !== 'ready') return null;
     const scope = createHash('sha256').update(JSON.stringify([account.host, account.login])).digest('hex');
@@ -353,6 +366,7 @@ export async function startServer({
   let cacheScope = `${String(cacheRevision)}-${randomUUID()}`;
   const json = (response: ServerResponse, status: number, body: unknown): void => {
     response.setHeader('x-wayfinder-cache-scope', cacheScope);
+
     writeJson(response, status, body);
   };
   let lastAccount: HomeAccount | null = null;
@@ -401,6 +415,10 @@ export async function startServer({
     const login = follow === null ? null : await follow.login();
     return follow === null || login === null ? null : { login, follows: await follow.store.follows(login, forRepo) };
   };
+  const objectDestination = (link: ObjectLink) => resolveObjectDestination(link, lookupObjectNode, async (map) => {
+    const viewer = await viewerOf(map.repo);
+    return viewer !== null && isMapShown({ ...map, visibility: mapVisibility(map.body) }, viewer);
+  }, { mapLabel: config.mapLabel, typePrefix: config.typePrefix });
   const signedInSettleAccount = async (): Promise<SettleAccount | null> => {
     const account = await signedInAccount();
     return account.status === 'ready' && account.login !== null ? { host: account.host, login: account.login } : null;
@@ -798,9 +816,75 @@ export async function startServer({
     const path = requestUrl.pathname;
     response.setHeader('x-wayfinder-cache-scope', cacheScope);
 
+    if (path.startsWith('/open/')) {
+      response.setHeader('Cache-Control', 'no-store');
+      const link = parseObjectWebPath(path + requestUrl.search);
+      if (!link || request.method !== 'GET') {
+        json(response, 400, { error: 'Invalid Wayfinder destination.' });
+        return;
+      }
+      try {
+        const destination = await objectDestination(link);
+        if (!destination) {
+          json(response, 404, { error: 'Destination not found or not available to this account.' });
+          return;
+        }
+        let target = destination.kind === 'repo' ? repoPath(destination.repo) : mapPath(destination.repo, destination.mapNumber);
+        if (destination.kind === 'ticket' || destination.kind === 'prototype') target += `?ticket=${destination.ticketNumber}`;
+        if (link.kind === 'prototype' && destination.kind === 'prototype') {
+          if (link.revision) {
+            const canvas = await pinnedCanvasRoute(link, destination, readPrototypeFile);
+            if (!canvas) {
+              json(response, 404, { error: 'This canvas is not available at the requested revision.' });
+              return;
+            }
+            target = `${mapPath(destination.repo, destination.mapNumber)}?${new URLSearchParams({ ticket: String(destination.ticketNumber), canvasDestination: objectAppLink(link) })}`;
+            response.writeHead(302, { Location: target });
+            response.end();
+            return;
+          }
+          const prototypes = await prototypesOf(destination.repo, destination.mapNumber, true);
+          const prototype = prototypes?.filter(item => item.ticketNumber === destination.ticketNumber && item.canvases?.includes(link.canvas))
+            .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))[0];
+          if (!prototype) {
+            json(response, 404, { error: 'This canvas is no longer available in its original map.' });
+            return;
+          }
+          const params = new URLSearchParams({ ticket: String(destination.ticketNumber), canvas: prototypeFileUrl(destination.repo, prototype.branch, link.canvas, prototype.sha) });
+          if (link.page) params.set('canvasPage', link.page);
+          if (link.item) params.set('canvasItem', link.item);
+          target = `${mapPath(destination.repo, destination.mapNumber)}?${params}`;
+        }
+        response.writeHead(302, { Location: target });
+        response.end();
+      } catch (error) {
+        json(response, 502, { error: ghProblem(error) });
+      }
+      return;
+    }
+
     if (path.startsWith('/api/')) {
       if (!originAllowed(request, port)) {
         json(response, 403, { error: 'Cross-origin requests are not accepted.' });
+        return;
+      }
+
+      if (path === '/api/canvas-destination' && request.method === 'GET') {
+        response.setHeader('Cache-Control', 'no-store');
+        const link = parseObjectAppLink(requestUrl.searchParams.get('target') ?? '');
+        if (!link || link.kind !== 'prototype' || !link.revision || requestUrl.searchParams.getAll('target').length !== 1) {
+          json(response, 400, { error: 'Invalid Wayfinder destination.' });
+          return;
+        }
+        try {
+          const destination = await objectDestination(link);
+          const canvas = destination?.kind === 'prototype' ? await pinnedCanvasRoute(link, destination, readPrototypeFile) : null;
+          if (!canvas || destination?.kind !== 'prototype') {
+            json(response, 404, { error: 'This canvas is not available to this account at the requested revision.' });
+            return;
+          }
+          json(response, 200, { repo: destination.repo, mapNumber: destination.mapNumber, ticketNumber: destination.ticketNumber, canvas });
+        } catch (error) { json(response, 502, { error: ghProblem(error) }); }
         return;
       }
 

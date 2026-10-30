@@ -25,6 +25,10 @@ export function branchForTicket(branch: string, ticket: number): boolean {
   return prototypeTicketNumber(branch) === ticket;
 }
 
+export function isCanvasForTicket(source: string, ticket: number): boolean {
+  return canvasData(source)?.ticket === ticket;
+}
+
 export function relativeAsset(from: string, value: string): string | null {
   if (!value || /^(?:[a-z][a-z\d+.-]*:|\/\/|#|\/)/i.test(value)) return null;
   try {

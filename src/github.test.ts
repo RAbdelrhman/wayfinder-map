@@ -57,7 +57,7 @@ function issue(number: number) {
   return { number, title: `Ticket ${String(number)}`, state: 'open' };
 }
 
-function mockGitHub(subIssues: ReturnType<typeof issue>[]): void {
+function mockGitHub(subIssues: Array<ReturnType<typeof issue> & { node_id?: string }>): void {
   execFileMock.mockImplementation(async (_file, args) => {
     const route = args[args.length - 1] ?? '';
     let response: unknown;
@@ -370,6 +370,23 @@ describe('warnings', () => {
 });
 
 describe('fetchMaps child tickets', () => {
+  it('marks native ownership for linked tickets without promoting body-only membership to ownership', async () => {
+    mockGitHub([{ ...issue(12), node_id: 'native-node' }]);
+    const original = execFileMock.getMockImplementation()!;
+    execFileMock.mockImplementation(async (file, args, options) => {
+      const result = await original(file, args, options);
+      if ((args[args.length - 1] ?? '').endsWith('/issues/15')) {
+        const body = JSON.stringify({ ...issue(15), node_id: 'body-node' });
+        result.stdout = Buffer.from(args.includes('--include') ? `HTTP/2.0 200 OK\r\nETag: "body"\r\n\r\n${body}` : body);
+      }
+      return result;
+    });
+    const result = await fetchMaps({ repo: 'owner/repo', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' });
+    expect(result.maps[0]?.tickets.find(ticket => ticket.number === 12)).toMatchObject({ nodeId: 'native-node', parentIssueNumber: 10 });
+    const bodyOnly = result.maps[0]?.tickets.find(ticket => ticket.number === 15);
+    expect(bodyOnly).toMatchObject({ nodeId: 'body-node' });
+    expect(bodyOnly).not.toHaveProperty('parentIssueNumber');
+  });
   it('shows and warns about checklist tickets when GitHub returns no sub-issues', async () => {
     mockGitHub([]);
     const result = await fetchMaps({ repo: 'owner/repo', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:' });
@@ -896,9 +913,9 @@ describe('fetchTicketWithParent', () => {
       const path = args.find((arg) => arg.startsWith('repos/')) ?? '';
       const response = path.endsWith('/dependencies/blocked_by')
         ? []
-        : { number: 30, title: 'Ticket', state: 'open', parent_issue_url: 'https://api.github.com/repos/o/r/issues/3' };
+        : { number: 30, node_id: 'ticket-node', title: 'Ticket', state: 'open', parent_issue_url: 'https://api.github.com/repos/o/r/issues/3' };
       return { stdout: Buffer.from(JSON.stringify(response)), stderr: Buffer.alloc(0) };
     });
-    expect(await fetchTicketWithParent('o/r', 30)).toMatchObject({ ticket: { number: 30 }, parent: 3 });
+    expect(await fetchTicketWithParent('o/r', 30)).toMatchObject({ ticket: { number: 30, parentIssueNumber: 3 }, parent: 3 });
   });
 });

@@ -16,6 +16,8 @@ import { allowedCanvasNavigation, canvasHost } from './host';
 import type { CanvasPackage } from './package';
 import { embeddedCanvas } from './embed';
 import type { CanvasAssets } from './embed';
+import { canvasSourceRef, matchesCanvasRequest } from './source';
+import { canvasManifests } from './manifest';
 
 export function CanvasScreen() {
   const params = useLocalSearchParams<{ repo: string; number: string; mapNumber: string; board?: string; rev?: string; page?: string; item?: string }>();
@@ -51,16 +53,16 @@ export function CanvasScreen() {
         throw new Error('This canvas needs its original map and ticket.');
       if (params.rev && !/^[a-f\d]{40}$/i.test(params.rev)) throw new Error('Invalid prototype revision.');
       const latest = canvasFiles(session.login, repo, mapNumber, ticket, 'latest');
+      const manifests = canvasManifests(sha => canvasFiles(session.login, repo, mapNumber, ticket, sha), params.rev);
       try {
         const map = await api.map({ repo, number: mapNumber }, abort.signal, { login: session.login, follows: await followedMaps(session.login) });
         if (!map.tickets.some(item => item.number === ticket && item.type === 'prototype')) {
           removeCanvasFiles(session.login, repo, mapNumber, ticket);
           throw new Error('This prototype is no longer in this map.');
         }
-        const refs = await api.prototypeRefs(repo, ticket, abort.signal);
-        const ref = refs[0];
+        const ref = await canvasSourceRef(api, repo, ticket, params.rev, abort.signal);
         if (!ref) throw new Error('No canvas was found for this ticket.');
-        const sha = params.rev && /^[a-f\d]{40}$/i.test(params.rev) ? params.rev : ref.sha;
+        const sha = ref.sha;
         const storage = canvasFiles(session.login, repo, mapNumber, ticket, sha);
         const source = { prototypeTree: api.prototypeTree.bind(api),
           prototypeBlob: async (repository: string, blob: string, signal?: AbortSignal) => {
@@ -75,23 +77,27 @@ export function CanvasScreen() {
           if (!abort.signal.aborted) setProgress({ files, bytes });
         });
         if (abort.signal.aborted) return;
-        latest.write('manifest.json', JSON.stringify(result));
+        manifests.save(result);
         setAssets(JSON.parse(await storage.text('assets.json')) as CanvasAssets);
         setCanvas(result);
       } catch (failure) {
         if (abort.signal.aborted) return;
-        if (failure instanceof GithubNetworkError && latest.has('manifest.json')) {
+        if (failure instanceof GithubNetworkError) {
+          const manifest = await manifests.read();
+          if (!manifest) throw failure;
           const parent = await readCache(AsyncStorage, session.login, `map:${repo.toLowerCase()}#${mapNumber}`, isMapDetail);
           if (!parent || !mayViewMap(parent.data, { login: session.login, follows: await followedMaps(session.login) })
             || !parent.data.tickets.some(value => value.number === ticket)) throw failure;
-          const saved: unknown = JSON.parse(await latest.text('manifest.json'));
+          const saved: unknown = JSON.parse(manifest);
           if (saved && typeof saved === 'object' && 'sha' in saved && typeof saved.sha === 'string'
             && /^[a-f\d]{40}$/i.test(saved.sha) && 'board' in saved && typeof saved.board === 'string') {
             // Rebuild metadata from the immutable config, rather than trusting serialized paths.
             const cached = canvasFiles(session.login, repo, mapNumber, ticket, saved.sha);
-            const { packagePages, canvasMetadata, safeAssetPath } = await import('./package');
-            if (!safeAssetPath(saved.board) || !saved.board.startsWith(`prototypes/${ticket}-`)) throw failure;
+            const { packagePages, canvasMetadata, safeAssetPath, isCanvasForTicket } = await import('./package');
+            if (!safeAssetPath(saved.board) || !matchesCanvasRequest({ sha: saved.sha, board: saved.board },
+              { ...(params.rev ? { revision: params.rev } : {}), ...(params.board ? { board: params.board } : {}) })) throw failure;
             const config = await cached.text(saved.board.replace(/[^/]+$/, 'config.js'));
+            if (!isCanvasForTicket(config, ticket)) throw failure;
             const pages = packagePages(config);
             setAssets(JSON.parse(await cached.text('assets.json')) as CanvasAssets);
             setCanvas({ repo, ticket, mapNumber, sha: saved.sha, board: saved.board, branch: '', ...canvasMetadata(config), pages,

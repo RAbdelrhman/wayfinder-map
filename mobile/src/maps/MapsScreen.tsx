@@ -7,7 +7,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Avatar } from '../auth/Avatar';
 import { initialOf } from '../auth/copy';
 import { Icon } from '../auth/Icon';
@@ -34,6 +34,7 @@ import type { UnavailableFollow } from './unreadableFollows';
 
 /** #223 R-C2: every map, latest first; one repository filter sheet. */
 export function MapsScreen() {
+  const route = useLocalSearchParams<{ repo?: string }>();
   const t = useTheme();
   const { api, session, followRevision } = useBrowse();
   const [follows, setFollows] = useState<MapRef[] | null>(null);
@@ -48,7 +49,8 @@ export function MapsScreen() {
     return () => controller.abort();
   }, [api, session.login, followRevision]);
   const [search, setSearch] = useState('');
-  const [repo, setRepo] = useState<string | null>(null);
+  const [repo, setRepo] = useState<string | null>(typeof route.repo === 'string' ? route.repo : null);
+  useEffect(() => { setRepo(typeof route.repo === 'string' ? route.repo : null); }, [route.repo]);
   const [picker, setPicker] = useState(false);
   const load = useCallback(
     async (signal: AbortSignal) => loadMaps(api, session.login, signal),

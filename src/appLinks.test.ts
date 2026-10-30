@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { isOpenableLink, isT3ThreadLink, mapAppLink, nativeThreadLink, parseMapAppLink } from './appLinks.js';
+import { isOpenableLink, isT3ThreadLink, mapAppLink, nativeThreadLink, parseMapAppLink, wayfinderOpenPath } from './appLinks.js';
 
 describe('installed app destinations', () => {
+  it('routes global IDs through the local resolver on cold and warm opens', () => {
+    for (const kind of ['repo', 'map', 'ticket']) {
+      const link = `wayfinder://${kind}/opaque-ID`;
+      expect(wayfinderOpenPath(link)).toBe(`/open/${kind}/opaque-ID`);
+      expect(isOpenableLink(link)).toBe(true);
+    }
+    const link = 'wayfinder://prototype/node?canvas=prototypes%2Freplies%2Findex.html&rev=' + 'a'.repeat(40);
+    expect(wayfinderOpenPath(link)).toBe(link.replace('wayfinder://', '/open/'));
+    expect(wayfinderOpenPath('wayfinder://ticket/node?command=run')).toBeNull();
+  });
   it('round-trips a map without a machine-specific hostname or port', () => {
     const link = mapAppLink('RAbdelrhman/wayfinder-map', 217);
     expect(link).toBe('wayfinder://map?repo=RAbdelrhman%2Fwayfinder-map&number=217');

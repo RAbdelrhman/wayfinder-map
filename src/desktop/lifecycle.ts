@@ -1,5 +1,6 @@
 import { parseRepoPagePath } from '../repoRoutes.js';
 import { isOpenableLink } from '../appLinks.js';
+import { parseObjectWebPath } from '../objectLinks.js';
 
 export class DesktopLifecycle {
   private quitPromise: Promise<void> | null = null;
@@ -36,8 +37,8 @@ export function isInternalUrl(target: string, expectedOrigin: string | null): bo
  */
 export function isAppPageUrl(target: string, expectedOrigin: string | null): boolean {
   if (!isInternalUrl(target, expectedOrigin)) return false;
-  const { pathname } = new URL(target);
-  return ['/', '/new-map', '/settings'].includes(pathname) || parseRepoPagePath(pathname) !== null;
+  const { pathname, search } = new URL(target);
+  return ['/', '/new-map', '/settings'].includes(pathname) || parseRepoPagePath(pathname) !== null || parseObjectWebPath(pathname + search) !== null;
 }
 
 export function isSafeExternalUrl(target: string): boolean {

@@ -1,6 +1,7 @@
 import { PROTOTYPE_BRANCH_PREFIX } from './prototypes.js';
 import type { Ticket, TicketType, WayfinderMap } from './types.js';
 import { mapAppLink } from './appLinks.js';
+import { objectAppLink } from './objectLinks.js';
 
 const MAP_BOUNDARY_RULE = 'No cross-map tickets or dependencies. Every ticket and every blocker must belong to this map. Never reuse another map\'s ticket or add a blocked-by link to one.';
 
@@ -373,9 +374,13 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
   const withMapRules = map && !chosenTemplate.includes('{{mapRules}}')
     ? `${withTypeSteps}\n\n${MAP_BOUNDARY_RULE}`.trim()
     : withTypeSteps;
-  const readyLinks = map
-    ? `When work is ready or needs the user, include [Open map in Wayfinder](${mapAppLink(repo, map.number)}). This link opens the installed desktop or phone app.\n${THREAD_READY_RULE}`
-    : THREAD_READY_RULE;
+  const destinations: string[] = [];
+  if (map) destinations.push(`[Open map in Wayfinder](${map.nodeId ? objectAppLink({ kind: 'map', id: map.nodeId }) : mapAppLink(repo, map.number)})`);
+  const linkedTicketId = map && ticket.parentIssueNumber === map.number ? ticket.nodeId : undefined;
+  if (linkedTicketId) destinations.push(`[Open ticket in Wayfinder](${objectAppLink({ kind: 'ticket', id: linkedTicketId })})`);
+  const prototypeLinks = ticket.type === 'prototype' && linkedTicketId
+    ? '\nWhen the canvas is ready, include its Wayfinder link: wayfinder://prototype/TICKET_NODE_ID?canvas=ENCODED_CANVAS_PATH. Use this ticket’s actual GitHub node_id and the authored board path. Omit rev to open the newest canvas; add &rev=FULL_COMMIT_SHA when pointing to a fixed reviewed version. Never invent IDs or canvas paths.' : '';
+  const readyLinks = `${destinations.length ? `When work is ready or needs the user, include ${destinations.join(' and ')}. These links open the installed desktop or phone app.\n` : ''}${THREAD_READY_RULE}${prototypeLinks}`;
   // Saved templates cannot silently drop destination links from ready messages.
   return `${withMapRules}\n\n${readyLinks}`;
 }
@@ -384,5 +389,5 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
 export function buildNewMapPrompt({ repo, goal, mapLabel, typePrefix, template }: NewMapPromptInput): string {
   const rendered = renderTemplate(template ?? DEFAULT_NEW_MAP_TEMPLATE, { repo, goal: indent(goal), mapLabel, typePrefix }).trim();
   const withMapRules = rendered.includes(MAP_BOUNDARY_RULE) ? rendered : `${rendered}\n\n${MAP_BOUNDARY_RULE}`.trim();
-  return `${withMapRules}\n\nWhen the map is created, include [Open map in Wayfinder](wayfinder://map?repo=${encodeURIComponent(repo)}&number=NUMBER), replacing NUMBER with its actual GitHub issue number. Include this destination whenever you report the map ready.\n${THREAD_READY_RULE}`;
+  return `${withMapRules}\n\nWhen the map is created, read its actual GitHub node_id and include [Open map in Wayfinder](wayfinder://map/MAP_NODE_ID), replacing MAP_NODE_ID with that URL-encoded ID. Include this destination whenever you report the map ready. Older clients also accept wayfinder://map?repo=${encodeURIComponent(repo)}&number=NUMBER with the actual issue number.\n${THREAD_READY_RULE}`;
 }

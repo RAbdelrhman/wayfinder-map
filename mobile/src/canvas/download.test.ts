@@ -7,7 +7,7 @@ import { embeddedCanvas } from './embed';
 function fixture(extra: Record<string, string> = {}) {
   const sources: Record<string, string> = {
     'prototypes/366-replies/index.html': '<script src="config.js"></script>',
-    'prototypes/366-replies/config.js': `const W={width:390,height:844};window.CANVAS={title:'Replies',question:'Choose a reply',pages:[{id:'r1',title:'Reply bar',items:[{id:'A',name:'Compose',src:'variants/phone.html?state=compose',...W,note:{idea:'Write',pros:['One step'],cons:['Small']}}]},{id:'r2',title:'Reply page',items:[{id:'B',src:'variants/phone.html?state=confirm',...W}]}]};`,
+    'prototypes/366-replies/config.js': `const W={width:390,height:844};window.CANVAS={ticket:366,title:'Replies',question:'Choose a reply',pages:[{id:'r1',title:'Reply bar',items:[{id:'A',name:'Compose',src:'variants/phone.html?state=compose',...W,note:{idea:'Write',pros:['One step'],cons:['Small']}}]},{id:'r2',title:'Reply page',items:[{id:'B',src:'variants/phone.html?state=confirm',...W}]}]};`,
     'prototypes/366-replies/variants/phone.html': '<!doctype html><html><head><link href="../../../src/ui/styles.css"></head><body><script src="phone.js"></script></body></html>',
     'prototypes/366-replies/variants/phone.js': 'window.loaded=true;',
     'src/ui/styles.css': 'body{color:red}', ...extra,
@@ -27,6 +27,14 @@ function fixture(extra: Record<string, string> = {}) {
 const ref = { repo: 'owner/repo', mapNumber: 217, ticket: 366, branch: 'prototype/366-replies', sha: 'a'.repeat(40) };
 
 describe('native canvas downloads', () => {
+  it('accepts a directly linked archived board by its config identity, and rejects another ticket’s config', async () => {
+    const board = 'prototypes/archived-board/index.html';
+    const files = { [board]: '<html></html>', 'prototypes/archived-board/config.js': 'window.CANVAS={ticket:366,pages:[{id:"old",items:[{id:"A",src:"view.html"}]}]};', 'prototypes/archived-board/view.html': '<html></html>' };
+    const valid = fixture(files);
+    expect((await downloadCanvas(valid.source, valid.storage, { ...ref, board }, new AbortController().signal)).board).toBe(board);
+    const foreign = fixture({ ...files, 'prototypes/archived-board/config.js': files['prototypes/archived-board/config.js'].replace('ticket:366', 'ticket:999') });
+    await expect(downloadCanvas(foreign.source, foreign.storage, { ...ref, board }, new AbortController().signal)).rejects.toThrow('No canvas');
+  });
   it('pins files to a revision, expands real config expressions, preserves variant queries and includes shared assets', async () => {
     const f = fixture();
     const canvas = await downloadCanvas(f.source, f.storage, ref, new AbortController().signal);

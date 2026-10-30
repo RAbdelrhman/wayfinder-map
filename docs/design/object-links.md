@@ -32,10 +32,18 @@ existing follow policy. An unknown, deleted, inaccessible or wrongly typed
 object must not resolve to another object or reveal saved private details.
 Tickets open through their current map, and never enter a different map's graph,
 counts, search or panel. A supplied map hint is not ownership evidence.
+Server lookups honor the configured map label and ticket-type prefix. Ready
+prompts advertise ticket/prototype destinations only after native parent-map
+ownership is established; standalone and body-only tickets retain GitHub links.
 
 Prototype links without `rev` resolve the current branch commit once on opening.
 Assets and metadata then use that same immutable SHA, so a branch moving during
 the download cannot mix versions. A fixed-revision link uses only that SHA.
+Its board and adjacent config are read from the pinned commit, with the config's
+ticket identity checked against the current owning ticket. It does not require
+the board, a tile or even the prototype branch to survive in the latest version.
+The existing viewer retains the canonical destination through reload and returns
+to the owning ticket when closed.
 Ready messages should include the newest destination and name the verified SHA;
 an exact-revision link may accompany it when discussing that version.
 
@@ -50,8 +58,22 @@ Node IDs are opaque, including during GitHub's ID-format migrations.
 Desktop delivery uses the existing release-please GitHub Actions workflow and
 its next `chore: release` PR. Do not manually bump or install the desktop app.
 
-Implementation status: portable URL factories/parser and malformed-link tests
-exist. ID resolution and app navigation are still in progress. The installed
-1.2.1 phone APK predates these new object-ID routes. Native canvas viewing is
-owned by the selected #226 R2A design and implementation ticket #235. T3 chat's
-custom-scheme compatibility remains a separate runtime requirement.
+Runtime routes now resolve these IDs using the current viewer on desktop/web and
+mobile. Desktop queues cold and warm app links; the phone retains its object route
+through sign-in. Prototype destinations reuse the existing canvas viewer, with
+newest and pinned revisions. Live browser verification opened repository, map
+#217, ticket #366, and both revisions of its actual canvas.
+
+The installed 1.3.3 phone build contains the #226 R2A canvas viewer, object-ID
+destinations and fixed revisions without a current branch. Physical Samsung
+acceptance opened repo, map, ticket and newest/pinned canvas destinations, then
+switched from a Wayfinder Activity link into the exact T3 delivery thread once
+T3 was connected. Initial T3 reconnection showed its thread list instead.
+Offline saved data must match an explicitly requested revision and board.
+Every downloaded revision retains its own manifest. Pinned opens use that
+manifest offline and do not replace the pointer used by newest destinations.
+Consult `docs/mobile-builds.md` for actual build and
+installation evidence. T3 must also preserve these explicit routes through its
+Markdown sanitizer, native link presentation and desktop external-link boundary.
+The companion change lives in T3's source; a Wayfinder update alone cannot change
+the installed T3 client.

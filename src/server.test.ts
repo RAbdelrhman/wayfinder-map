@@ -169,6 +169,76 @@ const sampleMap: WayfinderMap = {
 };
 
 describe('repository-scoped server', () => {
+  it('opens a pinned board removed from latest without reading current prototypes or relying on a current tile', async () => {
+    let login = 'octo';
+    const revision = 'a'.repeat(40);
+    const board = 'prototypes/removed-board/index.html';
+    const map = { __typename: 'Issue', id: 'map-node', number: 5, body: '', author: { login: 'octo' }, repository: { nameWithOwner: 'octo/one' }, labels: { nodes: [{ name: 'wayfinder:map' }], pageInfo: { hasNextPage: false } } };
+    const node = { ...map, id: 'proto-node', number: 11, labels: { nodes: [{ name: 'wayfinder:prototype' }], pageInfo: { hasNextPage: false } }, parent: map };
+    const read = vi.fn(async (_repo: string, ref: string, file: string) => {
+      expect(ref).toBe(revision);
+      return Buffer.from(file.endsWith('config.js') ? 'window.CANVAS = { ticket: 11, title: "Removed board" };' : '<html><body>pinned</body></html>');
+    });
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3,
+      lookupObjectNode: async () => node, prototypeFileReader: read,
+      following: { login: async () => login, store: { follows: async () => [], set: async () => [] } } });
+    try {
+      const query = new URLSearchParams({ canvas: board, rev: revision, page: 'old', item: 'A' });
+      const opened = await fetch(`${running.url}/open/prototype/proto-node?${query}`, { redirect: 'manual' });
+      expect(opened.status).toBe(302);
+      const location = new URL(opened.headers.get('location')!, running.url);
+      expect(location.pathname).toBe('/repos/octo/one/maps/5');
+      const target = location.searchParams.get('canvasDestination')!;
+      const endpoint = `${running.url}/api/canvas-destination?${new URLSearchParams({ target })}`;
+      const response = await fetch(endpoint);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ repo: 'octo/one', mapNumber: 5, ticketNumber: 11,
+        canvas: { ticket: 11, page: 'old', variant: 'A', url: `/proto/octo/one/prototype%2F11/${revision}/viewer-12/${board}` } });
+      expect(read).toHaveBeenCalledTimes(2);
+      login = 'someone-else';
+      expect((await fetch(endpoint)).status).toBe(404);
+      expect(read).toHaveBeenCalledTimes(2);
+      expect((await fetch(endpoint, { headers: { Origin: 'null' } })).status).toBe(403);
+    } finally { await closeServer(running.server); }
+  });
+  it('honors configured labels for map, ticket and pinned prototype destinations', async () => {
+    const map = { __typename: 'Issue', id: 'map-node', number: 5, body: '', author: { login: 'octo' }, repository: { nameWithOwner: 'octo/one' }, labels: { nodes: [{ name: 'custom:map' }], pageInfo: { hasNextPage: false } } };
+    const node = { ...map, id: 'proto-node', number: 11, labels: { nodes: [{ name: 'custom:prototype' }], pageInfo: { hasNextPage: false } }, parent: map };
+    const running = await startServer({ config: { ...config, mapLabel: 'custom:map', typePrefix: 'custom:' }, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3,
+      lookupObjectNode: async id => id === 'map-node' ? map : node,
+      prototypeFileReader: async (_repo, _ref, file) => Buffer.from(file.endsWith('config.js') ? 'window.CANVAS = { ticket: 11 };' : '<html></html>'),
+      following: { login: async () => 'octo', store: { follows: async () => [], set: async () => [] } } });
+    try {
+      for (const path of ['/open/map/map-node', '/open/ticket/proto-node', `/open/prototype/proto-node?canvas=prototypes%2Fold%2Findex.html&rev=${'a'.repeat(40)}`]) {
+        expect((await fetch(running.url + path, { redirect: 'manual' })).status).toBe(302);
+      }
+    } finally { await closeServer(running.server); }
+  });
+  it('resolves opaque object links with current ownership and no cached permission', async () => {
+    let login: string | null = 'octo';
+    const map = { __typename: 'Issue', id: 'map-node', number: 5, body: '', author: { login: 'octo' }, repository: { nameWithOwner: 'renamed/repo' }, labels: { nodes: [{ name: 'wayfinder:map' }], pageInfo: { hasNextPage: false } } };
+    const lookup = vi.fn(async (id: string): Promise<unknown> => id === 'repo-node'
+      ? { __typename: 'Repository', id, nameWithOwner: 'renamed/repo' }
+      : id === 'map-node' ? map
+      : id === 'ticket-node' ? { ...map, id, number: 11, labels: { nodes: [{ name: 'wayfinder:task' }], pageInfo: { hasNextPage: false } }, parent: map } : null);
+    const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3,
+      lookupObjectNode: lookup, following: { login: async () => login, store: { follows: async () => [], set: async () => [] } } });
+    try {
+      for (const [kind, id, location] of [['repo', 'repo-node', '/repos/renamed/repo'], ['map', 'map-node', '/repos/renamed/repo/maps/5'], ['ticket', 'ticket-node', '/repos/renamed/repo/maps/5?ticket=11']]) {
+        const response = await fetch(`${running.url}/open/${kind}/${id}`, { redirect: 'manual' });
+        expect(response.status).toBe(302);
+        expect(response.headers.get('location')).toBe(location);
+        expect(response.headers.get('cache-control')).toBe('no-store');
+      }
+      login = 'someone-else';
+      expect((await fetch(`${running.url}/open/map/map-node`, { redirect: 'manual' })).status).toBe(404);
+      login = null;
+      expect((await fetch(`${running.url}/open/ticket/ticket-node`, { redirect: 'manual' })).status).toBe(404);
+      lookup.mockClear();
+      expect((await fetch(`${running.url}/open/ticket/ticket-node?command=run`)).status).toBe(400);
+      expect(lookup).not.toHaveBeenCalled();
+    } finally { await closeServer(running.server); }
+  });
   it('keeps discovery cached when the account mark is read and shares its scope across every document route', async () => {
     const homeLoader = vi.fn(async () => home);
     const running = await startServer({ config, repo: null, template: DEFAULT_TEMPLATE, workspaceRoot: null, t3, homeLoader, accountReader: async () => home.account, fetcher: async () => ({ maps: [], warnings: [] }), handOffStore: new HandOffStore({ filePath: null }) });

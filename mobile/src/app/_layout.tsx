@@ -44,6 +44,7 @@ function Navigation() {
         <Stack.Screen name="signin" />
       </Stack.Protected>
       <Stack.Screen name="map" />
+      <Stack.Screen name="open/[kind]/[id]" />
     </Stack>
   );
   return signedIn ? (

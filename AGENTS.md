@@ -6,6 +6,14 @@
 - Never reuse another map's ticket as a blocker or import it into this map's graph, counts, search, or ticket panel.
 - Cross-map links are invalid data to repair, not a navigation feature to design around.
 
+## Ready-message destinations
+
+- When map work is ready or needs Ramon, include its exact Wayfinder destination and the current T3 thread reference supplied by T3. Never invent object, thread or environment IDs.
+- Resolve an issue's GitHub `node_id` with `gh api repos/OWNER/REPO/issues/NUMBER --jq .node_id`. Use `wayfinder://map/ID` for maps and `wayfinder://ticket/ID` for tickets; URL-encode opaque IDs.
+- Only advertise ticket/prototype destinations after confirming their native parent map. Standalone and body-only tickets keep their GitHub fallback; a body list alone does not establish native ownership.
+- For a ready canvas, include `wayfinder://prototype/TICKET_NODE_ID?canvas=ENCODED_BOARD_PATH`. Omit `rev` to open newest. Add `rev=FULL_COMMIT_SHA` when linking the exact version reviewed; optional `page` and `item` address authored canvas IDs.
+- Include the GitHub issue URL as a fallback while the companion T3 link update is not installed. State whether proof came from browser or native device; a destination link is not proof the installed app supports it.
+
 ## Subagent effort
 
 - Use medium effort for subagents and delegated tasks by default. Never use effort above medium without asking Ramon and receiving explicit approval for that task. Set the effort explicitly in the tool options; do not inherit a higher effort.

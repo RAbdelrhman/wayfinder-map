@@ -1,7 +1,7 @@
 import { normalizeShortcut, shortcutAssignments, SHORTCUTS_CHANGED, SHORTCUTS_KEY } from '../canvasShortcuts.js';
 import { mountCanvasSettings } from './canvasSettings.js';
 import { setTrustedHtml, insertTrustedHtml } from './trustedHtml.js';
-import { isPictureUrl, prototypeAssetRepo } from '../prototypes.js';
+import { isPictureUrl, prototypeAssetRepo, parsePrototypeFilePath, prototypeFileUrl } from '../prototypes.js';
 import { canvasSize, isCanvasSize } from './canvasPreference.js';
 import type { CanvasSize } from './canvasPreference.js';
 import { escapeHtml } from './markdown.js';
@@ -10,6 +10,9 @@ import { CanvasFeedback } from './canvasFeedback.js';
 import type { CanvasHit } from './canvasFeedback.js';
 import { PosterCache, canvasSkeletonHtml, posterSource } from './canvasPoster.js';
 import type { PosterLoader } from './canvasPoster.js';
+import { parseObjectAppLink } from '../objectLinks.js';
+import type { ObjectLink } from '../objectLinks.js';
+import { parseRepoPagePath } from '../repoRoutes.js';
 
 export interface CanvasRoute {
   url: string;
@@ -230,6 +233,20 @@ export function readCanvasRoute(value: unknown, origin: string): CanvasRoute | n
   }
 }
 
+/** A server-validated pinned destination must still match the current map and requested revision. */
+export function readPinnedCanvasResponse(value: unknown, href: string, link: ObjectLink): CanvasRoute | null {
+  if (link.kind !== 'prototype' || !link.revision || !record(value)) return null;
+  const current = new URL(href);
+  const scope = parseRepoPagePath(current.pathname);
+  const ticket = Number(current.searchParams.get('ticket'));
+  if (!scope || scope.mapNumber === null || value['repo'] !== scope.repo || value['mapNumber'] !== scope.mapNumber
+    || value['ticketNumber'] !== ticket) return null;
+  const route = readCanvasRoute(value['canvas'], current.origin);
+  const source = route ? parsePrototypeFilePath(new URL(route.url, current.origin).pathname) : null;
+  return route?.ticket === ticket && source?.repo === scope.repo && source.branch === `prototype/${ticket}`
+    && source.sha === link.revision.toLowerCase() && source.file === link.canvas ? route : null;
+}
+
 /** Owns one history entry. Options and size never push another one. */
 export class CanvasRouting {
   current: CanvasRoute | null = null;
@@ -359,7 +376,7 @@ const PREPARE_DWELL_MS = 120;
 export function mountCanvasViewer(
   app: HTMLElement,
   captureState?: () => () => void,
-  options: { loadPoster?: PosterLoader } = {},
+  options: { loadPoster?: PosterLoader; isDestinationReady?: () => boolean; onDestinationError?: (message: string) => void } = {},
 ): { isOpen: () => boolean } {
   const viewer = document.createElement('section');
   viewer.id = 'canvas-viewer';
@@ -580,7 +597,7 @@ export function mountCanvasViewer(
   };
   const openFrame = (route: CanvasRoute): void => {
     pendingFile = route.file;
-    pendingAddress = route.page && route.variant ? { page: route.page, option: route.variant } : null;
+    pendingAddress = route.page ? { page: route.page, option: route.variant ?? '' } : null;
     if (mountedUrl !== route.url) {
       mountFrame(route, origin);
       return;
@@ -605,6 +622,11 @@ export function mountCanvasViewer(
     if (pendingAddress) {
       const address = pendingAddress;
       pendingAddress = null;
+      if (!address.option && pages.some(page => page.id === address.page)) {
+        pendingFile = null;
+        send(address.page, null);
+        return;
+      }
       const match = canvasOptionForAddressOrFile(pages, address.page, address.option, pendingFile);
       pendingFile = null;
       if (match) send(match.page, match.option);
@@ -947,25 +969,62 @@ export function mountCanvasViewer(
     // A narrower window can push the open option out of the strip.
     syncStrip(toolbar.querySelector<HTMLElement>('.vw-options .is-on'));
   });
+  const openRoutedCanvas = (route: CanvasRoute, target: HTMLElement | null, destination?: string): void => {
+    const base = new URL(location.href);
+    for (const key of ['canvas', 'canvasRev', 'canvasPage', 'canvasItem', 'canvasDestination']) base.searchParams.delete(key);
+    const state = record(history.state) ? { ...history.state } : {};
+    delete state['wfCanvas'];
+    history.replaceState(state, '', base.pathname + base.search + base.hash);
+    origin = target;
+    if (destination) base.searchParams.set('canvasDestination', destination);
+    routing.open(route, base.href, history.state);
+  };
+  const pinnedTarget = new URL(location.href).searchParams.get('canvasDestination');
+  if (pinnedTarget) {
+    const link = parseObjectAppLink(pinnedTarget);
+    if (link?.kind === 'prototype' && link.revision) {
+      void fetch(`/api/canvas-destination?${new URLSearchParams({ target: pinnedTarget })}`).then(async response => {
+        const result: unknown = await response.json();
+        if (!response.ok) throw new Error(record(result) && typeof result['error'] === 'string' ? result['error'] : 'Could not open this canvas.');
+        const open = (): void => {
+          if (new URL(location.href).searchParams.get('canvasDestination') !== pinnedTarget || routing.current) { observer.disconnect(); return; }
+          if (options.isDestinationReady && !options.isDestinationReady()) return;
+          const route = readPinnedCanvasResponse(result, location.href, link);
+          observer.disconnect();
+          if (!route) { options.onDestinationError?.('Could not open this canvas.'); return; }
+          openRoutedCanvas(route, null, pinnedTarget);
+        };
+        const observer = new MutationObserver(open);
+        observer.observe(app, { childList: true, subtree: true });
+        open();
+      }).catch(error => {
+        if (new URL(location.href).searchParams.get('canvasDestination') === pinnedTarget)
+          options.onDestinationError?.(error instanceof Error ? error.message : 'Could not open this canvas.');
+      });
+    }
+  }
   // A copied/reloaded viewer URL waits for its real originating tile to load.
   const requested = new URL(location.href).searchParams.get('canvas');
-  if (requested) {
+  if (requested && !pinnedTarget) {
     const observer = new MutationObserver(() => {
       const target = [...app.querySelectorAll<HTMLElement>('[data-canvas-url]')].find((el) => el.dataset['canvasUrl'] === requested);
       if (!target) return;
-      const route = readCanvasRoute(canvasEntryRoute(target.dataset, requested), location.origin);
+      const address = new URL(location.href).searchParams;
+      const raw = canvasEntryRoute(target.dataset, requested);
+      const revision = address.get('canvasRev');
+      if (revision && /^[a-f0-9]{40}$/i.test(revision)) {
+        const source = parsePrototypeFilePath(new URL(requested, location.origin).pathname);
+        if (source) raw['url'] = prototypeFileUrl(source.repo, source.branch, source.file, revision.toLowerCase());
+      }
+      if (address.has('canvasPage')) raw['page'] = address.get('canvasPage');
+      if (address.has('canvasItem')) raw['variant'] = address.get('canvasItem');
+      const route = readCanvasRoute(raw, location.origin);
       if (!route) {
         observer.disconnect();
         return;
       }
       observer.disconnect();
-      const base = new URL(location.href);
-      base.searchParams.delete('canvas');
-      const state = record(history.state) ? { ...history.state } : {};
-      delete state['wfCanvas'];
-      history.replaceState(state, '', base.pathname + base.search + base.hash);
-      origin = target;
-      routing.open(route, location.href, history.state);
+      openRoutedCanvas(route, target);
     });
     observer.observe(app, { childList: true, subtree: true });
   }

@@ -153,6 +153,9 @@ export function isOpenState(state: string): boolean {
 }
 
 interface RawIssue {
+  node_id?: string;
+  /** Filled only by the native sub-issues endpoint when it omits parent_issue_url. */
+  nativeParentNumber?: number;
   number: number;
   title: string;
   html_url?: string;
@@ -467,7 +470,7 @@ export async function fetchTicketWithParent(
 ): Promise<{ ticket: Ticket; parent: number | null } | null> {
   const raw = await fetchIssue(repo, number);
   if (raw === null) return null;
-  const parent = Number(/\/issues\/(\d+)$/.exec(raw.parent_issue_url ?? '')?.[1]);
+  const parent = nativeParentNumber(repo, raw);
   const labels = labelNames(raw);
   const open = isOpenState(raw.state);
   const assignee = raw.assignee?.login ?? raw.assignees?.[0]?.login ?? null;
@@ -477,6 +480,8 @@ export async function fetchTicketWithParent(
     .filter((blocker) => blocker.open ?? true)
     .map((blocker) => blocker.number);
   const ticket: Ticket = {
+    ...(raw.node_id ? { nodeId: raw.node_id } : {}),
+    ...(raw.node_id && parent !== null ? { parentIssueNumber: parent } : {}),
     number: raw.number,
     title: raw.title,
     url: issueUrl(raw, repo),
@@ -490,7 +495,19 @@ export async function fetchTicketWithParent(
     state: ticketStateOf(open, openBlockers, assignee),
     updatedAt: raw.updated_at ?? null,
   };
-  return { ticket, parent: Number.isSafeInteger(parent) && parent > 0 ? parent : null };
+  return { ticket, parent };
+}
+
+function nativeParentNumber(repo: string, issue: RawIssue): number | null {
+  if (issue.parent_issue_url) {
+    try {
+      const path = new URL(issue.parent_issue_url).pathname;
+      const match = /^\/repos\/([^/]+\/[^/]+)\/issues\/([1-9]\d*)$/.exec(path);
+      const number = Number(match?.[2]);
+      return match?.[1]?.toLowerCase() === repo.toLowerCase() && Number.isSafeInteger(number) ? number : null;
+    } catch { return null; }
+  }
+  return issue.nativeParentNumber ?? null;
 }
 
 interface Fallbacks {
@@ -523,7 +540,7 @@ async function fetchChildren(repo: string, map: { number: number; body?: string 
   let subIssues: RawIssue[];
   subIssueWatcher.resetBodyIssues(repo, map.number);
   try {
-    subIssues = await subIssueWatcher.fetch(repo, map.number);
+    subIssues = (await subIssueWatcher.fetch(repo, map.number)).map(issue => ({ ...issue, nativeParentNumber: map.number }));
   } catch (error) {
     subIssueWatcher.clear(repo, map.number);
     if (numbers.length > 0) {
@@ -559,6 +576,7 @@ export interface FetchResult {
 
 /** The map issue as `gh issue list` returns it. */
 interface MapIssue {
+  nodeId?: string;
   number: number;
   title: string;
   url?: string;
@@ -630,6 +648,7 @@ async function listMapIssues(repo: string, mapLabel: string): Promise<MapIssue[]
     `repos/${repo}/issues?state=all&labels=${encodeURIComponent(mapLabel)}&per_page=100`,
   ]);
   return flattenIssuePages(mapIssuePages).map((issue): MapIssue => ({
+    ...(issue.node_id ? { nodeId: issue.node_id } : {}),
     number: issue.number,
     title: issue.title,
     url: issueUrl(issue, repo),
@@ -882,7 +901,7 @@ function fallbackWarnings(fallbacks: Fallbacks): string[] {
 export async function fetchMapDetails(options: FetchOptions, maps: readonly WayfinderMap[]): Promise<FetchResult> {
   const fallbacks: Fallbacks = { maps: [], rateLimited: false, unattachedTickets: [], foreignTickets: new Map() };
   const loaded = await pool(maps, options.concurrency ?? 6, async (map) => ({
-    ...(await loadMap(options, { number: map.number, title: map.title, url: map.url, body: map.body, state: map.open ? 'open' : 'closed', author: map.author }, fallbacks)),
+    ...(await loadMap(options, { ...(map.nodeId ? { nodeId: map.nodeId } : {}), number: map.number, title: map.title, url: map.url, body: map.body, state: map.open ? 'open' : 'closed', author: map.author }, fallbacks)),
     settled: map.settled,
   }));
   return { maps: loaded, warnings: fallbackWarnings(fallbacks) };
@@ -891,6 +910,7 @@ export async function fetchMapDetails(options: FetchOptions, maps: readonly Wayf
 /** A settled map as the list shows it: its issue, without a single ticket read. */
 function settledMap(repo: string, mapIssue: MapIssue, settled: MapSettlement): WayfinderMap {
   return {
+    ...(mapIssue.nodeId ? { nodeId: mapIssue.nodeId } : {}),
     number: mapIssue.number,
     title: mapIssue.title,
     url: issueUrl(mapIssue, repo),
@@ -932,6 +952,8 @@ async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fal
       .map((blocker) => blocker.number);
     return {
       number: child.number,
+      ...(child.node_id ? { nodeId: child.node_id } : {}),
+      ...(child.node_id && nativeParentNumber(repo, child) === mapIssue.number ? { parentIssueNumber: mapIssue.number } : {}),
       title: child.title,
       url: issueUrl(child, repo),
       body: child.body ?? '',
@@ -948,6 +970,7 @@ async function loadMap(options: FetchOptions, mapIssue: MapIssue, fallbacks: Fal
 
   return {
     number: mapIssue.number,
+    ...(mapIssue.nodeId ? { nodeId: mapIssue.nodeId } : {}),
     title: mapIssue.title,
     url: issueUrl(mapIssue, repo),
     body: mapIssue.body ?? '',

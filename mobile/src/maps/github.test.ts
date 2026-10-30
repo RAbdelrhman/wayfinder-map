@@ -38,6 +38,22 @@ function setup(
   };
 }
 describe('mobile GitHub maps', () => {
+  it('resolves an ID with the current account token and denies unknown ownership', async () => {
+    const map = { id: 'map-id', number: 217, body: '', author: { login: 'me' }, repository: { nameWithOwner: 'new/name' }, labels: { nodes: [{ name: 'wayfinder:map' }], pageInfo: { hasNextPage: false } } };
+    const node = { ...map, __typename: 'Issue', id: 'ticket-id', number: 366, parent: map, labels: { nodes: [{ name: 'wayfinder:prototype' }], pageInfo: { hasNextPage: false } } };
+    const fetcher = vi.fn(async (_input: string | URL | Request, options?: RequestInit) => {
+      expect(options?.method).toBe('POST');
+      expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer phone-token');
+      expect(JSON.parse(String(options?.body))).toMatchObject({ variables: { id: 'ticket-id' } });
+      return Response.json({ data: { node } });
+    });
+    const api = new MobileGithub('phone-token', fetcher as typeof fetch);
+    const link = { kind: 'prototype', id: 'ticket-id', canvas: 'prototypes/replies/index.html' } as const;
+    expect(await api.destination(link, { login: 'me', follows: [] })).toMatchObject({ repo: 'new/name', mapNumber: 217, ticketNumber: 366 });
+    expect(await api.destination(link, { login: 'someone-else', follows: [] })).toBeNull();
+    node.parent = null as unknown as typeof map;
+    expect(await api.destination(link, { login: 'me', follows: [] })).toBeNull();
+  });
   it.each([403, 404, 410])(
     'keeps other maps when a followed issue returns %s',
     async (status) => {
