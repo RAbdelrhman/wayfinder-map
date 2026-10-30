@@ -1,7 +1,12 @@
 import type { InlineCanvasBundle } from './inlineCanvasBundle.js';
 
+/** Consume script/style bodies before looking for asset tags inside markup. */
+export function canvasHtmlTags(): RegExp {
+  return /<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>|<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>|<(?:link|img|iframe)\b[^>]*>/gi;
+}
+
 /** Runs only inside the untrusted prototype iframe, never in the MCP tool host. */
-export function inlineCanvasDocument(bundle: InlineCanvasBundle, target = bundle.entry, depth = 0, markup?: string): string {
+export function inlineCanvasDocument(bundle: InlineCanvasBundle, target = bundle.entry, depth = 0, markup?: string, tags = canvasHtmlTags()): string {
   if (depth > 12) throw new Error('Canvas frames are nested too deeply.');
   const url = new URL(target.startsWith('prototypes/') ? '/' + target : target, `https://canvas.invalid/${bundle.entry}`);
   const file = decodeURIComponent(url.pathname.slice(1));
@@ -29,10 +34,12 @@ export function inlineCanvasDocument(bundle: InlineCanvasBundle, target = bundle
     return `<script>${safe(value)}</script>`;
   };
   // JSON data is escaped before becoming a script, including malicious </script> in a repo file.
-  const bootstrap = `(()=>{const bundle=${literal(bundle)};const render=${inlineCanvasDocument.toString()};window.__wfDocument=(target)=>render(bundle,new URL(target,${literal(url.href)}).href,${depth + 1});window.__wfMarkup=(markup)=>render(bundle,${literal(url.href)},${depth + 1},markup);})();`;
+  // Pass the shared tokenizer explicitly into serialized renderers; imported
+  // module bindings are unavailable inside the opaque srcdoc document.
+  const bootstrap = `(()=>{const bundle=${literal(bundle)};const render=${inlineCanvasDocument.toString()};const tags=${tags.toString()};window.__wfDocument=(target)=>render(bundle,new URL(target,${literal(url.href)}).href,${depth + 1},undefined,tags);window.__wfMarkup=(markup)=>render(bundle,${literal(url.href)},${depth + 1},markup,tags);})();`;
   // One pass over markup. Never scan inserted script strings as if they were
   // HTML; canvas engines themselves contain <link> and <img> templates.
-  let html = source.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>|<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>|<(?:link|img|iframe)\b[^>]*>/gi, tag => {
+  let html = source.replace(tags, tag => {
     const opening = tag.slice(0, tag.indexOf('>') + 1);
     const reference = /\b(?:src|href)\s*=\s*["']([^"']+)["']/i.exec(opening)?.[1];
     if (!reference) return tag;
@@ -40,7 +47,7 @@ export function inlineCanvasDocument(bundle: InlineCanvasBundle, target = bundle
     if (/^<script/i.test(tag)) return script(pathOf(reference));
     if (/^<style/i.test(tag)) return tag;
     if (/^<link/i.test(tag)) return `<style>${css(pathOf(reference)).replace(/<\/style/gi, '<\\/style')}</style>`;
-    if (/^<iframe/i.test(tag)) return tag.replace(/\bsrc\s*=\s*["'][^"']+["']/i, () => `srcdoc="${attr(inlineCanvasDocument(bundle, new URL(reference, url).href, depth + 1))}"`);
+    if (/^<iframe/i.test(tag)) return tag.replace(/\bsrc\s*=\s*["'][^"']+["']/i, () => `srcdoc="${attr(inlineCanvasDocument(bundle, new URL(reference, url).href, depth + 1, undefined, tags))}"`);
     return tag.replace(/\bsrc\s*=\s*["'][^"']+["']/i, () => `src="${attr(bundle.files[pathOf(reference)] ?? '')}"`);
   });
   // Only the engine creates dynamic page frames. Do not duplicate the entire

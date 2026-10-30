@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mountInlineCanvas } from './inlineCanvas.js';
+import { App, McpUiHostStylesSchema } from '@modelcontextprotocol/ext-apps';
+import { mountInlineCanvas, startInlineCanvas } from './inlineCanvas.js';
 import type { InlineCanvasSession } from '../inlineCanvasService.js';
 import { prototypeFileUrl } from '../prototypes.js';
 
@@ -50,5 +51,19 @@ describe('trusted inline feedback controls', () => {
     view.message({ wf: 1, type: 'state', page: 'other', option: 'evil', presenting: true }, window);
     expect(view.call).not.toHaveBeenCalled();
     expect(document.querySelector('[data-go="A"]')?.getAttribute('aria-pressed')).toBe('true');
+  });
+  it('applies the handshake theme and style variables before a later host-context change', async () => {
+    vi.spyOn(App.prototype, 'connect').mockResolvedValue(undefined);
+    const changed = vi.spyOn(App.prototype, 'onhostcontextchanged', 'set');
+    const styles = (color: string) => ({ variables: McpUiHostStylesSchema.parse({ variables: { '--color-text-primary': color } }).variables! });
+    vi.spyOn(App.prototype, 'getHostContext').mockReturnValue({ theme: 'dark', styles: styles('#abcdef') });
+    await startInlineCanvas();
+    expect(document.documentElement.dataset['theme']).toBe('dark');
+    expect(document.documentElement.style.getPropertyValue('--color-text-primary')).toBe('#abcdef');
+    changed.mock.calls[0]![0]!({ theme: 'light', styles: styles('#123456') });
+    expect(document.documentElement.dataset['theme']).toBe('light');
+    expect(document.documentElement.style.getPropertyValue('--color-text-primary')).toBe('#123456');
+    delete document.documentElement.dataset['theme'];
+    document.documentElement.style.removeProperty('--color-text-primary');
   });
 });

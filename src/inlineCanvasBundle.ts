@@ -3,6 +3,7 @@ import { canvasData } from './canvasData.js';
 import { canvasCatalog } from './canvasCatalog.js';
 import { CANVAS_BRIDGE_SCRIPT } from './canvasBridge.js';
 import type { CanvasCatalogPage } from './types.js';
+import { canvasHtmlTags } from './inlineCanvasDocument.js';
 
 export interface InlineCanvasBundle {
   entry: string;
@@ -65,7 +66,11 @@ export async function bundleInlineCanvas(entry: string, read: (path: string) => 
     files[path] = type ? `data:${type};base64,${bytes.toString('base64')}` : text;
     if (type) continue;
     if (/\.html?$/i.test(path)) {
-      for (const match of text.matchAll(/<(?:script|link|img|iframe)\b[^>]*?\b(?:src|href)\s*=\s*["']([^"']+)["']/gi)) add(match[1]!, path);
+      for (const [tag] of text.matchAll(canvasHtmlTags())) {
+        const opening = tag.slice(0, tag.indexOf('>') + 1);
+        const reference = /\b(?:src|href)\s*=\s*["']([^"']+)["']/i.exec(opening)?.[1];
+        if (reference) add(reference, path);
+      }
     }
     if (/\.css$/i.test(path)) {
       for (const match of text.matchAll(/url\(\s*["']?([^'"\s)]+)["']?\s*\)/gi)) add(match[1]!, path);

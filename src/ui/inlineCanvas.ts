@@ -120,10 +120,13 @@ export async function startInlineCanvas(): Promise<void> {
     dispose = mountInlineCanvas(JSON.parse(first.text) as InlineCanvasSession, call, mode => { void app.requestDisplayMode({ mode }); });
     void app.sendSizeChanged({ height: 800 });
   };
-  app.onhostcontextchanged = context => {
+  const applyHostContext = (context: NonNullable<ReturnType<App['getHostContext']>>): void => {
     if (context.theme) document.documentElement.dataset['theme'] = context.theme;
     const variables = context.styles?.variables;
     if (variables) for (const [key, value] of Object.entries(variables)) if (key.startsWith('--') && typeof value === 'string') document.documentElement.style.setProperty(key, value);
   };
+  app.onhostcontextchanged = applyHostContext;
   await app.connect();
+  const initial = app.getHostContext();
+  if (initial) applyHostContext(initial);
 }

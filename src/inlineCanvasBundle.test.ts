@@ -88,4 +88,14 @@ describe('self-contained sandboxed canvas bundle', () => {
     expect(parsed.querySelector('script')?.textContent).toContain('\\u003c/ScRiPt >');
     await window.happyDOM.abort();
   });
+  it('collects real opening-tag assets while ignoring markup in inline script and style bodies', async () => {
+    const local: Record<string, string> = { ...files, [entry]: files[entry]! + '<SCRIPT>const template=\'<img src="not-a-file.png"><link href="not-a-file.css">\';</SCRIPT ><style>.sample::after{content:\'<img src="also-not-a-file.png">\'}</style >' };
+    const read = async (path: string): Promise<Buffer> => {
+      if (!(path in local)) throw new Error(`Unexpected asset: ${path}`);
+      return Buffer.from(local[path]!);
+    };
+    const bundle = await bundleInlineCanvas(entry, read);
+    expect(Object.keys(bundle.files)).toHaveLength(6);
+    expect(inlineCanvasDocument(bundle)).toContain('<img src="not-a-file.png">');
+  });
 });
