@@ -1,0 +1,23 @@
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import * as esbuild from 'esbuild';
+
+const root = fileURLToPath(new URL('../', import.meta.url));
+const output = join(root, '.generated', 'link-host');
+await rm(output, { recursive: true, force: true });
+await mkdir(join(output, 'public'), { recursive: true });
+await cp(join(root, 'link-host', 'public'), join(output, 'public'), { recursive: true });
+for (const name of ['index.html', 'landing.css']) await cp(join(root, 'link-host', name), join(output, 'public', name));
+await cp(join(root, 'assets', 'wayfinder-icon.svg'), join(output, 'public', 'wayfinder-icon.svg'));
+await esbuild.build({ entryPoints: [join(root, 'src', 'ui', 'httpsLandingPage.ts')], outfile: join(output, 'public', 'landing.js'), bundle: true, platform: 'browser', format: 'iife', target: 'es2022', minify: true });
+const config = JSON.parse(await readFile(join(root, 'link-host', 'vercel.json'), 'utf8'));
+await writeFile(join(output, 'vercel.json'), JSON.stringify(config, null, 2));
+const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+const changes = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal', '--', 'link-host', 'src/httpsLinks.ts', 'src/objectLinks.ts', 'src/httpsLanding.ts', 'src/ui/httpsLandingPage.ts', 'scripts/build-link-host.mjs', 'assets/wayfinder-icon.svg'], { cwd: root, encoding: 'utf8' }).trim();
+const names = ['public/index.html', 'public/landing.js', 'public/landing.css', 'public/wayfinder-icon.svg', 'public/robots.txt', 'public/.well-known/assetlinks.json', 'public/.well-known/apple-app-site-association', 'vercel.json'];
+const files = await Promise.all(names.map(async name => ({ path: name, sha256: createHash('sha256').update(await readFile(join(output, name))).digest('hex') })));
+await writeFile(join(output, 'build-manifest.json'), JSON.stringify({ sourceCommit, workingTreeChanges: changes ? changes.split(/\r?\n/) : [], files }, null, 2));
+console.log(`Built HTTPS link host: ${output}`);

@@ -18,8 +18,31 @@ deliverables. A closed prototype ticket does not mean its native screens shipped
 | 1.3.1 / 9 | Clean source `76e8e6cb88ca7c42fe7bb88814b08a82b85fc271` | Android build passed in 9m 34s on 2026-10-30. Not installed; superseded by 1.3.2 below. | Initial RepoID, MapID, TicketID and PrototypeID destinations with sign-in retention. |
 | 1.3.2 / 10 | Clean source `48b382aa4bad093d68cc235e557ba3ee1fe8f985` | Samsung SM-S936U, USB upgrade succeeded on 2026-10-30; Android confirms 1.3.2/code 10. Sign-in retained. RepoID filtering, MapID #217, TicketID #366, pinned and newest PrototypeID links, page/item selection and a Wayfinder Activity link into this exact T3 thread passed on the phone. | Object-ID destinations and review fixes. Fixed canvas revisions work without a current branch; explicit boards prove ticket identity from pinned config; offline fallback cannot substitute another revision or board. Includes the 1.3.0 canvas viewer. T3 chat still requires the companion T3 client update. |
 | 1.3.3 / 11 | Clean source `34d5530c06f7d0bd28ea6f9772d19bd73d7de1d1` | Native build passed in 11m 59s. Samsung USB upgrade succeeded at 2026-10-30 06:29 UTC; Android confirms 1.3.3/code 11. Existing session retained; pinned R1 canvas and page/item, live #366 Activity and its link into the exact T3 conversation passed. | Retains a manifest beside each revision's files, reads pinned manifests from their revision, and changes the newest pointer only for newest opens. Two regression cases prove saved A survives newest B and an unsaved pin never substitutes B. Physical offline recovery is Not Verified. |
+| 1.4.0 / 12 | Clean source `8eef6caa8aaced2cc077597e8d431b0f6240ba34` | Native build passed in 9m 27s. Samsung USB upgrade succeeded on 2026-10-30; Android confirms 1.4.0/code 12 and GitHub sign-in is retained. Domain ownership is verified by Android, but its user preference lists this host as disabled. USB then disconnected; enabling that preference and stock-T3 click acceptance remain pending. | Exact-origin HTTPS destinations, Android verified App Link intent filters, iOS associated-domain configuration and stock-T3-compatible ready prompts. Public Android association file is live and matches the signing certificate. |
+
+The packaged 1.4.0 APK is
+`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.4.0-8eef6caa-77e4a48d73434ffdb0a3b4cd75831251-arm64.apk`,
+SHA-256 `cc90e06d32ac0d1f1c362d680c15146a5ca7e00260b79015d1097001ae8aefa8`.
+Its adjacent manifest records clean source and successful installation after the
+initial failed USB attempt.
+All 1,961 root tests, 172 mobile tests, typecheck, lint, root build and both mobile
+exports pass. Installed version, retained sign-in and OS domain ownership are
+verified; this is not yet stock-T3 click acceptance.
+
+The HTTPS host is `https://wayfinder-links-pearl.vercel.app`. Its public
+`/.well-known/assetlinks.json` returns HTTP 200 without a redirect and matches the
+actual APK certificate fingerprint. The association-only production deployment
+is `dpl_3U1KjDWzjxXQmJxMNS4WAkG3FveV`. Ramon picked #373's A centered card at
+`11074255b6549d3dbfac72ef0084783c78c3936b`; its production implementation passes
+48 built-artifact Chrome checks across two themes and four viewports. Apple Team ID is not configured, so the AASA file intentionally
+has no app identities. Verified iOS Universal Links are not claimed.
 
 Latest installed APK:
+`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.4.0-8eef6caa-77e4a48d73434ffdb0a3b4cd75831251-arm64.apk`.
+Source and SHA-256 are recorded above. Its exact source remains unchanged by the
+separate browser landing-page implementation.
+
+Previous installed canvas-cache APK:
 `C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.3.3-34d5530c-5568ff8ca24f4d11be7505ae97f76bf9-arm64.apk`.
 Its adjacent manifest records clean source, version 1.3.3/code 11 and successful
 installation. SHA-256:
