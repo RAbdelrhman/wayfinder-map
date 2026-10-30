@@ -594,3 +594,15 @@ it('normalizes the newest-first mixed catalog returned for the five-round board'
   const building = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'claimed')]), [prototype(10, { canvasPages: pages })]);
   expect(building).toContain('Round 5 \u00b7 1 option, none chosen yet.');
 });
+
+
+it.each([false, true])('keeps Baseline before a single numbered round regardless of source direction (%s)', (reverse) => {
+  const pages = [2, 'Baseline'].map((round, index) => ({ id: `p${index}`, title: String(round), round, items: [{ id: `A${index}`, name: 'Option', src: 'a.html', disposition: 'keep', feedback: 'Final pick', basedOn: [] }] }));
+  if (reverse) pages.reverse();
+  const card = prototype(10, { canvasPages: pages });
+  const html = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'done')]), [card]);
+  expect(html).toContain('Picked A0');
+  const history = html.slice(html.indexOf('aria-label="Canvas rounds"'));
+  expect(history.indexOf('>Baseline')).toBeLessThan(history.indexOf('>Round 2'));
+  expect(prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'claimed')]), [card])).toContain('Round 2 \u00b7 1 option, none chosen yet.');
+});
