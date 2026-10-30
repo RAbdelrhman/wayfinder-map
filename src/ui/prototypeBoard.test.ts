@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { canvasCatalog } from '../canvasCatalog.js';
+import realCanvases from '../__fixtures__/canvas-catalog/manifest.json';
 import { Window } from 'happy-dom';
 import { setTrustedHtml } from './trustedHtml.js';
 
@@ -79,6 +82,21 @@ function prototype(
     ...overrides,
   };
 }
+
+describe('reported map #205 canvas choices', () => {
+  const choices = new Map([[347, 'AC3'], [310, 'AB'], [314, 'E'], [292, 'D'], [207, 'ACF4']]);
+  for (const entry of realCanvases) {
+    it(`shows the actual kept choice for #${String(entry.ticketNumber)}`, () => {
+      const source = readFileSync(new URL(`../__fixtures__/canvas-catalog/${String(entry.ticketNumber)}.txt`, import.meta.url), 'utf8');
+      const card = prototype(entry.ticketNumber, { ...entry, canvasPages: canvasCatalog(source) });
+      const html = prototypeBoardHtml('octo/wayfinder', map([ticket(entry.ticketNumber, 'Real canvas', 'prototype', 'done')]), [card]);
+      expect(html).toContain('chosen-canvas-main');
+      expect(html).toContain(`Picked ${choices.get(entry.ticketNumber)!}`);
+      expect(html).toContain(`data-proto-item="${choices.get(entry.ticketNumber)!}"`);
+      expect(html).toContain('data-canvas-page=');
+    });
+  }
+});
 
 describe('prototype decision state', () => {
   it('keeps every canvas reachable and fallback variants in the primary canvas', () => {
