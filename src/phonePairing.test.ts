@@ -11,7 +11,7 @@ async function fixture() {
   directories.push(directory);
   const file = join(directory, 'phones.json');
   let now = 1_000;
-  return { file, store: new PhonePairingStore(file, () => now), advance: (ms: number) => { now += ms; } };
+  return { file, store: new PhonePairingStore(file, () => now), clock: () => now, advance: (ms: number) => { now += ms; } };
 }
 
 describe('phone pairing authorization', { timeout: 30_000 }, () => {
@@ -59,8 +59,8 @@ describe('phone pairing authorization', { timeout: 30_000 }, () => {
   });
 
   it('serializes concurrent exchanges and preserves multiple phones across processes', async () => {
-    const { store, file } = await fixture();
-    const other = new PhonePairingStore(file);
+    const { store, file, clock } = await fixture();
+    const other = new PhonePairingStore(file, clock);
     const first = await store.createCode();
     const attempts = await Promise.all([store.pair(first.code, 'One', 'Android'), other.pair(first.code, 'Two', 'iOS')]);
     expect(attempts.filter(Boolean)).toHaveLength(1);
