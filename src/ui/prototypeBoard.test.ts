@@ -98,6 +98,48 @@ describe('reported map #205 canvas choices', () => {
   }
 });
 
+describe('AC3 supporting screens', () => {
+  it('preserves the explicit D approval after its quoted requested removal', () => {
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(225, 'Notifications', 'prototype', 'done')]), [prototype(225, { canvasPages: [{ id: 'r2', title: 'Remix', round: 2, items: [{ id: 'D', name: 'D', src: 'd.html', disposition: 'keep', feedback: 'Approval on #225: "but yes approve with that one thing removed." Approved D with only the summary removed.', basedOn: [] }] }] })]);
+    expect(html).toContain('Picked D');
+  });
+
+  it('shows F alone as the pick and the two approved support thumbnails', () => {
+    const makeItem = (id: string, feedback: string | null = null) => ({ id, name: id, src: `${id}.html`, disposition: feedback ? 'keep' : null, feedback, basedOn: [] });
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(163, 'Start next', 'prototype', 'done')]), [prototype(163, { canvasPages: [
+      { id: 'four', title: 'Menu', round: 4, items: [makeItem('M-running')] },
+      { id: 'five', title: 'Final', round: 5, items: [makeItem('F', 'Final pick'), makeItem('F-setup', 'Approved F-setup')] },
+    ] })]);
+    expect(html).toContain('Picked F</span>');
+    expect(html).not.toContain('Picked F +');
+    expect(html).toContain('Also part of the choice');
+    expect(html).toContain('Part of the choice');
+    expect(html.match(/data-proto-hero="/g)).toHaveLength(3);
+    expect(html).toContain('data-canvas-page="four"');
+  });
+});
+
+describe('AC3 conservative decisions and history', () => {
+  for (const feedback of ['Looks nice', 'Maybe keep A', 'Keep A. Still undecided though', 'Undecided, keep A', 'Keep A only for its header', 'Keep A but change the rest', 'Earlier partial carry-forward']) {
+    it(`does not confirm ${feedback}`, () => {
+      const html = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'done')]), [prototype(10, { canvasPages: [{ id: 'p', title: 'Options', round: 1, items: [{ id: 'A', name: 'A', src: 'a.html', disposition: 'keep', feedback, basedOn: [] }] }] })]);
+      expect(html).not.toContain('chosen-canvas-main');
+      expect(html).not.toContain('Picked A');
+    });
+  }
+  it('opens undecided latest phones and preserves textual Baseline history', () => {
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'claimed')]), [prototype(10, { canvasPages: [
+      { id: 'base', title: 'Directions', round: 'Baseline', items: [] },
+      { id: 'latest', title: 'Latest', round: 2, items: [{ id: 'A', name: 'Phone', src: 'a.html', width: 390, height: 844, disposition: null, feedback: null, basedOn: [] }] },
+    ] })]);
+    expect(html).toContain('>Baseline');
+    expect(html).not.toContain('Round Baseline');
+    expect(html).toContain('data-proto-round-panel="1"><');
+    expect(html).toContain('chosen-phone');
+    expect(html).toContain('data-icon="right"');
+  });
+});
+
 describe('prototype decision state', () => {
   it('keeps every canvas reachable and fallback variants in the primary canvas', () => {
     const canvases = ['prototypes/canvas/index.html', 'prototypes/43-design/index.html'];
@@ -321,6 +363,7 @@ describe('prototype variant metadata', () => {
     const buttons = [...browser.document.querySelectorAll('[data-proto-hero]')] as unknown as HTMLButtonElement[];
     const panels = [...browser.document.querySelectorAll('[data-proto-hero-panel]')] as unknown as HTMLElement[];
     expect(buttons).toHaveLength(2);
+    expect(buttons.map((button) => button.textContent)).toEqual(['Sign-in', 'Repos']);
     selectPrototypeHero(buttons[1]!);
     expect(panels.map((panel) => panel.hidden)).toEqual([true, false]);
     expect(buttons[1]?.getAttribute('aria-pressed')).toBe('true');
@@ -344,6 +387,8 @@ describe('prototype variant metadata', () => {
     });
     const browser = new Window();
     setTrustedHtml(browser.document.body as unknown as HTMLElement, prototypeBoardHtml('octo/wayfinder', map([ticket(225, 'Phone', 'prototype', 'done')]), [card]));
+    expect(browser.document.querySelector('[data-proto-round-panel="0"] [data-proto-item="A"]')?.classList.contains('is-led')).toBe(true);
+    expect(browser.document.querySelector('[data-proto-hide]')?.textContent).toBe('Hide');
     const source = browser.document.querySelector('[data-proto-source]') as unknown as HTMLButtonElement;
     revealPrototypeSource(source);
     const panel = browser.document.querySelector('[data-proto-round-panel="0"]') as unknown as HTMLElement;
@@ -464,4 +509,100 @@ describe('prototype decision board states', () => {
     expect(prototypeBoardErrorHtml('GitHub is unavailable.')).toContain('data-prototype-retry');
     expect(prototypeBoardErrorHtml('<script>')).not.toContain('<script>');
   });
+});
+
+
+describe('recorded approval wording and phone support', () => {
+  it.each([
+    [196, 'R4', '"Perfect". Picked as the answer to #196.', ''],
+    [125, 'A', 'I only like A.', '**Answer:** option A'],
+  ])('preserves the confirmed choice on #%s', (number, id, feedback, verdict) => {
+    const card = prototype(number as number, { verdict: verdict as string, canvasPages: [{ id: 'final', title: 'Final', round: 4, items: [
+      { id: id as string, name: 'Final', src: 'a.html', disposition: 'keep', feedback: feedback as string, basedOn: [] },
+      { id: 'A-stalled', name: 'Stalled', src: 'stalled.html', disposition: 'keep', feedback: 'Part of direction A', basedOn: [] },
+    ] }] });
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(number as number, 'Example', 'prototype', 'done')]), [card]);
+    expect(html).toContain(`Picked ${id}`);
+    expect(html).not.toContain('Picked A + A-stalled');
+  });
+
+  it('rounds support thumbnails using their phone dimensions', () => {
+    const card = prototype(225, { canvasPages: [{ id: 'final', title: 'Final', round: 2, items: ['D', 'D-push', 'D-settings'].map((id) => ({ id, name: id, src: `${id}.html`, width: 390, height: 844, disposition: 'keep', feedback: id === 'D' ? 'Final pick' : 'Supporting state', basedOn: [] })) }] });
+    const browser = new Window();
+    setTrustedHtml(browser.document.body as unknown as HTMLElement, prototypeBoardHtml('octo/wayfinder', map([ticket(225, 'Phone', 'prototype', 'done')]), [card]));
+    expect(browser.document.querySelectorAll('[data-proto-support] .chosen-phone')).toHaveLength(3);
+  });
+
+  it('explains that a closed undecided card has no recorded pick', () => {
+    const html = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'done')]), [prototype(10)]);
+    expect(html).toContain('The board does not guess a pick');
+  });
+});
+
+
+it('names the latest text round and counts only its own page in the undecided lead', () => {
+  const card = prototype(366, { canvasPages: [
+    { id: 'overview', title: 'Overview', round: null, items: [{ id: 'A', name: 'Overview', src: 'a.html', disposition: null, feedback: null, basedOn: [] }] },
+    { id: 'r1', title: 'R1 \u00b7 Reply bar', round: null, items: [] },
+    { id: 'r2', title: 'R2 \u00b7 Reply page', round: null, items: [{ id: 'B', name: 'Reply', src: 'b.html', disposition: null, feedback: null, basedOn: [] }] },
+  ] });
+  const html = prototypeBoardHtml('octo/wayfinder', map([ticket(366, 'Reply', 'prototype', 'claimed')]), [card]);
+  expect(html).toContain('<p class="gist">R2 \u00b7 Reply page \u00b7 1 option, none chosen yet.</p>');
+  const numbered = { ...card, canvasPages: card.canvasPages!.map((page, index) => ({ ...page, round: index + 1 })) };
+  expect(prototypeBoardHtml('octo/wayfinder', map([ticket(366, 'Reply', 'prototype', 'claimed')]), [numbered])).toContain('<p class="gist">Round 3 \u00b7 1 option, none chosen yet.</p>');
+});
+
+
+it.each([null, 'Final'])('uses the later approved page after a numbered round when its round is %s', (round) => {
+  const card = prototype(10, { canvasPages: [
+    { id: 'old', title: 'Old', round: 5, items: [{ id: 'A', name: 'Old', src: 'a.html', disposition: 'keep', feedback: 'Final pick', basedOn: [] }] },
+    { id: 'new', title: 'Final', round, items: [{ id: 'B', name: 'Final', src: 'b.html', disposition: 'keep', feedback: 'Final pick', basedOn: ['A'] }] },
+  ] });
+  const html = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'done')]), [card]);
+  expect(html).toContain('Picked B');
+  expect(html).not.toContain('Picked A');
+  expect(html).toContain('data-proto-hero-id="B"');
+  const history = html.slice(html.indexOf('aria-label="Canvas rounds"'));
+  expect(history.indexOf('>Round 5')).toBeLessThan(history.indexOf('>Final'));
+});
+
+
+it.each(['Final', 2])('preserves multiple choices and ambiguity within round %s in a mixed catalog', (round) => {
+  const item = (id: string) => ({ id, name: id, src: `${id}.html`, disposition: 'keep', feedback: 'Final pick', basedOn: [] });
+  const pages = [
+    { id: 'a', title: 'First', round, items: [item('A')] },
+    { id: 'b', title: 'Second', round, items: [item('B')] },
+    { id: 'notes', title: 'Notes', round: null, items: [] },
+  ];
+  const mapView = map([ticket(10, 'Example', 'prototype', 'done')]);
+  expect(prototypeBoardHtml('octo/wayfinder', mapView, [prototype(10, { canvasPages: pages })])).toContain('Picked A + B');
+  const repeated = pages.map((page) => page.id === 'b' ? { ...page, items: [item('A')] } : page);
+  const html = prototypeBoardHtml('octo/wayfinder', mapView, [prototype(10, { canvasPages: repeated })]);
+  expect(html).not.toContain('Picked A');
+  expect(html).not.toContain('data-proto-hero-id');
+});
+
+
+it('normalizes the newest-first mixed catalog returned for the five-round board', () => {
+  const pages = [5, 4, 3, 2, 'Baseline'].map((round, index) => ({ id: `p${index}`, title: String(round), round, items: [{ id: `A${index}`, name: 'Option', src: 'a.html', disposition: 'keep', feedback: 'Final pick', basedOn: [] }] }));
+  const mapView = map([ticket(10, 'Example', 'prototype', 'done')]);
+  const html = prototypeBoardHtml('octo/wayfinder', mapView, [prototype(10, { canvasPages: pages })]);
+  expect(html).toContain('Picked A0');
+  const history = html.slice(html.indexOf('aria-label="Canvas rounds"'));
+  expect(history.indexOf('>Baseline')).toBeLessThan(history.indexOf('>Round 2'));
+  expect(history.indexOf('>Round 2')).toBeLessThan(history.indexOf('>Round 5'));
+  const building = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'claimed')]), [prototype(10, { canvasPages: pages })]);
+  expect(building).toContain('Round 5 \u00b7 1 option, none chosen yet.');
+});
+
+
+it.each([false, true])('keeps Baseline before a single numbered round regardless of source direction (%s)', (reverse) => {
+  const pages = [2, 'Baseline'].map((round, index) => ({ id: `p${index}`, title: String(round), round, items: [{ id: `A${index}`, name: 'Option', src: 'a.html', disposition: 'keep', feedback: 'Final pick', basedOn: [] }] }));
+  if (reverse) pages.reverse();
+  const card = prototype(10, { canvasPages: pages });
+  const html = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'done')]), [card]);
+  expect(html).toContain('Picked A0');
+  const history = html.slice(html.indexOf('aria-label="Canvas rounds"'));
+  expect(history.indexOf('>Baseline')).toBeLessThan(history.indexOf('>Round 2'));
+  expect(prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'claimed')]), [card])).toContain('Round 2 \u00b7 1 option, none chosen yet.');
 });

@@ -1698,6 +1698,12 @@ els.nodes.addEventListener('focusout', () => setHovered(null));
 
 els.protoWrap.addEventListener('click', (event) => {
   const target = event.target as HTMLElement;
+  const hideHistory = target.closest<HTMLButtonElement>('[data-proto-hide]');
+  if (hideHistory) {
+    const active = hideHistory.closest('.chosen-canvas-history')?.querySelector<HTMLButtonElement>('[data-proto-round][aria-pressed="true"]');
+    if (active) togglePrototypeRound(active);
+    return;
+  }
   const round = target.closest<HTMLButtonElement>('[data-proto-round]');
   if (round !== null) {
     togglePrototypeRound(round);
