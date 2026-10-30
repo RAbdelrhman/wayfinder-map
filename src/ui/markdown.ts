@@ -27,7 +27,8 @@ function inline(text: string): string {
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
         .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (whole, label: string, escapedUrl: string) => {
           // Validation uses the original URL; the attribute keeps the escaped spelling.
-          const url = escapedUrl.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+          const entities: Record<string, string> = { '&amp;': '&', '&quot;': '"', '&#39;': "'", '&lt;': '<', '&gt;': '>' };
+          const url = escapedUrl.replace(/&(?:amp|quot|#39|lt|gt);/g, entity => entities[entity] ?? entity);
           return isOpenableLink(url) ? `<a href="${escapeHtml(nativeThreadLink(url) ?? url)}" target="_blank" rel="noreferrer">${label}</a>` : whole;
         });
     })
