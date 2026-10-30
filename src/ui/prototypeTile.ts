@@ -72,7 +72,7 @@ export function prototypeTileHtml(repo: string, prototype: Prototype, text: Tile
     url === null
       ? `<div class="proto-thumb is-empty"><span>No preview saved for this prototype</span></div>`
       : `<a class="proto-thumb" href="${escapeHtml(url)}" ${canvasEntryAttrs(repo, prototype, text.title)} aria-label="Open ${escapeHtml(text.title)}">
-          <iframe name="wayfinder-preview" src="${escapeHtml(url)}" sandbox="allow-scripts" loading="lazy" tabindex="-1" aria-hidden="true" title=""
+          <iframe name="wayfinder-preview" src="${escapeHtml(url)}" sandbox="allow-scripts" allow="focus-without-user-activation 'none'" loading="lazy" tabindex="-1" aria-hidden="true" title=""
             width="${String(PREVIEW_WIDTH)}" height="${String(PREVIEW_HEIGHT)}"></iframe>
           <span class="proto-open">Open ↗</span>
         </a>`;

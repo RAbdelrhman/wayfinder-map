@@ -137,6 +137,7 @@ describe('approved ACF4 shell', () => {
   it('creates the viewer iframe with only the existing opaque-origin sandbox capability', () => {
     const html = canvasFrameHtml({ ...route, title: 'Untrusted <title>' });
     expect(html).toContain('sandbox="allow-scripts"');
+    expect(html).toContain(`allow="focus-without-user-activation 'none'"`);
     expect(html).not.toMatch(/allow-same-origin|allow-popups|allow-top-navigation/);
     expect(html).toContain('Untrusted &lt;title&gt;');
     expect(html).toContain(`src="${route.url}"`);
