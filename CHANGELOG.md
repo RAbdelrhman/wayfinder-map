@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.26](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.25...v0.2.26) (2026-10-30)
+
+
+### Bug Fixes
+
+* keep hand-off restart tests on the scenario clock ([#377](https://github.com/RAbdelrhman/wayfinder-map/issues/377)) ([8f21a46](https://github.com/RAbdelrhman/wayfinder-map/commit/8f21a466c72fb8c6f0244dda870cf8a4b5d88a9e))
+
 ## [0.2.25](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.24...v0.2.25) (2026-10-30)
 
 
