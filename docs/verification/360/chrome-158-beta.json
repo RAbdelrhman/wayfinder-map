@@ -4,6 +4,23 @@
     "policy": true
   },
   {
+    "loading": "parser-opened modal with autofocus",
+    "control": true,
+    "active": "IFRAME",
+    "events": [
+      "host",
+      "blur"
+    ]
+  },
+  {
+    "loading": "parser-opened modal with autofocus",
+    "control": false,
+    "active": "BUTTON",
+    "events": [
+      "host"
+    ]
+  },
+  {
     "preview": false,
     "control": true,
     "method": "html",
