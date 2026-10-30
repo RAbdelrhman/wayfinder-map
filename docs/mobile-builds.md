@@ -11,20 +11,28 @@ deliverables. A closed prototype ticket does not mean its native screens shipped
 | 1.0.0 / 1 | PR #351, source `30ad162`, merged as `63a598a` | Samsung SM-S936U, 2026-10-27. APK installation succeeded; compass launcher icon and GitHub sign-in as RAbdelrhman verified. | Sign-in and account settings. Maps was a placeholder. |
 | 1.1.0 / 2 | `fb3be672cce1d2acbbedfcaf6dacd5b9727ac082`, #229 implementation | Samsung SM-S936U, 2026-10-27 15:56 UTC. Install succeeded, existing sign-in retained; repository filtering, map tabs, ticket tabs and issue-link navigation exercised. | Approved #223 R-C2, M-C, and T-C with live GitHub data. |
 | 1.1.1 / 3 | `2455d99bc1034d14e8b24dd6d5116664e06687b3`, PR #352 review fixes | Samsung SM-S936U, 2026-10-27 16:30 UTC. Wireless `adb install -r` succeeded after USB disconnected; dumpsys confirms 1.1.1 / 3. Existing sign-in, live Maps, and #217 Path with 21 tickets verified. | Access-failure cache eviction, missing-link recovery, fresh environment bundling, unique APK archives and installation manifests. |
+| 1.2.0 / 4 | Working tree based on `ebda6a1`, #229 public-follow work in progress | Samsung SM-S936U, 2026-10-27. USB upgrade succeeded and dumpsys confirms 1.2.0 / 4. GitHub initially returned 401 for the retained token. After Ramon signed back in, a refreshed Maps list, #217 Path and #218 Overview loaded from GitHub. Other-author following is not yet verified. | Work in progress for the selected #353 public-map discovery, account-local follows, and share entry. |
+| 1.2.1 / 5 | Clean source `f9818d40c831a83e877ac404c8ef6c109c9f0ddf`, combined public follows and app links | Samsung SM-S936U, 2026-10-29 20:09 EDT. Native build and upgrade succeeded; dumpsys confirms 1.2.1 / 5. Sign-in as RAbdelrhman retained, live Maps loaded, and `wayfinder://map?repo=RAbdelrhman%2Fwayfinder-map&number=217` opened #217 Path with 25 tickets. | #353 public discovery/follows/share entry, #359 selected unreadable-follow states, strict map links with sign-in destination retention, and outbound native T3 thread links. |
 
 Latest installed APK:
-`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.1.1-2455d99b-645c3ad752224c4ebc3b142650b14b94-arm64.apk`.
-The adjacent `.json` manifest identifies the exact source, an empty working-tree
-change list, checksum and installation time. SHA-256:
-`8a5d11f1f13f8418a2bdbc220d9d102a938694dd3412fbb2d5ea2d665383176e`.
+`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.2.1-f9818d40-df7789777f0f4cdea690812bd829625e-arm64.apk`.
+The adjacent `.json` manifest records the exact source commit, an empty source
+working-tree change list, checksum and successful installation time. SHA-256:
+`4a2f61aea0f1e446ad4522bb7e814de4a6c1d3a7517c7141ae8310fa62011c98`.
 
-GitHub retains the same APK, `SHA256SUMS.txt`, and a public-safe build manifest in
-the draft prerelease `mobile-v1.1.1`. Find it with
+The 1.2.1 native ARM64 release build and release lint passed in 14m 51s. Root
+typecheck, lint, build and 1,895 tests across 140 files passed. Mobile typecheck,
+146 tests across 13 files, and Android/iOS exports passed. Public follow/unfollow,
+share-sheet entry, revoked access, cold-start links and outbound T3 opening on the
+physical phone remain Not Verified. The phone returned to its always-on display
+after the signed-in Maps and map-link checks. No canvas viewer, pairing, session
+watching, replies, pushes or new object-ID routes are claimed in this APK.
+
+GitHub retains the earlier 1.1.1 APK, `SHA256SUMS.txt`, and a public-safe build
+manifest in the published prerelease `mobile-v1.1.1`. Find it with
 `gh release view mobile-v1.1.1 --repo RAbdelrhman/wayfinder-map`.
 The preceding `mobile-v1.1.0` draft retains the earlier installed APK.
-The draft is visible to repository collaborators and stays unpublished while
-[PR #352](https://github.com/RAbdelrhman/wayfinder-map/pull/352) completes review
-and CI. Mobile tags use `mobile-v*` so they do not trigger the desktop `v*`
+The 1.2.0 working build has not been published. Mobile tags use `mobile-v*` so they do not trigger the desktop `v*`
 release workflow. Preserve the exact APK source SHA even after a squash merge.
 
 Physical-phone checks used RAbdelrhman: 13 live maps across three repositories,
@@ -73,7 +81,10 @@ Its launcher evidence is `C:/wf-phone/artifacts/phone-wayfinder-icon.png`.
 Use the repository's locked Bun dependencies. Install the Android SDK, build
 tools, NDK and JDK required by Expo SDK 57, and configure `ANDROID_HOME` and
 `JAVA_HOME`. Keep this checkout's path short on Windows, for example `C:/wf229`,
-because generated C++ object paths can exceed Windows' filename limit.
+because generated C++ object paths can exceed Windows' filename limit. The build
+script rejects Windows checkout paths longer than 40 characters and junctions
+before invoking the native tools. Use a real short worktree; CMake resolves a
+junction back to its long source path.
 
 Set `EXPO_PUBLIC_GITHUB_CLIENT_ID` in `mobile/.env.local` using the existing
 GitHub OAuth app with Device Flow enabled. See [mobile-sign-in.md](mobile-sign-in.md).

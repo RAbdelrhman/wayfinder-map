@@ -1,7 +1,11 @@
 import { useCallback, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useBrowse, useResource } from './BrowseProvider';
+import { followedMaps, useBrowse, useResource } from './BrowseProvider';
+import { isGithubAccessDenied, mayViewMap } from './github';
+import type { MapDetail } from './github';
+import { removeMapContents } from './cache';
 import {
   Card,
   Header,
@@ -42,19 +46,38 @@ export function MapScreen() {
   const ref = routeRef(
     useLocalSearchParams<{ repo: string; number: string }>(),
   );
-  const { api } = useBrowse();
+  const { api, session } = useBrowse();
   const t = useTheme();
   const [tab, setTab] = useState<'path' | 'tickets' | 'brief'>('path');
   const [filter, setFilter] = useState<TicketState | 'all'>('all');
   const load = useCallback(
-    (signal: AbortSignal) =>
-      api.map({ repo: ref.repo, number: ref.number }, signal),
-    [api, ref.repo, ref.number],
+    async (signal: AbortSignal) => {
+      try {
+        return await api.map({ repo: ref.repo, number: ref.number }, signal, {
+          login: session.login,
+          follows: await followedMaps(session.login),
+        });
+      } catch (error) {
+        if (isGithubAccessDenied(error))
+          await removeMapContents(AsyncStorage, session.login, ref);
+        throw error;
+      }
+    },
+    [api, ref.repo, ref.number, session.login],
+  );
+  const canUseCached = useCallback(
+    async (map: MapDetail) =>
+      mayViewMap(map, {
+        login: session.login,
+        follows: await followedMaps(session.login),
+      }),
+    [session.login],
   );
   const resource = useResource(
     `map:${ref.repo.toLowerCase()}#${ref.number}`,
     load,
     isMapDetail,
+    canUseCached,
   );
   const map = resource.data;
   const openTicket = (number: number) =>

@@ -27,10 +27,22 @@ describe('renderMarkdown', () => {
     expect(renderMarkdown('```\n<b>x</b>\n```')).toBe('<pre><code>&lt;b&gt;x&lt;/b&gt;</code></pre>');
   });
 
-  it('escapes html and only links http urls', () => {
+  it('escapes html and rejects executable links', () => {
     expect(renderMarkdown('<img src=x onerror=alert(1)>')).toBe('<p>&lt;img src=x onerror=alert(1)&gt;</p>');
     expect(renderMarkdown('[a](https://x.dev/p) [b](javascript:alert(1))')).toBe(
       '<p><a href="https://x.dev/p" target="_blank" rel="noreferrer">a</a> [b](javascript:alert(1))</p>',
+    );
+  });
+
+  it('makes ready-message map and thread destinations clickable without opening other native commands', () => {
+    const html = renderMarkdown('[Open map](wayfinder://map?repo=o%2Fr&number=217) [Open thread](t3code://threads/env/thread) [settings](t3code://settings)');
+    expect(html).toContain('href="wayfinder://map?repo=o%2Fr&amp;number=217"');
+    expect(html).toContain('href="t3code://threads/env/thread"');
+    expect(html).not.toContain('href="t3code://settings"');
+  });
+  it('decodes generated HTML entities once without changing literal entities in a URL', () => {
+    expect(renderMarkdown('[Open](https://example.test/?value=&quot;&other=&amp;lt;)')).toBe(
+      '<p><a href="https://example.test/?value=&amp;quot;&amp;other=&amp;amp;lt;" target="_blank" rel="noreferrer">Open</a></p>',
     );
   });
 });

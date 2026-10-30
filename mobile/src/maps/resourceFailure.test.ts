@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { cacheKey, writeCache } from './cache';
-import { GithubError } from './github';
+import { GithubError, GithubNetworkError } from './github';
 import { resourceFailure } from './resourceFailure';
 
 describe('resource refresh failures', () => {
-  it.each([401, 404])(
+  it.each([401, 403, 404, 410])(
     'discards inaccessible content and its account-scoped cache on %s',
     async (status) => {
       const removeItem = vi.fn(async () => undefined);
@@ -35,7 +35,7 @@ describe('resource refresh failures', () => {
           { removeItem },
           'Ramon',
           'maps',
-          new GithubError(status, 'Try later'),
+          new GithubError(status, 'Try later', status === 403),
         )),
       };
       expect(next.data).toEqual(previous.data);
@@ -46,7 +46,7 @@ describe('resource refresh failures', () => {
   it('keeps saved data while offline', async () => {
     const removeItem = vi.fn(async () => undefined);
     expect(
-      await resourceFailure({ removeItem }, 'me', 'maps', new Error('Offline')),
+      await resourceFailure({ removeItem }, 'me', 'maps', new GithubNetworkError('Offline')),
     ).not.toHaveProperty('data');
     expect(removeItem).not.toHaveBeenCalled();
   });
@@ -67,6 +67,11 @@ describe('resource refresh failures', () => {
       loading: false,
       refreshing: false,
     });
+  });
+  it('does not classify storage and parser errors as offline', async () => {
+    const removeItem = vi.fn(async () => undefined);
+    expect(await resourceFailure({ removeItem }, 'me', 'maps', new Error('Storage unavailable'))).toMatchObject({ accessDenied: false, offline: false });
+    expect(removeItem).not.toHaveBeenCalled();
   });
   it('evicts after an older queued write completes', async () => {
     let unblock: () => void = () => undefined;

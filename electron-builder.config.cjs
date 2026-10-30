@@ -5,6 +5,7 @@ const artifactSuffix = stableRelease ? 'Setup' : 'Test-Setup';
 module.exports = {
   appId: 'com.rabdelrhman.wayfinder',
   productName: 'Wayfinder',
+  protocols: [{ name: 'Wayfinder map', schemes: ['wayfinder'] }],
   asar: true,
   compression: 'maximum',
   directories: {

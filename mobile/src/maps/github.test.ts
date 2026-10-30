@@ -38,6 +38,143 @@ function setup(
   };
 }
 describe('mobile GitHub maps', () => {
+  it.each([403, 404, 410])(
+    'keeps other maps when a followed issue returns %s',
+    async (status) => {
+      const { api } = setup((path) =>
+        path === '/search/issues'
+          ? { total_count: 1, items: [raw(1, { labels: ['wayfinder:map'] })] }
+          : new Response('', { status }),
+      );
+      const ref = { repo: 'author/repo', number: 12 };
+      const result = await api.maps('me', [ref]);
+      expect(result.maps.map((map) => map.number)).toEqual([1]);
+      expect(result.unavailable).toEqual([ref]);
+    },
+  );
+  it('preserves follows when 403 is a GitHub rate limit', async () => {
+    const { api } = setup((path) =>
+      path === '/search/issues'
+        ? { total_count: 0, items: [] }
+        : new Response('', {
+            status: 403,
+            headers: { 'x-ratelimit-remaining': '0' },
+          }),
+    );
+    await expect(
+      api.maps('me', [{ repo: 'author/repo', number: 12 }]),
+    ).rejects.toMatchObject({ status: 403, rateLimited: true });
+  });
+  it('marks an issue that lost its map label as unavailable', async () => {
+    const { api } = setup((path) =>
+      path === '/search/issues' ? { total_count: 0, items: [] } : raw(12),
+    );
+    expect(
+      (await api.maps('me', [{ repo: 'author/repo', number: 12 }])).unavailable,
+    ).toEqual([{ repo: 'author/repo', number: 12, reason: 'label' }]);
+  });
+  it('denies map and parent-ticket access after a followed map becomes private', async () => {
+    const { api } = setup(() =>
+      raw(12, {
+        labels: ['wayfinder:map'],
+        user: { login: 'author' },
+        body: 'Visibility: private',
+      }),
+    );
+    const ref = { repo: 'author/repo', number: 12 };
+    const viewer = { login: 'me', follows: [ref] };
+    await expect(api.map(ref, undefined, viewer)).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(api.assertMapAccess(ref, viewer)).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+  it('denies public maps when no longer followed while retaining access to own maps', async () => {
+    const { api } = setup(() =>
+      raw(12, {
+        labels: ['wayfinder:map'],
+        user: { login: 'author' },
+        body: 'Visibility: public',
+      }),
+    );
+    const ref = { repo: 'author/repo', number: 12 };
+    await expect(
+      api.assertMapAccess(ref, { login: 'me', follows: [] }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      api.assertMapAccess(ref, { login: 'author', follows: [] }),
+    ).resolves.toBeUndefined();
+  });
+  it('reports the exact followed map GitHub can no longer read', async () => {
+    const { api } = setup((path) =>
+      path === '/search/issues'
+        ? { total_count: 0, items: [] }
+        : new Response('', { status: 404 }),
+    );
+    const ref = { repo: 'author/repo', number: 12 };
+    const result = await api.maps('me', [ref]);
+    expect(result.unavailable).toEqual([ref]);
+    expect(result.maps).toEqual([]);
+  });
+  it('paginates public map discovery and checks a shared issue before returning it', async () => {
+    const { api } = setup((path, url) => {
+      if (path.endsWith('/issues/99'))
+        return raw(99, { labels: ['wayfinder:task'] });
+      if (url.searchParams.get('page') === '1')
+        return Array.from({ length: 100 }, (_, index) =>
+          raw(index + 1, {
+            labels: ['wayfinder:map'],
+            user: { login: 'author' },
+            body: 'Visibility: public',
+          }),
+        );
+      return [
+        raw(101, {
+          labels: ['wayfinder:map'],
+          user: { login: 'author' },
+          body: 'Visibility: public',
+        }),
+      ];
+    });
+    expect((await api.publicMaps('one/repo', 'me')).length).toBe(101);
+    expect(await api.sharedMap({ repo: 'one/repo', number: 99 })).toBeNull();
+  });
+  it('lists only other authors explicitly public maps, and rejects unsafe repository paths', async () => {
+    const { api, fetcher } = setup(() => [
+      raw(1, {
+        labels: ['wayfinder:map'],
+        user: { login: 'other' },
+        body: 'Visibility: public',
+      }),
+      raw(2, {
+        labels: ['wayfinder:map'],
+        user: { login: 'other' },
+        body: 'Visibility: private',
+      }),
+      raw(3, {
+        labels: ['wayfinder:map'],
+        user: { login: 'me' },
+        body: 'Visibility: public',
+      }),
+      raw(4, {
+        labels: ['wayfinder:task'],
+        user: { login: 'other' },
+        body: 'Visibility: public',
+      }),
+      raw(5, {
+        labels: ['wayfinder:map'],
+        user: { login: 'other' },
+        body: 'Visibility: public',
+        pull_request: {},
+      }),
+    ]);
+    expect(
+      (await api.publicMaps('one/repo', 'me')).map((item) => item.number),
+    ).toEqual([1]);
+    await expect(api.publicMaps('../other/path', 'me')).rejects.toThrow();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it.each([false, true])(
     'omits deleted body links when sub-issue fallback is %s',
     async (fallback) => {

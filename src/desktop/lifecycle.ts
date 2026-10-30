@@ -1,4 +1,5 @@
 import { parseRepoPagePath } from '../repoRoutes.js';
+import { isOpenableLink } from '../appLinks.js';
 
 export class DesktopLifecycle {
   private quitPromise: Promise<void> | null = null;
@@ -40,12 +41,7 @@ export function isAppPageUrl(target: string, expectedOrigin: string | null): boo
 }
 
 export function isSafeExternalUrl(target: string): boolean {
-  try {
-    const protocol = new URL(target).protocol;
-    return protocol === 'https:' || protocol === 'http:';
-  } catch {
-    return false;
-  }
+  return isOpenableLink(target);
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { MapDetail, MapSummary, TicketDetail } from './github';
 import { validRef } from './github';
 import type { Ticket } from '../shared';
+import type { UnavailableFollow } from './unreadableFollows';
 
 const record = (x: unknown): x is Record<string, unknown> =>
   !!x && typeof x === 'object' && !Array.isArray(x);
@@ -36,11 +37,14 @@ export function isTicket(x: unknown): x is Ticket {
 }
 export function isMapList(
   x: unknown,
-): x is { maps: MapSummary[]; warnings: string[] } {
+): x is { maps: MapSummary[]; warnings: string[]; hidden?: MapSummary[]; unavailable?: UnavailableFollow[] } {
   return (
     record(x) &&
     Array.isArray(x.maps) &&
     x.maps.every(isSummary) &&
+    (x.unavailable === undefined || (Array.isArray(x.unavailable) && x.unavailable.every(validRef))) &&
+    (x.hidden === undefined ||
+      (Array.isArray(x.hidden) && x.hidden.every(isSummary))) &&
     Array.isArray(x.warnings) &&
     x.warnings.every((s: unknown) => typeof s === 'string')
   );

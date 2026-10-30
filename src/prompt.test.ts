@@ -53,6 +53,12 @@ describe('renderTemplate', () => {
 });
 
 describe('buildPrompt', () => {
+  it.each([undefined, 'Ticket {{ticketNumber}}', 'Map {{mapAppUrl}}'])('requires destination links even with saved template %j', (template) => {
+    const prompt = buildPrompt({ repo: 'owner/repo', map, ticket, ...(template === undefined ? {} : { template }) });
+    expect(prompt).toContain('[Open map in Wayfinder](wayfinder://map?repo=owner%2Frepo&number=4)');
+    expect(prompt).toContain('exact current thread link supplied by T3 Code');
+    expect(prompt).not.toContain('{{mapAppUrl}}');
+  });
   it.each([undefined, '{{mapRules}}', 'Ticket {{ticketNumber}}'])('keeps map isolation mandatory with template %j', (template) => {
     const prompt = buildPrompt({ repo: 'owner/repo', map, ticket, ...(template === undefined ? {} : { template }) });
     expect(prompt.match(/No cross-map tickets or dependencies\./g)).toHaveLength(1);
@@ -344,6 +350,12 @@ describe('buildPrompt', () => {
 });
 
 describe('buildNewMapPrompt', () => {
+  it('teaches a new-map agent to report a native destination with the created issue number', () => {
+    const prompt = buildNewMapPrompt({ repo: 'o/r', goal: 'x', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', template: 'Plan {{goal}}' });
+    expect(prompt).toContain('wayfinder://map?repo=o%2Fr&number=NUMBER');
+    expect(prompt).toContain('replacing NUMBER with its actual GitHub issue number');
+    expect(prompt).toContain('exact current thread link');
+  });
   it.each([undefined, 'Plan {{goal}}'])('forbids cross-map links even in saved planning template %j', (template) => {
     const result = buildNewMapPrompt({ repo: 'o/r', goal: 'x', mapLabel: 'wayfinder:map', typePrefix: 'wayfinder:', ...(template === undefined ? {} : { template }) });
     expect(result.match(/No cross-map tickets or dependencies\./g)).toHaveLength(1);

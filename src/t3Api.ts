@@ -457,6 +457,8 @@ export interface ThreadInput {
   projectId: string;
   title: string;
   prompt: string;
+  /** Known environment identity, used to give the agent its exact native thread link. */
+  environmentId?: string;
   defaults: ThreadDefaults;
   /** The worktree the thread runs in, already created. Null runs in the project checkout. */
   worktree: { branch: string; path: string } | null;
@@ -472,6 +474,9 @@ export function threadCommands(input: ThreadInput): { threadId: string; create: 
   const threadId = randomUUID();
   const createdAt = input.now ?? new Date().toISOString();
   const { modelSelection, runtimeMode, interactionMode } = input.defaults;
+  const prompt = input.environmentId
+    ? `${input.prompt}\n\nCurrent thread: [Open thread in T3 Code](${threadAppLink(input.environmentId, threadId)}). Include this exact link when work is ready or needs the user.`
+    : input.prompt;
 
   return {
     threadId,
@@ -492,7 +497,7 @@ export function threadCommands(input: ThreadInput): { threadId: string; create: 
       type: 'thread.turn.start',
       commandId: randomUUID(),
       threadId,
-      message: { messageId: randomUUID(), role: 'user', text: input.prompt, attachments: [] },
+      message: { messageId: randomUUID(), role: 'user', text: prompt, attachments: [] },
       modelSelection,
       runtimeMode,
       interactionMode,

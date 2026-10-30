@@ -1,7 +1,10 @@
 import { PROTOTYPE_BRANCH_PREFIX } from './prototypes.js';
 import type { Ticket, TicketType, WayfinderMap } from './types.js';
+import { mapAppLink } from './appLinks.js';
 
 const MAP_BOUNDARY_RULE = 'No cross-map tickets or dependencies. Every ticket and every blocker must belong to this map. Never reuse another map\'s ticket or add a blocked-by link to one.';
+
+const THREAD_READY_RULE = 'When work is ready or needs the user, include the exact current thread link supplied by T3 Code. Never invent thread or environment IDs.';
 
 export const DEFAULT_TEMPLATE = `Pick up wayfinder ticket #{{ticketNumber}} on the "{{mapTitle}}" map.
 
@@ -329,6 +332,7 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
         mapNumber: String(map.number),
         mapTitle: map.title,
         mapUrl: map.url,
+        mapAppUrl: mapAppLink(repo, map.number),
         destination: indent(map.sections.destination),
         notes: indent(map.sections.notes),
         decisions: indent(map.sections.decisions),
@@ -338,6 +342,7 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
         mapNumber: '',
         mapTitle: '',
         mapUrl: '',
+        mapAppUrl: '',
         destination: '',
         notes: '',
         decisions: '',
@@ -365,13 +370,19 @@ export function buildPrompt({ repo, map, ticket, template, worktree }: PromptInp
   const withTypeSteps = humanInTheLoop && typeSteps && !chosenTemplate.includes('{{typeSteps}}')
     ? `${renderTemplate(typeSteps, prototypeValues)}\n\n${rendered}`.trim()
     : rendered;
-  return map && !chosenTemplate.includes('{{mapRules}}')
+  const withMapRules = map && !chosenTemplate.includes('{{mapRules}}')
     ? `${withTypeSteps}\n\n${MAP_BOUNDARY_RULE}`.trim()
     : withTypeSteps;
+  const readyLinks = map
+    ? `When work is ready or needs the user, include [Open map in Wayfinder](${mapAppLink(repo, map.number)}). This link opens the installed desktop or phone app.\n${THREAD_READY_RULE}`
+    : THREAD_READY_RULE;
+  // Saved templates cannot silently drop destination links from ready messages.
+  return `${withMapRules}\n\n${readyLinks}`;
 }
 
 /** The prompt `Start a new map` hands to T3 Code: plan the map with the user, then create it on GitHub. */
 export function buildNewMapPrompt({ repo, goal, mapLabel, typePrefix, template }: NewMapPromptInput): string {
   const rendered = renderTemplate(template ?? DEFAULT_NEW_MAP_TEMPLATE, { repo, goal: indent(goal), mapLabel, typePrefix }).trim();
-  return rendered.includes(MAP_BOUNDARY_RULE) ? rendered : `${rendered}\n\n${MAP_BOUNDARY_RULE}`.trim();
+  const withMapRules = rendered.includes(MAP_BOUNDARY_RULE) ? rendered : `${rendered}\n\n${MAP_BOUNDARY_RULE}`.trim();
+  return `${withMapRules}\n\nWhen the map is created, include [Open map in Wayfinder](wayfinder://map?repo=${encodeURIComponent(repo)}&number=NUMBER), replacing NUMBER with its actual GitHub issue number. Include this destination whenever you report the map ready.\n${THREAD_READY_RULE}`;
 }

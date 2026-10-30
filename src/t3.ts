@@ -408,8 +408,11 @@ export class T3HandOff {
         });
         const { projectId, defaults, worktree } = prepared;
 
+        const descriptor = await api.environment().catch(() => null);
+        const environment = typeof descriptor === 'object' && descriptor !== null ? descriptor as Record<string, unknown> : null;
+        const environmentId = typeof environment?.['environmentId'] === 'string' && environment['environmentId'].length > 0 ? environment['environmentId'] : null;
         const prompt = input.prompt(worktree);
-        const { threadId, create, start } = threadCommands({ projectId, title: input.title, prompt, defaults, worktree });
+        const { threadId, create, start } = threadCommands({ projectId, title: input.title, prompt, defaults, worktree, ...(environmentId === null ? {} : { environmentId }) });
         try {
           await api.dispatch(create);
           await api.dispatch(start);
@@ -422,14 +425,12 @@ export class T3HandOff {
           }
           throw error;
         }
-        reveal(command, origin);
-        const descriptor = await api.environment().catch(() => null);
-        const environment = typeof descriptor === 'object' && descriptor !== null ? descriptor as Record<string, unknown> : null;
+        reveal(command, origin, environmentId === null ? null : { environmentId, threadId });
         return {
           threadId,
           prompt,
           tracking: {
-            environmentId: typeof environment?.['environmentId'] === 'string' ? environment['environmentId'] : null,
+            environmentId,
             projectId,
             branch: worktree?.branch ?? null,
             worktreePath: worktree?.path ?? null,
