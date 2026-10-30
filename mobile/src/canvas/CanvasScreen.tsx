@@ -3,12 +3,13 @@ import { ActivityIndicator, Modal, PanResponder, Pressable, ScrollView, Text, us
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { followedMaps, useBrowse } from '../maps/BrowseProvider';
 import { GithubNetworkError, isGithubAccessDenied, mayViewMap, validRef } from '../maps/github';
 import { readCache } from '../maps/cache';
 import { isMapDetail } from '../maps/validate';
-import { Card, Page, useTheme, openExternal } from '../maps/components';
+import { Card, useTheme, openExternal } from '../maps/components';
 import { downloadCanvas } from './download';
 import { canvasFiles, removeCanvasFiles } from './files';
 import { allowedCanvasNavigation, canvasHost } from './host';
@@ -124,7 +125,7 @@ export function CanvasScreen() {
   const zoom = (factor: number) => { frame.current?.injectJavaScript(`window.canvasZoom(${factor});true;`);
     setZoom(value => factor === 0 ? null : Math.max(fit, Math.min(3, (value ?? fit) * factor))); };
   const pinchDistance = useRef(0);
-  const pinch = useRef(PanResponder.create({
+  const pinch = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponderCapture: event => event.nativeEvent.touches.length === 2,
     onMoveShouldSetPanResponderCapture: event => event.nativeEvent.touches.length === 2,
     onPanResponderGrant: event => { const [a, b] = event.nativeEvent.touches; pinchDistance.current = a && b ? Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY) : 0; },
@@ -137,7 +138,7 @@ export function CanvasScreen() {
       }
       pinchDistance.current = distance;
     },
-  })).current;
+  }), []);
   const button = (label: string, onPress: () => void, text: string, disabled = false) => <Pressable accessibilityRole="button"
     accessibilityLabel={label} disabled={disabled} onPress={onPress}
     style={{ minWidth: 44, minHeight: 44, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.35 : 1 }}>
@@ -202,5 +203,5 @@ export function CanvasScreen() {
       </Pressable>
     </Modal>
   </View>;
-  return full ? content : <Page>{content}</Page>;
+  return <SafeAreaView style={{ flex: 1, backgroundColor: t.plane }} edges={full ? [] : ['top', 'right', 'bottom', 'left']}>{content}</SafeAreaView>;
 }
