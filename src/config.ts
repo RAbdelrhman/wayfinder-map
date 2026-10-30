@@ -26,6 +26,7 @@ export const USAGE = `wayfinder-map - an interactive map of a repo's wayfinder m
 
 Usage
   wayfinder-map [options]
+  wayfinder-map mcp [--origin http://127.0.0.1:4479]
 
 Options
   --repo <owner/name>   Repository to open. Uses the one in --cwd, or Home when none.
