@@ -40,7 +40,7 @@ describe('canvasCatalog', () => {
   it('never calls host functions or reads host prototypes', () => {
     const source = `const escape = window.constructor.constructor('return process')();
       window.CANVAS = { pages: [{ id: 'safe', items: [{ id: 'A', src: escape.env.SECRET }] }] };`;
-    expect(canvasCatalog(source)[0]?.items[0]?.src).toBeNull();
+    expect(canvasCatalog(source)).toEqual([]);
     expect(canvasCatalog(`window.CANVAS = {pages: []}; process.exit(1);`)).toEqual([]);
   });
 
@@ -58,5 +58,43 @@ describe('canvasCatalog', () => {
     const declarations = ['const x0 = "1234567890";'];
     for (let index = 1; index < 25; index++) declarations.push(`const x${index} = x${index - 1} + x${index - 1};`);
     expect(canvasCatalog(declarations.join('\n') + `window.CANVAS = { pages: [{title: x24}] };`)).toEqual([]);
+  });
+
+  it('withholds the complete catalog when a page, section or item is unresolved', () => {
+    const kept = `{ items: [{ id: 'A', note: { disposition: 'keep', feedback: 'Keep A' } }] }`;
+    expect(canvasCatalog(`window.CANVAS = { pages: [${kept}, unknownPage()] };`)).toEqual([]);
+    expect(canvasCatalog(`window.CANVAS = { pages: [{ sections: [${kept}, unknownSection()] }] };`)).toEqual([]);
+    expect(canvasCatalog(`window.CANVAS = { pages: [{ items: [{id: 'A', note: {disposition: 'keep'}}, unknownItem()] }] };`)).toEqual([]);
+    expect(canvasCatalog(`window.CANVAS = { pages: [1].map(() => unknownPage()) };`)).toEqual([]);
+  });
+
+  it('withholds computed records whose unknown key could override a Keep', () => {
+    expect(canvasCatalog(`const key = unknownKey(); window.CANVAS = { pages: [{ items: [{ id: 'A',
+      note: { disposition: 'keep', feedback: 'Keep A', [key]: 'change' } }] }] };`)).toEqual([]);
+    expect(canvasCatalog(`const key = { toString: () => 'disposition' }; window.CANVAS = { pages: [{ items: [{ id: 'A',
+      note: { disposition: 'keep', feedback: 'Keep A', [key]: 'change' } }] }] };`)).toEqual([]);
+    expect(canvasCatalog(`const key = 'disposition'; window.CANVAS = { pages: [{ items: [{ id: 'A',
+      note: { disposition: 'keep', [key]: 'change' } }] }] };`)[0]?.items[0]?.disposition).toBe('change');
+  });
+
+  it('withholds the catalog for writes nested anywhere inside a const initializer', () => {
+    const initial = `window.CANVAS = { pages: [{ items: [{ id: 'A', note: { disposition: 'keep' } }] }] };`;
+    for (const mutation of [
+      `(window.CANVAS.pages[0].items[0].note.disposition = 'change')`,
+      `({ value: (window.CANVAS.pages[0].items[0].note.disposition = 'change') })`,
+      `(0, window.CANVAS.pages[0].items[0].note.disposition = 'change')`,
+      `delete window.CANVAS.pages[0].items[0].note.disposition`,
+      `window.CANVAS.pages[0].round++`,
+      `window.CANVAS.pages.push({ items: [{id: 'B', note: {disposition: 'keep'}}] })`,
+      `(0, unknownMutation(window.CANVAS))`,
+      `(() => { unknownMutation(window.CANVAS); })()`,
+      `(() => 'unused')(...unknownMutation(window.CANVAS))`,
+    ]) expect(canvasCatalog(`${initial} const result = ${mutation};`)).toEqual([]);
+  });
+
+  it('never reads a canvas assignment after a throw', () => {
+    const initial = `window.CANVAS = { pages: [{ items: [{ id: 'A' }] }] };`;
+    expect(canvasCatalog(`throw new Error(); ${initial}`)).toEqual([]);
+    expect(canvasCatalog(`${initial} throw new Error(); window.CANVAS = { pages: [] };`)[0]?.items[0]?.id).toBe('A');
   });
 });
