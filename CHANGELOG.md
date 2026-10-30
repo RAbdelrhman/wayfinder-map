@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.25](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.24...v0.2.25) (2026-10-30)
+
+
+### Features
+
+* complete mobile public follows and native map links ([#358](https://github.com/RAbdelrhman/wayfinder-map/issues/358)) ([b96f195](https://github.com/RAbdelrhman/wayfinder-map/commit/b96f195674bbc99931a896c41e82917cf82a1d46))
+* open prototype canvases in the mobile app ([#370](https://github.com/RAbdelrhman/wayfinder-map/issues/370)) ([4bd1dee](https://github.com/RAbdelrhman/wayfinder-map/commit/4bd1dee646839ab30115f19acf459aa69517106f))
+* open stable map, ticket and canvas links across apps ([#372](https://github.com/RAbdelrhman/wayfinder-map/issues/372)) ([725a073](https://github.com/RAbdelrhman/wayfinder-map/commit/725a07340f460ac9f502a72c16704da31f2ea7c5))
+* open Wayfinder destinations from stock T3 HTTPS links ([#376](https://github.com/RAbdelrhman/wayfinder-map/issues/376)) ([725132f](https://github.com/RAbdelrhman/wayfinder-map/commit/725132ff411b986fb1b0d70cdbb22331e161b4cd))
+* prototype the HTTPS Open in Wayfinder landing page ([#373](https://github.com/RAbdelrhman/wayfinder-map/issues/373)) ([#374](https://github.com/RAbdelrhman/wayfinder-map/issues/374)) ([51e019d](https://github.com/RAbdelrhman/wayfinder-map/commit/51e019d82d6c0b58c2991039a058694fef0e631b))
+
+
+### Bug Fixes
+
+* complete the chosen AC3 prototype decision board ([#375](https://github.com/RAbdelrhman/wayfinder-map/issues/375)) ([bdbca8d](https://github.com/RAbdelrhman/wayfinder-map/commit/bdbca8d113c9080627a040500d124ff620dead1d))
+
 ## [0.2.24](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.23...v0.2.24) (2026-10-30)
 
 
