@@ -454,6 +454,7 @@
     else if (!e.shiftKey && i === items.length - 1) { e.preventDefault(); items[0].focus(); }
   });
 
-  (SCENARIOS[params.get('s')] ?? SCENARIOS.session)();
+  const scenario = Object.entries(SCENARIOS).find(([name]) => name === params.get('s'))?.[1] ?? SCENARIOS.session;
+  scenario();
   render();
 })();

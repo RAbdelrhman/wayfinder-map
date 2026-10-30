@@ -42,6 +42,8 @@ window.CANVAS = {
               name: 'Reply bar',
               src: 'variants/phone.html?o=R1&s=confirm', ...PHONE,
               note: {
+                disposition: 'keep',
+                feedback: 'Ramon chose R1: "I like R1 because you can see the activity and previous messages while typing."',
                 idea: 'The Session tab’s “Watch only” line becomes a reply field with Review. Review opens #316’s alert, widened: map, ticket and T3 thread, then the whole message, with Edit and Send. After Send the reply sits at the end of the history, and its state (Sending, Accepted, Not sent, Not confirmed) shows on it.',
                 pros: ['Reply where you read the thread, like a chat', 'Fewest screens: a field and one alert', 'The reply’s state stays next to what T3 Code says after it'],
                 cons: ['A long message makes a tall alert that scrolls', 'The field takes room from the history while you type', 'Failures show inside the history, so they scroll with it'],

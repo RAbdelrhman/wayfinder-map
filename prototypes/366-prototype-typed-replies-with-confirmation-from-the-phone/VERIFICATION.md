@@ -17,3 +17,11 @@ as #226 and #353 do: `node --test` on it passes 15/15.
 
 Not verified: real iOS/Android devices, the OS keyboard, safe areas, touch,
 screen readers, large text, and any real RAMON‑PC or T3 Code response.
+
+## R1 selection and code-review closeout, 2026-10-29
+
+Ramon used the real canvas in the installed Samsung 1.3.0 viewer and chose overview/R1, Reply bar: I like R1 because you can see the activity and previous messages while typing. The related flow is page r1, all R1-* states. R2 is retained for history and is not selected. The approved R1 note records the user's exact reason with disposition keep.
+
+CodeQL29 reported that SCENARIOS[query]() could call an inherited property. Dispatch now searches Object.entries, so only owned scenario functions can be selected; unknown names use session. The browser regression exercised __proto__, constructor, toString and the normal confirm state:4/4 rendered expected content with no page errors. Canvas checker and15checker tests passed. The board poster was recaptured and checked after the final content change. No reply layout or copy was changed by the dispatch fix.
+
+The separate native viewer acceptance on clean2e4348a showed R1/R2 rendering, page/option switching, Notes, zoom/fit and prototype text surviving full-screen entry/exit. The real OS keyboard was exercised in R2's editor. This does not prove actual T3 delivery. Physical iOS, offline recovery, pinch, screen readers and large text remain unverified.
