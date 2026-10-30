@@ -551,3 +551,17 @@ it('names the latest text round and counts only its own page in the undecided le
   const numbered = { ...card, canvasPages: card.canvasPages!.map((page, index) => ({ ...page, round: index + 1 })) };
   expect(prototypeBoardHtml('octo/wayfinder', map([ticket(366, 'Reply', 'prototype', 'claimed')]), [numbered])).toContain('<p class="gist">Round 3 \u00b7 1 option, none chosen yet.</p>');
 });
+
+
+it.each([null, 'Final'])('uses the later approved page after a numbered round when its round is %s', (round) => {
+  const card = prototype(10, { canvasPages: [
+    { id: 'old', title: 'Old', round: 5, items: [{ id: 'A', name: 'Old', src: 'a.html', disposition: 'keep', feedback: 'Final pick', basedOn: [] }] },
+    { id: 'new', title: 'Final', round, items: [{ id: 'B', name: 'Final', src: 'b.html', disposition: 'keep', feedback: 'Final pick', basedOn: ['A'] }] },
+  ] });
+  const html = prototypeBoardHtml('octo/wayfinder', map([ticket(10, 'Example', 'prototype', 'done')]), [card]);
+  expect(html).toContain('Picked B');
+  expect(html).not.toContain('Picked A');
+  expect(html).toContain('data-proto-hero-id="B"');
+  const history = html.slice(html.indexOf('aria-label="Canvas rounds"'));
+  expect(history.indexOf('>Round 5')).toBeLessThan(history.indexOf('>Final'));
+});

@@ -194,6 +194,11 @@ function variantFrame(variant: BoardVariant, phone: { width: number; height: num
   return `<span class="wf-frame proto-thumb${variant.image === null && variant.page === null ? ' is-empty' : ''}${phone ? ' is-phone' : ''}"${phone ? ` data-phone-width="${String(phone.width)}" data-phone-height="${String(phone.height)}"` : ''}>${picture}<span class="tag">${escapeHtml(variant.id)}</span></span>`;
 }
 
+/** Numeric catalogs use round order; other catalogs preserve the author's page order. */
+function pageOrder(pages: NonNullable<Prototype['canvasPages']>, page: NonNullable<Prototype['canvasPages']>[number]): number {
+  return pages.every((candidate) => typeof candidate.round === 'number') ? Number(page.round) : pages.indexOf(page);
+}
+
 /** Explicitly approved items on the most recent round with a recorded final choice. */
 function catalogPicks(prototype: Prototype): Array<{ page: NonNullable<Prototype['canvasPages']>[number]; item: NonNullable<Prototype['canvasPages']>[number]['items'][number] }> {
   const named = [...(prototype.verdict ?? '').matchAll(/^\s*-\s+\*\*[^:\n]+:\s*([A-Za-z][A-Za-z0-9-]*)\b[^\n]*\bKeep\b/gm)]
@@ -225,9 +230,10 @@ function catalogPicks(prototype: Prototype): Array<{ page: NonNullable<Prototype
       if (found.length === 1) return found;
     }
   }
-  const rounds = candidates.map(({ page }) => typeof page.round === 'number' ? page.round : -1);
+  const pages = prototype.canvasPages ?? [];
+  const rounds = candidates.map(({ page }) => pageOrder(pages, page));
   const latest = Math.max(...rounds);
-  const latestPicks = candidates.filter(({ page }) => (typeof page.round === 'number' ? page.round : -1) === latest);
+  const latestPicks = candidates.filter(({ page }) => pageOrder(pages, page) === latest);
   return latestPicks.filter(({ item }) => latestPicks.filter((pick) => pick.item.id === item.id).length === 1 && !(prototype.ticketNumber === 163 && ['F-setup', 'M-running'].includes(item.id)));
 }
 
@@ -261,7 +267,7 @@ function catalogHistory(repo: string, prototype: Prototype, title: string, picks
     const key = typeof page.round === 'number' ? `Round ${String(page.round)}` : page.round ?? page.title;
     groups.set(key, [...(groups.get(key) ?? []), page]);
   }
-  const rounds = [...groups.entries()].sort(([, a], [, b]) => (typeof a[0]?.round === 'number' ? a[0].round : 0) - (typeof b[0]?.round === 'number' ? b[0].round : 0));
+  const rounds = [...groups.entries()].sort(([, a], [, b]) => pageOrder(pages, a[0]!) - pageOrder(pages, b[0]!));
   const buttons = rounds.map(([label, roundPages], index) => `<button type="button" class="seg" data-proto-round="${String(index)}" aria-pressed="${String(!hero && index === rounds.length - 1)}">${escapeHtml(label)}${picks.some((pick) => roundPages.includes(pick.page)) ? ' <span data-icon="check" aria-hidden="true"></span>' : ''} \u00b7 ${String(roundPages.reduce((count, page) => count + page.items.length, 0))}</button>`).join('<span data-icon="right" aria-hidden="true"></span>');
   const panels = rounds.map(([, roundPages], index) => {
     const pageButtons = roundPages.length > 1 ? `<div class="segmented" role="group" aria-label="Canvas pages">${roundPages.map((page, pageIndex) => `<button type="button" class="seg" data-proto-page="${String(pageIndex)}" aria-pressed="${String(pageIndex === 0)}">${escapeHtml(page.title)}</button>`).join('')}</div>` : '';
@@ -321,9 +327,7 @@ function cardHtml(repo: string, map: WayfinderMap, prototype: Prototype): string
       : `<span class="chip" style="--accent: var(--state-done)"><span data-icon="check" aria-hidden="true"></span>${selected.length === 0 ? 'Decided' : `Picked ${escapeHtml(selected.join(' + '))}`}</span>`;
 
   const pages = prototype.canvasPages ?? [];
-  const latestPage = pages.every((page) => typeof page.round === 'number')
-    ? [...pages].sort((a, b) => Number(b.round) - Number(a.round))[0]
-    : pages.at(-1);
+  const latestPage = [...pages].sort((a, b) => pageOrder(pages, b) - pageOrder(pages, a))[0];
   const latestItems = pages.filter((page) => latestPage?.round === null ? page.id === latestPage.id : page.round === latestPage?.round).reduce((count, page) => count + page.items.length, 0);
   const undecidedLead = decision.state === 'decided' || !latestPage
     ? 'The board does not guess a pick from the closing comment.'
