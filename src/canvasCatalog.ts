@@ -24,6 +24,42 @@ function object(node: Expression | null): ObjectExpression | null {
   return node?.type === 'ObjectExpression' ? node : null;
 }
 
+/** Literal notes for the native viewer. This never executes prototype code. */
+export function canvasText(source: string): { title: string; question: string; notes: Record<string, string> } {
+  const empty = { title: 'Canvas', question: '', notes: {} };
+  try {
+    const program = parse(source, { ecmaVersion: 'latest', sourceType: 'script' });
+    const assignment = program.body.find(statement => statement.type === 'ExpressionStatement'
+      && statement.expression.type === 'AssignmentExpression' && statement.expression.left.type === 'MemberExpression'
+      && statement.expression.left.object.type === 'Identifier' && statement.expression.left.object.name === 'window'
+      && statement.expression.left.property.type === 'Identifier' && statement.expression.left.property.name === 'CANVAS');
+    if (assignment?.type !== 'ExpressionStatement' || assignment.expression.type !== 'AssignmentExpression') return empty;
+    const config = object(assignment.expression.right as unknown as Expression);
+    if (!config) return empty;
+    const notes: Record<string, string> = {};
+    for (const value of array(property(config, 'pages'))) {
+      const page = object(value);
+      if (!page) continue;
+      const items = [...array(property(page, 'items')), ...array(property(page, 'sections')).flatMap(section => {
+        const entry = object(section); return entry ? array(property(entry, 'items')) : [];
+      })];
+      for (const entry of items) {
+        const item = object(entry);
+        if (!item) continue;
+        const id = string(property(item, 'id'));
+        if (!id) continue;
+        const note = property(item, 'note');
+        const detail = object(note);
+        notes[id] = string(note) ?? (detail ? [string(property(detail, 'idea')),
+          ...array(property(detail, 'pros')).map(value => string(value)),
+          ...array(property(detail, 'cons')).map(value => string(value)),
+          string(property(detail, 'feedback'))].filter(Boolean).join('\n\n') : string(property(item, 'text'))) ?? '';
+      }
+    }
+    return { title: string(property(config, 'title')) ?? 'Canvas', question: string(property(config, 'question')) ?? '', notes };
+  } catch { return empty; }
+}
+
 /** Read literal canvas metadata without executing repository-supplied JavaScript. */
 export function canvasCatalog(source: string): CanvasCatalogPage[] {
   try {
