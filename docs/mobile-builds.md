@@ -13,12 +13,26 @@ deliverables. A closed prototype ticket does not mean its native screens shipped
 | 1.1.1 / 3 | `2455d99bc1034d14e8b24dd6d5116664e06687b3`, PR #352 review fixes | Samsung SM-S936U, 2026-10-27 16:30 UTC. Wireless `adb install -r` succeeded after USB disconnected; dumpsys confirms 1.1.1 / 3. Existing sign-in, live Maps, and #217 Path with 21 tickets verified. | Access-failure cache eviction, missing-link recovery, fresh environment bundling, unique APK archives and installation manifests. |
 | 1.2.0 / 4 | Working tree based on `ebda6a1`, #229 public-follow work in progress | Samsung SM-S936U, 2026-10-27. USB upgrade succeeded and dumpsys confirms 1.2.0 / 4. GitHub initially returned 401 for the retained token. After Ramon signed back in, a refreshed Maps list, #217 Path and #218 Overview loaded from GitHub. Other-author following is not yet verified. | Work in progress for the selected #353 public-map discovery, account-local follows, and share entry. |
 | 1.2.1 / 5 | Clean source `f9818d40c831a83e877ac404c8ef6c109c9f0ddf`, combined public follows and app links | Samsung SM-S936U, 2026-10-29 20:09 EDT. Native build and upgrade succeeded; dumpsys confirms 1.2.1 / 5. Sign-in as RAbdelrhman retained, live Maps loaded, and `wayfinder://map?repo=RAbdelrhman%2Fwayfinder-map&number=217` opened #217 Path with 25 tickets. | #353 public discovery/follows/share entry, #359 selected unreadable-follow states, strict map links with sign-in destination retention, and outbound native T3 thread links. |
+| 1.2.3 / 7 | Clean source `371809c8b50d2d0a061e2232d93e304fc00dac22` | Samsung SM-S936U, USB upgrade succeeded, sign-in retained; repository filter, #217 Path, #229 Overview/Links/Activity, followed public map and persistent Unfollow verified. | Completed #229 phone acceptance, plus app links. |
+| 1.3.0 / 8 | Clean source `2e4348a4649d3a3c798011035d9908cfcabee4c6` | Samsung SM-S936U, USB upgrade succeeded on 2026-10-29. Android confirms 1.3.0 / 8. Opened #366's actual canvas, switched R1/R2 and pages, used More → Notes and zoom/fit, and retained typed prototype text through entering/exiting full screen. | Approved #226 R2A native canvas viewer, per-account immutable GitHub packages, embedded sandbox resources. Typed replies shown inside #366 remain a prototype; real T3 sending is not included. |
 
 Latest installed APK:
-`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.2.3-371809c8-1d3f5dc93fb94c93b471f5ca8d2829d2-arm64.apk`.
+`C:/Users/supie/Downloads/Wayfinder-Mobile/Wayfinder-1.3.0-2e4348a4-f173da5e86f4403cb142f459521b5c30-arm64.apk`.
 The adjacent `.json` manifest records the exact source commit, an empty source
 working-tree change list, checksum and successful installation time. SHA-256:
-`315098688d84d6360c6ab4cc1a4e5626b74fef47b3099f289ee3256eb9c9b8b9`.
+`2834dd96c74425a1822e1810dc9ca913846800e2f060da82c581c85dabbe0723`.
+
+The 1.3.0 native build passed in 12m 4s and its adjacent manifest records the
+successful USB installation. The native device proof and screenshot are retained
+locally under `D:/wf-links/.audit/235-device-flow.log`, `235-phone-observations.md`
+and `235-native-r1.png`. All 24 #366 options on three pages passed the separate
+browser check without page errors, with storage and parent-document isolation.
+Final source typecheck/lint, 1,933 root tests across 142 files, 162 mobile tests
+across 17 files and both platform exports passed. Physical iOS, offline recovery
+and the pinch gesture are not verified; zoom buttons and the real OS keyboard
+were exercised. Runtime object-ID destinations and actual typed T3 replies remain
+separate work. The verified artifact is retained at prerelease
+`mobile-v1.3.0-2e4348a`; `mobile-v1.3.0` is the earlier superseded verification build.
 
 The 1.2.3/code 7 APK was built from clean `371809c8b50d2d0a061e2232d93e304fc00dac22`
 and installed over USB on the Samsung on 2026-10-29. Gradle passed in 9m 57s,
@@ -32,8 +46,8 @@ Root typecheck/lint and 1,909 tests across 140 files passed. Mobile typecheck,
 155 tests across 14 files, and Android/iOS exports passed. A fresh independent
 Sol verifier graded all three #229 Done-when items Pass and all scope answers No.
 The intervening 1.2.2/code 6 build is retained at the `mobile-v1.2.2` prerelease.
-Neither build contains a native canvas viewer. The 1.3.0/code 8 source adds it;
-do not call that build installed until its artifact and device checks are recorded.
+Neither of those earlier builds contains a native canvas viewer. The installed
+1.3.0/code 8 build above adds it.
 
 The 1.2.1 native ARM64 release build and release lint passed in 14m 51s. Root
 typecheck, lint, build and 1,895 tests across 140 files passed. Mobile typecheck,
