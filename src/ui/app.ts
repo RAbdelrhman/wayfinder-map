@@ -77,10 +77,9 @@ import {
   handOffTransitionNotifications,
   mapEventNotification,
   mountNotificationInbox,
-  mountUnblockedNotice,
   statusNotification,
 } from './notifications.js';
-import type { NewInboxNotification, UnblockedTicket } from './notifications.js';
+import type { NewInboxNotification } from './notifications.js';
 
 /* ---------- type channel: one icon each, drawn from what the work feels like ---------- */
 
@@ -210,7 +209,6 @@ const canvasViewer = mountCanvasViewer(els.app, () => {
 }, { isDestinationReady: () => snapshot !== null && !initialRouteTicketPending, onDestinationError: message => toast(message, 9000) });
 const handOffSurface = mountHandOffs();
 const notificationInbox = mountNotificationInbox();
-const unblockedNotice = mountUnblockedNotice(need('unblocked-notice'), (ticketNumber) => select(ticketNumber), startUnblockedBatch);
 let notificationSettings: NotificationSettings = { ...DEFAULT_NOTIFICATION_SETTINGS };
 const pendingMapEvents: MapEvent[] = [];
 let previousHandOffRecords: readonly HandOffStatusDto[] | null = null;
@@ -248,11 +246,6 @@ async function publishNotification(notification: NewInboxNotification): Promise<
     }).catch(() => undefined);
   }
   return true;
-}
-
-/** The "ready" notice's Start goes through the same batch as Start next, so the cap and queue are one. */
-function startUnblockedBatch(ticketNumbers: readonly number[]): Promise<readonly number[]> {
-  return startNext.startTickets(ticketNumbers);
 }
 
 function currentMap(): WayfinderMap | null {
@@ -343,21 +336,8 @@ function rememberMapOpen(repo: string, mapNumber: number): void {
   }
 }
 
-const closedTicketsByEventTime = new Map<string, number[]>();
-
 async function receiveMapEvent(event: MapEvent): Promise<void> {
-  const eventKey = event.repo.toLocaleLowerCase() + '#' + String(event.mapNumber) + ':' + event.at;
-  if (event.type === 'ticket-closed') {
-    const closed = closedTicketsByEventTime.get(eventKey) ?? [];
-    closed.push(event.ticket.number);
-    closedTicketsByEventTime.set(eventKey, closed);
-    if (closed.length === 1) {
-      window.setTimeout(() => {
-        if (closedTicketsByEventTime.get(eventKey) === closed) closedTicketsByEventTime.delete(eventKey);
-      }, 10_000);
-    }
-    return;
-  }
+  if (event.type === 'ticket-closed') return;
   // A map with its auto map on has the server start the ticket, so there is nothing to announce here unless that fails.
   // The server puts a failed start in the inbox itself.
   if (event.type === 'ticket-next') {
@@ -367,14 +347,13 @@ async function receiveMapEvent(event: MapEvent): Promise<void> {
   await announceMapEvent(event);
 }
 
-/** Put a map event in the inbox, and for a ticket that became next, offer to start it. */
+/** Put a map event in the inbox, and pulse a ticket that became next on the open map. */
 async function announceMapEvent(event: MapEvent): Promise<void> {
   const eventSnapshot = snapshot;
   const map = eventSnapshot?.repo.toLocaleLowerCase() === event.repo.toLocaleLowerCase()
     ? eventSnapshot.maps.find((candidate) => candidate.number === event.mapNumber)
     : undefined;
   const mapTitle = map?.title ?? 'Map #' + String(event.mapNumber);
-  const eventKey = event.repo.toLocaleLowerCase() + '#' + String(event.mapNumber) + ':' + event.at;
   const notification = mapEventNotification(event, mapTitle);
   if (notification === null || !(await publishNotification(notification))) return;
   if (notification.kind !== 'unblocked') return;
@@ -382,11 +361,6 @@ async function announceMapEvent(event: MapEvent): Promise<void> {
   if (map === undefined || route?.mapNumber !== event.mapNumber || route.repo.toLocaleLowerCase() !== event.repo.toLocaleLowerCase()) return;
   const ticket = ticketAt(map, event.ticket.number);
   if (ticket === undefined) return;
-  const closed = closedTicketsByEventTime.get(eventKey);
-  const closedTicket = closed?.shift() ?? null;
-  if (closed !== undefined && closed.length === 0) closedTicketsByEventTime.delete(eventKey);
-  const noticeTicket: UnblockedTicket = { number: ticket.number, title: ticket.title, type: ticket.type };
-  unblockedNotice.add(noticeTicket, closedTicket);
   const node = els.nodes.querySelector<HTMLElement>('.node[data-number="' + String(ticket.number) + '"]');
   if (node !== null && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     node.classList.add('is-newly-unblocked');
@@ -1972,7 +1946,6 @@ void syncServerSettings();
 void autoMaps.importLegacy(localStorage).then(() => autoMaps.refresh());
 window.addEventListener('pagehide', () => {
   autoRefresh.stop();
-  closedTicketsByEventTime.clear();
 });
 window.setInterval(renderSynced, 15_000);
 
