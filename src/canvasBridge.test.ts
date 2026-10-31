@@ -1,12 +1,57 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
-import { CANVAS_BRIDGE_SCRIPT, PREVIEW_FOCUS_GUARD, viewerPrototypeBytes } from './canvasBridge.js';
+import { CANVAS_BRIDGE_SCRIPT, CANVAS_OPTION_FOCUS_SCRIPT, PREVIEW_FOCUS_GUARD, viewerPrototypeBytes } from './canvasBridge.js';
 import { readCanvasMessage } from './ui/canvasViewer.js';
 import ts from 'typescript';
 import { Window } from 'happy-dom';
 
 describe('sandboxed canvas bridge', () => {
+  it('reports trusted focus entry directly only after its parent configures the viewer subtree', () => {
+    const listeners = new Map<string, (event: unknown) => void>();
+    const documentListeners = new Map<string, (event: unknown) => void>();
+    const parent = { postMessage: vi.fn() }, top = { postMessage: vi.fn() }, child = { postMessage: vi.fn() };
+    runInNewContext(CANVAS_BRIDGE_SCRIPT, {
+      window: { top, addEventListener: (name: string, fn: (event: unknown) => void) => listeners.set(name, fn) },
+      parent, location: { href: 'http://localhost/proto/o/r/prototype%2F1/index.html', hash: '' }, URL,
+      document: { readyState: 'loading', querySelector: () => null, querySelectorAll: () => [{ contentWindow: child }], addEventListener: (name: string, fn: (event: unknown) => void) => documentListeners.set(name, fn) },
+    });
+    documentListeners.get('pointerdown')?.({ isTrusted: true });
+    listeners.get('blur')?.({});
+    expect(top.postMessage).not.toHaveBeenCalled();
+    expect(parent.postMessage).not.toHaveBeenCalled(); // Inline MCP embed remains dormant.
+    listeners.get('message')?.({ source: {}, data: { wf: 1, type: 'focus-config', token: 'wrong-parent' } });
+    expect(child.postMessage).not.toHaveBeenCalled();
+    listeners.get('message')?.({ source: parent, data: { wf: 1, type: 'focus-config', token: 'viewer-token' } });
+    expect(child.postMessage).toHaveBeenCalledWith({ wf: 1, type: 'focus-config', token: 'viewer-token' }, '*');
+    documentListeners.get('pointerdown')?.({ isTrusted: false });
+    expect(top.postMessage).not.toHaveBeenCalled();
+    documentListeners.get('pointerdown')?.({ isTrusted: true });
+    expect(top.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'focus-entry', token: 'viewer-token', at: expect.any(Number) }, '*');
+    const target = { focus: vi.fn(), isConnected: true };
+    documentListeners.get('focusin')?.({ target });
+    listeners.get('message')?.({ source: top, data: { wf: 1, type: 'focus-resume', token: 'wrong-token' } });
+    expect(target.focus).not.toHaveBeenCalled();
+    listeners.get('message')?.({ source: top, data: { wf: 1, type: 'focus-resume', token: 'viewer-token' } });
+    expect(target.focus).toHaveBeenCalledWith({ preventScroll: true });
+    listeners.get('blur')?.({});
+    expect(top.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'focus-leave', token: 'viewer-token', at: expect.any(Number) }, '*');
+  });
+  it('adds only focus reporting to generated board options, preserving their keyboard and history behavior', () => {
+    const listeners = new Map<string, (event: unknown) => void>();
+    const parent = { postMessage: vi.fn() }, top = { postMessage: vi.fn() };
+    const history = { pushState: vi.fn(), replaceState: vi.fn() };
+    runInNewContext(CANVAS_OPTION_FOCUS_SCRIPT, {
+      window: { top, history, addEventListener: (name: string, fn: (event: unknown) => void) => listeners.set(name, fn) },
+      parent, document: { querySelectorAll: () => [], addEventListener: (name: string, fn: (event: unknown) => void) => listeners.set(name, fn) },
+    });
+    expect(listeners.has('keydown')).toBe(false);
+    expect(history.replaceState).not.toHaveBeenCalled();
+    listeners.get('message')?.({ source: parent, data: { wf: 1, type: 'focus-config', token: 'focus-only' } });
+    listeners.get('pointerdown')?.({ isTrusted: true });
+    expect(top.postMessage).toHaveBeenCalledWith({ wf: 1, type: 'focus-entry', token: 'focus-only', at: expect.any(Number) }, '*');
+    expect(viewerPrototypeBytes('canvas.js', Buffer.from('frame.srcdoc = srcdoc(item, present);')).toString()).toContain(JSON.stringify(CANVAS_OPTION_FOCUS_SCRIPT));
+  });
   it('blocks script focus in previews before prototype scripts run, but leaves viewer focus intact', () => {
     const html = viewerPrototypeBytes('index.html', Buffer.from('<html><head><script>example()</script></head><body></body></html>')).toString();
     expect(html.indexOf(PREVIEW_FOCUS_GUARD)).toBeLessThan(html.indexOf('example()'));

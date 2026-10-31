@@ -38,6 +38,7 @@ const entryFor = (app: HTMLElement, n: number): HTMLElement => app.querySelector
 const frames = (): HTMLIFrameElement[] => [...document.querySelectorAll<HTMLIFrameElement>('.vw-frame')];
 /** happy-dom does not move focus into an iframe, as a browser does when the page inside calls focus(). */
 const focusInto = (element: Element): void => {
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   Object.defineProperty(document, 'activeElement', { configurable: true, get: () => element });
   browser.dispatchEvent(new browser.Event('blur'));
 };
@@ -139,11 +140,13 @@ describe('keyboard focus while the viewer is open', () => {
     expect(close).not.toHaveBeenCalled();
   });
 
-  it('leaves focus in the canvas itself alone', () => {
+  it('leaves deliberate focus entry in the canvas itself alone', () => {
     const { app } = setup();
     entryFor(app, 42).click();
     const close = document.querySelector<HTMLElement>('[data-close]')!;
     const refocus = vi.spyOn(close, 'focus');
+    Object.defineProperty(document, 'activeElement', { configurable: true, get: () => frames()[0]! });
+    browser.dispatchEvent(new browser.MessageEvent('message', { source: frames()[0]!.contentWindow as unknown as Window, data: { wf: 1, type: 'focus-entry', at: Date.now() } }));
     focusInto(frames()[0]!);
     vi.runAllTimers();
     expect(refocus).not.toHaveBeenCalled();

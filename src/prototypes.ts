@@ -19,7 +19,7 @@ export const PROTOTYPE_SNAPSHOT_FILE = 'prototype-snapshot.html';
 /** Where the page serves a file off a prototype branch. */
 export const PROTOTYPE_ROUTE = '/proto/';
 /** Bump when the injected bridge or served engine adaptation changes. */
-export const PROTOTYPE_HOST_VERSION = 'viewer-12';
+export const PROTOTYPE_HOST_VERSION = 'viewer-14';
 
 /** The ticket a prototype branch belongs to, or null when the name does not follow the convention. */
 
@@ -111,7 +111,10 @@ export function parsePrototypeFilePath(pathname: string): { repo: string; branch
     const branch = decodeURIComponent(rawBranch ?? '');
     const parts = rawFile.map(decodeURIComponent);
     const sha = /^[a-f0-9]{40}$/.test(parts[0] ?? '') ? parts.shift() : undefined;
-    const renderVersion = sha && parts[0] === PROTOTYPE_HOST_VERSION ? parts.shift() : undefined;
+    // A render version is a cache namespace, not part of the pinned file name.
+    // Saved links from supported earlier viewer versions remain readable.
+    const version = /^viewer-([1-9]\d*)$/.exec(parts[0] ?? '');
+    const renderVersion = sha && version && Number(version[1]) <= Number(PROTOTYPE_HOST_VERSION.slice('viewer-'.length)) ? parts.shift() : undefined;
     if (repo === null) return null;
     if (!branch.startsWith(PROTOTYPE_BRANCH_PREFIX) || branch.includes('..')) return null;
     if (parts.length === 0 || parts.some((part) => part === '' || part === '.' || part === '..')) return null;

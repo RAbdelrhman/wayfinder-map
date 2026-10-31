@@ -19,6 +19,15 @@ it('keeps runtime page parameters out of the GitHub file path', () => {
   expect(parsePrototypeFilePath(parsed.pathname)?.file).toBe('variants/inbox.html');
 });
 
+it.each(['viewer-12', 'viewer-13'])('reads saved %s URLs without treating the cache version as a file directory', (version) => {
+  const sha = 'a'.repeat(40);
+  const prefix = '/proto/octo/one/prototype%2F207/';
+  expect(parsePrototypeFilePath(`${prefix}${sha}/${version}/prototypes/canvas/index.html`)).toEqual({
+    repo: 'octo/one', branch: 'prototype/207', sha, renderVersion: version, file: 'prototypes/canvas/index.html',
+  });
+  expect(parsePrototypeFilePath(`${prefix}${version}/index.html`)?.file).toBe(`${version}/index.html`);
+});
+
 describe('prototypeTicketNumber', () => {
   it('reads the ticket number off a conventional branch', () => {
     expect(prototypeTicketNumber('prototype/8-home-page')).toBe(8);

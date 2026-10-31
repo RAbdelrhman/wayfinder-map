@@ -1,0 +1,2203 @@
+{
+  "sourceHead": "974704adde8df37e34b22ad761e82d61a34fb8fb",
+  "checks": {
+    "typecheck": "Pass",
+    "lint": "Pass",
+    "build": "Pass",
+    "test": {
+      "result": "Pass",
+      "files": 154,
+      "tests": 2055,
+      "command": "bun run test --maxWorkers=2",
+      "durationSeconds": 131
+    }
+  },
+  "runs": [
+    {
+      "label": "chrome-control",
+      "result": "Pass",
+      "startedAt": "2026-10-31T12:08:30.164Z",
+      "sourceHead": "974704adde8df37e34b22ad761e82d61a34fb8fb",
+      "buildHashes": {
+        "dist/cli.js": "3a88fc82046e3460e3a39d0608d3e50a9230a0caa1b8c0b588684f08237edbce",
+        "dist/desktop.cjs": "cb0b29f9243f25ded8d405f81d13746f370026d5eaac94dc35642b2b69c58be9",
+        "dist/ui/app.js": "2f4e26e857437b5bb494153211e8f83f62d2ebf0bc6112cd7bf0162289e2b999"
+      },
+      "surface": "localhost Chrome",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "origin": "http://127.0.0.1:56446",
+      "entryMessageDelayMs": 0,
+      "rawEvidence": ".shots/focus-385/chrome-control-1793448510164.json",
+      "rawSha256": "4a159c87146f5704aad479b6fdc99e2e04fd666d5c487f4634fa89c9a89033cd",
+      "metadata": {
+        "sha256": "67268e66d5bf17ae00fb9cf82251fb8b90a98cfa486d7fabbca04038045b2550",
+        "tickets": [
+          {
+            "number": 347,
+            "sha": "c59e57f322b726175c5434d71e98c08be0570b72"
+          },
+          {
+            "number": 310,
+            "sha": "a2847e72c78e6bc3e4d5db4c22017e0b83601194"
+          },
+          {
+            "number": 314,
+            "sha": "6ae21b9a5a2a4c7a13f4c5fbb416e60ef65e5f91"
+          },
+          {
+            "number": 292,
+            "sha": "40b30553c3b2fdb895afbf2da71506ae63e496d0"
+          },
+          {
+            "number": 207,
+            "sha": "dd2302f28b5cd1070b19cb8699b8c86fb8b67f18"
+          }
+        ]
+      },
+      "loading314": false,
+      "livePreview": {
+        "url": "http://127.0.0.1:56446/proto/RAbdelrhman/wayfinder-map/prototype%2F347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/c59e57f322b726175c5434d71e98c08be0570b72/viewer-14/prototypes/347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/variants/board3.html?o=R",
+        "title": "#347 · Prototypes board, Round 3",
+        "textLength": 4215
+      },
+      "applicationErrors": [],
+      "probes": [
+        {
+          "size": "full",
+          "elapsedMs": 30566,
+          "attempts": 98,
+          "methods": {
+            "svg": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "svg",
+                "stole": true
+              }
+            },
+            "dialog": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "dialog",
+                "stole": true
+              }
+            },
+            "autofocus": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "autofocus",
+                "stole": true
+              }
+            },
+            "nested": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "nested",
+                "stole": true
+              }
+            },
+            "nested-svg": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "nested-svg",
+                "stole": true
+              }
+            },
+            "native-load": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "native-load",
+                "stole": true
+              }
+            },
+            "window": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "window",
+                "stole": true
+              }
+            }
+          }
+        },
+        {
+          "size": "pane",
+          "elapsedMs": 30981,
+          "attempts": 98,
+          "methods": {
+            "svg": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "svg",
+                "stole": true
+              }
+            },
+            "dialog": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "dialog",
+                "stole": true
+              }
+            },
+            "autofocus": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "autofocus",
+                "stole": true
+              }
+            },
+            "nested": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "nested",
+                "stole": true
+              }
+            },
+            "nested-svg": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "nested-svg",
+                "stole": true
+              }
+            },
+            "native-load": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "native-load",
+                "stole": true
+              }
+            },
+            "window": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "window",
+                "stole": true
+              }
+            }
+          }
+        },
+        {
+          "size": "float",
+          "elapsedMs": 32057,
+          "attempts": 98,
+          "methods": {
+            "svg": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "svg",
+                "stole": true
+              }
+            },
+            "dialog": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "dialog",
+                "stole": true
+              }
+            },
+            "autofocus": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "autofocus",
+                "stole": true
+              }
+            },
+            "nested": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "nested",
+                "stole": true
+              }
+            },
+            "nested-svg": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "nested-svg",
+                "stole": true
+              }
+            },
+            "native-load": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "native-load",
+                "stole": true
+              }
+            },
+            "window": {
+              "attempts": 14,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "window",
+                "stole": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "chrome-restoration",
+      "result": "Pass",
+      "startedAt": "2026-10-31T12:10:36.275Z",
+      "sourceHead": "974704adde8df37e34b22ad761e82d61a34fb8fb",
+      "buildHashes": {
+        "dist/cli.js": "3a88fc82046e3460e3a39d0608d3e50a9230a0caa1b8c0b588684f08237edbce",
+        "dist/desktop.cjs": "cb0b29f9243f25ded8d405f81d13746f370026d5eaac94dc35642b2b69c58be9",
+        "dist/ui/app.js": "2f4e26e857437b5bb494153211e8f83f62d2ebf0bc6112cd7bf0162289e2b999"
+      },
+      "surface": "localhost Chrome",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "origin": "http://127.0.0.1:56446",
+      "entryMessageDelayMs": 350,
+      "rawEvidence": ".shots/focus-385/chrome-restoration-1793448636275.json",
+      "rawSha256": "307c55dc5c940b4d64a345e9252c110b4f1997451af57bd16abb438393934971",
+      "metadata": {
+        "sha256": "67268e66d5bf17ae00fb9cf82251fb8b90a98cfa486d7fabbca04038045b2550",
+        "tickets": [
+          {
+            "number": 347,
+            "sha": "c59e57f322b726175c5434d71e98c08be0570b72"
+          },
+          {
+            "number": 310,
+            "sha": "a2847e72c78e6bc3e4d5db4c22017e0b83601194"
+          },
+          {
+            "number": 314,
+            "sha": "6ae21b9a5a2a4c7a13f4c5fbb416e60ef65e5f91"
+          },
+          {
+            "number": 292,
+            "sha": "40b30553c3b2fdb895afbf2da71506ae63e496d0"
+          },
+          {
+            "number": 207,
+            "sha": "dd2302f28b5cd1070b19cb8699b8c86fb8b67f18"
+          }
+        ]
+      },
+      "loading314": true,
+      "livePreview": {
+        "url": "http://127.0.0.1:56446/proto/RAbdelrhman/wayfinder-map/prototype%2F347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/c59e57f322b726175c5434d71e98c08be0570b72/viewer-14/prototypes/347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/variants/board3.html?o=R",
+        "title": "#347 · Prototypes board, Round 3",
+        "textLength": 4215,
+        "clickThrough": {
+          "canvas": "/proto/RAbdelrhman/wayfinder-map/prototype%2F347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/c59e57f322b726175c5434d71e98c08be0570b72/viewer-14/prototypes/347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/index.html",
+          "insideApplication": true
+        }
+      },
+      "applicationErrors": [],
+      "probes": [
+        {
+          "size": "full",
+          "elapsedMs": 31966,
+          "attempts": 70,
+          "methods": {
+            "svg": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "svg",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 16015.90000000596
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 16016.40000000596
+                  }
+                ]
+              }
+            },
+            "dialog": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "dialog",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 16447.600000023842
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 16448.5
+                  }
+                ]
+              }
+            },
+            "autofocus": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "autofocus",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 16879.600000023842
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 16880
+                  }
+                ]
+              }
+            },
+            "nested": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "nested",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 17332.100000023842
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 17332.70000001788
+                  }
+                ]
+              }
+            },
+            "nested-svg": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "nested-svg",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 17768.40000000596
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 17769.600000023842
+                  }
+                ]
+              }
+            },
+            "native-load": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "native-load",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 18206
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 18206.30000001192
+                  }
+                ]
+              }
+            },
+            "window": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "window",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 18648.100000023842
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 18651.100000023842
+                  }
+                ]
+              }
+            }
+          },
+          "interaction": {
+            "actual314Dialog": true,
+            "pointerEntry": true,
+            "tab": true,
+            "escape": true,
+            "keyboardEntry": true,
+            "mapFocus": false
+          }
+        },
+        {
+          "size": "pane",
+          "elapsedMs": 31394,
+          "attempts": 70,
+          "methods": {
+            "svg": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "svg",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 50734.20000001788
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 50742.30000001192
+                  }
+                ]
+              }
+            },
+            "dialog": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "dialog",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 51170.80000001192
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 51173.30000001192
+                  }
+                ]
+              }
+            },
+            "autofocus": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "autofocus",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 51588.90000000596
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 51589.90000000596
+                  }
+                ]
+              }
+            },
+            "nested": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "nested",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 52030.90000000596
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 52033.70000001788
+                  }
+                ]
+              }
+            },
+            "nested-svg": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "nested-svg",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 52487
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 52487.70000001788
+                  }
+                ]
+              }
+            },
+            "native-load": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "native-load",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 52936.60000002384
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 52936.80000001192
+                  }
+                ]
+              }
+            },
+            "window": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "window",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 53396.30000001192
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 53399
+                  }
+                ]
+              }
+            }
+          },
+          "interaction": {
+            "actual314Dialog": true,
+            "pointerEntry": true,
+            "tab": true,
+            "escape": true,
+            "keyboardEntry": true,
+            "mapFocus": true
+          }
+        },
+        {
+          "size": "float",
+          "elapsedMs": 31226,
+          "attempts": 70,
+          "methods": {
+            "svg": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "svg",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 84490.10000002384
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 84490.40000000596
+                  }
+                ]
+              }
+            },
+            "dialog": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "dialog",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 84907.20000001788
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 84907.70000001788
+                  }
+                ]
+              }
+            },
+            "autofocus": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "autofocus",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 85339.60000002384
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 85341.60000002384
+                  }
+                ]
+              }
+            },
+            "nested": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "nested",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 85787.5
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 85788.30000001192
+                  }
+                ]
+              }
+            },
+            "nested-svg": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "nested-svg",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 86219.80000001192
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 86220.10000002384
+                  }
+                ]
+              }
+            },
+            "native-load": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "native-load",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 86672.20000001788
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 86672.80000001192
+                  }
+                ]
+              }
+            },
+            "window": {
+              "attempts": 10,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "window",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 87105.80000001192
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 87106
+                  }
+                ]
+              }
+            }
+          },
+          "interaction": {
+            "actual314Dialog": true,
+            "pointerEntry": true,
+            "tab": true,
+            "escape": true,
+            "keyboardEntry": true,
+            "mapFocus": true
+          }
+        }
+      ]
+    },
+    {
+      "label": "electron-control",
+      "result": "Pass",
+      "startedAt": "2026-10-31T12:12:36.651Z",
+      "sourceHead": "974704adde8df37e34b22ad761e82d61a34fb8fb",
+      "buildHashes": {
+        "dist/cli.js": "3a88fc82046e3460e3a39d0608d3e50a9230a0caa1b8c0b588684f08237edbce",
+        "dist/desktop.cjs": "cb0b29f9243f25ded8d405f81d13746f370026d5eaac94dc35642b2b69c58be9",
+        "dist/ui/app.js": "2f4e26e857437b5bb494153211e8f83f62d2ebf0bc6112cd7bf0162289e2b999"
+      },
+      "surface": "branch-built Electron",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) wayfinder-map/0.2.26 Chrome/152.0.7977.130 Electron/44.4.3 Safari/537.36",
+      "origin": "http://127.0.0.1:65494",
+      "entryMessageDelayMs": 0,
+      "rawEvidence": ".shots/focus-385/electron-control-1793448756651.json",
+      "rawSha256": "7b3048224c0cb4903270d02bfa6ab4351aa27fb8f8d220b9871607c4b6cdf8d6",
+      "metadata": {
+        "sha256": "67268e66d5bf17ae00fb9cf82251fb8b90a98cfa486d7fabbca04038045b2550",
+        "tickets": [
+          {
+            "number": 347,
+            "sha": "c59e57f322b726175c5434d71e98c08be0570b72"
+          },
+          {
+            "number": 310,
+            "sha": "a2847e72c78e6bc3e4d5db4c22017e0b83601194"
+          },
+          {
+            "number": 314,
+            "sha": "6ae21b9a5a2a4c7a13f4c5fbb416e60ef65e5f91"
+          },
+          {
+            "number": 292,
+            "sha": "40b30553c3b2fdb895afbf2da71506ae63e496d0"
+          },
+          {
+            "number": 207,
+            "sha": "dd2302f28b5cd1070b19cb8699b8c86fb8b67f18"
+          }
+        ]
+      },
+      "loading314": false,
+      "livePreview": {
+        "url": "http://127.0.0.1:65494/proto/RAbdelrhman/wayfinder-map/prototype%2F347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/c59e57f322b726175c5434d71e98c08be0570b72/viewer-14/prototypes/347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/variants/board3.html?o=R",
+        "title": "#347 · Prototypes board, Round 3",
+        "textLength": 4215
+      },
+      "applicationErrors": [],
+      "probes": [
+        {
+          "size": "full",
+          "elapsedMs": 30764,
+          "attempts": 91,
+          "methods": {
+            "svg": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "svg",
+                "stole": true
+              }
+            },
+            "dialog": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "dialog",
+                "stole": true
+              }
+            },
+            "autofocus": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "autofocus",
+                "stole": true
+              }
+            },
+            "nested": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "nested",
+                "stole": true
+              }
+            },
+            "nested-svg": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "nested-svg",
+                "stole": true
+              }
+            },
+            "native-load": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "native-load",
+                "stole": true
+              }
+            },
+            "window": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "window",
+                "stole": true
+              }
+            }
+          }
+        },
+        {
+          "size": "pane",
+          "elapsedMs": 31334,
+          "attempts": 91,
+          "methods": {
+            "svg": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "svg",
+                "stole": true
+              }
+            },
+            "dialog": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "dialog",
+                "stole": true
+              }
+            },
+            "autofocus": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "autofocus",
+                "stole": true
+              }
+            },
+            "nested": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "nested",
+                "stole": true
+              }
+            },
+            "nested-svg": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "nested-svg",
+                "stole": true
+              }
+            },
+            "native-load": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "native-load",
+                "stole": true
+              }
+            },
+            "window": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "window",
+                "stole": true
+              }
+            }
+          }
+        },
+        {
+          "size": "float",
+          "elapsedMs": 30844,
+          "attempts": 91,
+          "methods": {
+            "svg": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "svg",
+                "stole": true
+              }
+            },
+            "dialog": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "dialog",
+                "stole": true
+              }
+            },
+            "autofocus": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "autofocus",
+                "stole": true
+              }
+            },
+            "nested": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "nested",
+                "stole": true
+              }
+            },
+            "nested-svg": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "nested-svg",
+                "stole": true
+              }
+            },
+            "native-load": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "native-load",
+                "stole": true
+              }
+            },
+            "window": {
+              "attempts": 13,
+              "result": "Focus theft observed",
+              "sample": {
+                "method": "window",
+                "stole": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "electron-restoration",
+      "result": "Pass",
+      "startedAt": "2026-10-31T12:19:00.472Z",
+      "sourceHead": "974704adde8df37e34b22ad761e82d61a34fb8fb",
+      "buildHashes": {
+        "dist/cli.js": "3a88fc82046e3460e3a39d0608d3e50a9230a0caa1b8c0b588684f08237edbce",
+        "dist/desktop.cjs": "cb0b29f9243f25ded8d405f81d13746f370026d5eaac94dc35642b2b69c58be9",
+        "dist/ui/app.js": "2f4e26e857437b5bb494153211e8f83f62d2ebf0bc6112cd7bf0162289e2b999"
+      },
+      "surface": "branch-built Electron",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) wayfinder-map/0.2.26 Chrome/152.0.7977.130 Electron/44.4.3 Safari/537.36",
+      "origin": "http://127.0.0.1:58865",
+      "entryMessageDelayMs": 350,
+      "rawEvidence": ".shots/focus-385/electron-restoration-1793449140472.json",
+      "rawSha256": "78ff385cb88e7d7bc11ece43b49ebb8e2f609369b4794601859a18bf0e5b44bb",
+      "metadata": {
+        "sha256": "67268e66d5bf17ae00fb9cf82251fb8b90a98cfa486d7fabbca04038045b2550",
+        "tickets": [
+          {
+            "number": 347,
+            "sha": "c59e57f322b726175c5434d71e98c08be0570b72"
+          },
+          {
+            "number": 310,
+            "sha": "a2847e72c78e6bc3e4d5db4c22017e0b83601194"
+          },
+          {
+            "number": 314,
+            "sha": "6ae21b9a5a2a4c7a13f4c5fbb416e60ef65e5f91"
+          },
+          {
+            "number": 292,
+            "sha": "40b30553c3b2fdb895afbf2da71506ae63e496d0"
+          },
+          {
+            "number": 207,
+            "sha": "dd2302f28b5cd1070b19cb8699b8c86fb8b67f18"
+          }
+        ]
+      },
+      "loading314": true,
+      "livePreview": {
+        "url": "http://127.0.0.1:58865/proto/RAbdelrhman/wayfinder-map/prototype%2F347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/c59e57f322b726175c5434d71e98c08be0570b72/viewer-14/prototypes/347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/variants/board3.html?o=R",
+        "title": "#347 · Prototypes board, Round 3",
+        "textLength": 4215,
+        "clickThrough": {
+          "canvas": "/proto/RAbdelrhman/wayfinder-map/prototype%2F347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/c59e57f322b726175c5434d71e98c08be0570b72/viewer-14/prototypes/347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/index.html",
+          "insideApplication": true
+        }
+      },
+      "applicationErrors": [],
+      "probes": [
+        {
+          "size": "full",
+          "elapsedMs": 31263,
+          "attempts": 63,
+          "methods": {
+            "svg": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "svg",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 56009.09999999404
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 56009.30000001192
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 56009.40000000596
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 56009.80000001192
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 56010
+                  }
+                ]
+              }
+            },
+            "dialog": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "dialog",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 56466.40000000596
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 56466.5
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 56466.5
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 56467.09999999404
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 56467.19999998808
+                  }
+                ]
+              }
+            },
+            "autofocus": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "autofocus",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 57022.69999998808
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 57022.80000001192
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 57022.80000001192
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 57024.59999999404
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 57024.90000000596
+                  }
+                ]
+              }
+            },
+            "nested": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "nested",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 57516.09999999404
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 57516.40000000596
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 57516.5
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 57518.90000000596
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 57519.09999999404
+                  }
+                ]
+              }
+            },
+            "nested-svg": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "nested-svg",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 57987.90000000596
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 57988.09999999404
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 57988.19999998808
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 57988.40000000596
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 57988.59999999404
+                  }
+                ]
+              }
+            },
+            "native-load": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "native-load",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 58449.09999999404
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 58449.69999998808
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 58449.80000001192
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 58451.19999998808
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 58451.59999999404
+                  }
+                ]
+              }
+            },
+            "window": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "window",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 58939.59999999404
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 58939.80000001192
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 58939.90000000596
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 58940.09999999404
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 58940.30000001192
+                  }
+                ]
+              }
+            }
+          },
+          "interaction": {
+            "actual314Dialog": true,
+            "pointerEntry": true,
+            "tab": true,
+            "escape": true,
+            "keyboardEntry": true,
+            "mapFocus": false
+          }
+        },
+        {
+          "size": "pane",
+          "elapsedMs": 32180,
+          "attempts": 63,
+          "methods": {
+            "svg": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "svg",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 91403.59999999404
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 91403.80000001192
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 91403.90000000596
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 91404.30000001192
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 91404.69999998808
+                  }
+                ]
+              }
+            },
+            "dialog": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "dialog",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 91837.19999998808
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 91837.30000001192
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 91839.40000000596
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 91839.5
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 91839.59999999404
+                  }
+                ]
+              }
+            },
+            "autofocus": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "autofocus",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 92374
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 92374.09999999404
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 92376
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 92376.19999998808
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 92376.5
+                  }
+                ]
+              }
+            },
+            "nested": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "nested",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 92832.5
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 92832.69999998808
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 92832.69999998808
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 92833.5
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 92833.80000001192
+                  }
+                ]
+              }
+            },
+            "nested-svg": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "nested-svg",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 93298.40000000596
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 93298.5
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 93298.59999999404
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 93298.80000001192
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 93298.90000000596
+                  }
+                ]
+              }
+            },
+            "native-load": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "native-load",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 94019.30000001192
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 94019.69999998808
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 94019.80000001192
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 94024.80000001192
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 94025.19999998808
+                  }
+                ]
+              }
+            },
+            "window": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "window",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 94572.59999999404
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 94572.90000000596
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 94573
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 94576.09999999404
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 94576.30000001192
+                  }
+                ]
+              }
+            }
+          },
+          "interaction": {
+            "actual314Dialog": true,
+            "pointerEntry": true,
+            "tab": true,
+            "escape": true,
+            "keyboardEntry": true,
+            "mapFocus": true
+          }
+        },
+        {
+          "size": "float",
+          "elapsedMs": 32354,
+          "attempts": 63,
+          "methods": {
+            "svg": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "svg",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 126323.90000000596
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 126323.90000000596
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 126324
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 126324
+                  },
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 126334.90000000596
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 126335.09999999404
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 126335.19999998808
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 126335.19999998808
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 126335.30000001192
+                  }
+                ]
+              }
+            },
+            "dialog": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "dialog",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 126960.40000000596
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 126960.40000000596
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 126960.5
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 126961
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 126961.09999999404
+                  }
+                ]
+              }
+            },
+            "autofocus": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "autofocus",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 127427.30000001192
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 127427.59999999404
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 127430.19999998808
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 127430.5
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 127430.69999998808
+                  }
+                ]
+              }
+            },
+            "nested": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "nested",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 127929
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 127929.19999998808
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 127929.30000001192
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 127933
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 127933.19999998808
+                  }
+                ]
+              }
+            },
+            "nested-svg": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "nested-svg",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 128541.59999999404
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 128541.80000001192
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 128543.80000001192
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 128544.5
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 128544.80000001192
+                  }
+                ]
+              }
+            },
+            "native-load": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "native-load",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 129019.40000000596
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 129019.59999999404
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 129019.69999998808
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 129020
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 129020.19999998808
+                  }
+                ]
+              }
+            },
+            "window": {
+              "attempts": 9,
+              "result": "Theft, exact selection restoration and continued typing observed",
+              "sample": {
+                "method": "window",
+                "restored": true,
+                "takeoverObserved": true,
+                "events": [
+                  {
+                    "type": "blur",
+                    "active": "BODY",
+                    "background": false,
+                    "at": 129507.80000001192
+                  },
+                  {
+                    "type": "blur",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 129508
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "IFRAME",
+                    "background": true,
+                    "at": 129510.59999999404
+                  },
+                  {
+                    "type": "focusin",
+                    "target": "TEXTAREA",
+                    "at": 129511.30000001192
+                  },
+                  {
+                    "type": "takeover",
+                    "active": "TEXTAREA",
+                    "background": false,
+                    "at": 129511.5
+                  }
+                ]
+              }
+            }
+          },
+          "interaction": {
+            "actual314Dialog": true,
+            "pointerEntry": true,
+            "tab": true,
+            "escape": true,
+            "keyboardEntry": true,
+            "mapFocus": true
+          }
+        }
+      ]
+    }
+  ],
+  "normalTimingSmoke": [
+    {
+      "surface": "localhost Chrome",
+      "result": "Pass",
+      "layer": "Two-second smoke per size; not 30-second acceptance evidence",
+      "sourceHead": "974704adde8df37e34b22ad761e82d61a34fb8fb",
+      "entryMessageDelayMs": 0,
+      "rawEvidence": ".shots/focus-385-normal/chrome-restoration-1793450656584.json",
+      "rawSha256": "e2771ef82f38c9876e50c28069014d7fa6c265eee1faedd1f7a59f35079ed98f",
+      "probes": [
+        {
+          "size": "full",
+          "attempts": 7,
+          "interaction": {
+            "actual314Dialog": true,
+            "pointerEntry": true,
+            "tab": true,
+            "escape": true,
+            "keyboardEntry": true,
+            "mapFocus": false
+          }
+        },
+        {
+          "size": "pane",
+          "attempts": 7,
+          "interaction": {
+            "actual314Dialog": true,
+            "pointerEntry": true,
+            "tab": true,
+            "escape": true,
+            "keyboardEntry": true,
+            "mapFocus": true
+          }
+        },
+        {
+          "size": "float",
+          "attempts": 7,
+          "interaction": {
+            "actual314Dialog": true,
+            "pointerEntry": true,
+            "tab": true,
+            "escape": true,
+            "keyboardEntry": true,
+            "mapFocus": true
+          }
+        }
+      ],
+      "livePreview": {
+        "url": "http://127.0.0.1:56446/proto/RAbdelrhman/wayfinder-map/prototype%2F347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/c59e57f322b726175c5434d71e98c08be0570b72/viewer-14/prototypes/347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/variants/board3.html?o=R",
+        "title": "#347 · Prototypes board, Round 3",
+        "textLength": 4215,
+        "clickThrough": {
+          "canvas": "/proto/RAbdelrhman/wayfinder-map/prototype%2F347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/c59e57f322b726175c5434d71e98c08be0570b72/viewer-14/prototypes/347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/index.html",
+          "insideApplication": true
+        }
+      }
+    },
+    {
+      "surface": "branch-built Electron",
+      "result": "Pass",
+      "layer": "Two-second smoke per size; not 30-second acceptance evidence",
+      "sourceHead": "974704adde8df37e34b22ad761e82d61a34fb8fb",
+      "entryMessageDelayMs": 0,
+      "rawEvidence": ".shots/focus-385-normal/electron-restoration-1793450698111.json",
+      "rawSha256": "0c2680de649452d9663bf3b6a3dc7e997370cbf8aa0313056f08945457c60611",
+      "probes": [
+        {
+          "size": "full",
+          "attempts": 7,
+          "interaction": {
+            "actual314Dialog": true,
+            "pointerEntry": true,
+            "tab": true,
+            "escape": true,
+            "keyboardEntry": true,
+            "mapFocus": false
+          }
+        },
+        {
+          "size": "pane",
+          "attempts": 7,
+          "interaction": {
+            "actual314Dialog": true,
+            "pointerEntry": true,
+            "tab": true,
+            "escape": true,
+            "keyboardEntry": true,
+            "mapFocus": true
+          }
+        },
+        {
+          "size": "float",
+          "attempts": 7,
+          "interaction": {
+            "actual314Dialog": true,
+            "pointerEntry": true,
+            "tab": true,
+            "escape": true,
+            "keyboardEntry": true,
+            "mapFocus": true
+          }
+        }
+      ],
+      "livePreview": {
+        "url": "http://127.0.0.1:56456/proto/RAbdelrhman/wayfinder-map/prototype%2F347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/c59e57f322b726175c5434d71e98c08be0570b72/viewer-14/prototypes/347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/variants/board3.html?o=R",
+        "title": "#347 · Prototypes board, Round 3",
+        "textLength": 4215,
+        "clickThrough": {
+          "canvas": "/proto/RAbdelrhman/wayfinder-map/prototype%2F347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/c59e57f322b726175c5434d71e98c08be0570b72/viewer-14/prototypes/347-prototype-how-the-prototypes-board-shows-the-chosen-canvas-it/index.html",
+          "insideApplication": true
+        }
+      }
+    }
+  ],
+  "earlierFailures": [
+    {
+      "file": "chrome-control-failure-1793443994645.json",
+      "startedAt": 1793443994645,
+      "sourceHead": "Not recorded",
+      "result": "Fail",
+      "error": "TimeoutError: locator.click: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-canvas-ticket=\"314\"]').filter({ hasText: 'All rounds' }).first()\u001b[22m\n\u001b[2m    - locator resolved to <a class=\"ghost\" data-canvas-ticket=\"314\" aria-label=\"Open the #314 prototype canvas\" data-canvas-variants=\"[{\"id\":\"A\",\"name\":\"Variant A\"}]\" data-canvas-title=\"#314 Prototype an in-viewer confirmation after posting canvas feedback to GitHub\" data-canvas-github=\"https://github.com/RAbdelrhman/wayfinder-map/tree/prototype/314-prototype-an-in-viewer-confirmation-after-posting-canvas-feedbac\" href=\"/proto/RAbdelrhman/wayfinder-map/prototype%2F314-prototype-an-in-viewer-confirmation-after-posting-canv…>…</a>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    - waiting for element to be visible, enabled and stable\u001b[22m\n"
+    },
+    {
+      "file": "chrome-control-failure-1793444199082.json",
+      "startedAt": 1793444199082,
+      "sourceHead": "Not recorded",
+      "result": "Fail",
+      "error": "TimeoutError: locator.waitFor: Timeout 90000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.vw-frame.is-ready') to be visible\u001b[22m\n"
+    },
+    {
+      "file": "chrome-restoration-failure-1793446435793.json",
+      "startedAt": 1793446435793,
+      "sourceHead": "Not recorded",
+      "result": "Fail",
+      "error": "AssertionError [ERR_ASSERTION]: pane: native dialog autofocus after click\n\nfalse !== true\n"
+    },
+    {
+      "file": "electron-control-failure-1793412682403.json",
+      "startedAt": 1793412682403,
+      "sourceHead": "Not recorded",
+      "result": "Fail",
+      "error": "TimeoutError: locator.waitFor: Timeout 90000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.vw-frame.is-ready') to be visible\u001b[22m\n"
+    },
+    {
+      "file": "electron-restoration-failure-1793411795441.json",
+      "startedAt": 1793411795441,
+      "sourceHead": "Not recorded",
+      "result": "Fail",
+      "error": "Error: frame.waitForURL: Navigating frame was detached!"
+    },
+    {
+      "file": "electron-restoration-failure-1793412029168.json",
+      "startedAt": 1793412029168,
+      "sourceHead": "Not recorded",
+      "result": "Fail",
+      "error": "TimeoutError: locator.waitFor: Timeout 90000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.vw-frame.is-ready') to be visible\u001b[22m\n"
+    },
+    {
+      "file": "electron-restoration-failure-1793412383529.json",
+      "startedAt": 1793412383529,
+      "sourceHead": "Not recorded",
+      "result": "Fail",
+      "error": "TimeoutError: locator.waitFor: Timeout 90000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.vw-frame').contentFrame().locator('#present-frame').contentFrame().locator('#p314-dialog[open]') to be visible\u001b[22m\n"
+    },
+    {
+      "file": "electron-restoration-failure-1793448914505.json",
+      "startedAt": 1793448914505,
+      "sourceHead": "974704adde8df37e34b22ad761e82d61a34fb8fb",
+      "result": "Fail",
+      "error": "AssertionError [ERR_ASSERTION]: float/nested-svg: background takeover observed before restoration"
+    }
+  ],
+  "previousAcceptedEvidence": "runtime-evidence-fad6c75.json",
+  "boundaries": [
+    "Restoration, not strict source prevention",
+    "Actual localhost application and branch-built Electron",
+    "Only prototype metadata is replayed; prototype bytes use the real application server",
+    "Native OS foreground remains Not verified and outside revised acceptance",
+    "Earlier failed controls and superseded-source runs remain failures"
+  ]
+}

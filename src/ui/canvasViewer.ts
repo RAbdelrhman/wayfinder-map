@@ -13,6 +13,7 @@ import type { PosterLoader } from './canvasPoster.js';
 import { parseObjectAppLink } from '../objectLinks.js';
 import type { ObjectLink } from '../objectLinks.js';
 import { parseRepoPagePath } from '../repoRoutes.js';
+import { mountCanvasFocus } from './canvasFocus.js';
 
 export interface CanvasRoute {
   url: string;
@@ -793,22 +794,7 @@ export function mountCanvasViewer(
     },
     true,
   );
-  // A live tile preview can focus itself while the viewer is open, and Esc would then go to that hidden frame.
-  // Focus goes back where it was in the viewer (a posted bar's heading, Try again), or to Close.
-  let lastFocus: HTMLElement | null = null;
-  viewer.addEventListener('focusin', (event) => {
-    if (event.target instanceof HTMLElement && !(event.target instanceof HTMLIFrameElement)) lastFocus = event.target;
-  });
-  window.addEventListener('blur', () => {
-    if (!routing.current) return;
-    setTimeout(() => {
-      const active = document.activeElement;
-      if (routing.current && active instanceof HTMLIFrameElement && !viewer.contains(active) && active.getAttribute('aria-hidden') === 'true') {
-        const back = lastFocus?.isConnected && !lastFocus.closest('[hidden]') ? lastFocus : toolbar.querySelector<HTMLElement>('[data-close]');
-        back?.focus({ preventScroll: true });
-      }
-    });
-  });
+  mountCanvasFocus(viewer, () => routing.current !== null, () => frame);
   toolbar.addEventListener('click', (event) => {
     const button = event.target instanceof Element ? event.target.closest<HTMLElement>('button') : null;
     if (!button) return;

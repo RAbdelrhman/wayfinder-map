@@ -19,6 +19,7 @@ import {
 } from './canvasViewer.js';
 import { canvasEntryAttrs } from './canvasEntry.js';
 import type { Prototype } from '../types.js';
+import { PROTOTYPE_HOST_VERSION } from '../prototypes.js';
 
 const origin = 'http://127.0.0.1:4479';
 const route = {
@@ -32,7 +33,7 @@ describe('canvas routing', () => {
   it('accepts a verified pinned board without a current tile, only in its owning map', () => {
     const revision = 'a'.repeat(40);
     const link = { kind: 'prototype', id: 'node', canvas: 'prototypes/old/index.html', revision } as const;
-    const canvas = { ...route, ticket: 207, url: `/proto/octo/repo/prototype%2F207/${revision}/viewer-12/${link.canvas}` };
+    const canvas = { ...route, ticket: 207, url: `/proto/octo/repo/prototype%2F207/${revision}/${PROTOTYPE_HOST_VERSION}/${link.canvas}` };
     const response = { repo: 'octo/repo', mapNumber: 205, ticketNumber: 207, canvas };
     const href = origin + '/repos/octo/repo/maps/205?ticket=207';
     expect(readPinnedCanvasResponse(response, href, link)).toMatchObject({ url: canvas.url });
