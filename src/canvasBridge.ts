@@ -28,7 +28,11 @@ function canvasBridge(normalize: typeof normalizeShortcut, fromEvent: typeof sho
   );
   let toolKeys = ['P', 'E', 'C', 'N', 'F'];
   let toolsConfigured = false;
-  const configureChild = (child: Window): void => { if (toolsConfigured) child.postMessage({ wf: 1, type: 'shortcuts', keys: toolKeys }, '*'); };
+  let focusToken: string | null = null;
+  const configureChild = (child: Window): void => {
+    if (toolsConfigured) child.postMessage({ wf: 1, type: 'shortcuts', keys: toolKeys }, '*');
+    if (focusToken) child.postMessage({ wf: 1, type: 'focus-config', token: focusToken }, '*');
+  };
   type Item = { id?: string; name?: string; src?: string; kind?: string; styles?: string[] };
   type Page = { id?: string; title?: string; name?: string; sections?: { items?: Item[] }[]; items?: Item[] };
   type Config = {
@@ -40,6 +44,14 @@ function canvasBridge(normalize: typeof normalizeShortcut, fromEvent: typeof sho
   };
   type NormalPage = { id: string; title: string; items: { id: string; name: string; src?: string; kind: string }[] };
   const post = (message: object): void => parent.postMessage({ wf: 1, ...message }, '*');
+  const focusChanged = (type: 'focus-entry' | 'focus-leave'): void => {
+    if (focusToken) window.top?.postMessage({ wf: 1, type, token: focusToken }, '*');
+  };
+  document.addEventListener('pointerdown', (event) => {
+    if (event.isTrusted) focusChanged('focus-entry');
+  }, true);
+  // Moving between two child frames need not blur the host window again.
+  window.addEventListener('blur', () => focusChanged('focus-leave'));
   const pages = (): NormalPage[] => {
     const cfg = (window as unknown as { CANVAS?: Config }).CANVAS;
     if (!cfg) return [];
@@ -326,6 +338,11 @@ function canvasBridge(normalize: typeof normalizeShortcut, fromEvent: typeof sho
   window.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (typeof event.data !== 'object' || event.data === null) return;
     const message = event.data as Record<string, unknown>;
+    if (event.source === parent && message['wf'] === 1 && message['type'] === 'focus-config' && typeof message['token'] === 'string' && message['token'].length <= 100) {
+      focusToken = message['token'];
+      for (const child of document.querySelectorAll('iframe')) if (child.contentWindow) configureChild(child.contentWindow);
+      return;
+    }
     if (event.source === parent && message['wf'] === 1 && message['type'] === 'shortcuts') {
       const keys = message['keys'];
       if (!Array.isArray(keys) || keys.length !== 5 || !keys.every((key: unknown) => typeof key === 'string' && normalize(key) === key) || new Set(keys).size !== 5) return;
@@ -470,6 +487,8 @@ export function viewerPrototypeBytes(file: string, bytes: Buffer): Buffer {
       .replace(/\blocation\.hash\s*=\s*([^;\n]+);/g, "location.replace('#' + ($1));")
       // The nested presentation document shares the browser's joint history too.
       .replace(/function loadFrame\(frame, item, present\)\s*\{/, () => replacementNavigation)
+      // Composed option documents do not pass through the HTML response wrapper.
+      .replace('frame.srcdoc = srcdoc(item, present);', () => `frame.srcdoc = srcdoc(item, present) + '<script>' + ${JSON.stringify(CANVAS_BRIDGE_SCRIPT)} + '<' + '/script>';`)
       .replace(ENGINE_ZOOM, () => `stageZoom($('stage'), state.zoom);`);
     return Buffer.from(ENGINE_ZOOM.test(bytes.toString('utf8')) ? `const stageZoom = ${stageZoom.toString()};\n${source}` : source);
   }

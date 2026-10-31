@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { Config } from './config.js';
+import { PROTOTYPE_HOST_VERSION } from './prototypes.js';
 import type { HomeState } from './home.js';
 import { DEFAULT_PROGRESS_SETTINGS, ProgressError } from './progress.js';
 import type { ProgressState } from './progress.js';
@@ -269,7 +270,7 @@ describe('repository-scoped server', () => {
       const response = await fetch(endpoint);
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({ repo: 'octo/one', mapNumber: 5, ticketNumber: 11,
-        canvas: { ticket: 11, page: 'old', variant: 'A', url: `/proto/octo/one/prototype%2F11/${revision}/viewer-12/${board}` } });
+        canvas: { ticket: 11, page: 'old', variant: 'A', url: `/proto/octo/one/prototype%2F11/${revision}/${PROTOTYPE_HOST_VERSION}/${board}` } });
       expect(read).toHaveBeenCalledTimes(2);
       login = 'someone-else';
       expect((await fetch(endpoint)).status).toBe(404);

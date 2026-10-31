@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { pinnedCanvasRoute } from './canvasDestination.js';
+import { PROTOTYPE_HOST_VERSION } from './prototypes.js';
 
 const revision = 'a'.repeat(40);
 const link = { kind: 'prototype', id: 'node', canvas: 'prototypes/removed-board/index.html', revision, page: 'old', item: 'A' } as const;
@@ -14,7 +15,7 @@ describe('pinned canvas files', () => {
       ['o/r', revision, link.canvas], ['o/r', revision, 'prototypes/removed-board/config.js'],
     ]);
     expect(route).toMatchObject({ ticket: 11, title: '#11 Old board', page: 'old', variant: 'A' });
-    expect(route?.url).toContain(`/prototype%2F11/${revision}/viewer-12/${link.canvas}`);
+    expect(route?.url).toContain(`/prototype%2F11/${revision}/${PROTOTYPE_HOST_VERSION}/${link.canvas}`);
     expect(route?.github).toBe(`https://github.com/o/r/tree/${revision}/${link.canvas}`);
   });
   it('rejects another ticket’s board and incomplete metadata without executing config code', async () => {
