@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
-import { CANVAS_BRIDGE_SCRIPT, PREVIEW_FOCUS_GUARD, viewerPrototypeBytes } from './canvasBridge.js';
+import { CANVAS_BRIDGE_SCRIPT, CANVAS_OPTION_FOCUS_SCRIPT, PREVIEW_FOCUS_GUARD, viewerPrototypeBytes } from './canvasBridge.js';
 import { readCanvasMessage } from './ui/canvasViewer.js';
 import ts from 'typescript';
 import { Window } from 'happy-dom';
@@ -27,9 +27,24 @@ describe('sandboxed canvas bridge', () => {
     documentListeners.get('pointerdown')?.({ isTrusted: false });
     expect(top.postMessage).not.toHaveBeenCalled();
     documentListeners.get('pointerdown')?.({ isTrusted: true });
-    expect(top.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'focus-entry', token: 'viewer-token' }, '*');
+    expect(top.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'focus-entry', token: 'viewer-token', at: expect.any(Number) }, '*');
     listeners.get('blur')?.({});
-    expect(top.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'focus-leave', token: 'viewer-token' }, '*');
+    expect(top.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'focus-leave', token: 'viewer-token', at: expect.any(Number) }, '*');
+  });
+  it('adds only focus reporting to generated board options, preserving their keyboard and history behavior', () => {
+    const listeners = new Map<string, (event: unknown) => void>();
+    const parent = { postMessage: vi.fn() }, top = { postMessage: vi.fn() };
+    const history = { pushState: vi.fn(), replaceState: vi.fn() };
+    runInNewContext(CANVAS_OPTION_FOCUS_SCRIPT, {
+      window: { top, history, addEventListener: (name: string, fn: (event: unknown) => void) => listeners.set(name, fn) },
+      parent, document: { querySelectorAll: () => [], addEventListener: (name: string, fn: (event: unknown) => void) => listeners.set(name, fn) },
+    });
+    expect(listeners.has('keydown')).toBe(false);
+    expect(history.replaceState).not.toHaveBeenCalled();
+    listeners.get('message')?.({ source: parent, data: { wf: 1, type: 'focus-config', token: 'focus-only' } });
+    listeners.get('pointerdown')?.({ isTrusted: true });
+    expect(top.postMessage).toHaveBeenCalledWith({ wf: 1, type: 'focus-entry', token: 'focus-only', at: expect.any(Number) }, '*');
+    expect(viewerPrototypeBytes('canvas.js', Buffer.from('frame.srcdoc = srcdoc(item, present);')).toString()).toContain(JSON.stringify(CANVAS_OPTION_FOCUS_SCRIPT));
   });
   it('blocks script focus in previews before prototype scripts run, but leaves viewer focus intact', () => {
     const html = viewerPrototypeBytes('index.html', Buffer.from('<html><head><script>example()</script></head><body></body></html>')).toString();

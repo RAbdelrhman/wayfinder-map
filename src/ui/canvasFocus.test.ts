@@ -75,6 +75,36 @@ describe('canvas focus restoration', () => {
     steal();
     expect(document.activeElement).toBe(field);
   });
+  it('honours a genuine pointer entry reported after recovery without a renderer timing deadline', () => {
+    const { window, document, field, canvas, steal } = setup();
+    field.focus();
+    const at = Date.now();
+    steal(canvas);
+    expect(document.activeElement).toBe(field);
+    vi.advanceTimersByTime(1000);
+    window.dispatchEvent(new window.MessageEvent('message', { source: canvas.contentWindow as Window, data: { wf: 1, type: 'focus-entry', at } }));
+    expect(document.activeElement).toBe(canvas);
+  });
+  it('does not honour a late click report after a newer host action', () => {
+    const { window, document, field, canvas, steal } = setup();
+    field.focus();
+    const at = Date.now();
+    steal(canvas);
+    vi.advanceTimersByTime(1000);
+    field.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'z', bubbles: true }));
+    window.dispatchEvent(new window.MessageEvent('message', { source: canvas.contentWindow as Window, data: { wf: 1, type: 'focus-entry', at } }));
+    expect(document.activeElement).toBe(field);
+  });
+  it('clears Tab intent when focus leaves for browser chrome before a later canvas load', () => {
+    const { window, document, field, canvas, steal } = setup();
+    field.focus();
+    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    window.dispatchEvent(new window.Event('blur'));
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    steal(canvas);
+    expect(document.activeElement).toBe(field);
+  });
   it('restores canvas ownership on a child-to-child transfer without a host window blur', () => {
     const { window, document, canvas, tile, enter } = setup();
     enter();

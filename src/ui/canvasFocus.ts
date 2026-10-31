@@ -10,6 +10,9 @@ export function mountCanvasFocus(viewer: HTMLElement, isOpen: () => boolean, can
   let pending: ReturnType<typeof setTimeout> | undefined;
   let configured: HTMLIFrameElement | null = null;
   let token = '';
+  let hostIntentAt = 0;
+  let restoring = false;
+  let recovered: HTMLElement | null = null;
   const configure = (): void => {
     const frame = canvas();
     if (!frame) return;
@@ -27,19 +30,21 @@ export function mountCanvasFocus(viewer: HTMLElement, isOpen: () => boolean, can
     if (!isOpen() || !target || target.tagName === 'IFRAME') return;
     tabbing = false;
     owner = target;
+    if (!restoring) { hostIntentAt = Date.now(); recovered = null; }
     rememberSelection();
   });
   document.addEventListener('selectionchange', rememberSelection);
   document.addEventListener('keydown', (event) => {
+    hostIntentAt = Date.now(); recovered = null;
     tabbing = event.key === 'Tab';
     // A renderer transfer is asynchronous. Keep the intent until its focus
     // transition, rather than expiring it while Chromium is still handling it.
     if (tabbing) queueMicrotask(() => { if (event.defaultPrevented && document.activeElement !== canvas()) tabbing = false; });
   }, true);
-  document.addEventListener('pointerdown', () => { tabbing = false; }, true);
+  document.addEventListener('pointerdown', () => { tabbing = false; hostIntentAt = Date.now(); recovered = null; }, true);
   // The current viewer subtree gets a private token for direct focus messages.
-  // A nested pointerdown must arrive before the queued recovery, without an
-  // extra event-loop hop for every iframe ancestor. Tiles never get this token.
+  // Direct reports avoid an event-loop hop for every iframe ancestor.
+  // Tiles never get this token.
   window.addEventListener('message', (event: MessageEvent<unknown>) => {
     const frame = canvas();
     if (!frame ||
@@ -47,7 +52,15 @@ export function mountCanvasFocus(viewer: HTMLElement, isOpen: () => boolean, can
     const data = event.data as Record<string, unknown>;
     if (event.source === frame.contentWindow && data['wf'] === 1 && data['type'] === 'ready') configure();
     if (!isOpen() || data['wf'] !== 1 || (event.source !== frame.contentWindow && (configured !== frame || !token || data['token'] !== token))) return;
-    if (data['type'] === 'focus-entry' && document.activeElement === frame) { owner = frame; range = null; }
+    if (data['type'] === 'focus-entry') {
+      // A trusted click report can arrive after recovery in another renderer.
+      // Honour it unless a newer host action has selected another target.
+      const late = recovered === document.activeElement && typeof data['at'] === 'number' && data['at'] >= hostIntentAt;
+      if (document.activeElement === frame || late) {
+        owner = frame; range = null; recovered = null;
+        if (late) frame.focus({ preventScroll: true });
+      }
+    }
     if (data['wf'] === 1 && data['type'] === 'focus-leave') recover();
   });
   function recover(): void {
@@ -63,7 +76,9 @@ export function mountCanvasFocus(viewer: HTMLElement, isOpen: () => boolean, can
       const field = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' ? target as HTMLInputElement | HTMLTextAreaElement : null;
       const start = field?.selectionStart, end = field?.selectionEnd, direction = field?.selectionDirection;
       const savedRange = range;
-      target.focus({ preventScroll: true });
+      restoring = true;
+      try { target.focus({ preventScroll: true }); } finally { restoring = false; }
+      recovered = target;
       if (field && start !== null && start !== undefined && end !== null && end !== undefined) field.setSelectionRange(start, end, direction ?? undefined);
       if (savedRange?.startContainer.isConnected && target.contains(savedRange.startContainer)) {
         const selection = document.getSelection();
@@ -79,5 +94,8 @@ export function mountCanvasFocus(viewer: HTMLElement, isOpen: () => boolean, can
       else restore();
     }, 0);
   }
-  window.addEventListener('blur', () => recover());
+  window.addEventListener('blur', () => {
+    if (!document.hasFocus()) tabbing = false;
+    recover();
+  });
 }
