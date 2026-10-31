@@ -55,10 +55,13 @@ export function mountCanvasFocus(viewer: HTMLElement, isOpen: () => boolean, can
     if (data['type'] === 'focus-entry') {
       // A trusted click report can arrive after recovery in another renderer.
       // Honour it unless a newer host action has selected another target.
-      const late = recovered === document.activeElement && typeof data['at'] === 'number' && data['at'] >= hostIntentAt;
+      const late = document.hasFocus() && recovered === document.activeElement && typeof data['at'] === 'number' && data['at'] >= hostIntentAt;
       if (document.activeElement === frame || late) {
         owner = frame; range = null; recovered = null;
-        if (late) frame.focus({ preventScroll: true });
+        if (late) {
+          frame.focus({ preventScroll: true });
+          (event.source as Window | null)?.postMessage({ wf: 1, type: 'focus-resume', token }, '*');
+        }
       }
     }
     if (data['wf'] === 1 && data['type'] === 'focus-leave') recover();

@@ -28,6 +28,12 @@ describe('sandboxed canvas bridge', () => {
     expect(top.postMessage).not.toHaveBeenCalled();
     documentListeners.get('pointerdown')?.({ isTrusted: true });
     expect(top.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'focus-entry', token: 'viewer-token', at: expect.any(Number) }, '*');
+    const target = { focus: vi.fn(), isConnected: true };
+    documentListeners.get('focusin')?.({ target });
+    listeners.get('message')?.({ source: top, data: { wf: 1, type: 'focus-resume', token: 'wrong-token' } });
+    expect(target.focus).not.toHaveBeenCalled();
+    listeners.get('message')?.({ source: top, data: { wf: 1, type: 'focus-resume', token: 'viewer-token' } });
+    expect(target.focus).toHaveBeenCalledWith({ preventScroll: true });
     listeners.get('blur')?.({});
     expect(top.postMessage).toHaveBeenLastCalledWith({ wf: 1, type: 'focus-leave', token: 'viewer-token', at: expect.any(Number) }, '*');
   });

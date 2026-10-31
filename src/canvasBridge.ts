@@ -29,6 +29,11 @@ function canvasBridge(normalize: typeof normalizeShortcut, fromEvent: typeof sho
   let toolKeys = ['P', 'E', 'C', 'N', 'F'];
   let toolsConfigured = false;
   let focusToken: string | null = null;
+  let focusTarget: HTMLElement | null = null;
+  document.addEventListener('focusin', event => {
+    const target = event.target as HTMLElement | null;
+    if (target && target !== document.body && target !== document.documentElement && typeof target.focus === 'function') focusTarget = target;
+  }, true);
   const configureChild = (child: Window): void => {
     if (toolsConfigured) child.postMessage({ wf: 1, type: 'shortcuts', keys: toolKeys }, '*');
     if (focusToken) child.postMessage({ wf: 1, type: 'focus-config', token: focusToken }, '*');
@@ -338,6 +343,10 @@ function canvasBridge(normalize: typeof normalizeShortcut, fromEvent: typeof sho
   window.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (typeof event.data !== 'object' || event.data === null) return;
     const message = event.data as Record<string, unknown>;
+    if (event.source === window.top && message['wf'] === 1 && message['type'] === 'focus-resume' && focusToken && message['token'] === focusToken) {
+      if (focusTarget?.isConnected) focusTarget.focus({ preventScroll: true });
+      return;
+    }
     if (event.source === parent && message['wf'] === 1 && message['type'] === 'focus-config' && typeof message['token'] === 'string' && message['token'].length <= 100) {
       focusToken = message['token'];
       for (const child of document.querySelectorAll('iframe')) if (child.contentWindow) configureChild(child.contentWindow);
@@ -442,10 +451,19 @@ export const CANVAS_BRIDGE_SCRIPT = `;(${canvasBridge.toString()})(${normalizeSh
 /** Board srcdoc options need focus reporting without adding history or keyboard routing. */
 function canvasOptionFocusBridge(): void {
   let token: string | null = null;
+  let focusTarget: HTMLElement | null = null;
+  document.addEventListener('focusin', event => {
+    const target = event.target as HTMLElement | null;
+    if (target && target !== document.body && target !== document.documentElement && typeof target.focus === 'function') focusTarget = target;
+  }, true);
   const configure = (child: Window): void => { if (token) child.postMessage({ wf: 1, type: 'focus-config', token }, '*'); };
   window.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (typeof event.data !== 'object' || event.data === null) return;
     const data = event.data as Record<string, unknown>;
+    if (event.source === window.top && data['wf'] === 1 && data['type'] === 'focus-resume' && token && data['token'] === token) {
+      if (focusTarget?.isConnected) focusTarget.focus({ preventScroll: true });
+      return;
+    }
     if (event.source === parent && data['wf'] === 1 && data['type'] === 'focus-config' && typeof data['token'] === 'string') {
       token = data['token'];
       for (const frame of document.querySelectorAll('iframe')) if (frame.contentWindow) configure(frame.contentWindow);
