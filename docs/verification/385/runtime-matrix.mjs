@@ -14,7 +14,7 @@ const desktop = process.argv.includes('--desktop');
 const control = process.argv.includes('--control');
 const entryDelay = process.argv.includes('--slow-entry') ? 350 : 0;
 const duration = process.argv.includes('--smoke') ? 2000 : 30000;
-const artifacts = '.shots/focus-385';
+const artifacts = process.env.FOCUS_ARTIFACTS ?? '.shots/focus-385';
 await mkdir(artifacts, { recursive: true });
 const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
 const app = desktop ? await _electron.launch({ executablePath: electron, args: ['.', `--user-data-dir=${resolve(artifacts, `desktop-profile-${Date.now()}`)}`], env, timeout: 60000 }) : null;
@@ -94,7 +94,14 @@ try {
     window.focusMessages = [];
     window.addEventListener('message', event => { if (event.data?.type?.startsWith('focus-')) window.focusMessages.push({ type: event.data.type, token: !!event.data.token, root: event.source === document.querySelector('.vw-frame')?.contentWindow, at: performance.now() }); });
     document.addEventListener('focusin', event => window.focusEvents.push({ type: 'focusin', target: event.target.tagName, at: performance.now() }));
-    window.addEventListener('blur', () => window.focusEvents.push({ type: 'blur', active: document.activeElement?.tagName, background: document.activeElement?.matches('.decision-variant-page'), at: performance.now() }));
+    window.addEventListener('blur', () => {
+      const record = type => window.focusEvents.push({ type, active: document.activeElement?.tagName, background: document.activeElement?.matches('.decision-variant-page'), at: performance.now() });
+      record('blur');
+      // Chromium may update activeElement after dispatching blur. Capture runs
+      // before the controller's listener, so this samples the completed transfer
+      // in the next task before its queued recovery. It never changes focus.
+      setTimeout(() => record('takeover'), 0);
+    }, true);
   });
   await entry.click();
   const close = page.locator('#vw-toolbar [data-close]');
@@ -136,9 +143,14 @@ try {
       dialog.innerHTML = method === 'autofocus' ? '<input autofocus>' : '<button>Dialog target</button>';
       dialog.showModal();
     } else {
-      const frame = marker(document.createElement('iframe'));
+      const frame = document.createElement('iframe');
       const script = method === 'nested-svg' ? "document.querySelector('a').focus()" : method === 'window' ? 'window.focus()' : method === 'native-load' ? "document.querySelector('dialog').showModal()" : "document.querySelector('input').focus()";
-      frame.srcdoc = '<input><svg><a tabindex="0">SVG</a></svg><dialog><input autofocus></dialog><script>' + script + '<' + '/script>';
+      // Await the child document instead of assuming it parsed within 150 ms.
+      return new Promise(resolve => {
+        frame.addEventListener('load', () => resolve(), { once: true });
+        frame.srcdoc = '<input><svg><a tabindex="0">SVG</a></svg><dialog><input autofocus></dialog><script>' + script + '<' + '/script>';
+        marker(frame);
+      });
     }
     }, method);
   };
@@ -166,7 +178,7 @@ try {
           await page.keyboard.type('Z');
           assert.equal(await field.inputValue(), 'abZef', `${size}/${method}: continued typing at selection`);
           const events = await page.evaluate(before => window.focusEvents.slice(before), before);
-          assert.ok(events.some(event => event.type === 'blur' && event.background), `${size}/${method}: background takeover observed before restoration`);
+          assert.ok(events.some(event => (event.type === 'blur' || event.type === 'takeover') && event.background), `${size}/${method}: background takeover observed before restoration`);
           observations.push({ method, restored: true, takeoverObserved: true, events });
         }
         await page.waitForTimeout(200);
@@ -236,6 +248,7 @@ try {
 } catch (error) {
   console.log('matrix failure:', String(error));
   evidence.error = String(error);
+  evidence.failureFocus = await page.evaluate(() => ({ events: window.focusEvents?.slice(-20), messages: window.focusMessages?.slice(-10), active: document.activeElement?.outerHTML.slice(0, 250) })).catch(() => null);
   evidence.frames = await Promise.race([Promise.all(page.frames().slice(0, 8).map(async f => ({ url: f.url(), diagnostics: await f.evaluate(() => ({ canvas: !!window.CANVAS, text: document.body?.innerText.slice(0, 400), styles: document.styleSheets.length })).catch(() => null) }))), new Promise(resolve => setTimeout(() => resolve('diagnostic timeout'), 5000))]);
   await writeFile(`${artifacts}/${label}-failure.json`, JSON.stringify(evidence, null, 2));
   await writeFile(`${artifacts}/${label}-failure-${evidence.startedAt}.json`, JSON.stringify(evidence, null, 2));

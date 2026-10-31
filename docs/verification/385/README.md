@@ -143,6 +143,14 @@ On source fad6c75, typecheck, lint, build and the complete two-worker suite pass
 `runtime-evidence.json` for the full-application runs and retained failed attempts,
 and the independent review reports for their separate acceptance judgments.
 
+Final review corrections are on source 974704a. Typecheck, lint, build and all
+2,055 tests pass. The twelve 30-second probes were repeated on that source, and
+normal-timing smoke runs passed on both surfaces. See `review-fixes.md` and the
+current `runtime-evidence.json`. The independent acceptance report remains the
+report for fad6c75; its original evidence is preserved separately in
+`runtime-evidence-fad6c75.json`. Both subsequent CodeRabbit findings have explicit
+regressions and corrected-source runtime proof.
+
 ## Boundaries
 
 This is recovery on the owner's revised criteria. It is not strict browser-level
