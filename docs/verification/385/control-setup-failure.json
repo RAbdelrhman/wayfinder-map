@@ -1,0 +1,72 @@
+[
+    {
+        "phase":  "Native foreground control before correction",
+        "result":  "Fail",
+        "error":  "AssertionError [ERR_ASSERTION]: native positive control must actually own foreground\n+ actual - expected\n\n+ 11013682\n- 72814232\n",
+        "completedProbes":  [
+                                {
+                                    "attempts":  56,
+                                    "size":  "full",
+                                    "elapsedMs":  31356
+                                },
+                                {
+                                    "attempts":  56,
+                                    "size":  "pane",
+                                    "elapsedMs":  32126
+                                },
+                                {
+                                    "attempts":  56,
+                                    "size":  "float",
+                                    "elapsedMs":  31275
+                                }
+                            ],
+        "correction":  "Read actual foreground after native Shown and activation events complete. This failure is not counted as a passing run."
+    },
+    {
+        "phase":  "Native Electron control after delayed read, before foreground-thread attachment",
+        "result":  "Fail",
+        "error":  "AssertionError [ERR_ASSERTION]: native positive control must actually own foreground\n+ actual - expected\n\n+ 38996608\n- 11994156\n",
+        "completedProbes":  [
+                                {
+                                    "attempts":  63,
+                                    "interaction":  {
+                                                        "actual314Dialog":  true,
+                                                        "pointerEntry":  true,
+                                                        "tab":  true,
+                                                        "escape":  true,
+                                                        "keyboardEntry":  true,
+                                                        "mapFocus":  false
+                                                    },
+                                    "size":  "full",
+                                    "elapsedMs":  32687
+                                },
+                                {
+                                    "attempts":  63,
+                                    "interaction":  {
+                                                        "actual314Dialog":  true,
+                                                        "pointerEntry":  true,
+                                                        "tab":  true,
+                                                        "escape":  true,
+                                                        "keyboardEntry":  true,
+                                                        "mapFocus":  true
+                                                    },
+                                    "size":  "pane",
+                                    "elapsedMs":  33168
+                                },
+                                {
+                                    "attempts":  35,
+                                    "interaction":  {
+                                                        "actual314Dialog":  true,
+                                                        "pointerEntry":  true,
+                                                        "tab":  true,
+                                                        "escape":  true,
+                                                        "keyboardEntry":  true,
+                                                        "mapFocus":  true
+                                                    },
+                                    "size":  "float",
+                                    "elapsedMs":  30092
+                                }
+                            ],
+        "correction":  "Activate only the test window with temporary input queue attachment, detach, and positively read actual foreground. Failure remains a failed setup."
+    }
+]
