@@ -24,7 +24,7 @@ function setup() {
   };
   const enter = (source = canvas.contentWindow) => {
     if (source === canvas.contentWindow) canvas.focus();
-    window.dispatchEvent(new window.MessageEvent('message', { source: source as Window, data: { wf: 1, type: 'focus-entry' } }));
+    window.dispatchEvent(new window.MessageEvent('message', { source: source as Window, data: { wf: 1, type: 'focus-entry', at: Date.now() } }));
   };
   return { window, document, viewer, canvas, tile, field, steal, enter, close: () => { open = false; } };
 }
@@ -94,6 +94,19 @@ describe('canvas focus restoration', () => {
     field.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'z', bubbles: true }));
     window.dispatchEvent(new window.MessageEvent('message', { source: canvas.contentWindow as Window, data: { wf: 1, type: 'focus-entry', at } }));
     expect(document.activeElement).toBe(field);
+  });
+  it('rejects a stale pointer report even while later autofocus has made the canvas active', () => {
+    const { window, document, field, canvas } = setup();
+    field.focus();
+    const at = Date.now();
+    vi.advanceTimersByTime(100);
+    const map = document.querySelector('input')!;
+    map.focus();
+    canvas.focus();
+    window.dispatchEvent(new window.Event('blur'));
+    window.dispatchEvent(new window.MessageEvent('message', { source: canvas.contentWindow as Window, data: { wf: 1, type: 'focus-entry', at } }));
+    vi.advanceTimersByTime(60);
+    expect(document.activeElement).toBe(map);
   });
   it('clears Tab intent when focus leaves for browser chrome before a later canvas load', () => {
     const { window, document, field, canvas, steal } = setup();

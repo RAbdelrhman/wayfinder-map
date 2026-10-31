@@ -146,7 +146,7 @@ describe('keyboard focus while the viewer is open', () => {
     const close = document.querySelector<HTMLElement>('[data-close]')!;
     const refocus = vi.spyOn(close, 'focus');
     Object.defineProperty(document, 'activeElement', { configurable: true, get: () => frames()[0]! });
-    browser.dispatchEvent(new browser.MessageEvent('message', { source: frames()[0]!.contentWindow as unknown as Window, data: { wf: 1, type: 'focus-entry' } }));
+    browser.dispatchEvent(new browser.MessageEvent('message', { source: frames()[0]!.contentWindow as unknown as Window, data: { wf: 1, type: 'focus-entry', at: Date.now() } }));
     focusInto(frames()[0]!);
     vi.runAllTimers();
     expect(refocus).not.toHaveBeenCalled();
