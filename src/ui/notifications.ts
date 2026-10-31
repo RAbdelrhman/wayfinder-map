@@ -1,11 +1,9 @@
-import { setTrustedHtml } from './trustedHtml.js';
 import { mapPath } from '../repoRoutes.js';
 import { prototypeTicketNumber } from '../prototypes.js';
 import type { HandOffStatusDto } from '../handOffTracking.js';
 import type { MapEvent } from '../mapWatch.js';
 import type { DesktopNotification, NotificationKind } from '../notificationTypes.js';
 import type { MapSnapshot, Prototype, WayfinderMap } from '../types.js';
-import { escapeHtml } from './markdown.js';
 
 export const NOTIFICATIONS_CHANGED = 'wayfinder:notifications-changed';
 /** The Inbox opened. Its detail lists the tickets it shows, so their finished hand-offs count as seen. */
@@ -50,12 +48,6 @@ function eventHandlesNotification(item: InboxNotification, event: MapEvent): boo
 
 function ticketKey(item: { repo: string; mapNumber: number; ticketNumber: number }): string {
   return `${item.repo.toLowerCase()}#${String(item.mapNumber)}#${String(item.ticketNumber)}`;
-}
-
-export interface UnblockedTicket {
-  number: number;
-  title: string;
-  type: string | null;
 }
 
 export const KIND_LABEL: Record<NotificationKind, string> = {
@@ -401,78 +393,6 @@ export interface NotificationInboxController {
   reconcileSnapshot: (snapshot: InboxSnapshot) => Promise<void>;
   reconcileHandOffs: (records: readonly HandOffStatusDto[]) => Promise<void>;
   reconcileEvent: (event: MapEvent) => Promise<void>;
-}
-
-export interface UnblockedNoticeController {
-  add: (ticket: UnblockedTicket, closedTicket: number | null) => void;
-  close: () => void;
-}
-
-export function mountUnblockedNotice(
-  host: HTMLElement,
-  onShow: (ticketNumber: number) => void,
-  onStart: (ticketNumbers: readonly number[]) => Promise<readonly number[]>,
-): UnblockedNoticeController {
-  const tickets = new Map<number, UnblockedTicket>();
-  const closedTickets = new Set<number>();
-  const close = (): void => {
-    host.hidden = true;
-    tickets.clear();
-    closedTickets.clear();
-    setTrustedHtml(host, '');
-  };
-  const render = (): void => {
-    const ready = Array.from(tickets.values());
-    if (ready.length === 0) {
-      host.hidden = true;
-      setTrustedHtml(host, '');
-      return;
-    }
-    const startable = ready.filter((ticket) => ticket.type === 'task' || ticket.type === 'research');
-    const closed = Array.from(closedTickets).map((number) => '#' + String(number) + ' closed').join(' and ');
-    const readyText = ready.map((ticket) => '#' + String(ticket.number)).join(', ');
-    const message = (closed === '' ? '' : closed + '. ') + readyText + (ready.length === 1 ? ' is ready.' : ' are ready.');
-    const startLabel = startable.length === 1 ? 'Start' : 'Start ' + String(startable.length);
-    setTrustedHtml(host, '<div class="unblocked-notice-card"><p>' + escapeHtml(message) + '</p>' +
-      '<div class="unblocked-notice-actions"><button type="button" class="primary" data-notice-start' +
-      (startable.length === 0 ? ' hidden disabled' : '') + '>' + startLabel + '</button>' +
-      '<button type="button" class="ghost" data-notice-show>Show</button>' +
-      '<button type="button" class="ghost" data-notice-dismiss>Dismiss</button></div></div>');
-    host.hidden = false;
-  };
-  host.addEventListener('click', async (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    if (target.closest('[data-notice-dismiss]')) {
-      close();
-      return;
-    }
-    if (target.closest('[data-notice-show]')) {
-      const first = tickets.keys().next().value as number | undefined;
-      if (first !== undefined) onShow(first);
-      return;
-    }
-    const start = target.closest<HTMLButtonElement>('[data-notice-start]');
-    if (start === null) return;
-    const numbers = Array.from(tickets.values())
-      .filter((ticket) => ticket.type === 'task' || ticket.type === 'research')
-      .map((ticket) => ticket.number);
-    if (numbers.length === 0) return;
-    start.disabled = true;
-    const started = new Set(await onStart(numbers));
-    for (const number of started) tickets.delete(number);
-    if (tickets.size === 0) close();
-    else render();
-    start.disabled = false;
-  });
-  return {
-    add(ticket, closedTicket) {
-      tickets.set(ticket.number, ticket);
-      if (closedTicket !== null) closedTickets.add(closedTicket);
-      render();
-    },
-    close,
-  };
 }
 
 export function mountNotificationInbox(): NotificationInboxController {
