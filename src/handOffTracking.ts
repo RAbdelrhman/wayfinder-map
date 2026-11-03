@@ -277,21 +277,36 @@ export function mapT3Status(thread: unknown): MappedT3Thread | null {
   const latestTurn = record(item['latestTurn']);
   const sessionStatus = firstText(session?.['status'], item['sessionStatus'], item['status']);
   const turnState = firstText(item['activityRunStatus'], latestTurn?.['state'], item['latestTurnState'], item['status']);
-  const lastError = firstText(session?.['lastError'], item['lastError']);
-  const requestKind = text(record(item['pendingRuntimeRequest'])?.['kind']);
+  const lastErrorClass = text(item['lastErrorClass']);
+  // Protocol 2 names the failure class; trust it over matching the message text.
+  const errorText = firstText(session?.['lastError'], item['lastError']);
+  const lastError = lastErrorClass === 'usage_limit' ? USAGE_LIMIT_LABEL : storableError(errorText);
+  // Protocol 2 rows always carry `pendingRuntimeRequest`, null when nothing is pending.
+  const v2 = 'pendingRuntimeRequest' in item;
+  const request = record(item['pendingRuntimeRequest']);
+  const requestKind = text(request?.['kind']);
+  // An async question (`blocking: false`) still needs the user, but the run keeps working past it.
+  const requestBlocks = request !== null && request['blocking'] !== false;
   const pendingApproval = flag(item['hasPendingApprovals']) || flag(item['pendingApproval']) ||
     (requestKind !== null && ['command', 'file-read', 'file-change', 'mcp-elicitation', 'permission'].includes(requestKind));
   const pendingUserInput = flag(item['hasPendingUserInput']) || flag(item['pendingUserInput']) || requestKind === 'user_input';
   const background = record(item['backgroundLiveness']);
   const backgroundState = firstText(background?.['state'], background?.['status'], item['backgroundLiveness']);
+  // A v2 run also reports `waiting` while it finishes up or waits on its own background work;
+  // only a pending request means it waits on the user.
+  const waitsOnUser = v2
+    ? requestBlocks
+    : pendingApproval || pendingUserInput || turnState === 'waiting';
 
   let status: MappedT3Thread['status'] = 'starting';
-  if (sessionStatus === 'error' || turnState === 'error' || turnState === 'failed' || lastError !== null) {
+  if (sessionStatus === 'error' || turnState === 'error' || turnState === 'failed' || errorText !== null || lastErrorClass !== null) {
     status = 'failed';
   } else if (turnState === 'interrupted' || sessionStatus === 'interrupted' || turnState === 'cancelled' || turnState === 'rolled_back') {
     status = 'interrupted';
-  } else if (pendingApproval || pendingUserInput || turnState === 'waiting') {
+  } else if (waitsOnUser) {
     status = 'waiting';
+  } else if (v2 && turnState === 'waiting') {
+    status = 'running';
   } else if (sessionStatus === 'starting') {
     status = 'starting';
   } else if (
@@ -318,8 +333,8 @@ export function mapT3Status(thread: unknown): MappedT3Thread | null {
     worktreePath: text(item['worktreePath']),
     sessionStatus,
     turnState,
-    lastError: storableError(lastError),
-    rawError: lastError?.slice(0, 500) ?? null,
+    lastError,
+    rawError: errorText?.slice(0, 500) ?? null,
     model: observeModelSelection(item['modelSelection']),
     pendingApproval,
     pendingUserInput,
@@ -762,6 +777,8 @@ export class HandOffStore {
     if (kind === 'snapshot' || kind === 'synchronized') {
       const snapshot = event['snapshot'] ?? eventValue?.['snapshot'] ?? event['value'];
       const shell = record(snapshot);
+      // The completion marker (`{kind: 'synchronized'}`) carries no shell; there is nothing to apply.
+      if (shell === null && kind === 'synchronized') return;
       // A resumed subscription (afterSequence) opens with T3 Code's project metadata snapshot, whose
       // thread lists are always empty. That says nothing about threads, so it must not delete hand-offs.
       const noThreads = (key: string): boolean => !Array.isArray(shell?.[key]) || (shell[key] as unknown[]).length === 0;

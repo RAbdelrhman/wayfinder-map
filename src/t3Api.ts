@@ -344,6 +344,8 @@ export class T3Api {
           return;
         }
         if (message['_tag'] !== 'Chunk' || message['requestId'] !== 'shell') return;
+        // Effect RPC holds the next chunk until the client acknowledges this one.
+        socket.send(JSON.stringify({ _tag: 'Ack', requestId: 'shell' }));
         const emit = (value: unknown): void => {
           if (Array.isArray(value)) {
             for (const item of value) onValue(item);
