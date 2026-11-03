@@ -1,0 +1,554 @@
+{
+  "recordedAt": "2026-11-03",
+  "serverVersion": "0.1.7-nightly.20261103.4119",
+  "orchestrationProtocolVersion": 2,
+  "threadId": "e571cb1a-14b8-4e42-a60f-afbdccaed196",
+  "mappedStatuses": [
+    "starting",
+    "running",
+    "waiting",
+    "ready"
+  ],
+  "dispatch": [
+    {
+      "dir": "sent",
+      "frame": {
+        "_tag": "Request",
+        "id": "1",
+        "tag": "orchestration.dispatchCommand",
+        "payload": {
+          "type": "thread.create",
+          "commandId": "7430fe01-f307-4c5f-9204-52df1ce7dc5c",
+          "threadId": "e571cb1a-14b8-4e42-a60f-afbdccaed196",
+          "projectId": "ac1e94a2-5d27-47c1-9dd2-4dcbc8d521df",
+          "title": "Recorded thread",
+          "modelSelection": {
+            "instanceId": "claudeAgent",
+            "model": "claude-sonnet-5-5",
+            "options": [
+              {
+                "id": "effort",
+                "value": "low"
+              }
+            ]
+          },
+          "runtimeMode": "full-access",
+          "interactionMode": "default",
+          "branch": null,
+          "worktreePath": null,
+          "createdAt": "2026-11-03T17:55:34.241Z",
+          "createdBy": "user",
+          "creationSource": "web"
+        },
+        "headers": []
+      }
+    },
+    {
+      "dir": "received",
+      "frame": {
+        "_tag": "Exit",
+        "requestId": "1",
+        "exit": {
+          "_tag": "Success",
+          "value": {
+            "sequence": 602454
+          }
+        }
+      }
+    },
+    {
+      "dir": "sent",
+      "frame": {
+        "_tag": "Request",
+        "id": "1",
+        "tag": "orchestration.dispatchCommand",
+        "payload": {
+          "type": "message.dispatch",
+          "commandId": "baf2682f-91cc-40fc-bdf0-fdb9185a3a4d",
+          "threadId": "e571cb1a-14b8-4e42-a60f-afbdccaed196",
+          "createdBy": "user",
+          "creationSource": "web",
+          "messageId": "33cde5e1-b40e-4800-bcc4-111d38be9487",
+          "text": "Recorded message text.",
+          "attachments": [],
+          "modelSelection": {
+            "instanceId": "claudeAgent",
+            "model": "claude-sonnet-5-5",
+            "options": [
+              {
+                "id": "effort",
+                "value": "low"
+              }
+            ]
+          },
+          "dispatchMode": {
+            "type": "start_immediately"
+          }
+        },
+        "headers": []
+      }
+    },
+    {
+      "dir": "received",
+      "frame": {
+        "_tag": "Exit",
+        "requestId": "1",
+        "exit": {
+          "_tag": "Success",
+          "value": {
+            "sequence": 602462
+          }
+        }
+      }
+    }
+  ],
+  "shell": [
+    {
+      "dir": "received",
+      "frame": {
+        "_tag": "Chunk",
+        "requestId": "shell",
+        "values": [
+          {
+            "kind": "snapshot",
+            "snapshot": {
+              "schemaVersion": 2,
+              "snapshotSequence": 602453,
+              "threads": [],
+              "archivedThreads": [],
+              "projects": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dir": "sent",
+      "frame": {
+        "_tag": "Ack",
+        "requestId": "shell"
+      }
+    },
+    {
+      "dir": "received",
+      "frame": {
+        "_tag": "Chunk",
+        "requestId": "shell",
+        "values": [
+          {
+            "kind": "synchronized"
+          }
+        ]
+      }
+    },
+    {
+      "dir": "sent",
+      "frame": {
+        "_tag": "Ack",
+        "requestId": "shell"
+      }
+    },
+    {
+      "dir": "received",
+      "frame": {
+        "_tag": "Chunk",
+        "requestId": "shell",
+        "values": [
+          {
+            "kind": "thread.updated",
+            "sequence": 602462,
+            "location": "active",
+            "thread": {
+              "createdBy": "user",
+              "creationSource": "web",
+              "id": "e571cb1a-14b8-4e42-a60f-afbdccaed196",
+              "projectId": "ac1e94a2-5d27-47c1-9dd2-4dcbc8d521df",
+              "title": "Recorded thread",
+              "providerInstanceId": "claudeAgent",
+              "modelSelection": {
+                "instanceId": "claudeAgent",
+                "model": "claude-sonnet-5-5",
+                "options": [
+                  {
+                    "id": "effort",
+                    "value": "low"
+                  }
+                ]
+              },
+              "runtimeMode": "full-access",
+              "interactionMode": "default",
+              "branch": null,
+              "worktreePath": null,
+              "activeProviderThreadId": "provider-thread:provider:claudeAgent:native-thread:pending%3Arun%3Athread%3Ae571cb1a-14b8-4e42-a60f-afbdccaed196%3Aordinal%3A1",
+              "latestRunId": "run:thread:e571cb1a-14b8-4e42-a60f-afbdccaed196:ordinal:1",
+              "latestRunRequestedAt": "2026-11-03T17:55:34.878Z",
+              "latestRunStartedAt": null,
+              "latestRunCompletedAt": null,
+              "latestRunStopRequested": false,
+              "activeRunId": "run:thread:e571cb1a-14b8-4e42-a60f-afbdccaed196:ordinal:1",
+              "activityRunStartedAt": "2026-11-03T17:55:34.878Z",
+              "activityRunStatus": "starting",
+              "blockedOnThreadWait": false,
+              "status": "starting",
+              "lastError": null,
+              "lastErrorClass": null,
+              "lastErrorCode": null,
+              "usageLimitResetAt": null,
+              "pendingRuntimeRequest": null,
+              "pendingGuestMessageCount": 0,
+              "latestVisibleMessage": null,
+              "latestUserMessageAt": "2026-11-03T17:55:34.878Z",
+              "latestUserAuthoredMessageAt": "2026-11-03T17:55:34.878Z",
+              "hasActionableProposedPlan": false,
+              "itemCount": 1,
+              "visibleItemCount": 1,
+              "createdAt": "2026-11-03T17:55:34.839Z",
+              "updatedAt": "2026-11-03T17:55:34.878Z",
+              "archivedAt": null,
+              "settledOverride": null,
+              "settledAt": null,
+              "unsettledAt": null,
+              "snoozedUntil": null,
+              "snoozedAt": null,
+              "pinnedAt": null,
+              "autoSettleDisabledAt": null,
+              "pinOrderKey": null,
+              "lastVisitedAt": "2026-11-03T17:55:34.877Z",
+              "deletedAt": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dir": "sent",
+      "frame": {
+        "_tag": "Ack",
+        "requestId": "shell"
+      }
+    },
+    {
+      "dir": "received",
+      "frame": {
+        "_tag": "Chunk",
+        "requestId": "shell",
+        "values": [
+          {
+            "kind": "thread.updated",
+            "sequence": 602468,
+            "location": "active",
+            "thread": {
+              "createdBy": "user",
+              "creationSource": "web",
+              "id": "e571cb1a-14b8-4e42-a60f-afbdccaed196",
+              "projectId": "ac1e94a2-5d27-47c1-9dd2-4dcbc8d521df",
+              "title": "Recorded thread",
+              "providerInstanceId": "claudeAgent",
+              "modelSelection": {
+                "instanceId": "claudeAgent",
+                "model": "claude-sonnet-5-5",
+                "options": [
+                  {
+                    "id": "effort",
+                    "value": "low"
+                  }
+                ]
+              },
+              "runtimeMode": "full-access",
+              "interactionMode": "default",
+              "branch": null,
+              "worktreePath": null,
+              "activeProviderThreadId": "provider-thread:provider:claudeAgent:native-thread:pending%3Arun%3Athread%3Ae571cb1a-14b8-4e42-a60f-afbdccaed196%3Aordinal%3A1",
+              "latestRunId": "run:thread:e571cb1a-14b8-4e42-a60f-afbdccaed196:ordinal:1",
+              "latestRunRequestedAt": "2026-11-03T17:55:34.878Z",
+              "latestRunStartedAt": "2026-11-03T17:55:34.955Z",
+              "latestRunCompletedAt": null,
+              "latestRunStopRequested": false,
+              "activeRunId": "run:thread:e571cb1a-14b8-4e42-a60f-afbdccaed196:ordinal:1",
+              "activityRunStartedAt": "2026-11-03T17:55:34.955Z",
+              "activityRunStatus": "running",
+              "blockedOnThreadWait": false,
+              "status": "running",
+              "lastError": null,
+              "lastErrorClass": null,
+              "lastErrorCode": null,
+              "usageLimitResetAt": null,
+              "pendingRuntimeRequest": null,
+              "pendingGuestMessageCount": 0,
+              "latestVisibleMessage": null,
+              "latestUserMessageAt": "2026-11-03T17:55:34.878Z",
+              "latestUserAuthoredMessageAt": "2026-11-03T17:55:34.878Z",
+              "hasActionableProposedPlan": false,
+              "itemCount": 1,
+              "visibleItemCount": 1,
+              "createdAt": "2026-11-03T17:55:34.839Z",
+              "updatedAt": "2026-11-03T17:55:34.955Z",
+              "archivedAt": null,
+              "settledOverride": null,
+              "settledAt": null,
+              "unsettledAt": null,
+              "snoozedUntil": null,
+              "snoozedAt": null,
+              "pinnedAt": null,
+              "autoSettleDisabledAt": null,
+              "pinOrderKey": null,
+              "lastVisitedAt": "2026-11-03T17:55:34.877Z",
+              "deletedAt": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dir": "sent",
+      "frame": {
+        "_tag": "Ack",
+        "requestId": "shell"
+      }
+    },
+    {
+      "dir": "received",
+      "frame": {
+        "_tag": "Chunk",
+        "requestId": "shell",
+        "values": [
+          {
+            "kind": "thread.updated",
+            "sequence": 602475,
+            "location": "active",
+            "thread": {
+              "createdBy": "user",
+              "creationSource": "web",
+              "id": "e571cb1a-14b8-4e42-a60f-afbdccaed196",
+              "projectId": "ac1e94a2-5d27-47c1-9dd2-4dcbc8d521df",
+              "title": "Recorded thread",
+              "providerInstanceId": "claudeAgent",
+              "modelSelection": {
+                "instanceId": "claudeAgent",
+                "model": "claude-sonnet-5-5",
+                "options": [
+                  {
+                    "id": "effort",
+                    "value": "low"
+                  }
+                ]
+              },
+              "runtimeMode": "full-access",
+              "interactionMode": "default",
+              "branch": null,
+              "worktreePath": null,
+              "activeProviderThreadId": "provider-thread:provider:claudeAgent:native-thread:pending%3Arun%3Athread%3Ae571cb1a-14b8-4e42-a60f-afbdccaed196%3Aordinal%3A1",
+              "latestRunId": "run:thread:e571cb1a-14b8-4e42-a60f-afbdccaed196:ordinal:1",
+              "latestRunRequestedAt": "2026-11-03T17:55:34.878Z",
+              "latestRunStartedAt": "2026-11-03T17:55:34.955Z",
+              "latestRunCompletedAt": null,
+              "latestRunStopRequested": false,
+              "activeRunId": "run:thread:e571cb1a-14b8-4e42-a60f-afbdccaed196:ordinal:1",
+              "activityRunStartedAt": "2026-11-03T17:55:34.955Z",
+              "activityRunStatus": "running",
+              "blockedOnThreadWait": false,
+              "status": "running",
+              "lastError": null,
+              "lastErrorClass": null,
+              "lastErrorCode": null,
+              "usageLimitResetAt": null,
+              "pendingRuntimeRequest": null,
+              "pendingGuestMessageCount": 0,
+              "latestVisibleMessage": null,
+              "latestUserMessageAt": "2026-11-03T17:55:34.878Z",
+              "latestUserAuthoredMessageAt": "2026-11-03T17:55:34.878Z",
+              "hasActionableProposedPlan": false,
+              "itemCount": 2,
+              "visibleItemCount": 2,
+              "createdAt": "2026-11-03T17:55:34.839Z",
+              "updatedAt": "2026-11-03T17:55:41.885Z",
+              "archivedAt": null,
+              "settledOverride": null,
+              "settledAt": null,
+              "unsettledAt": null,
+              "snoozedUntil": null,
+              "snoozedAt": null,
+              "pinnedAt": null,
+              "autoSettleDisabledAt": null,
+              "pinOrderKey": null,
+              "lastVisitedAt": "2026-11-03T17:55:34.877Z",
+              "deletedAt": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dir": "sent",
+      "frame": {
+        "_tag": "Ack",
+        "requestId": "shell"
+      }
+    },
+    {
+      "dir": "received",
+      "frame": {
+        "_tag": "Chunk",
+        "requestId": "shell",
+        "values": [
+          {
+            "kind": "thread.updated",
+            "sequence": 602481,
+            "location": "active",
+            "thread": {
+              "createdBy": "user",
+              "creationSource": "web",
+              "id": "e571cb1a-14b8-4e42-a60f-afbdccaed196",
+              "projectId": "ac1e94a2-5d27-47c1-9dd2-4dcbc8d521df",
+              "title": "Recorded thread",
+              "providerInstanceId": "claudeAgent",
+              "modelSelection": {
+                "instanceId": "claudeAgent",
+                "model": "claude-sonnet-5-5",
+                "options": [
+                  {
+                    "id": "effort",
+                    "value": "low"
+                  }
+                ]
+              },
+              "runtimeMode": "full-access",
+              "interactionMode": "default",
+              "branch": null,
+              "worktreePath": null,
+              "activeProviderThreadId": "provider-thread:provider:claudeAgent:native-thread:pending%3Arun%3Athread%3Ae571cb1a-14b8-4e42-a60f-afbdccaed196%3Aordinal%3A1",
+              "latestRunId": "run:thread:e571cb1a-14b8-4e42-a60f-afbdccaed196:ordinal:1",
+              "latestRunRequestedAt": "2026-11-03T17:55:34.878Z",
+              "latestRunStartedAt": "2026-11-03T17:55:34.955Z",
+              "latestRunCompletedAt": null,
+              "latestRunStopRequested": false,
+              "activeRunId": null,
+              "activityRunStartedAt": "2026-11-03T17:55:34.955Z",
+              "activityRunStatus": "waiting",
+              "blockedOnThreadWait": false,
+              "status": "waiting",
+              "lastError": null,
+              "lastErrorClass": null,
+              "lastErrorCode": null,
+              "usageLimitResetAt": null,
+              "pendingRuntimeRequest": null,
+              "pendingGuestMessageCount": 0,
+              "latestVisibleMessage": null,
+              "latestUserMessageAt": "2026-11-03T17:55:34.878Z",
+              "latestUserAuthoredMessageAt": "2026-11-03T17:55:34.878Z",
+              "hasActionableProposedPlan": false,
+              "itemCount": 2,
+              "visibleItemCount": 2,
+              "createdAt": "2026-11-03T17:55:34.839Z",
+              "updatedAt": "2026-11-03T17:55:42.063Z",
+              "archivedAt": null,
+              "settledOverride": null,
+              "settledAt": null,
+              "unsettledAt": null,
+              "snoozedUntil": null,
+              "snoozedAt": null,
+              "pinnedAt": null,
+              "autoSettleDisabledAt": null,
+              "pinOrderKey": null,
+              "lastVisitedAt": "2026-11-03T17:55:34.877Z",
+              "deletedAt": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dir": "sent",
+      "frame": {
+        "_tag": "Ack",
+        "requestId": "shell"
+      }
+    },
+    {
+      "dir": "received",
+      "frame": {
+        "_tag": "Chunk",
+        "requestId": "shell",
+        "values": [
+          {
+            "kind": "thread.updated",
+            "sequence": 602486,
+            "location": "active",
+            "thread": {
+              "createdBy": "user",
+              "creationSource": "web",
+              "id": "e571cb1a-14b8-4e42-a60f-afbdccaed196",
+              "projectId": "ac1e94a2-5d27-47c1-9dd2-4dcbc8d521df",
+              "title": "Recorded thread",
+              "providerInstanceId": "claudeAgent",
+              "modelSelection": {
+                "instanceId": "claudeAgent",
+                "model": "claude-sonnet-5-5",
+                "options": [
+                  {
+                    "id": "effort",
+                    "value": "low"
+                  }
+                ]
+              },
+              "runtimeMode": "full-access",
+              "interactionMode": "default",
+              "branch": null,
+              "worktreePath": null,
+              "activeProviderThreadId": "provider-thread:provider:claudeAgent:native-thread:pending%3Arun%3Athread%3Ae571cb1a-14b8-4e42-a60f-afbdccaed196%3Aordinal%3A1",
+              "latestRunId": "run:thread:e571cb1a-14b8-4e42-a60f-afbdccaed196:ordinal:1",
+              "latestRunRequestedAt": "2026-11-03T17:55:34.878Z",
+              "latestRunStartedAt": "2026-11-03T17:55:34.955Z",
+              "latestRunCompletedAt": "2026-11-03T17:55:42.098Z",
+              "latestRunStopRequested": false,
+              "activeRunId": null,
+              "activityRunStartedAt": null,
+              "activityRunStatus": null,
+              "blockedOnThreadWait": false,
+              "status": "completed",
+              "lastError": null,
+              "lastErrorClass": null,
+              "lastErrorCode": null,
+              "usageLimitResetAt": null,
+              "pendingRuntimeRequest": null,
+              "pendingGuestMessageCount": 0,
+              "latestVisibleMessage": null,
+              "latestUserMessageAt": "2026-11-03T17:55:34.878Z",
+              "latestUserAuthoredMessageAt": "2026-11-03T17:55:34.878Z",
+              "hasActionableProposedPlan": false,
+              "itemCount": 3,
+              "visibleItemCount": 3,
+              "createdAt": "2026-11-03T17:55:34.839Z",
+              "updatedAt": "2026-11-03T17:55:42.098Z",
+              "archivedAt": null,
+              "settledOverride": null,
+              "settledAt": null,
+              "unsettledAt": null,
+              "snoozedUntil": null,
+              "snoozedAt": null,
+              "pinnedAt": null,
+              "autoSettleDisabledAt": null,
+              "pinOrderKey": null,
+              "lastVisitedAt": "2026-11-03T17:55:34.877Z",
+              "deletedAt": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dir": "sent",
+      "frame": {
+        "_tag": "Ack",
+        "requestId": "shell"
+      }
+    },
+    {
+      "dir": "sent",
+      "frame": {
+        "_tag": "Ack",
+        "requestId": "shell"
+      }
+    }
+  ]
+}
