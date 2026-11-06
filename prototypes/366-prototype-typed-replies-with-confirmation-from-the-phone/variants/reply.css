@@ -1,0 +1,327 @@
+/*
+  #366: the reply field, its confirmation and its outcome, on #224's phone parts.
+  Only the desktop's tokens (src/ui/styles.css); no new colours.
+*/
+
+/* ---------- the reply in the history ---------- */
+.rp-mine {
+  margin-left: 28px;
+  padding: 10px 12px;
+  border-radius: 14px 14px 4px 14px;
+  background: color-mix(in srgb, var(--accent-fill) 9%, var(--surface-1));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-fill) 22%, var(--hairline));
+}
+
+.rp-mine .st-msg-text {
+  white-space: pre-wrap;
+}
+
+.rp-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.rp-state .i {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.rp-mine.is-accepted .rp-state .i {
+  color: var(--state-frontier);
+}
+
+.rp-mine.is-failed {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-failed) 45%, var(--hairline));
+}
+
+.rp-mine.is-failed .rp-state {
+  color: var(--state-failed);
+}
+
+.rp-mine.is-unknown {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--handoff-needs-you) 50%, var(--hairline));
+}
+
+.rp-mine.is-unknown .rp-state .i {
+  color: var(--handoff-needs-you);
+}
+
+.rp-why {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.rp-acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.m-btn.rp-small {
+  min-height: 44px;
+  flex: 1;
+  gap: 6px;
+  padding: 0 8px;
+  font-size: 15px;
+  white-space: nowrap;
+  border-radius: 12px;
+}
+
+.rp-id {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.m-hero .rp-id {
+  margin-top: 14px;
+}
+
+/* ---------- R1: the reply bar ---------- */
+.rp-bar {
+  padding-bottom: 30px;
+}
+
+.rp-entry {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.rp-field {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  max-height: 132px;
+  padding: 11px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 22px;
+  background: var(--plane);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.35;
+  resize: none;
+}
+
+.rp-field::placeholder {
+  color: var(--text-muted);
+}
+
+.rp-field:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -2px;
+}
+
+.rp-field:disabled {
+  opacity: 0.6;
+}
+
+.rp-review {
+  flex: none;
+  min-width: 84px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rp-review:disabled {
+  opacity: 0.45;
+}
+
+.st-conn.rp-block {
+  align-items: flex-start;
+}
+
+.st-conn.rp-block .i {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 2px;
+  color: var(--state-failed);
+}
+
+/* R1's confirmation: #316's alert, wider, with the target and the whole message. */
+.ac-alert.rp-alert {
+  width: 326px;
+  max-height: calc(100% - 96px);
+  display: flex;
+  flex-direction: column;
+}
+
+.rp-alert-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 16px 14px;
+  text-align: left;
+}
+
+.rp-to {
+  margin: 12px 0 0;
+  border: 1px solid var(--gridline);
+  border-radius: 12px;
+}
+
+.rp-to > div {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 8px;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+
+.rp-to > div + div {
+  border-top: 1px solid var(--gridline);
+}
+
+.rp-to dt {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.rp-to dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.rp-to .is-changed {
+  background: color-mix(in srgb, var(--handoff-needs-you) 12%, transparent);
+}
+
+.rp-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.rp-label {
+  margin: 14px 0 6px !important;
+  font-size: 12.5px !important;
+  font-weight: 600;
+  color: var(--text-muted) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rp-quote {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent-fill);
+  border-radius: 4px 10px 10px 4px;
+  background: var(--wash);
+  font-size: 14.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--text-primary);
+}
+
+.ac-alert .rp-alert-fine {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.ac-alert.rp-alert > p {
+  text-align: center;
+}
+
+/* ---------- R2: Reply and Check reply pages ---------- */
+.rp-draftnote {
+  margin: -2px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.rp-field.is-page {
+  display: block;
+  width: 100%;
+  min-height: 200px;
+  max-height: none;
+  border-radius: 14px;
+  background: var(--surface-1);
+}
+
+label.m-section-title {
+  display: block;
+}
+
+.m-fine.rp-hint {
+  margin: 10px 4px 0;
+}
+
+.rp-head {
+  padding-top: 8px;
+}
+
+.rp-notice {
+  margin: 8px 0 0;
+}
+
+.ac-notice.rp-notice > .i {
+  color: var(--state-failed);
+}
+
+.ac-notice.rp-notice.is-warn > .i {
+  color: var(--handoff-needs-you);
+}
+
+.rp-group .m-row {
+  align-items: flex-start;
+}
+
+.rp-group .m-row > .i:first-child {
+  margin-top: 18px;
+}
+
+.rp-group .m-row-title {
+  -webkit-line-clamp: 3;
+}
+
+.rp-group .m-row-sub {
+  white-space: normal;
+}
+
+.rp-group .m-row.is-changed {
+  background: color-mix(in srgb, var(--handoff-needs-you) 12%, transparent);
+}
+
+.rp-group .m-row.is-gone .m-row-title {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.m-card.rp-msgcard p {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--text-primary);
+}
+
+.m-logo.rp-bad {
+  background: var(--state-failed);
+  color: #fff;
+}
+
+.m-logo.rp-unsure {
+  background: var(--handoff-needs-you);
+  color: #fff;
+}
