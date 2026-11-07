@@ -5,14 +5,14 @@ import { isPictureUrl, prototypeAssetRepo, parsePrototypeFilePath, prototypeFile
 import { canvasSize, isCanvasSize } from './canvasPreference.js';
 import type { CanvasSize } from './canvasPreference.js';
 import { escapeHtml } from './markdown.js';
-import { icon, BEAKER, CLOSE, EXTERNAL, CHEVRON, CHEVRON_RIGHT, CHECK } from './icons.js';
+import { icon, BEAKER, CLOSE, EXTERNAL, CHEVRON, CHEVRON_RIGHT, CHECK, REFRESH } from './icons.js';
 import { CanvasFeedback } from './canvasFeedback.js';
 import type { CanvasHit } from './canvasFeedback.js';
 import { PosterCache, canvasSkeletonHtml, posterSource } from './canvasPoster.js';
 import type { PosterLoader } from './canvasPoster.js';
 import { parseObjectAppLink } from '../objectLinks.js';
 import type { ObjectLink } from '../objectLinks.js';
-import { parseRepoPagePath } from '../repoRoutes.js';
+import { parseRepoPagePath, scopedApiPath } from '../repoRoutes.js';
 import { mountCanvasFocus } from './canvasFocus.js';
 
 export interface CanvasRoute {
@@ -250,13 +250,26 @@ export function readPinnedCanvasResponse(value: unknown, href: string, link: Obj
     && source.sha === link.revision.toLowerCase() && source.file === link.canvas ? route : null;
 }
 
+/**
+ * The same canvas file at the prototype branch's newest commit, or null when the URL is not a prototype file.
+ * `head` answers which commit the branch is on now.
+ */
+export async function newestCanvasUrl(url: string, head: (repo: string, branch: string) => Promise<string>): Promise<string | null> {
+  const at = url.search(/[?#]/);
+  const path = at < 0 ? url : url.slice(0, at);
+  const parsed = parsePrototypeFilePath(path);
+  if (!parsed) return null;
+  const sha = await head(parsed.repo, parsed.branch);
+  return prototypeFileUrl(parsed.repo, parsed.branch, parsed.file, sha) + (at < 0 ? '' : url.slice(at));
+}
+
 /** Owns one history entry. Options and size never push another one. */
 export class CanvasRouting {
   current: CanvasRoute | null = null;
   private closing = false;
   private closeTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(
-    private readonly history: Pick<History, 'pushState' | 'back'>,
+    private readonly history: Pick<History, 'pushState' | 'back'> & Partial<Pick<History, 'replaceState'>>,
     private readonly changed: (route: CanvasRoute | null) => void,
   ) {}
   open(route: CanvasRoute, href: string, state: unknown): void {
@@ -266,6 +279,14 @@ export class CanvasRouting {
     this.history.pushState({ ...(record(state) ? state : {}), wfCanvas: route }, '', url.pathname + url.search + url.hash);
     this.current = route;
     this.changed(route);
+  }
+  /** The open canvas moved to another URL (a newer round): its history entry follows, without a new one. */
+  retarget(route: CanvasRoute, href: string, state: unknown): void {
+    if (this.current === null) return;
+    const url = new URL(href);
+    url.searchParams.set('canvas', route.url);
+    this.history.replaceState?.({ ...(record(state) ? state : {}), wfCanvas: route }, '', url.pathname + url.search + url.hash);
+    this.current = route;
   }
   close(): void {
     if (this.current !== null && !this.closing) {
@@ -343,6 +364,7 @@ export function canvasToolbarHtml(
   source: string,
   menu: boolean,
   feedback: { bar: string; row: string; tabs: string } = { bar: '', row: '', tabs: '' },
+  refreshing = false,
 ): string {
   const page = pages.find((candidate) => candidate.id === pageId) ?? pages[0];
   const sizes = `<div class="segmented vw-sizes" role="group" aria-label="Canvas size">${(['full', 'pane', 'float'] as const).map((value) => `<button type="button" class="seg${value === size ? ' is-on' : ''}" data-size="${value}" aria-pressed="${value === size}" aria-label="${SIZE_LABEL[value]}" title="${SIZE_LABEL[value]}">${icon(SIZE_ICON[value])}</button>`).join('')}</div>`;
@@ -351,13 +373,17 @@ export function canvasToolbarHtml(
     size === 'float'
       ? ''
       : `<a class="iconbtn" href="${escapeHtml(route.github)}" target="_blank" rel="noreferrer" aria-label="Open the branch on GitHub">${icon(EXTERNAL)}</a>`;
+  // A new round is a new commit on the prototype branch; the open canvas stays on the commit it opened at until asked.
+  const refresh = isPictureUrl(route.url)
+    ? ''
+    : `<button type="button" class="iconbtn vw-refresh${refreshing ? ' is-busy' : ''}" data-refresh aria-label="${refreshing ? 'Loading the newest round' : 'Load the newest round'}" title="Load the newest round"${refreshing ? ' aria-disabled="true"' : ''}>${icon(REFRESH)}</button>`;
   const close = `<button type="button" class="${size === 'full' ? 'ghost' : 'iconbtn'} vw-close" data-close aria-label="Close the canvas">${icon(CLOSE)}${size === 'full' ? '<span class="vw-lbl">Close</span><kbd>Esc</kbd>' : ''}</button>`;
   const controls = page
     ? `<div class="vw-menu-anchor"><button type="button" class="ghost" data-menu aria-haspopup="menu" aria-expanded="${menu}" aria-label="Canvas page: ${escapeHtml(page.title)}">${escapeHtml(page.title)}${icon(CHEVRON)}</button><div class="vw-menu" role="menu" aria-label="Canvas pages"${menu ? '' : ' hidden'}>${pages.map((p) => `<button type="button" role="menuitemradio" aria-checked="${p.id === page.id}" data-page="${escapeHtml(p.id)}">${p.id === page.id ? icon(CHECK) : '<span class="i"></span>'}${escapeHtml(p.title)}<span class="vw-count">${p.options.length}</span></button>`).join('')}</div></div><div class="vw-strip"><button type="button" class="vw-strip-btn" data-scroll="-1" tabindex="-1" aria-hidden="true"><span class="vw-flip">${icon(CHEVRON_RIGHT)}</span></button><div class="segmented vw-options" role="group" aria-label="Show the board, or open one option full size"><button type="button" class="seg${optionId === null ? ' is-on' : ''}" data-go="" aria-pressed="${optionId === null}">Board</button>${page.options.map((o) => `<button type="button" class="seg${optionId === o.id ? ' is-on' : ''}" data-go="${escapeHtml(o.id)}" aria-pressed="${optionId === o.id}" title="${escapeHtml(o.name)}">${escapeHtml(o.id)}</button>`).join('')}</div><button type="button" class="vw-strip-btn" data-scroll="1" tabindex="-1" aria-hidden="true">${icon(CHEVRON_RIGHT)}</button></div>${optionId ? `<button type="button" class="iconbtn vw-step" data-step="-1" aria-label="Previous option"><span class="vw-flip">${icon(CHEVRON_RIGHT)}</span></button><button type="button" class="iconbtn vw-step" data-step="1" aria-label="Next option">${icon(CHEVRON_RIGHT)}</button><span class="vw-optname">${escapeHtml(page.options.find((o) => o.id === optionId)?.name ?? '')}</span>` : ''}`
     : `<span class="vw-status" role="status">${source === 'loading' ? 'Loading the canvas…' : source === 'page' ? 'Snapshot' : 'View only'}</span>`;
   return size === 'full'
-    ? `<div class="vw-bar is-a">${close}${title}<span class="vw-sep"></span>${controls}<span class="topbar-spacer"></span>${feedback.bar}${github}${sizes}</div>${feedback.row}`
-    : `<div class="vw-bar is-c"><div class="vw-c-row${size === 'float' ? ' vw-drag' : ''}">${title}<span class="topbar-spacer"></span>${github}${sizes}${close}</div><div class="vw-c-row">${controls}${feedback.tabs ? `<span class="topbar-spacer"></span>${feedback.tabs}` : ''}</div></div>${feedback.row}`;
+    ? `<div class="vw-bar is-a">${close}${title}<span class="vw-sep"></span>${controls}<span class="topbar-spacer"></span>${feedback.bar}${refresh}${github}${sizes}</div>${feedback.row}`
+    : `<div class="vw-bar is-c"><div class="vw-c-row${size === 'float' ? ' vw-drag' : ''}">${title}<span class="topbar-spacer"></span>${refresh}${github}${sizes}${close}</div><div class="vw-c-row">${controls}${feedback.tabs ? `<span class="topbar-spacer"></span>${feedback.tabs}` : ''}</div></div>${feedback.row}`;
 }
 
 /** Which ends of the option strip hide options; 1px of slack absorbs subpixel widths. */
@@ -379,7 +405,15 @@ const PREPARE_DWELL_MS = 120;
 export function mountCanvasViewer(
   app: HTMLElement,
   captureState?: () => () => void,
-  options: { loadPoster?: PosterLoader; isDestinationReady?: () => boolean; onDestinationError?: (message: string) => void } = {},
+  options: {
+    loadPoster?: PosterLoader;
+    isDestinationReady?: () => boolean;
+    onDestinationError?: (message: string) => void;
+    /** Says what a toolbar action did when the canvas itself shows no change. */
+    onNotice?: (message: string) => void;
+    /** Which commit a prototype branch is on now. Tests replace it. */
+    branchHead?: (repo: string, branch: string) => Promise<string>;
+  } = {},
 ): { isOpen: () => boolean } {
   const viewer = document.createElement('section');
   viewer.id = 'canvas-viewer';
@@ -467,7 +501,7 @@ export function mountCanvasViewer(
       document.activeElement instanceof HTMLElement && toolbar.contains(document.activeElement)
         ? [...document.activeElement.attributes].find((attr) => attr.name.startsWith('data-'))
         : undefined;
-    setTrustedHtml(toolbar, canvasToolbarHtml(routing.current, size, pages, pageId, optionId, source, menu, feedback.toolbarParts(size)));
+    setTrustedHtml(toolbar, canvasToolbarHtml(routing.current, size, pages, pageId, optionId, source, menu, feedback.toolbarParts(size), refreshing));
     // Repainting replaces the strip: keep its scroll on the same page, and bring a newly shown option into view.
     const strip = toolbar.querySelector<HTMLElement>('.vw-options');
     if (strip) strip.scrollLeft = pageId === stripPage ? stripScroll : 0;
@@ -597,6 +631,46 @@ export function mountCanvasViewer(
     // Kept apart from the timer above, which the canvas's `ready` clears: a resource that never finishes must not leave the viewer laid out.
     clearTimeout(settleTimer);
     settleTimer = setTimeout(settle, 3000);
+  };
+  let refreshing = false;
+  const branchHead =
+    options.branchHead ??
+    (async (repo: string, branch: string): Promise<string> => {
+      const response = await fetch(`${scopedApiPath(repo, 'prototype-head')}?branch=${encodeURIComponent(branch)}`, { cache: 'no-store' });
+      const body = (await response.json().catch(() => ({}))) as { sha?: unknown; error?: unknown };
+      if (!response.ok || typeof body.sha !== 'string') throw new Error(typeof body.error === 'string' ? body.error : 'GitHub did not answer.');
+      return body.sha;
+    });
+  /** Reloads the open canvas at its branch's newest commit, on the page and option showing now. */
+  const refresh = async (): Promise<void> => {
+    const route = routing.current;
+    if (!route || refreshing) return;
+    refreshing = true;
+    paint();
+    let url: string | null = null;
+    let failed: string | null = null;
+    try {
+      url = await newestCanvasUrl(route.url, branchHead);
+    } catch (error) {
+      failed = error instanceof Error ? error.message : String(error);
+    }
+    refreshing = false;
+    if (routing.current !== route) return paint();
+    const next = { ...route, url: url ?? route.url };
+    if (pageId) {
+      pendingAddress = { page: pageId, option: optionId ?? '' };
+      pendingFile = null;
+    }
+    if (next.url !== route.url) {
+      feedback.moveDrafts(route.url, next.url);
+      routing.retarget(next, location.href, history.state);
+    }
+    // Reloading the same commit still helps a canvas that stopped answering or drew wrong.
+    mountFrame(next, null);
+    feedback.reset();
+    paint();
+    if (failed) options.onNotice?.(`Could not check for a newer round, so the canvas reloaded as it was: ${failed}`);
+    else if (url === route.url) options.onNotice?.('This is already the newest round.');
   };
   const openFrame = (route: CanvasRoute): void => {
     pendingFile = route.file;
@@ -809,6 +883,10 @@ export function mountCanvasViewer(
     }
     if (button.hasAttribute('data-close')) {
       routing.close();
+      return;
+    }
+    if (button.hasAttribute('data-refresh')) {
+      void refresh();
       return;
     }
     if (isCanvasSize(button.dataset['size'])) {

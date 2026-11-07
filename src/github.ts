@@ -1151,6 +1151,14 @@ async function variantsOf(
   return { variants: prototypeVariantInfo(ticketNumber, shots, configSource, canvasDir, pages), pages: configSource === null ? [] : canvasCatalog(configSource) };
 }
 
+/** The commit a branch points at now, so a viewer pinned to an older round can move to the newest. */
+export async function fetchBranchHead(repo: string, branch: string): Promise<string> {
+  const ref = await ghJson<RawRef>(['api', `repos/${repo}/git/ref/heads/${branch.split('/').map(encodeURIComponent).join('/')}`]);
+  const sha = ref.object?.sha;
+  if (!sha || !/^[a-f0-9]{40}$/.test(sha)) throw new Error(`GitHub did not say which commit ${branch} is on.`);
+  return sha;
+}
+
 /** One file off the default branch, as raw bytes. */
 export async function fetchDefaultBranchFile(repo: string, file: string): Promise<Buffer> {
   const path = file.split('/').map(encodeURIComponent).join('/');

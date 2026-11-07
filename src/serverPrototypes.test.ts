@@ -43,12 +43,14 @@ const fetchMapDetails = vi.fn(async (_options: unknown, unread: readonly Wayfind
   maps: unread.map((candidate) => ({ ...candidate, tickets: map(candidate.number).tickets, ticketsLoaded: true })), warnings: [],
 }));
 const fetchBranchFile = vi.fn(async (repo: string, _branch: string, _file: string) => Buffer.from(`<h1>${repo}</h1>`));
+const fetchBranchHead = vi.fn(async (_repo: string, _branch: string) => 'b'.repeat(40));
 
 vi.mock('./github.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('./github.js')>(),
   fetchPrototypes: (repo: string, map: WayfinderMap) => fetchPrototypes(repo, map),
   fetchAllPrototypes: (repo: string, maps: readonly WayfinderMap[]) => fetchAllPrototypes(repo, maps),
   fetchBranchFile: (repo: string, branch: string, file: string) => fetchBranchFile(repo, branch, file),
+  fetchBranchHead: (repo: string, branch: string) => fetchBranchHead(repo, branch),
   fetchMaps: async () => ({ maps: [], warnings: [] }),
   haveMapTicketsChanged: async () => false,
   fetchMapDetails: (options: unknown, unread: readonly WayfinderMap[]) => fetchMapDetails(options, unread),
@@ -184,6 +186,22 @@ describe('prototypes on a repository-scoped server', () => {
     } finally {
       await new Promise<void>((resolve) => running.server.close(() => resolve()));
     }
+  });
+
+  it('tells the viewer which commit a prototype branch is on now, for its refresh button', async () => {
+    fetchBranchHead.mockClear();
+    const running = await serve();
+    try {
+      const head = `${running.url}/api/repos/octo/one/prototype-head`;
+      const ok = await fetch(`${head}?branch=${encodeURIComponent('prototype/7-x')}`);
+      expect(ok.status).toBe(200);
+      expect(await ok.json()).toEqual({ sha: 'b'.repeat(40) });
+      expect(fetchBranchHead).toHaveBeenCalledWith('octo/one', 'prototype/7-x');
+      for (const branch of ['main', 'prototype/../main', 'prototype/']) {
+        expect((await fetch(`${head}?branch=${encodeURIComponent(branch)}`)).status).toBe(400);
+      }
+      expect(fetchBranchHead).toHaveBeenCalledTimes(1);
+    } finally { await new Promise<void>((resolve) => running.server.close(() => resolve())); }
   });
 
   it('answers 404 for a map the repository does not have', async () => {

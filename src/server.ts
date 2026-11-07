@@ -22,7 +22,7 @@ import { parseModelChoice, TIERS } from './models.js';
 import type { ModelChoice, Tier } from './models.js';
 import { copyToClipboard } from './clipboard.js';
 import { DEFAULT_TEMPLATE, buildNewMapPrompt, buildPrompt, ticketBranch } from './prompt.js';
-import { PROTOTYPE_SHOTS_DIR, parsePrototypeFilePath, parsePrototypeShotPath, prototypeFileUrl } from './prototypes.js';
+import { PROTOTYPE_BRANCH_PREFIX, PROTOTYPE_SHOTS_DIR, parsePrototypeFilePath, parsePrototypeShotPath, prototypeFileUrl } from './prototypes.js';
 import { detectT3, handOff } from './t3.js';
 import type { T3HandOff, T3Runtime } from './t3.js';
 import type { Config } from './config.js';
@@ -31,7 +31,7 @@ import { markPullRequests } from './mapWatch.js';
 import type { MapEvent } from './mapWatch.js';
 import { listRepositories, loadHomeState, readAccount } from './home.js';
 import type { HomeAccount, HomeState } from './home.js';
-import { fetchAllPrototypes, fetchBranchFile, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, fetchTicketWithParent, gh, ghProblem, postIssueComment } from './github.js';
+import { fetchAllPrototypes, fetchBranchFile, fetchBranchHead, fetchDefaultBranchFile, fetchPrototypes, fetchTicket, fetchTicketWithParent, gh, ghProblem, postIssueComment } from './github.js';
 import { canvasNotesThreadMessage, isCanvasNotesComment, isTicketCommentUrl } from './canvasNotes.js';
 import { viewerPrototypeBytes } from './canvasBridge.js';
 import { PrototypeFileCache } from './prototypeFileCache.js';
@@ -1355,6 +1355,20 @@ export async function startServer({
         return;
       }
 
+      if (requestedRepo !== null && scoped?.action === 'prototype-head' && request.method === 'GET') {
+        const branch = requestUrl.searchParams.get('branch') ?? '';
+        if (!branch.startsWith(PROTOTYPE_BRANCH_PREFIX) || branch.split('/').some((part) => part === '' || part === '.' || part === '..')) {
+          json(response, 400, { error: 'Name a prototype branch with ?branch=prototype/<name>.' });
+          return;
+        }
+        try {
+          json(response, 200, { sha: await fetchBranchHead(requestedRepo, branch) });
+        } catch (error) {
+          json(response, 502, { error: (error as Error).message });
+        }
+        return;
+      }
+
       if (requestedRepo !== null && scoped?.action === 'events' && request.method === 'GET') {
         const mapNumber = Number(requestUrl.searchParams.get('map'));
         if (!Number.isSafeInteger(mapNumber) || mapNumber <= 0) {
@@ -1823,7 +1837,7 @@ export async function startServer({
 }
 
 function parseScopedApiPath(path: string): { repo: string; action: ScopedApiAction } | null {
-  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow|start-next|auto-rate|canvas-notes|canvas-thread)$/.exec(path);
+  const match = /^\/api(\/repos\/[^/]+\/[^/]+)\/(snapshot|hand-off|new-map|prototypes|ticket|workspace|clone|icon|events|settle|follow|start-next|auto-rate|canvas-notes|canvas-thread|prototype-head)$/.exec(path);
   if (match?.[1] === undefined || match[2] === undefined) return null;
   const route = parseRepoPagePath(match[1]);
   if (route === null || route.mapNumber !== null) return null;
