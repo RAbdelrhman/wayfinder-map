@@ -433,6 +433,22 @@ describe('verifier findings on #213', () => {
     expect(view.feedback.comment()).toBe(notes.replaceAll('a'.repeat(40), 'b'.repeat(40)).replace('@ `aaaaaaa`', '@ `bbbbbbb`'));
   });
 
+  it('adds the old round’s unposted notes to notes already started on the newest round', () => {
+    const view = mount({});
+    const before = view.context.url;
+    const next = before.replace(/[a-f0-9]{40}/, 'b'.repeat(40));
+    view.context.url = next;
+    view.click('[data-fb-tool="note"]');
+    view.context.url = before;
+    view.click('[data-fb-tool="note"]');
+    view.click('[data-fb-tool="note"]');
+    view.feedback.moveDrafts(before, next);
+    view.context.url = next;
+    expect(view.feedback.comment().match(/note on the whole option/g)).toHaveLength(3);
+    view.context.url = before;
+    expect(view.feedback.comment()).not.toContain('note on the whole option');
+  });
+
   it('picks the target clicked, and keeps its focus when scrolling drops others, even with repeated names', () => {
     const view = mount({ size: 'pane' });
     view.click('[data-fb-tool="element"]');

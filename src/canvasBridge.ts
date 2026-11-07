@@ -149,7 +149,8 @@ function canvasBridge(normalize: typeof normalizeShortcut, fromEvent: typeof sho
     if (!start || start === document.body || start === document.documentElement) return null;
     // A field is itself, named as its label or placeholder names it.
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(start.tagName)) {
-      const label = start.getAttribute('aria-label') ?? start.closest('label')?.textContent ?? start.getAttribute('placeholder');
+      const labels = (start as HTMLInputElement).labels;
+      const label = start.getAttribute('aria-label') ?? (labels?.length ? labels[0]?.textContent : null) ?? start.closest('label')?.textContent ?? start.getAttribute('placeholder');
       return { name: label?.trim() ? clip(label) : start.tagName.toLowerCase(), element: start };
     }
     // A click on a control's icon or label means the control. A block inside it (a row built as one button) stays itself.

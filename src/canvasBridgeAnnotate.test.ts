@@ -67,7 +67,7 @@ describe('wrapper hit tests and marks (#213)', () => {
       <a href="#x" aria-label="Open settings"><i id="cog"></i></a>
       <div class="card"><h3>Session</h3><div id="icon"></div></div>
       <button id="row"><div id="title" style="display: block">#230 Prototype</div><div style="display: flex"><span id="chip">Running</span></div><span id="kind" style="display: block">T3 Code needs you</span></button>
-      <label id="field">Name <input id="name"></label></main>`);
+      <label id="field">Name <input id="name"></label><label for="email">Email</label><input id="email"></main>`);
     const hit = (el: Element, requestId: number): Record<string, unknown> => {
       document.elementFromPoint = () => el;
       page.from({ type: 'hitTest', requestId, x: 10, y: 20 });
@@ -80,7 +80,8 @@ describe('wrapper hit tests and marks (#213)', () => {
     // A row built as one button: its parts stay pickable.
     expect(hit(document.querySelector('#chip')!, 5)).toMatchObject({ name: 'Running', selector: '#chip' });
     expect(hit(document.querySelector('#title')!, 6)).toMatchObject({ selector: '#title' });
-    expect(hit(document.querySelector('#name')!, 7)).toMatchObject({ selector: '#name' });
+    expect(hit(document.querySelector('#name')!, 7)).toMatchObject({ name: 'Name', selector: '#name' });
+    expect(hit(document.querySelector('#email')!, 9)).toMatchObject({ name: 'Email', selector: '#email' });
     // Laid out as a block, a span is a part of the row too.
     expect(hit(document.querySelector('#kind')!, 8)).toMatchObject({ name: 'T3 Code needs you', selector: '#kind' });
   });

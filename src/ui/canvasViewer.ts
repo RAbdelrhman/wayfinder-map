@@ -501,7 +501,7 @@ export function mountCanvasViewer(
       document.activeElement instanceof HTMLElement && toolbar.contains(document.activeElement)
         ? [...document.activeElement.attributes].find((attr) => attr.name.startsWith('data-'))
         : undefined;
-    setTrustedHtml(toolbar, canvasToolbarHtml(routing.current, size, pages, pageId, optionId, source, menu, feedback.toolbarParts(size), refreshing));
+    setTrustedHtml(toolbar, canvasToolbarHtml(routing.current, size, pages, pageId, optionId, source, menu, feedback.toolbarParts(size), refreshing !== null && refreshing === routing.current));
     // Repainting replaces the strip: keep its scroll on the same page, and bring a newly shown option into view.
     const strip = toolbar.querySelector<HTMLElement>('.vw-options');
     if (strip) strip.scrollLeft = pageId === stripPage ? stripScroll : 0;
@@ -632,11 +632,15 @@ export function mountCanvasViewer(
     clearTimeout(settleTimer);
     settleTimer = setTimeout(settle, 3000);
   };
-  let refreshing = false;
+  /** The canvas whose newest round is being asked for: another canvas opened meanwhile is not busy. */
+  let refreshing: CanvasRoute | null = null;
   const branchHead =
     options.branchHead ??
     (async (repo: string, branch: string): Promise<string> => {
-      const response = await fetch(`${scopedApiPath(repo, 'prototype-head')}?branch=${encodeURIComponent(branch)}`, { cache: 'no-store' });
+      // A stalled GitHub read must not leave the button busy: give up and reload what is open.
+      const response = await fetch(`${scopedApiPath(repo, 'prototype-head')}?branch=${encodeURIComponent(branch)}`, { cache: 'no-store', signal: AbortSignal.timeout(15_000) }).catch((error: unknown) => {
+        throw new Error(error instanceof DOMException && error.name === 'TimeoutError' ? 'GitHub took too long to answer.' : 'The Wayfinder server did not answer.');
+      });
       const body = (await response.json().catch(() => ({}))) as { sha?: unknown; error?: unknown };
       if (!response.ok || typeof body.sha !== 'string') throw new Error(typeof body.error === 'string' ? body.error : 'GitHub did not answer.');
       return body.sha;
@@ -644,8 +648,8 @@ export function mountCanvasViewer(
   /** Reloads the open canvas at its branch's newest commit, on the page and option showing now. */
   const refresh = async (): Promise<void> => {
     const route = routing.current;
-    if (!route || refreshing) return;
-    refreshing = true;
+    if (!route || refreshing === route) return;
+    refreshing = route;
     paint();
     let url: string | null = null;
     let failed: string | null = null;
@@ -654,7 +658,7 @@ export function mountCanvasViewer(
     } catch (error) {
       failed = error instanceof Error ? error.message : String(error);
     }
-    refreshing = false;
+    if (refreshing === route) refreshing = null;
     if (routing.current !== route) return paint();
     const next = { ...route, url: url ?? route.url };
     if (pageId) {

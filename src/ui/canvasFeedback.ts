@@ -864,9 +864,16 @@ export class CanvasFeedback {
   /** The canvas moved to a newer round: notes not yet posted go with it, so a refresh never drops a draft. */
   moveDrafts(from: string, to: string): void {
     const session = this.sessions.get(from);
-    if (from === to || !session || session.posted || session.marks.length === 0 || this.sessions.get(to)?.marks.length) return;
-    this.sessions.set(to, session);
+    if (from === to || !session || session.posted || session.marks.length === 0) return;
+    const there = this.sessions.get(to);
     this.sessions.delete(from);
+    if (!there) {
+      this.sessions.set(to, session);
+      return;
+    }
+    // The newer round already has a session: add these notes to it, and keep what it last posted.
+    there.marks.push(...session.marks);
+    there.posted = null;
   }
   reset(): void {
     this.tool = null;

@@ -317,6 +317,26 @@ describe('loading the newest round', () => {
     expect(viewer.querySelector('[data-refresh]')?.classList.contains('is-busy')).toBe(false);
   });
 
+  it('does not leave another canvas busy while an earlier canvas’s answer is still on its way', async () => {
+    let answer: (sha: string) => void = () => undefined;
+    const branchHead = vi.fn(() => new Promise<string>((resolve) => { answer = resolve; }));
+    const notices: string[] = [];
+    const { app, viewer } = setup(undefined, false, { branchHead, onNotice: (message) => notices.push(message) });
+    entryFor(app, 42).click();
+    viewer.querySelector<HTMLElement>('[data-refresh]')!.click();
+    document.querySelector<HTMLButtonElement>('[data-close]')!.click();
+    vi.advanceTimersByTime(300);
+    // Reopening cancels the close animation; browsers treat that rejection as handled, happy-dom does not.
+    for (const animation of viewer.getAnimations()) animation.finished.catch(() => undefined);
+    entryFor(app, 43).click();
+    expect(viewer.querySelector('[data-refresh]')?.classList.contains('is-busy')).toBe(false);
+    viewer.querySelector<HTMLElement>('[data-refresh]')!.click();
+    expect(branchHead).toHaveBeenCalledTimes(2);
+    answer(NEW);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(frames()[0]!.getAttribute('src')).toBe(board(43).replace(SHA, NEW));
+  });
+
   it('shows the button busy while it asks, and ignores a second press', async () => {
     let answer: (sha: string) => void = () => undefined;
     const branchHead = vi.fn(() => new Promise<string>((resolve) => { answer = resolve; }));
