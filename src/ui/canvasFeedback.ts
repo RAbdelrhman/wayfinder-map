@@ -861,6 +861,20 @@ export class CanvasFeedback {
     }
   }
   /** A new canvas opened in the viewer. */
+  /** The canvas moved to a newer round: notes not yet posted go with it, so a refresh never drops a draft. */
+  moveDrafts(from: string, to: string): void {
+    const session = this.sessions.get(from);
+    if (from === to || !session || session.posted || session.marks.length === 0) return;
+    const there = this.sessions.get(to);
+    this.sessions.delete(from);
+    if (!there) {
+      this.sessions.set(to, session);
+      return;
+    }
+    // The newer round already has a session: add these notes to it, and keep what it last posted.
+    there.marks.push(...session.marks);
+    there.posted = null;
+  }
   reset(): void {
     this.tool = null;
     this.editing = null;
@@ -1133,6 +1147,14 @@ export class CanvasFeedback {
       const d = button.dataset;
       if (d['openHandoff'] !== undefined && this.barSlot.contains(button)) return void this.openThread(d['openHandoff']);
       if (d['fbTarget'] !== undefined && (this.tool === 'element' || this.tool === 'color')) {
+        // A pointer picks what is under it. Only Enter or Space on a focused target picks the target's centre:
+        // a target can be a whole section, and its centre is usually some other element.
+        const pointer = event as MouseEvent;
+        if (pointer.detail > 0) {
+          const box = this.canvas.getBoundingClientRect();
+          this.request(this.tool, pointer.clientX - box.left, pointer.clientY - box.top);
+          return;
+        }
         const picked = this.targets.find((candidate) => candidate.key === d['fbTarget']);
         if (picked) this.request(this.tool, picked.rect.left + picked.rect.width / 2, picked.rect.top + picked.rect.height / 2);
         return;

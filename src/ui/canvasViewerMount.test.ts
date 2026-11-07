@@ -19,7 +19,7 @@ const GLOBALS = [
 
 let browser: Window;
 /** Each test gets its own window: the viewer registers document and window listeners that cannot be removed. */
-function setup(loadPoster?: PosterLoader, withPoster = false): { app: HTMLElement; viewer: HTMLElement } {
+function setup(loadPoster?: PosterLoader, withPoster = false, extra: Parameters<typeof mountCanvasViewer>[2] = {}): { app: HTMLElement; viewer: HTMLElement } {
   browser = new Window({ url: 'http://127.0.0.1:4479/repos/octo/repo/maps/205', settings: { disableIframePageLoading: true } });
   for (const name of GLOBALS) vi.stubGlobal(name, browser[name]);
   vi.stubGlobal('window', browser);
@@ -28,7 +28,7 @@ function setup(loadPoster?: PosterLoader, withPoster = false): { app: HTMLElemen
   setTrustedHtml(app, `${entry(42)}${entry(43)}<iframe class="decision-variant-page" tabindex="-1" aria-hidden="true" title=""></iframe>`);
   document.body.append(app);
   if (withPoster) app.querySelector<HTMLElement>('[data-canvas-url]')!.dataset['canvasPoster'] = board(42).replace('index.html', 'assets/poster.webp');
-  mountCanvasViewer(app, undefined, loadPoster ? { loadPoster } : {});
+  mountCanvasViewer(app, undefined, { ...(loadPoster ? { loadPoster } : {}), ...extra });
   return { app, viewer: document.querySelector<HTMLElement>('#canvas-viewer')! };
 }
 const on = (target: Element, type: string): void => {
@@ -270,5 +270,90 @@ describe('preparing the canvas before the click', () => {
     expect(viewer.classList.contains('is-warm')).toBe(false);
     expect(viewer.hidden).toBe(true);
     expect(viewer.inert).toBe(true);
+  });
+});
+
+describe('loading the newest round', () => {
+  const NEW = 'b'.repeat(40);
+  const open = (extra: Parameters<typeof mountCanvasViewer>[2]): { viewer: HTMLElement; notices: string[] } => {
+    const notices: string[] = [];
+    const { app, viewer } = setup(undefined, false, { onNotice: (message) => notices.push(message), ...extra });
+    entryFor(app, 42).click();
+    return { viewer, notices };
+  };
+  const refresh = async (viewer: HTMLElement): Promise<void> => {
+    viewer.querySelector<HTMLElement>('[data-refresh]')!.click();
+    await vi.advanceTimersByTimeAsync(0);
+  };
+
+  it('reloads the open canvas at the branch’s newest commit and keeps its history entry on it', async () => {
+    const branchHead = vi.fn(async () => NEW);
+    const { viewer, notices } = open({ branchHead });
+    const before = history.length;
+    expect(viewer.querySelector('[data-refresh]')?.getAttribute('aria-label')).toBe('Load the newest round');
+    await refresh(viewer);
+    expect(branchHead).toHaveBeenCalledWith('octo/repo', 'prototype/42-home');
+    expect(frames()).toHaveLength(1);
+    expect(frames()[0]!.getAttribute('src')).toBe(board(42).replace(SHA, NEW));
+    expect(new URL(location.href).searchParams.get('canvas')).toBe(board(42).replace(SHA, NEW));
+    expect(history.length).toBe(before);
+    expect(notices).toEqual([]);
+  });
+
+  it('says so when the canvas is already on the newest round, and reloads it anyway', async () => {
+    const { viewer, notices } = open({ branchHead: async () => SHA });
+    const first = frames()[0];
+    await refresh(viewer);
+    expect(frames()[0]).not.toBe(first);
+    expect(frames()[0]!.getAttribute('src')).toBe(board(42));
+    expect(notices).toEqual(['This is already the newest round.']);
+  });
+
+  it('reloads the same round and says why when GitHub cannot be asked', async () => {
+    const { viewer, notices } = open({ branchHead: async () => { throw new Error('rate limited'); } });
+    await refresh(viewer);
+    expect(frames()[0]!.getAttribute('src')).toBe(board(42));
+    expect(notices).toEqual(['Could not check for a newer round, so the canvas reloaded as it was: rate limited']);
+    expect(viewer.querySelector('[data-refresh]')?.classList.contains('is-busy')).toBe(false);
+  });
+
+  it('does not leave another canvas busy while an earlier canvas’s answer is still on its way', async () => {
+    let answer: (sha: string) => void = () => undefined;
+    const branchHead = vi.fn(() => new Promise<string>((resolve) => { answer = resolve; }));
+    const notices: string[] = [];
+    const { app, viewer } = setup(undefined, false, { branchHead, onNotice: (message) => notices.push(message) });
+    entryFor(app, 42).click();
+    viewer.querySelector<HTMLElement>('[data-refresh]')!.click();
+    document.querySelector<HTMLButtonElement>('[data-close]')!.click();
+    vi.advanceTimersByTime(300);
+    // Reopening cancels the close animation; browsers treat that rejection as handled, happy-dom does not.
+    for (const animation of viewer.getAnimations()) animation.finished.catch(() => undefined);
+    entryFor(app, 43).click();
+    expect(viewer.querySelector('[data-refresh]')?.classList.contains('is-busy')).toBe(false);
+    viewer.querySelector<HTMLElement>('[data-refresh]')!.click();
+    expect(branchHead).toHaveBeenCalledTimes(2);
+    answer(NEW);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(frames()[0]!.getAttribute('src')).toBe(board(43).replace(SHA, NEW));
+  });
+
+  it('keeps the canvas pinned when the newest commit comes back malformed', async () => {
+    const { viewer, notices } = open({ branchHead: async () => 'HEAD' });
+    await refresh(viewer);
+    expect(frames()[0]!.getAttribute('src')).toBe(board(42));
+    expect(notices).toEqual(['Could not check for a newer round, so the canvas reloaded as it was: GitHub did not say which commit the branch is on.']);
+  });
+
+  it('shows the button busy while it asks, and ignores a second press', async () => {
+    let answer: (sha: string) => void = () => undefined;
+    const branchHead = vi.fn(() => new Promise<string>((resolve) => { answer = resolve; }));
+    const { viewer } = open({ branchHead });
+    viewer.querySelector<HTMLElement>('[data-refresh]')!.click();
+    expect(viewer.querySelector('[data-refresh]')?.classList.contains('is-busy')).toBe(true);
+    viewer.querySelector<HTMLElement>('[data-refresh]')!.click();
+    expect(branchHead).toHaveBeenCalledTimes(1);
+    answer(NEW);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(frames()[0]!.getAttribute('src')).toBe(board(42).replace(SHA, NEW));
   });
 });

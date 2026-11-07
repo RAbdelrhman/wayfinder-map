@@ -7914,7 +7914,9 @@ textarea.input {
 .vw-close-ghost { position: fixed; z-index: 101; background: var(--plane); border: 1px solid var(--hairline); pointer-events: none; transform-origin: top left; }
 .vw-close-ghost img { width: 100%; height: 100%; object-fit: contain; }
 .vw-flip { display: inline-flex; transform: scaleX(-1); }
-@media (prefers-reduced-motion: reduce) { .vw-frame, .vw-grip::after { transition: none; } }
+.vw-refresh.is-busy { cursor: progress; }
+.vw-refresh.is-busy .i { animation: spin 0.8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .vw-frame, .vw-grip::after { transition: none; } .vw-refresh.is-busy .i { animation: none; opacity: 0.5; } }
 .map-inbox-filters {
   display: flex;
   gap: 6px;
@@ -8230,8 +8232,9 @@ body.is-touring { overflow: hidden; }
 .cf-layer > *, .cf-poplayer > * { pointer-events: auto; }
 .cf-capture { position: absolute; inset: 0; z-index: 0; outline: 2px dashed var(--state-claimed); outline-offset: -4px; cursor: crosshair; }
 .vw-canvas.is-selecting .cf-capture { z-index: 4; cursor: pointer; }
-.cf-target { position: absolute; z-index: 5; padding: 0; border: 2px dashed transparent; border-radius: 6px; background: none; cursor: pointer; }
-.cf-target:hover, .cf-target:focus-visible { border-color: var(--state-claimed); background: color-mix(in srgb, var(--state-claimed) 10%, transparent); outline: none; }
+/* Targets are for Tab and Enter. The pointer passes through to the capture layer, which picks the exact point. */
+.cf-target { position: absolute; z-index: 5; padding: 0; border: 2px dashed transparent; border-radius: 6px; background: none; pointer-events: none; }
+.cf-target:focus-visible { border-color: var(--state-claimed); background: color-mix(in srgb, var(--state-claimed) 10%, transparent); outline: none; }
 .cf-target span { position: absolute; top: -26px; left: -2px; display: none; padding: 2px 8px; border-radius: 6px; background: #1b1b1a; color: #f3f2ee; font-size: 12px; white-space: nowrap; }
 .cf-target:focus-visible span { display: inline-block; }
 .cf-hover { position: absolute; z-index: 6; border: 2px solid var(--state-claimed); border-radius: 6px; background: color-mix(in srgb, var(--state-claimed) 10%, transparent); pointer-events: none !important; }

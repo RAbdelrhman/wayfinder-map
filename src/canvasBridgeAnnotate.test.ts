@@ -49,8 +49,9 @@ describe('wrapper hit tests and marks (#213)', () => {
       page.from({ type: 'hitTest', requestId, x: 10, y: 20, palette });
       return page.sent('hit').find((message) => message['requestId'] === requestId)!;
     };
-    const card = hit(document.querySelector('#long')!, 1);
-    expect(card).toMatchObject({ wf: 1, name: 'Continue card', selector: '#long' });
+    // A paragraph clicked on is that paragraph: its own words name it, not the card around it.
+    const paragraph = hit(document.querySelector('#long')!, 1);
+    expect(paragraph).toMatchObject({ wf: 1, name: 'A paragraph that runs well past forty c…', selector: '#long' });
     expect(hit(document.querySelector('button')!, 2)['name']).toBe('Close the hero');
     const span = hit(document.querySelector('span')!, 3, true);
     expect(span).toMatchObject({ name: 'Go', color: '#2f6fd0', selector: 'body > main > span' });
@@ -59,6 +60,30 @@ describe('wrapper hit tests and marks (#213)', () => {
     const bare = hit(document.body, 4);
     expect(bare).toMatchObject({ name: null, selector: null, color: null, rect: null });
     expect(typeof bare['x']).toBe('number');
+  });
+
+  it('picks the control a click lands in, not the icon or label inside it, and keeps an unnamed part of a card', () => {
+    const page = boot(`<main><button id="map"><svg><path id="glyph"></path></svg><span id="label">Map</span></button>
+      <a href="#x" aria-label="Open settings"><i id="cog"></i></a>
+      <div class="card"><h3>Session</h3><div id="icon"></div></div>
+      <button id="row"><div id="title" style="display: block">#230 Prototype</div><div style="display: flex"><span id="chip">Running</span></div><span id="kind" style="display: block">T3 Code needs you</span></button>
+      <label id="field">Name <input id="name"></label><label for="email">Email</label><input id="email"></main>`);
+    const hit = (el: Element, requestId: number): Record<string, unknown> => {
+      document.elementFromPoint = () => el;
+      page.from({ type: 'hitTest', requestId, x: 10, y: 20 });
+      return page.sent('hit').find((message) => message['requestId'] === requestId)!;
+    };
+    expect(hit(document.querySelector('#label')!, 1)).toMatchObject({ name: 'Map', selector: '#map' });
+    expect(hit(document.querySelector('#glyph')!, 2)).toMatchObject({ name: 'Map', selector: '#map' });
+    expect(hit(document.querySelector('#cog')!, 3)).toMatchObject({ name: 'Open settings', selector: 'body > main > a' });
+    expect(hit(document.querySelector('#icon')!, 4)).toMatchObject({ name: 'div in Session card', selector: '#icon' });
+    // A row built as one button: its parts stay pickable.
+    expect(hit(document.querySelector('#chip')!, 5)).toMatchObject({ name: 'Running', selector: '#chip' });
+    expect(hit(document.querySelector('#title')!, 6)).toMatchObject({ selector: '#title' });
+    expect(hit(document.querySelector('#name')!, 7)).toMatchObject({ name: 'Name', selector: '#name' });
+    expect(hit(document.querySelector('#email')!, 9)).toMatchObject({ name: 'Email', selector: '#email' });
+    // Laid out as a block, a span is a part of the row too.
+    expect(hit(document.querySelector('#kind')!, 8)).toMatchObject({ name: 'T3 Code needs you', selector: '#kind' });
   });
 
   it('keeps a pin on its element, and scrolls the inner pane under the pointer', async () => {

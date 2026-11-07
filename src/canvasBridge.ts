@@ -139,23 +139,48 @@ function canvasBridge(normalize: typeof normalizeShortcut, fromEvent: typeof sho
     return flat.length > 40 ? `${flat.slice(0, 39)}…` : flat;
   };
   const LEAF = /^(BUTTON|A|H[1-6]|LABEL|SUMMARY|LEGEND|TH|TD|LI|P|SPAN|STRONG|B|EM|SMALL|DT|DD|FIGCAPTION|CAPTION|OPTION)$/;
+  const CONTROL = 'button, a, label, summary, select, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="radio"], [role="switch"]';
   const BOX = /^(SECTION|ARTICLE|ASIDE|NAV|HEADER|FOOTER|MAIN|FORM|DIALOG|LI|DIV|FIELDSET)$/;
-  /** A name a person would use: its label, its short text, or "<heading> card" for a box with a heading. */
-  const nameOf = (start: Element | null): string | null => {
+  /**
+   * A name a person would use (its label, its short text, or "<heading> card" for a box with a heading),
+   * and the element picked: a labelled control or short text is picked whole, not the icon or span inside it.
+   */
+  const describe = (start: Element | null): { name: string; element: Element } | null => {
     if (!start || start === document.body || start === document.documentElement) return null;
+    // A field is itself, named as its label or placeholder names it.
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(start.tagName)) {
+      const labels = (start as HTMLInputElement).labels;
+      const label = start.getAttribute('aria-label') ?? (labels?.length ? labels[0]?.textContent : null) ?? start.closest('label')?.textContent ?? start.getAttribute('placeholder');
+      return { name: label?.trim() ? clip(label) : start.tagName.toLowerCase(), element: start };
+    }
+    // A click on a control's icon or label means the control. A block inside it (a row built as one button) stays itself.
+    let control = start.closest(CONTROL);
+    for (let node: Element | null = start; control && node && node !== control; node = node.parentElement)
+      // An empty display is a document without layout: nothing there says the part is a block.
+      if (!/^(inline|contents|$)/.test(getComputedStyle(node).display)) control = null;
+    if (control) {
+      const label = control.getAttribute('aria-label') ?? control.getAttribute('title');
+      const text = (control.textContent ?? '').trim();
+      return { name: label?.trim() ? clip(label) : text ? clip(text) : control.tagName.toLowerCase(), element: control };
+    }
     for (let node: Element | null = start; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
       const label = node.getAttribute('aria-label') ?? node.getAttribute('title') ?? node.getAttribute('alt');
-      if (label?.trim()) return clip(label);
+      if (label?.trim()) return { name: clip(label), element: node };
       const text = (node.textContent ?? '').trim();
-      if (text && text.length <= 40 && LEAF.test(node.tagName)) return clip(text);
+      if (text && text.length <= 40 && LEAF.test(node.tagName)) return { name: clip(text), element: node };
+      // Words clicked on are what was picked (a paragraph, a title), not the card around them.
+      if (node === start && [...node.childNodes].some((child) => child.nodeType === 3 && child.textContent?.trim())) return { name: clip(text), element: node };
       const heading = BOX.test(node.tagName) ? node.querySelector('h1, h2, h3, h4, h5, h6, [role="heading"]') : null;
       if (heading?.textContent?.trim()) {
         const kind = /^(DIV|LI|ARTICLE)$/.test(node.tagName) ? 'card' : node.tagName.toLowerCase();
-        return clip(`${heading.textContent} ${kind}`);
+        const box = clip(`${heading.textContent} ${kind}`);
+        // The card names an unnamed part of it, but the part is still what was picked.
+        return { name: node === start ? box : `${start.tagName.toLowerCase()} in ${box}`, element: start };
       }
     }
-    return start.tagName.toLowerCase();
+    return { name: start.tagName.toLowerCase(), element: start };
   };
+  const nameOf = (start: Element | null): string | null => describe(start)?.name ?? null;
   const selectorOf = (start: Element): string => {
     const parts: string[] = [];
     for (let node: Element | null = start; node && node !== document.documentElement; node = node.parentElement) {
@@ -202,16 +227,16 @@ function canvasBridge(normalize: typeof normalizeShortcut, fromEvent: typeof sho
   const rectOf = (rect: Rect): Rect => ({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
   const offset = (rect: Rect, by: Rect): Rect => ({ ...rect, left: rect.left + by.left, top: rect.top + by.top });
   const hitHere = (requestId: number, x: number, y: number, colors: boolean): void => {
-    const hit = document.elementFromPoint(x, y);
+    const named = describe(document.elementFromPoint(x, y));
     const size = docSize();
-    const element = hit && hit !== document.body && hit !== document.documentElement ? hit : null;
+    const element = named?.element ?? null;
     const box = element?.getBoundingClientRect();
     post({
       type: 'hit',
       requestId,
       x: (x + scrollX) / size.width,
       y: (y + scrollY) / size.height,
-      name: nameOf(element),
+      name: named?.name ?? null,
       selector: element ? selectorOf(element) : null,
       color: element ? colorOf(element) : null,
       rect: element ? rectOf(element.getBoundingClientRect()) : null,

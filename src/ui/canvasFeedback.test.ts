@@ -406,6 +406,49 @@ describe('verifier findings on #213', () => {
     expect(view.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'hitTest', x: 200, y: 80 }));
   });
 
+  it('picks the point a pointer clicks, not the centre of the named box around it', async () => {
+    const view = mount({ size: 'pane' });
+    view.click('[data-fb-tool="element"]');
+    view.feedback.onLayout([], { left: 0, top: 0, width: 800, height: 600 });
+    view.feedback.onTargets([{ name: 'Session section', selector: '#session', rect: { left: 0, top: 0, width: 400, height: 400 } }]);
+    view.send.mockClear();
+    // A mouse click carries a click count; Enter and Space on a focused target do not.
+    view.$('[data-fb-target="#session"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1, clientX: 30, clientY: 50 }));
+    expect(view.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'hitTest', x: 30, y: 50 }));
+    const { readFile } = await import('node:fs/promises');
+    const css = await readFile(`${process.cwd()}/src/ui/styles.css`, 'utf8');
+    // The targets are for the keyboard; the pointer passes through them to the capture layer.
+    expect(/\.cf-target \{[^}]*pointer-events: none/.exec(css)).not.toBeNull();
+  });
+
+  it('carries unposted notes to the newest round when the canvas reloads on a newer commit', () => {
+    const view = mount({});
+    view.click('[data-fb-tool="note"]');
+    const before = view.context.url;
+    const notes = view.feedback.comment();
+    expect(notes).not.toBe('');
+    const next = before.replace(/[a-f0-9]{40}/, 'b'.repeat(40));
+    view.feedback.moveDrafts(before, next);
+    view.context.url = next;
+    expect(view.feedback.comment()).toBe(notes.replaceAll('a'.repeat(40), 'b'.repeat(40)).replace('@ `aaaaaaa`', '@ `bbbbbbb`'));
+  });
+
+  it('adds the old round’s unposted notes to notes already started on the newest round', () => {
+    const view = mount({});
+    const before = view.context.url;
+    const next = before.replace(/[a-f0-9]{40}/, 'b'.repeat(40));
+    view.context.url = next;
+    view.click('[data-fb-tool="note"]');
+    view.context.url = before;
+    view.click('[data-fb-tool="note"]');
+    view.click('[data-fb-tool="note"]');
+    view.feedback.moveDrafts(before, next);
+    view.context.url = next;
+    expect(view.feedback.comment().match(/note on the whole option/g)).toHaveLength(3);
+    view.context.url = before;
+    expect(view.feedback.comment()).not.toContain('note on the whole option');
+  });
+
   it('picks the target clicked, and keeps its focus when scrolling drops others, even with repeated names', () => {
     const view = mount({ size: 'pane' });
     view.click('[data-fb-tool="element"]');

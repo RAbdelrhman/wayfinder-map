@@ -206,7 +206,7 @@ const canvasViewer = mountCanvasViewer(els.app, () => {
       renderInspector();
     }
   };
-}, { isDestinationReady: () => snapshot !== null && !initialRouteTicketPending, onDestinationError: message => toast(message, 9000) });
+}, { isDestinationReady: () => snapshot !== null && !initialRouteTicketPending, onDestinationError: message => toast(message, 9000), onNotice: message => toast(message, 6000) });
 const handOffSurface = mountHandOffs();
 const notificationInbox = mountNotificationInbox();
 let notificationSettings: NotificationSettings = { ...DEFAULT_NOTIFICATION_SETTINGS };
