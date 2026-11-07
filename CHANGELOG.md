@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.27](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.26...v0.2.27) (2026-11-06)
+
+
+### Features
+
+* embed full canvas with persisted Wayfinder feedback ([#382](https://github.com/RAbdelrhman/wayfinder-map/issues/382)) ([ee8e720](https://github.com/RAbdelrhman/wayfinder-map/commit/ee8e7202f493d9e306d267629d84b15134276ddb))
+* pair phones with the desktop and expose start/watch endpoints ([#379](https://github.com/RAbdelrhman/wayfinder-map/issues/379)) ([d436c0b](https://github.com/RAbdelrhman/wayfinder-map/commit/d436c0b13f62cef92cde799293802b36333d72ba))
+* prototype typed replies with confirmation from the phone ([#366](https://github.com/RAbdelrhman/wayfinder-map/issues/366)) ([#368](https://github.com/RAbdelrhman/wayfinder-map/issues/368)) ([69afe01](https://github.com/RAbdelrhman/wayfinder-map/commit/69afe01879aa7bb0a74c6c92fa7c4fc1a0793e0d))
+
+
+### Bug Fixes
+
+* keep the T3 shell stream and hand-off status live on protocol 2 ([#388](https://github.com/RAbdelrhman/wayfinder-map/issues/388)) ([da4a2c2](https://github.com/RAbdelrhman/wayfinder-map/commit/da4a2c2af65217e84ecf84e4838289010a55226c)), closes [#254](https://github.com/RAbdelrhman/wayfinder-map/issues/254)
+* prevent automatic prototype focus on supporting browsers ([#384](https://github.com/RAbdelrhman/wayfinder-map/issues/384)) ([7097bd1](https://github.com/RAbdelrhman/wayfinder-map/commit/7097bd1167a0dfb22c1d19dfb1c0ec9ecf8cf3ce))
+* remove the unblocked-ticket snackbar from the map page ([#386](https://github.com/RAbdelrhman/wayfinder-map/issues/386)) ([2e18090](https://github.com/RAbdelrhman/wayfinder-map/commit/2e1809038ecadefb74bb2ddbf96d8952892113ba))
+* restore inline canvas feedback tools on mobile ([#383](https://github.com/RAbdelrhman/wayfinder-map/issues/383)) ([d0e4c48](https://github.com/RAbdelrhman/wayfinder-map/commit/d0e4c48854c53570bee053fd39b324724e107980))
+* restore selected canvas viewer focus on current runtimes ([#387](https://github.com/RAbdelrhman/wayfinder-map/issues/387)) ([a7fda7a](https://github.com/RAbdelrhman/wayfinder-map/commit/a7fda7a544f262e3e2b081153707bb1944a4b1fc))
+
 ## [0.2.26](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.25...v0.2.26) (2026-10-30)
 
 
