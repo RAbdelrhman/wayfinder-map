@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.28](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.27...v0.2.28) (2026-11-07)
+
+
+### Bug Fixes
+
+* select the element clicked in the canvas, and add a newest-round refresh ([#389](https://github.com/RAbdelrhman/wayfinder-map/issues/389)) ([2820cbf](https://github.com/RAbdelrhman/wayfinder-map/commit/2820cbf0c6dd06bf1eb4ea770125b035ce3b21c4))
+
 ## [0.2.27](https://github.com/RAbdelrhman/wayfinder-map/compare/v0.2.26...v0.2.27) (2026-11-06)
 
 
