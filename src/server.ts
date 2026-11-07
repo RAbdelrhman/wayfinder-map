@@ -1364,7 +1364,7 @@ export async function startServer({
         try {
           json(response, 200, { sha: await fetchBranchHead(requestedRepo, branch) });
         } catch (error) {
-          json(response, 502, { error: (error as Error).message });
+          json(response, 502, { error: ghProblem(error) });
         }
         return;
       }

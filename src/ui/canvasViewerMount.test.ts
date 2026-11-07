@@ -337,6 +337,13 @@ describe('loading the newest round', () => {
     expect(frames()[0]!.getAttribute('src')).toBe(board(43).replace(SHA, NEW));
   });
 
+  it('keeps the canvas pinned when the newest commit comes back malformed', async () => {
+    const { viewer, notices } = open({ branchHead: async () => 'HEAD' });
+    await refresh(viewer);
+    expect(frames()[0]!.getAttribute('src')).toBe(board(42));
+    expect(notices).toEqual(['Could not check for a newer round, so the canvas reloaded as it was: GitHub did not say which commit the branch is on.']);
+  });
+
   it('shows the button busy while it asks, and ignores a second press', async () => {
     let answer: (sha: string) => void = () => undefined;
     const branchHead = vi.fn(() => new Promise<string>((resolve) => { answer = resolve; }));

@@ -260,6 +260,8 @@ export async function newestCanvasUrl(url: string, head: (repo: string, branch: 
   const parsed = parsePrototypeFilePath(path);
   if (!parsed) return null;
   const sha = await head(parsed.repo, parsed.branch);
+  // Anything but a full commit would unpin the canvas, and its notes would lose their round.
+  if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('GitHub did not say which commit the branch is on.');
   return prototypeFileUrl(parsed.repo, parsed.branch, parsed.file, sha) + (at < 0 ? '' : url.slice(at));
 }
 
